@@ -1,7 +1,7 @@
 "use client";
 
 import { AnimatePresence, LayoutGroup, motion } from "framer-motion";
-import { Code, Copy, Globe, Terminal, X } from "lucide-react";
+import { Code, Copy, Globe, Terminal as TerminalIcon, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import Image from "next/image";
@@ -12,6 +12,7 @@ import QuestionInput from "@/components/question-input";
 import Thoughts from "@/components/thoughts";
 import { Button } from "@/components/ui/button";
 import { ThoughtStep, ThoughtType } from "@/typings/agent";
+import Terminal from "@/components/terminal";
 
 enum TAB {
   BROWSER = "browser",
@@ -397,7 +398,7 @@ export default function Home() {
                         variant="outline"
                         onClick={() => setActiveTab(TAB.TERMINAL)}
                       >
-                        <Terminal className="size-4" /> Terminal
+                        <TerminalIcon className="size-4" /> Terminal
                       </Button>
                     </div>
                     <Button
@@ -417,6 +418,9 @@ export default function Home() {
 
                   <CodeEditor
                     className={activeTab === TAB.CODE ? "" : "hidden"}
+                  />
+                  <Terminal
+                    className={activeTab === TAB.TERMINAL ? "" : "hidden"}
                   />
                 </motion.div>
               )}
