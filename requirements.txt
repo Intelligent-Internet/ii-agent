@@ -1,0 +1,10 @@
+anthropic==0.47.0
+dataclasses-json>=0.6.1
+jsonschema>=4.23.0
+numpy>=2.2.4
+openai==1.59.*
+pexpect>=4.9.0
+prompt-toolkit>=3.0.50
+pytest==7.4.3
+rich>=13.9.4
+termcolor>=2.5.0

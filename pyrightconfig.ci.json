@@ -1,0 +1,17 @@
+{
+    "include": [
+        "."
+    ],
+    "strict": [],
+    "ignore": [],
+    "executionEnvironments": [
+        {
+            "root": "."
+        }
+    ],
+    "typeCheckingMode": "standard",
+    "reportIncompatibleVariableOverride": "none",
+    "reportIncompatibleMethodOverride": "none",
+    "reportFunctionMemberAccess": "none",
+    "pythonVersion": "3.11"
+}

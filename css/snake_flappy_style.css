@@ -1,0 +1,85 @@
+/* Snake Flappy Game Styles */
+body {
+    font-family: Arial, sans-serif;
+    text-align: center;
+    background-color: #f0f0f0;
+    margin: 0;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+}
+
+h1 {
+    color: #333;
+    margin-bottom: 10px;
+}
+
+#game-container {
+    position: relative;
+}
+
+canvas {
+    background-color: #87CEEB; /* Sky blue background */
+    border: 2px solid #000;
+    display: block;
+    margin: 0 auto;
+}
+
+#score {
+    font-size: 24px;
+    margin: 10px 0;
+    color: #333;
+}
+
+#game-over {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background-color: rgba(0, 0, 0, 0.8);
+    color: white;
+    padding: 20px;
+    border-radius: 10px;
+    text-align: center;
+    display: none;
+}
+
+button {
+    background-color: #4CAF50;
+    border: none;
+    color: white;
+    padding: 10px 20px;
+    text-align: center;
+    text-decoration: none;
+    display: inline-block;
+    font-size: 16px;
+    margin: 10px 0;
+    cursor: pointer;
+    border-radius: 5px;
+}
+
+button:hover {
+    background-color: #45a049;
+}
+
+.instructions {
+    margin-top: 20px;
+    color: #666;
+    max-width: 600px;
+    text-align: center;
+}
+
+.game-mode-selector {
+    margin-bottom: 20px;
+}
+
+.game-mode-selector button {
+    margin: 0 10px;
+}
+
+.active-mode {
+    background-color: #2196F3;
+}

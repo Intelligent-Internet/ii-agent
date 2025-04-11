@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "swebench-system"
+version = "0.1.0"
+description = "AI-powered agent framework for software engineering tasks"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "anthropic==0.47.0",
+    "dataclasses-json>=0.6.1",
+    "datasets>=3.5.0",
+    "docker==7.1.0",
+    "docker-pycreds==0.4.0",
+    "jsonschema>=4.23.0",
+    "numpy>=2.2.4",
+    "openai==1.59.*",
+    "pexpect>=4.9.0",
+    "pre-commit>=4.2.0",
+    "prompt-toolkit>=3.0.50",
+    "pyright>=1.1.398",
+    "pytest==7.4.3",
+    "pyyaml>=6.0",
+    "rich>=13.9.4",
+    "termcolor>=2.5.0",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.11.2",
+]

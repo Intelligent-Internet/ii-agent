@@ -1,0 +1,24 @@
+diff --git a/swebench/harness/test_spec/test_spec.py b/swebench/harness/test_spec/test_spec.py
+index ccb9f8d..de906e9 100644
+--- a/swebench/harness/test_spec/test_spec.py
++++ b/swebench/harness/test_spec/test_spec.py
+@@ -1,7 +1,7 @@
+ import hashlib
+ import json
+ import platform
+-
++import uuid
+ from dataclasses import dataclass
+ from typing import Any, Union, cast
+
+@@ -106,8 +106,8 @@ class TestSpec:
+
+     def get_instance_container_name(self, run_id=None):
+         if not run_id:
+-            return f"sweb.eval.{self.instance_id}"
+-        return f"sweb.eval.{self.instance_id.lower()}.{run_id}"
++            return f"sweb.eval.{self.instance_id}.{uuid.uuid4().hex[:8]}"
++        return f"sweb.eval.{self.instance_id.lower()}.{run_id}.{uuid.uuid4().hex[:8]}"
+
+     @property
+     def base_dockerfile(self):
