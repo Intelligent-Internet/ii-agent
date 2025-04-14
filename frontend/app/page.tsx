@@ -2,17 +2,20 @@
 
 import { AnimatePresence, LayoutGroup, motion } from "framer-motion";
 import { Code, Copy, Globe, Terminal as TerminalIcon, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import Image from "next/image";
+import { Terminal as XTerm } from "@xterm/xterm";
 
 import CodeEditor from "@/components/code-editor";
 import Markdown from "@/components/markdown";
 import QuestionInput from "@/components/question-input";
-import Thoughts from "@/components/thoughts";
 import { Button } from "@/components/ui/button";
-import { ThoughtStep, ThoughtType } from "@/typings/agent";
+import { ActionStep, ThoughtStep, ThoughtType } from "@/typings/agent";
 import Terminal from "@/components/terminal";
+import Browser from "@/components/browser";
+import SearchBrowser from "@/components/search-browser";
+import Action from "@/components/action";
 
 enum TAB {
   BROWSER = "browser",
@@ -30,6 +33,8 @@ export default function Home() {
     useState<EventSource | null>(null);
   const [reasoningData, setReasoningData] = useState([""]);
   const [activeTab, setActiveTab] = useState(TAB.BROWSER);
+  const [currentActionData, setCurrentActionData] = useState<ActionStep>();
+  const xtermRef = useRef<XTerm | null>(null);
 
   const [sources, setSources] = useState<{
     [key: string]: {
@@ -40,6 +45,37 @@ export default function Home() {
     };
   }>({});
   const [modelType, setModelType] = useState("reasoning");
+
+  const handleClickAction = (data: ActionStep) => {
+    switch (data.type) {
+      case ThoughtType.SEARCH:
+        setActiveTab(TAB.BROWSER);
+        setCurrentActionData(data);
+        break;
+
+      case ThoughtType.VISIT:
+        setActiveTab(TAB.BROWSER);
+        setCurrentActionData(data);
+        break;
+
+      case ThoughtType.EXECUTE_COMMAND:
+        setActiveTab(TAB.TERMINAL);
+        setTimeout(() => {
+          xtermRef.current?.write(data.data.query + "");
+          xtermRef.current?.write("\r\n$ ");
+        }, 500);
+        break;
+
+      case ThoughtType.CREATE_FILE:
+      case ThoughtType.EDIT_FILE:
+        setActiveTab(TAB.CODE);
+        setCurrentActionData(data);
+        break;
+
+      default:
+        break;
+    }
+  };
 
   const handleSubmit = () => {
     if (!question.trim()) return;
@@ -270,7 +306,7 @@ export default function Home() {
               className="w-full grid grid-cols-10 write-report shadow-lg overflow-hidden flex-1"
             >
               <motion.div
-                className="p-4 col-span-4 w-full max-h-[calc(100vh-128px)] overflow-y-auto"
+                className="p-4 col-span-4 w-full max-h-[calc(100vh-78px)] overflow-y-auto"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ delay: 0.2, duration: 0.3 }}
@@ -296,13 +332,81 @@ export default function Home() {
                     </motion.div>
                   </motion.div>
                 )}
-                {modelType !== "reasoning" && (
-                  <Thoughts
-                    isStreamingThought={isStreamingThought}
-                    thoughtData={thoughtData}
-                    sources={sources}
+                {/* <Thoughts
+                  isStreamingThought={isStreamingThought}
+                  thoughtData={thoughtData}
+                  sources={sources}
+                /> */}
+                <div className="flex flex-col items-start gap-y-4">
+                  {`I'll help you explore how to incorporate expert demonstrations
+                  into Group Relative Policy Optimization (Group RPO) to enhance
+                  sample efficiency. I'll research this topic thoroughly and
+                  provide you with a comprehensive analysis. Let me get started
+                  right away.`}
+                  <Action
+                    type={ThoughtType.SEARCH}
+                    value="Group Relative Policy Optimization reinforcement learning"
+                    onClick={() =>
+                      handleClickAction({
+                        type: ThoughtType.SEARCH,
+                        data: {
+                          query:
+                            "Group Relative Policy Optimization reinforcement learning",
+                        },
+                      })
+                    }
                   />
-                )}
+                  <Action
+                    type={ThoughtType.VISIT}
+                    value="https://arxiv.org/pdf/2402.03300"
+                    onClick={() =>
+                      handleClickAction({
+                        type: ThoughtType.VISIT,
+                        data: {
+                          url: "https://arxiv.org/pdf/2402.03300",
+                          screenshot: "/arxiv.webp",
+                        },
+                      })
+                    }
+                  />
+                  <Action
+                    type={ThoughtType.EXECUTE_COMMAND}
+                    value="mkdir -p research && cd research && touch todo.md"
+                    onClick={() =>
+                      handleClickAction({
+                        type: ThoughtType.EXECUTE_COMMAND,
+                        data: {
+                          query:
+                            "mkdir -p research && cd research && touch todo.md",
+                        },
+                      })
+                    }
+                  />
+                  <Action
+                    type={ThoughtType.CREATE_FILE}
+                    value="todo.md"
+                    onClick={() =>
+                      handleClickAction({
+                        type: ThoughtType.CREATE_FILE,
+                        data: {
+                          query: "todo.md",
+                        },
+                      })
+                    }
+                  />
+                  <Action
+                    type={ThoughtType.EDIT_FILE}
+                    value="todo.md"
+                    onClick={() =>
+                      handleClickAction({
+                        type: ThoughtType.EDIT_FILE,
+                        data: {
+                          query: "todo.md",
+                        },
+                      })
+                    }
+                  />
+                </div>
 
                 {streamedResponse ? (
                   <motion.div
@@ -365,7 +469,7 @@ export default function Home() {
 
               {modelType == "reasoning" && reasoningData && (
                 <motion.div className="col-span-6 border-l border-neutral-500">
-                  <div className="p-4 bg-neutral-850 flex items-center justify-between border-b border-neutral-500">
+                  <div className="p-4 bg-neutral-850 flex items-center justify-between">
                     <div className="flex gap-x-4">
                       <Button
                         className={`cursor-pointer ${
@@ -415,11 +519,30 @@ export default function Home() {
                       Open with VS Code
                     </Button>
                   </div>
-
+                  <Browser
+                    className={
+                      activeTab === TAB.BROWSER &&
+                      currentActionData?.type === ThoughtType.VISIT
+                        ? ""
+                        : "hidden"
+                    }
+                    url={currentActionData?.data.url}
+                    screenshot={currentActionData?.data.screenshot}
+                  />
+                  <SearchBrowser
+                    className={
+                      activeTab === TAB.BROWSER &&
+                      currentActionData?.type === ThoughtType.SEARCH
+                        ? ""
+                        : "hidden"
+                    }
+                    keyword={currentActionData?.data.query}
+                  />
                   <CodeEditor
                     className={activeTab === TAB.CODE ? "" : "hidden"}
                   />
                   <Terminal
+                    ref={xtermRef}
                     className={activeTab === TAB.TERMINAL ? "" : "hidden"}
                   />
                 </motion.div>

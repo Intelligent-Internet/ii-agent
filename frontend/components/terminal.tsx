@@ -1,10 +1,10 @@
 "use client";
 
 import { Terminal as XTerm } from "@xterm/xterm";
-import { FitAddon } from "@xterm/addon-fit";
-import { WebLinksAddon } from "@xterm/addon-web-links";
-import { SearchAddon } from "@xterm/addon-search";
-import { useEffect, useRef } from "react";
+// import { FitAddon } from "@xterm/addon-fit";
+// import { WebLinksAddon } from "@xterm/addon-web-links";
+// import { SearchAddon } from "@xterm/addon-search";
+import { forwardRef, Ref, useEffect, useRef } from "react";
 import "@xterm/xterm/css/xterm.css";
 import clsx from "clsx";
 
@@ -12,9 +12,11 @@ interface TerminalProps {
   className?: string;
 }
 
-const Terminal = ({ className }: TerminalProps) => {
+const Terminal = (
+  { className }: TerminalProps,
+  xtermRef: Ref<XTerm | null>
+) => {
   const terminalRef = useRef<HTMLDivElement>(null);
-  const xtermRef = useRef<XTerm | null>(null);
   const commandHistoryRef = useRef<string[]>([]);
   const currentCommandRef = useRef<string>("");
   const historyIndexRef = useRef<number>(-1);
@@ -26,7 +28,7 @@ const Terminal = ({ className }: TerminalProps) => {
         container &&
         container.clientWidth > 0 &&
         container.clientHeight > 0 &&
-        !xtermRef.current
+        !(xtermRef && "current" in xtermRef ? xtermRef.current : null)
       ) {
         clearInterval(interval);
 
@@ -45,13 +47,13 @@ const Terminal = ({ className }: TerminalProps) => {
           allowTransparency: true,
         });
 
-        const fitAddon = new FitAddon();
-        term.loadAddon(fitAddon);
-        term.loadAddon(new WebLinksAddon());
-        term.loadAddon(new SearchAddon());
+        // const fitAddon = new FitAddon();
+        // term.loadAddon(fitAddon);
+        // term.loadAddon(new WebLinksAddon());
+        // term.loadAddon(new SearchAddon());
 
         term.open(container);
-        fitAddon.fit();
+        // fitAddon.fit();
 
         term.writeln("Welcome to II-Agent!");
         prompt(term);
@@ -110,10 +112,14 @@ const Terminal = ({ className }: TerminalProps) => {
         });
 
         const handleResize = () => {
-          fitAddon.fit();
+          // fitAddon.fit();
         };
         window.addEventListener("resize", handleResize);
-        xtermRef.current = term;
+        if (typeof xtermRef === "function") {
+          xtermRef(term);
+        } else if (xtermRef) {
+          xtermRef.current = term;
+        }
 
         return () => {
           window.removeEventListener("resize", handleResize);
@@ -151,4 +157,4 @@ const Terminal = ({ className }: TerminalProps) => {
   );
 };
 
-export default Terminal;
+export default forwardRef(Terminal);

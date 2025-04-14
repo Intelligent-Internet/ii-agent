@@ -18,6 +18,9 @@ export enum ThoughtType {
   SEARCH_RESULTS = "search_results",
   WRITING_REPORT = "writing_report",
   TOOL = "tool",
+  EXECUTE_COMMAND = "execute_command",
+  CREATE_FILE = "create_file",
+  EDIT_FILE = "edit_file",
 }
 
 export type ThoughtStep = {
@@ -42,4 +45,13 @@ export type ThoughtStep = {
     }[];
   };
   timestamp: number;
+};
+
+export type ActionStep = {
+  type: ThoughtType;
+  data: {
+    query?: string;
+    url?: string;
+    screenshot?: string;
+  };
 };

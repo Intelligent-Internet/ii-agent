@@ -1,0 +1,560 @@
+/* Base styles */
+:root {
+  /* Primary Colors */
+  --sky-blue: #bae9f4;
+  --pink: #f4a4d2;
+  --violet: #632af5;
+  --lavender: #e3b9ed;
+  --mint: #bfefd9;
+  --charcoal: #191e1b;
+
+  /* Gradient colors */
+  --gradient-soft-blue: #e0f2fe;
+  --gradient-soft-purple: #f3e8ff;
+  --gradient-soft-pink: #fce7f3;
+
+  /* Functional Colors */
+  --primary-color: var(--violet);
+  --secondary-color: var(--lavender);
+  --accent-color: var(--pink);
+  --background-color: #ffffff;
+  --text-color: var(--charcoal);
+  --text-secondary: #4a4a4a;
+
+  /* Gradient Colors */
+  --gradient-start: var(--sky-blue);
+  --gradient-end: var(--lavender);
+
+  /* UI Elements */
+  --box-shadow: 0 2px 12px rgba(99, 42, 245, 0.08);
+  --border-radius: 12px;
+  --transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  --container-width: 1200px; /* Increased from 900px */
+
+  /* Status Colors */
+  --success-color: var(--mint);
+  --warning-color: var(--pink);
+  --info-color: var(--sky-blue);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI",
+    Roboto, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  color: var(--text-color);
+  background-color: var(--background-color);
+  -webkit-font-smoothing: antialiased;
+}
+
+.container {
+  width: 100%;
+  max-width: var(--container-width);
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+/* Typography */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  margin-bottom: 1.5rem;
+  color: var(--charcoal); /* Changed from secondary-color to charcoal */
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  line-height: 1.2;
+}
+
+h1 {
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: var(--charcoal); /* Explicitly set for h1 */
+}
+
+h2 {
+  font-size: 1.75rem;
+  margin-top: 3rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid rgba(25, 30, 27, 0.1); /* Using charcoal with opacity */
+}
+
+h3 {
+  font-size: 1.375rem;
+  margin-top: 2rem;
+}
+
+h4 {
+  font-size: 1.125rem;
+  margin-top: 1.5rem;
+}
+
+p {
+  margin-bottom: 1.5rem;
+  font-size: 1.0625rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+a {
+  color: var(--primary-color);
+  text-decoration: none;
+  transition: var(--transition);
+}
+
+a:hover {
+  color: var(--accent-color);
+}
+
+/* Header with gradient */
+header {
+  background: linear-gradient(
+    to right,
+    var(--pink) 0%,
+    var(--gradient-soft-pink) 50%,
+    var(--sky-blue) 100%
+  );
+  padding: 3rem 0 2.5rem;
+  position: relative;
+  overflow: hidden;
+  border-bottom: none;
+}
+
+/* Add subtle texture overlay */
+header::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: radial-gradient(
+      circle at 20% 30%,
+      rgba(255, 255, 255, 0.4) 0%,
+      transparent 50%
+    ),
+    radial-gradient(
+      circle at 80% 70%,
+      rgba(255, 255, 255, 0.3) 0%,
+      transparent 50%
+    );
+  pointer-events: none;
+}
+
+/* Remove the header::after line since we don't need it anymore */
+header::after {
+  display: none;
+}
+
+/* Update header text colors for better contrast */
+header h1 {
+  color: var(--charcoal);
+  margin-bottom: 0.75rem;
+  font-size: 2.75rem;
+  font-weight: 800;
+  position: relative;
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.5);
+}
+
+.subtitle {
+  color: var(--text-secondary);
+  font-size: 1.25rem;
+  max-width: 600px;
+  position: relative;
+  opacity: 0.9;
+}
+
+/* Enhanced Navigation with matching gradient */
+nav {
+  background: linear-gradient(
+    to left,
+    var(--pink) 0%,
+    var(--gradient-soft-pink) 30%,
+    var(--sky-blue) 100%
+  );
+  border-bottom: none;
+  padding: 0.75rem 0;
+  position: sticky;
+  top: 0;
+  z-index: 90;
+  box-shadow: 0 4px 20px rgba(99, 42, 245, 0.08);
+}
+
+nav .container {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 2rem; /* Added gap between nav items and theme toggle */
+}
+
+nav ul {
+  display: flex;
+  list-style: none;
+  gap: 0.75rem;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  margin: 0;
+  padding: 0;
+}
+
+nav ul li a {
+  color: var(--charcoal);
+  font-weight: 600;
+  font-size: 0.875rem; /* Slightly reduced */
+  padding: 0.5rem 1rem; /* Reduced padding */
+  border-radius: 12px;
+  transition: var(--transition);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background-color: rgba(255, 255, 255, 0.95);
+  border: 2px solid transparent;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  box-shadow: 0 2px 4px rgba(99, 42, 245, 0.05);
+}
+
+nav ul li a:hover {
+  color: var(--violet);
+  background-color: white;
+  border-color: var(--violet);
+  box-shadow: 0 4px 12px rgba(99, 42, 245, 0.1);
+  transform: translateY(-1px);
+}
+
+nav ul li a.active {
+  color: white;
+  background: var(--violet);
+  font-weight: 700;
+  border: none;
+  box-shadow: 0 4px 12px rgba(99, 42, 245, 0.2);
+}
+
+/* Add a subtle separator between header and nav */
+nav::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(
+    to right,
+    transparent,
+    rgba(99, 42, 245, 0.1),
+    transparent
+  );
+}
+
+/* Responsive adjustments */
+@media (max-width: 1280px) {
+  :root {
+    --container-width: 1000px;
+  }
+}
+
+@media (max-width: 1024px) {
+  :root {
+    --container-width: 90%;
+  }
+}
+
+@media (max-width: 768px) {
+  nav ul {
+    gap: 0.5rem;
+  }
+
+  nav ul li a {
+    padding: 0.4rem 0.75rem;
+    font-size: 0.75rem;
+  }
+
+  .theme-toggle {
+    padding: 0.4rem;
+    min-width: 32px;
+    height: 32px;
+  }
+}
+
+/* Main content */
+main {
+  padding: 3rem 0 6rem;
+}
+
+section {
+  margin-bottom: 4rem;
+}
+
+.content-box {
+  background-color: white;
+  padding: 2rem;
+  border-radius: var(--border-radius);
+  border: 1px solid rgba(99, 42, 245, 0.1);
+  transition: var(--transition);
+  margin-bottom: 2rem;
+}
+
+.content-box:hover {
+  box-shadow: var(--box-shadow);
+  transform: translateY(-2px);
+  border-color: var(--lavender);
+}
+
+/* Code and math formatting */
+pre,
+code {
+  font-family: "SF Mono", Menlo, Monaco, Consolas, monospace;
+  background-color: #f6f6f6;
+  border-radius: 6px;
+}
+
+pre {
+  padding: 1.25rem;
+  overflow-x: auto;
+  margin-bottom: 1.5rem;
+  font-size: 0.9375rem;
+  line-height: 1.5;
+}
+
+code {
+  padding: 0.2rem 0.4rem;
+  font-size: 0.875em;
+}
+
+.math-block {
+  background-color: rgba(191, 239, 217, 0.2);
+  padding: 2rem;
+  border-radius: 8px;
+  margin: 1.5rem 0;
+  overflow-x: auto;
+  border: 1px solid var(--mint);
+}
+
+/* Tables */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 1.5rem;
+  font-size: 0.9375rem;
+}
+
+th,
+td {
+  padding: 0.75rem 1rem;
+  text-align: left;
+  border-bottom: 1px solid #e5e5e5;
+}
+
+th {
+  background-color: #f6f6f6;
+  font-weight: 600;
+  color: var(--text-color);
+}
+
+tr:hover {
+  background-color: #f9f9f9;
+}
+
+/* Images */
+img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 2rem auto;
+  border-radius: var(--border-radius);
+}
+
+.figure {
+  margin-bottom: 2rem;
+}
+
+.figure img {
+  box-shadow: var(--box-shadow);
+}
+
+.figure-caption {
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 0.9375rem;
+  margin-top: 1rem;
+}
+
+/* Special elements */
+.note {
+  background-color: rgba(186, 233, 244, 0.2);
+  border-left: 4px solid var(--sky-blue);
+  padding: 1.5rem;
+  margin: 1.5rem 0;
+  border-radius: 6px;
+}
+
+.warning {
+  background-color: rgba(244, 164, 210, 0.2);
+  border-left: 4px solid var(--pink);
+  padding: 1.5rem;
+  margin: 1.5rem 0;
+  border-radius: 6px;
+}
+
+.highlight {
+  background-color: rgba(227, 185, 237, 0.2);
+  padding: 1.5rem;
+  margin: 1.5rem 0;
+  border-radius: 6px;
+  border: 1px solid var(--lavender);
+}
+
+/* Button styles */
+.btn {
+  display: inline-block;
+  padding: 0.75rem 1.5rem;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  background-color: var(--violet);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.btn:hover {
+  background-color: #7740ff;
+  transform: translateY(-1px);
+}
+
+.btn-secondary {
+  background-color: #f6f6f6;
+  color: var(--text-color);
+}
+
+.btn-secondary:hover {
+  background-color: #e5e5e5;
+}
+
+/* Footer */
+footer {
+  background-color: var(--charcoal);
+  color: white;
+  padding: 3rem 0;
+  text-align: center;
+  margin-top: 4rem;
+}
+
+footer p {
+  color: var(--sky-blue);
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  :root {
+    --container-width: 100%;
+  }
+
+  header h1 {
+    font-size: 2rem;
+  }
+
+  .subtitle {
+    font-size: 1.125rem;
+  }
+
+  nav ul {
+    gap: 0.5rem;
+  }
+
+  nav ul li a {
+    padding: 0.5rem;
+  }
+
+  .content-box {
+    padding: 1.5rem;
+  }
+}
+
+/* Back to top button */
+.back-to-top {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  background: linear-gradient(135deg, var(--violet), var(--lavender));
+  color: white;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: var(--transition);
+  box-shadow: 0 4px 12px rgba(99, 42, 245, 0.2);
+  border: none;
+}
+
+.back-to-top.visible {
+  opacity: 1;
+}
+
+.back-to-top:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(99, 42, 245, 0.3);
+}
+
+/* Theme toggle button */
+nav .container {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.theme-toggle {
+  background: rgba(255, 255, 255, 0.95);
+  border: 2px solid transparent;
+  border-radius: 12px;
+  padding: 0.75rem;
+  cursor: pointer;
+  transition: var(--transition);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 4px rgba(99, 42, 245, 0.05);
+}
+
+.theme-toggle:hover {
+  background-color: white;
+  border-color: var(--violet);
+  box-shadow: 0 4px 12px rgba(99, 42, 245, 0.1);
+  transform: translateY(-1px);
+}
+
+.theme-toggle i {
+  font-size: 1.25rem;
+  color: var(--charcoal);
+}
+
+.theme-toggle .light-icon {
+  display: none;
+}
+
+.theme-toggle .dark-icon {
+  display: block;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .theme-toggle {
+    padding: 0.625rem;
+  }
+
+  .theme-toggle i {
+    font-size: 1rem;
+  }
+}

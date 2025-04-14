@@ -1,0 +1,248 @@
+.active {
+  background-color: rgba(255, 255, 255, 0.2);
+  font-weight: bold;
+}
+
+/* Add styles for math formulas */
+.katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 1rem 0;
+}
+
+/* Add styles for algorithm blocks */
+.algorithm {
+  background-color: #f8f9fa;
+  border: 1px solid #ddd;
+  border-radius: var(--border-radius);
+  padding: 1rem;
+  margin: 1rem 0;
+  font-family: "Courier New", Courier, monospace;
+}
+
+.algorithm-title {
+  font-weight: bold;
+  margin-bottom: 0.5rem;
+  border-bottom: 1px solid #ddd;
+  padding-bottom: 0.5rem;
+}
+
+.algorithm-step {
+  padding-left: 1.5rem;
+  position: relative;
+  margin-bottom: 0.5rem;
+}
+
+.algorithm-step::before {
+  content: attr(data-step);
+  position: absolute;
+  left: 0;
+  font-weight: bold;
+}
+
+/* Add styles for collapsible sections */
+.collapsible-header {
+  background-color: #f1f1f1;
+  color: var(--secondary-color);
+  cursor: pointer;
+  padding: 1rem;
+  width: 100%;
+  border: none;
+  text-align: left;
+  outline: none;
+  font-size: 1.1rem;
+  font-weight: 600;
+  transition: var(--transition);
+  border-radius: var(--border-radius);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.collapsible-header:after {
+  content: "\002B";
+  font-weight: bold;
+  float: right;
+  margin-left: 5px;
+}
+
+.collapsible-header.active:after {
+  content: "\2212";
+}
+
+.collapsible-content {
+  padding: 0 1rem;
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.2s ease-out;
+  background-color: white;
+}
+
+/* Add styles for references */
+.reference-list {
+  padding-left: 2rem;
+}
+
+.reference-item {
+  margin-bottom: 1rem;
+  padding-left: 2rem;
+  text-indent: -2rem;
+}
+
+/* Add styles for tooltips */
+.tooltip {
+  position: relative;
+  display: inline-block;
+  border-bottom: 1px dotted var(--primary-color);
+  cursor: help;
+}
+
+.tooltip .tooltip-text {
+  visibility: hidden;
+  width: 200px;
+  background-color: var(--secondary-color);
+  color: white;
+  text-align: center;
+  border-radius: var(--border-radius);
+  padding: 0.5rem;
+  position: absolute;
+  z-index: 1;
+  bottom: 125%;
+  left: 50%;
+  margin-left: -100px;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.tooltip:hover .tooltip-text {
+  visibility: visible;
+  opacity: 1;
+}
+
+/* Add styles for cards */
+.card-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  margin: 1.5rem 0;
+}
+
+.card {
+  flex: 1 1 300px;
+  background-color: white;
+  border-radius: var(--border-radius);
+  box-shadow: var(--box-shadow);
+  overflow: hidden;
+  transition: var(--transition);
+}
+
+.card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+}
+
+.card-header {
+  background-color: var(--primary-color);
+  color: white;
+  padding: 1rem;
+}
+
+.card-body {
+  padding: 1.5rem;
+}
+
+.card-footer {
+  background-color: #f9f9f9;
+  padding: 1rem;
+  border-top: 1px solid #eee;
+}
+
+/* Add styles for tabs */
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  margin: 1.5rem 0;
+}
+
+.tab-label {
+  order: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 1rem 2rem;
+  margin-right: 0.2rem;
+  cursor: pointer;
+  background-color: #f1f1f1;
+  font-weight: bold;
+  transition: var(--transition);
+  border-radius: var(--border-radius) var(--border-radius) 0 0;
+}
+
+.tab-label:hover {
+  background-color: #ddd;
+}
+
+.tab-content {
+  order: 99;
+  flex-grow: 1;
+  width: 100%;
+  display: none;
+  padding: 1.5rem;
+  background-color: white;
+  border-radius: 0 var(--border-radius) var(--border-radius)
+    var(--border-radius);
+  box-shadow: var(--box-shadow);
+}
+
+.tab-input {
+  display: none;
+}
+
+.tab-input:checked + .tab-label {
+  background-color: white;
+  border-top: 2px solid var(--primary-color);
+}
+
+.tab-input:checked + .tab-label + .tab-content {
+  display: block;
+}
+
+.table-of-contents {
+  background-color: #f8f9fa;
+  border: 1px solid #ddd;
+  border-radius: var(--border-radius);
+  padding: 1.5rem;
+  margin: 2rem 0;
+}
+
+.table-of-contents h3 {
+  margin-top: 0;
+  border-bottom: 1px solid #ddd;
+  padding-bottom: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.toc-list {
+  list-style-type: none;
+  padding-left: 0;
+}
+
+.toc-list li {
+  margin-bottom: 0.5rem;
+}
+
+.toc-list ul {
+  list-style-type: none;
+  padding-left: 1.5rem;
+  margin-top: 0.5rem;
+}
+
+.toc-subsection {
+  font-size: 0.9rem;
+  color: #666;
+}
+
+.toc-list a.active {
+  font-weight: bold;
+  color: var(--accent-color);
+}
