@@ -1,5 +1,5 @@
 from copy import deepcopy
-from typing import Any, Optional
+from typing import Any, Optional, Dict, List
 from tools.bash_tool import create_bash_tool, create_docker_bash_tool
 from utils.common import (
     DialogMessages,
@@ -8,12 +8,17 @@ from utils.common import (
 )
 from utils.llm_client import LLMClient, TextResult
 from utils.workspace_manager import WorkspaceManager
+from utils.file_manager import FileManager
 from tools.complete_tool import CompleteTool
 from prompts.system_prompt import SYSTEM_PROMPT
 from tools.str_replace_tool import StrReplaceEditorTool
 from tools.sequential_thinking_tool import SequentialThinkingTool
-from tools.web_search import DuckDuckGoSearchTool
-from tools.visit_webpage import VisitWebpageTool
+from tools.tavily_web_search import TavilySearchTool
+from tools.tavily_visit_webpage import TavilyVisitWebpageTool
+from tools.browser_use import BrowserUse
+from tools.planner_agent import PlannerAgent
+from tools.writing_agent import WritingAgent
+from tools.file_write_tool import FileWriteTool
 from termcolor import colored
 from rich.console import Console
 import logging
@@ -82,8 +87,29 @@ try breaking down the task into smaller steps and call this tool multiple times.
             use_prompt_budgeting=use_prompt_budgeting,
         )
 
+        # Initialize file manager for persistent file tracking
+        self.file_manager = FileManager(workspace_manager.root)
+
         # Create and store the complete tool
         self.complete_tool = CompleteTool()
+        
+        # Create writing agent
+        self.writing_agent = WritingAgent(
+            client=client,
+            workspace_manager=workspace_manager,
+            parent_agent=self,
+            logger_for_agent_logs=logger_for_agent_logs,
+            max_output_tokens=max_output_tokens_per_turn,
+        )
+
+        # Create planner agent
+        self.planner_agent = PlannerAgent(
+            client=client,
+            workspace_manager=workspace_manager,
+            parent_agent=self,
+            logger_for_agent_logs=logger_for_agent_logs,
+            max_output_tokens=max_output_tokens_per_turn,
+        )
 
         if docker_container_id is not None:
             print(
@@ -108,9 +134,13 @@ try breaking down the task into smaller steps and call this tool multiple times.
             bash_tool,
             StrReplaceEditorTool(workspace_manager=workspace_manager),
             SequentialThinkingTool(),
-            DuckDuckGoSearchTool(),
-            VisitWebpageTool(),
+            TavilySearchTool(),
+            TavilyVisitWebpageTool(),
+            # BrowserUse(),
             self.complete_tool,
+            self.writing_agent,
+            self.planner_agent,
+            FileWriteTool(),
         ]
 
     def run_impl(
@@ -295,5 +325,115 @@ try breaking down the task into smaller steps and call this tool multiple times.
         return self.run(tool_input, self.dialog)
 
     def clear(self):
+        """Clear the dialog and reset interruption state.
+        Note: This does NOT clear the file manager, preserving file context.
+        """
         self.dialog.clear()
         self.interrupted = False
+
+    def write_content(self, file_path: str, instruction: str, content_id: Optional[str] = None) -> str:
+        """Hand off to the writing agent to generate content and write to a file.
+        
+        The writing agent will use this agent's dialog history and context to create
+        a comprehensive report based on the provided instructions.
+        
+        Args:
+            file_path: The path where the content should be written.
+            instruction: Instructions for generating the writeup.
+            content_id: Optional identifier for the content, used for tracking.
+            
+        Returns:
+            The generated content.
+        """
+        # Generate a content ID if none is provided
+        if content_id is None:
+            import uuid
+            content_id = f"content_{uuid.uuid4().hex[:8]}"
+        
+        # Register the content with the file manager
+        registered_path = self.file_manager.register_content(content_id, file_path)
+        
+        # Set as active content
+        self.file_manager.set_active_content(content_id)
+        
+        # Use the registered path for the content
+        result = self.writing_agent.write_content(registered_path, instruction)
+        
+        # Update the metadata
+        metadata = {
+            "last_instruction": instruction,
+        }
+        self.file_manager.update_content_metadata(metadata, content_id)
+        
+        return result
+    
+    def plan_task(self, instruction: str, plan_file_path: str, action: str = "create", plan_id: Optional[str] = None) -> Dict:
+        """Hand off to the planner agent to create, update, or get a plan.
+        
+        The planner agent will use this agent's dialog history and context to create
+        or manage a structured plan based on the provided instructions.
+        
+        Args:
+            instruction: Instructions for the planning task.
+            plan_file_path: Path where the plan should be stored.
+            action: Action to perform: 'create', 'update', or 'get'.
+            plan_id: Optional identifier for the plan, used for tracking.
+            
+        Returns:
+            The plan as a dictionary.
+        """
+        # Generate a plan ID if none is provided
+        if plan_id is None:
+            import uuid
+            plan_id = f"plan_{uuid.uuid4().hex[:8]}"
+        
+        # Register the plan with the file manager
+        registered_path = self.file_manager.register_plan(plan_id, plan_file_path)
+        
+        # Set as active plan
+        self.file_manager.set_active_plan(plan_id)
+        
+        # Use the registered path for the plan
+        result = self.planner_agent.plan(instruction, registered_path, action)
+        
+        # If successful and this is a create/update, update the metadata
+        if action in ["create", "update"] and isinstance(result, dict):
+            metadata = {
+                "last_action": action,
+                "last_instruction": instruction,
+            }
+            self.file_manager.update_plan_metadata(metadata, plan_id)
+        
+        return result
+    
+    def get_active_plan_path(self) -> Optional[str]:
+        """Get the path of the currently active plan.
+        
+        Returns:
+            The path to the active plan file, or None if no active plan exists
+        """
+        return self.file_manager.get_plan_path()
+    
+    def get_active_content_path(self) -> Optional[str]:
+        """Get the path of the currently active content.
+        
+        Returns:
+            The path to the active content file, or None if no active content exists
+        """
+        return self.file_manager.get_content_path()
+    
+    def list_plans(self) -> List[Dict]:
+        """List all registered plans.
+        
+        Returns:
+            A list of plans with their IDs, paths, and metadata
+        """
+        return self.file_manager.list_plans()
+    
+    def list_content(self) -> List[Dict]:
+        """List all registered content.
+        
+        Returns:
+            A list of content items with their IDs, paths, and metadata
+        """
+        return self.file_manager.list_content()

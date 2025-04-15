@@ -1,0 +1,80 @@
+import asyncio
+from locale import currency
+
+from flask import current_app
+from .utils import truncate_content
+from utils.common import (
+    DialogMessages,
+    LLMTool,
+    ToolImplOutput,
+)
+from index import Agent, AnthropicProvider
+
+from typing import Optional, Any
+
+class BrowserUse(LLMTool):
+    name = "browser_use"
+    description = (
+        "Use this tool to browse the web. You can use it to get information, find answers, or anything else you need."
+    )
+    input_schema = {
+        "type": "object",
+        "properties": {
+            "query": {
+                "type": "string",
+                "description": "The query to search the web for.",
+            },
+            "url": {
+                "type": "string",
+                "description": "The url of the webpage to visit.",
+            }
+        },
+        "required": ["query", "url"],
+    }
+    output_type = "string"
+
+    def run_impl(
+        self,
+        tool_input: dict[str, Any],
+        dialog_messages: Optional[DialogMessages] = None,
+    ) -> ToolImplOutput:
+        llm = AnthropicProvider(
+            model="claude-3-7-sonnet",
+            enable_thinking=False, 
+            thinking_token_budget=2048)
+
+        agent = Agent(llm=llm)
+
+        async def _run():
+            try:
+                output = await agent.run(
+                    prompt=f"Navigate to {tool_input['url']}. Task: {tool_input['query']}"
+                )
+                if output.result.error:
+                    return "Error: " + output.result.error
+                return output.result.content
+            except:
+                return "Unexpected error"
+       
+        try:
+            # Try to get the existing event loop
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            # If no event loop exists, create a new one
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        
+        try:
+            text = loop.run_until_complete(_run())
+        finally:
+            # Clean up the event loop if we created it
+            if loop.is_running():
+                loop.close()
+                
+        return ToolImplOutput(
+            text,
+            tool_result_message=f"Browsed {tool_input['url']} and found the following information: {text}",
+            auxiliary_data={"success": True},
+        )
+
+        

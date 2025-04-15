@@ -39,13 +39,20 @@ class DuckDuckGoSearchTool(LLMTool):
         tool_input: dict[str, Any],
         dialog_messages: Optional[DialogMessages] = None,
     ) -> ToolImplOutput:
-        query = tool_input["query"]
-        results = self.ddgs.text(query, max_results=self.max_results)
-        if len(results) == 0:
-            raise Exception("No results found! Try a less restrictive/shorter query.")
-        postprocessed_results = [f"[{result['title']}]({result['href']})\n{result['body']}" for result in results]
-        return ToolImplOutput(
-            "## Search Results\n\n" + "\n\n".join(postprocessed_results),
-            f"Search Results with query: {query} successfully retrieved",
-            auxiliary_data={"success": True},
-        )
+        try:
+            query = tool_input["query"]
+            results = self.ddgs.text(query, max_results=self.max_results)
+            if len(results) == 0:
+                raise Exception("No results found! Try a less restrictive/shorter query.")
+            postprocessed_results = [f"[{result['title']}]({result['href']})\n{result['body']}" for result in results]
+            return ToolImplOutput(
+                "## Search Results\n\n" + "\n\n".join(postprocessed_results),
+                f"Search Results with query: {query} successfully retrieved",
+                auxiliary_data={"success": True},
+            )
+        except Exception as e:
+            return ToolImplOutput(
+                f"Error searching the web: {str(e)}",
+                f"Failed to search the web with query: {query}",
+                auxiliary_data={"success": False},
+            )
