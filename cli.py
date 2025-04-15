@@ -35,7 +35,7 @@ def main():
     parser.add_argument(
         "--workspace",
         type=str,
-        default=".",
+        default="./workspace",
         help="Path to the workspace",
     )
     parser.add_argument(
