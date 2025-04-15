@@ -4,17 +4,21 @@ import { Button } from "./ui/button";
 import { Textarea } from "./ui/textarea";
 
 interface QuestionInputProps {
-  question: string;
+  className?: string;
+  textareaClassName?: string;
   placeholder?: string;
-  setQuestion: (question: string) => void;
+  value: string;
+  setValue: (value: string) => void;
   handleKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
-  handleSubmit: () => void;
+  handleSubmit: (question: string) => void;
 }
 
 const QuestionInput = ({
-  question,
+  className,
+  textareaClassName,
   placeholder,
-  setQuestion,
+  value,
+  setValue,
   handleKeyDown,
   handleSubmit,
 }: QuestionInputProps) => {
@@ -30,30 +34,30 @@ const QuestionInput = ({
         damping: 30,
         mass: 1,
       }}
-      className="w-full max-w-2xl"
+      className={`w-full max-w-2xl shadow-[0_2px_6px_rgba(0,0,0,0.07)] dark:shadow-[0_2px_6px_rgba(255,255,255,0.07)] z-50 ${className}`}
     >
       <motion.div
-        className="bg-white rounded-2xl shadow-lg relative mt-6"
-        initial={{ boxShadow: "0 4px 6px rgba(0, 0, 0, 0.1)" }}
-        animate={{ boxShadow: "0 10px 25px rgba(0, 0, 0, 0.1)" }}
-        transition={{ delay: 0.2, duration: 0.5 }}
+        className="relative rounded-xl bg-white/50 dark:bg-slate-800/50"
+        initial={{ y: 20, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ delay: 0.1 }}
       >
         <Textarea
-          className="w-full h-40 p-4 rounded-lg !text-lg"
+          className={`w-full h-40 p-4 rounded-lg !text-lg bg-transparent border-none focus:ring-0 focus:border-none resize-none ${textareaClassName}`}
           placeholder={
             placeholder ||
             "Enter your research query or complex question for in-depth analysis..."
           }
-          value={question}
-          onChange={(e) => setQuestion(e.target.value)}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
           onKeyDown={handleKeyDown}
         />
         <div className="flex w-full justify-between items-center absolute bottom-4 px-4">
           <div />
           <Button
-            disabled={!question.trim()}
-            onClick={handleSubmit}
-            className="cursor-pointer p-4 size-10 font-bold  bg-gradient-skyblue-lavender rounded-full hover:scale-105 active:scale-95 transition-transform"
+            disabled={!value.trim()}
+            onClick={() => handleSubmit(value)}
+            className="cursor-pointer p-4 size-10 font-bold bg-gradient-skyblue-lavender rounded-full hover:scale-105 active:scale-95 transition-transform shadow-[0_4px_10px_rgba(0,0,0,0.1)] dark:shadow-[0_4px_10px_rgba(0,0,0,0.2)]"
           >
             <ArrowUp className="size-5" />
           </Button>
