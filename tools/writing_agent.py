@@ -18,6 +18,7 @@ class WritingAgent(LLMTool):
     name = "writing_agent"
     description = """\
 A specialized agent that generates writeups based on the parent agent's state and writes content to a specified file.
+Use this tool regularly to save the pending context to a file after completing a sub-task.
 Use this for creating comprehensive reports, documentation, articles, or any text content that needs to be written to a file.
 """
     input_schema = {
@@ -130,6 +131,7 @@ Use this for creating comprehensive reports, documentation, articles, or any tex
         try:
             # Always use a copy of the parent agent's dialog for context
             parent_dialog = deepcopy(self.parent_agent.dialog)
+            parent_dialog.drop_tool_calls_from_final_turn()
             
             # Get the content type template
             template = self.CONTENT_TYPE_TEMPLATES[content_type]

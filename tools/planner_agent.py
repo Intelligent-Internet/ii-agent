@@ -5,7 +5,7 @@ from utils.common import (
     LLMTool,
     ToolImplOutput,
 )
-from utils.llm_client import LLMClient, TextResult
+from utils.llm_client import LLMClient, TextResult, TextPrompt
 from utils.workspace_manager import WorkspaceManager
 from prompts.system_prompt import SYSTEM_PROMPT
 import os
@@ -18,9 +18,9 @@ import traceback
 class PlannerAgent(LLMTool):
     name = "planner_agent"
     description = """\
-A specialized agent that helps with creating, storing, and updating plan state for complex tasks.
+A specialized agent that helps with creating, storing, and updating plan state for complex tasks -- Planner module.
 Use this tool when you need to create a structured plan for a complex task, update an existing plan, 
-or retrieve a plan's current state.
+or retrieve a plan's current state. Use this tool at very beginning of a task to create a plan.
 """
     input_schema = {
         "type": "object",
@@ -128,6 +128,7 @@ or retrieve a plan's current state.
             
             # Use parent agent's dialog for context
             parent_dialog = deepcopy(self.parent_agent.dialog)
+            parent_dialog.drop_tool_calls_from_final_turn()
             
             # Prepare the appropriate prompt based on the action
             if action == "create":

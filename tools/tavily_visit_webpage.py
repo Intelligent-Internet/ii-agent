@@ -45,7 +45,7 @@ class TavilyVisitWebpageTool(LLMTool):
             tavily_client = TavilyClient(api_key=self.api_key)
             
             # Extract webpage content
-            response = tavily_client.extract(urls=[url])
+            response = tavily_client.extract(url)
             
             # Check if response contains results
             if not response or 'results' not in response or not response['results']:

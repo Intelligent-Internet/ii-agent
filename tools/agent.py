@@ -15,7 +15,6 @@ from tools.str_replace_tool import StrReplaceEditorTool
 from tools.sequential_thinking_tool import SequentialThinkingTool
 from tools.tavily_web_search import TavilySearchTool
 from tools.tavily_visit_webpage import TavilyVisitWebpageTool
-from tools.browser_use import BrowserUse
 from tools.planner_agent import PlannerAgent
 from tools.writing_agent import WritingAgent
 from tools.file_write_tool import FileWriteTool
@@ -131,6 +130,8 @@ try breaking down the task into smaller steps and call this tool multiple times.
             )
 
         self.tools = [
+            self.writing_agent,
+            self.planner_agent,
             bash_tool,
             StrReplaceEditorTool(workspace_manager=workspace_manager),
             SequentialThinkingTool(),
@@ -138,8 +139,6 @@ try breaking down the task into smaller steps and call this tool multiple times.
             TavilyVisitWebpageTool(),
             # BrowserUse(),
             self.complete_tool,
-            self.writing_agent,
-            self.planner_agent,
             FileWriteTool(),
         ]
 
