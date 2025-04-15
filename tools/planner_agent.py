@@ -8,11 +8,11 @@ from utils.common import (
 from utils.llm_client import LLMClient, TextResult, TextPrompt
 from utils.workspace_manager import WorkspaceManager
 from prompts.system_prompt import SYSTEM_PROMPT
-import os
-import json
-import logging
 import datetime
 import traceback
+import json
+import logging
+import uuid
 
 
 class PlannerAgent(LLMTool):
@@ -29,9 +29,9 @@ or retrieve a plan's current state. Use this tool at very beginning of a task to
                 "type": "string",
                 "description": "Instructions for planning or updating the plan.",
             },
-            "plan_file_path": {
+            "plan_id": {
                 "type": "string",
-                "description": "The path where the plan should be stored.",
+                "description": "Unique identifier for the plan. Required for 'update' and 'get' actions. For 'create' action, a new ID will be automatically generated if not provided.",
             },
             "action": {
                 "type": "string",
@@ -39,7 +39,7 @@ or retrieve a plan's current state. Use this tool at very beginning of a task to
                 "enum": ["create", "update", "get"]
             },
         },
-        "required": ["instruction", "plan_file_path", "action"],
+        "required": ["instruction", "action"],
     }
 
     def _get_system_prompt(self):
@@ -79,7 +79,19 @@ or retrieve a plan's current state. Use this tool at very beginning of a task to
             logger_for_agent_logs=logger_for_agent_logs,
             use_prompt_budgeting=True,
         )
-        self.current_plan = None
+        # Store plans in a dictionary instead of files
+        self.plans = {}
+        # Keep track of the plan counter for auto-generating IDs
+        self.plan_counter = 0
+
+    def _generate_plan_id(self):
+        """Generate a unique plan ID.
+        
+        Returns:
+            A unique string identifier for a plan
+        """
+        self.plan_counter += 1
+        return f"plan-{self.plan_counter}"
 
     def run_impl(
         self,
@@ -87,13 +99,28 @@ or retrieve a plan's current state. Use this tool at very beginning of a task to
         dialog_messages: Optional[DialogMessages] = None,
     ) -> ToolImplOutput:
         instruction = tool_input["instruction"]
-        plan_file_path = tool_input["plan_file_path"]
         action = tool_input["action"]
+        
+        # Generate a plan ID for create action if not provided
+        if action == "create":
+            plan_id = tool_input.get("plan_id")
+            if not plan_id:
+                plan_id = self._generate_plan_id()
+        else:
+            # For update and get actions, plan_id is required
+            plan_id = tool_input.get("plan_id")
+            if not plan_id:
+                error_message = f"Plan ID is required for {action} action"
+                self.logger_for_agent_logs.error(error_message)
+                return ToolImplOutput(
+                    tool_output=error_message,
+                    tool_result_message=error_message,
+                )
 
         # Log the start of the planner agent
         delimiter = "-" * 45 + " PLANNER AGENT " + "-" * 45
         self.logger_for_agent_logs.info(f"\n{delimiter}\n")
-        self.logger_for_agent_logs.info(f"Plan file: {plan_file_path}")
+        self.logger_for_agent_logs.info(f"Plan ID: {plan_id}")
         self.logger_for_agent_logs.info(f"Action: {action}")
         self.logger_for_agent_logs.info(f"Instruction: {instruction}")
 
@@ -108,11 +135,11 @@ or retrieve a plan's current state. Use this tool at very beginning of a task to
 
         try:
             # Get the current plan if it exists
-            current_plan = self._load_plan(plan_file_path)
+            current_plan = self.plans.get(plan_id)
             
             # For update and get actions, ensure a plan exists
             if action in ["update", "get"] and current_plan is None:
-                error_message = f"No plan exists at {plan_file_path} for {action} action"
+                error_message = f"No plan exists with ID {plan_id} for {action} action"
                 self.logger_for_agent_logs.error(error_message)
                 return ToolImplOutput(
                     tool_output=error_message,
@@ -123,7 +150,7 @@ or retrieve a plan's current state. Use this tool at very beginning of a task to
             if action == "get":
                 return ToolImplOutput(
                     tool_output=current_plan,
-                    tool_result_message=f"Retrieved current plan from {plan_file_path}",
+                    tool_result_message=f"Retrieved current plan with ID {plan_id}",
                 )
             
             # Use parent agent's dialog for context
@@ -132,9 +159,9 @@ or retrieve a plan's current state. Use this tool at very beginning of a task to
             
             # Prepare the appropriate prompt based on the action
             if action == "create":
-                planning_prompt = self._create_plan_prompt(instruction, plan_file_path)
+                planning_prompt = self._create_plan_prompt(instruction, plan_id)
             else:  # action == "update"
-                planning_prompt = self._update_plan_prompt(instruction, current_plan, plan_file_path)
+                planning_prompt = self._update_plan_prompt(instruction, current_plan, plan_id)
             
             parent_dialog.add_user_prompt(planning_prompt)
 
@@ -151,23 +178,18 @@ or retrieve a plan's current state. Use this tool at very beginning of a task to
             # Process the plan content
             processed_plan = self._process_plan(plan_content, action, current_plan)
             
-            # Ensure the directory exists
-            dir_path = os.path.dirname(os.path.abspath(plan_file_path))
-            if dir_path:  # Check if dirname is not empty
-                os.makedirs(dir_path, exist_ok=True)
+            # Store the plan in the agent's plan dictionary
+            self.plans[plan_id] = processed_plan
             
-            # Save the plan to the specified file
-            with open(plan_file_path, 'w') as f:
-                json.dump(processed_plan, f, indent=2)
+            # For create action, include the plan_id in the output
+            if action == "create":
+                processed_plan["plan_id"] = plan_id
             
-            # Update the current plan
-            self.current_plan = processed_plan
-            
-            result_message = f"Plan successfully {'created' if action == 'create' else 'updated'} at {plan_file_path}"
+            result_message = f"Plan successfully {'created' if action == 'create' else 'updated'} with ID {plan_id}"
             self.logger_for_agent_logs.info(f"\n{result_message}\n")
             
             return ToolImplOutput(
-                tool_output=processed_plan,
+                tool_output=json.dumps(processed_plan, indent=2),
                 tool_result_message=result_message,
             )
             
@@ -179,56 +201,12 @@ or retrieve a plan's current state. Use this tool at very beginning of a task to
                 tool_result_message=error_message,
             )
 
-    def _load_plan(self, plan_file_path: str) -> Optional[Dict]:
-        """Load a plan from a file if it exists.
-        
-        Args:
-            plan_file_path: Path to the plan file
-            
-        Returns:
-            The loaded plan or None if the file doesn't exist
-        """
-        try:
-            if os.path.exists(plan_file_path):
-                with open(plan_file_path, 'r') as f:
-                    plan_data = json.load(f)
-                    # Validate basic plan structure
-                    if not isinstance(plan_data, dict):
-                        self.logger_for_agent_logs.warning(f"Plan file does not contain a valid JSON object: {plan_file_path}")
-                        return None
-                    
-                    # Ensure required fields are present
-                    required_fields = ["goal", "steps", "metadata"]
-                    missing_fields = [field for field in required_fields if field not in plan_data]
-                    if missing_fields:
-                        self.logger_for_agent_logs.warning(
-                            f"Plan file missing required fields {missing_fields}: {plan_file_path}"
-                        )
-                        # Add missing fields with default values
-                        if "goal" not in plan_data:
-                            plan_data["goal"] = "No goal specified"
-                        if "steps" not in plan_data:
-                            plan_data["steps"] = []
-                        if "metadata" not in plan_data:
-                            plan_data["metadata"] = {
-                                "created_at": datetime.datetime.now().isoformat(),
-                                "last_updated": datetime.datetime.now().isoformat(),
-                                "progress": 0
-                            }
-                    
-                    return plan_data
-        except json.JSONDecodeError as e:
-            self.logger_for_agent_logs.error(f"Error parsing plan JSON: {str(e)}")
-        except Exception as e:
-            self.logger_for_agent_logs.error(f"Error loading plan: {str(e)}")
-        return None
-
-    def _create_plan_prompt(self, instruction: str, plan_file_path: str) -> str:
+    def _create_plan_prompt(self, instruction: str, plan_id: str) -> str:
         """Create a prompt for plan creation.
         
         Args:
             instruction: User's instruction
-            plan_file_path: Path where the plan will be stored
+            plan_id: Unique identifier for the plan
             
         Returns:
             A prompt string for plan creation
@@ -263,16 +241,16 @@ Format the plan as a JSON object with the following structure:
   }}
 }}
 
-Make sure each step is concrete and actionable. When complete, the plan will be stored at {plan_file_path} and will be used to track progress and guide execution.
+Make sure each step is concrete and actionable. The plan will be stored with ID {plan_id} and will be used to track progress and guide execution.
 """
 
-    def _update_plan_prompt(self, instruction: str, current_plan: Optional[Dict], plan_file_path: str) -> str:
+    def _update_plan_prompt(self, instruction: str, current_plan: Optional[Dict], plan_id: str) -> str:
         """Create a prompt for plan updating.
         
         Args:
             instruction: User's instruction for updating the plan
             current_plan: The current plan state
-            plan_file_path: Path where the plan is stored
+            plan_id: Unique identifier for the plan
             
         Returns:
             A prompt string for plan updating
@@ -312,7 +290,7 @@ Ensure the updated plan maintains the same JSON structure:
   }}
 }}
 
-Make sure to update only what needs changing. If a step is in progress or completed, only modify it if the instruction explicitly requires it. The updated plan will be stored at {plan_file_path}.
+Make sure to update only what needs changing. If a step is in progress or completed, only modify it if the instruction explicitly requires it. The updated plan will be stored with ID {plan_id}.
 """
 
     def _process_plan(self, plan_content: str, action: str, current_plan: Optional[Dict]) -> Dict:
@@ -402,20 +380,27 @@ Make sure to update only what needs changing. If a step is in progress or comple
     def get_tool_start_message(self, tool_input: dict[str, Any]) -> str:
         return f"Planner agent started with action: {tool_input['action']}"
 
-    def plan(self, instruction: str, plan_file_path: str, action: str = "create") -> Dict:
+    def plan(self, instruction: str, plan_id: Optional[str] = None, action: str = "create") -> Dict:
         """Start a new planning task.
 
         Args:
             instruction: Instructions for the planning task.
-            plan_file_path: Path where to store the plan.
+            plan_id: Unique identifier for the plan. Required for update and get actions.
+                     For create action, if not provided, a new ID will be automatically generated.
             action: Action to perform - create, update, or get.
 
         Returns:
-            The plan as a dictionary.
+            The plan as a dictionary with plan_id included.
         """
         tool_input = {
             "instruction": instruction,
-            "plan_file_path": plan_file_path,
             "action": action,
         }
-        return self.run(tool_input, self.dialog) 
+        
+        if plan_id or action in ["update", "get"]:
+            tool_input["plan_id"] = plan_id
+            
+        result = self.run(tool_input, self.dialog)
+        
+        # Return the result which now includes plan_id for create actions
+        return result 
