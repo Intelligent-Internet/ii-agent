@@ -1,33 +1,22 @@
-import { SelectValue } from "./ui/select";
-
-import { SelectTrigger } from "./ui/select";
-
-import { SelectContent } from "./ui/select";
-
-import { Select } from "./ui/select";
-
 import { motion } from "framer-motion";
-import { Textarea } from "./ui/textarea";
-import { Button } from "./ui/button";
-import { SelectItem } from "./ui/select";
 import { ArrowUp } from "lucide-react";
+import { Button } from "./ui/button";
+import { Textarea } from "./ui/textarea";
 
 interface QuestionInputProps {
   question: string;
+  placeholder?: string;
   setQuestion: (question: string) => void;
   handleKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
   handleSubmit: () => void;
-  modelType: string;
-  setModelType: (modelType: string) => void;
 }
 
 const QuestionInput = ({
   question,
+  placeholder,
   setQuestion,
   handleKeyDown,
   handleSubmit,
-  modelType,
-  setModelType,
 }: QuestionInputProps) => {
   return (
     <motion.div
@@ -51,22 +40,16 @@ const QuestionInput = ({
       >
         <Textarea
           className="w-full h-40 p-4 rounded-lg !text-lg"
-          placeholder="Enter your research query or complex question for in-depth analysis..."
+          placeholder={
+            placeholder ||
+            "Enter your research query or complex question for in-depth analysis..."
+          }
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
           onKeyDown={handleKeyDown}
         />
         <div className="flex w-full justify-between items-center absolute bottom-4 px-4">
-          <Select value={modelType} onValueChange={setModelType}>
-            <SelectTrigger className="w-[120px] cursor-pointer !bg-neutral-950">
-              <SelectValue placeholder="Model" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="reasoning">Reasoning</SelectItem>
-              <SelectItem value="pipeline">Pipeline</SelectItem>
-            </SelectContent>
-          </Select>
-
+          <div />
           <Button
             disabled={!question.trim()}
             onClick={handleSubmit}

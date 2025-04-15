@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { useRef, useState, useEffect } from "react";
 
-const ROOT_PATH = "/Users/quypham/Documents/ii_inc/ii-researcher";
+export const ROOT_PATH = "/Users/quypham/Documents/ii_inc/ii-agent/sandbox";
 const ROOT_NAME = "ii-agent";
 
 // Map file extensions to Monaco editor language IDs
@@ -61,10 +61,15 @@ interface FileStructure {
 
 interface CodeEditorProps {
   className?: string;
+  activeFile?: string;
+  setActiveFile?: (file: string) => void;
 }
 
-const CodeEditor = ({ className }: CodeEditorProps) => {
-  const [activeFile, setActiveFile] = useState<string | null>(null);
+const CodeEditor = ({
+  className,
+  activeFile,
+  setActiveFile,
+}: CodeEditorProps) => {
   const [activeLanguage, setActiveLanguage] = useState<string>("plaintext");
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
     new Set()
@@ -160,6 +165,16 @@ const CodeEditor = ({ className }: CodeEditorProps) => {
     );
   };
 
+  useEffect(() => {
+    (async () => {
+      if (activeFile) {
+        setActiveLanguage(getFileLanguage(activeFile));
+        const content = await loadFileContent(activeFile);
+        setFileContent(content);
+      }
+    })();
+  }, [activeFile]);
+
   const renderFileTree = (items: FileStructure[]) => {
     // Sort items: folders first, then files, both in alphabetical order
     const sortedItems = [...items].sort((a, b) => {
@@ -205,11 +220,8 @@ const CodeEditor = ({ className }: CodeEditorProps) => {
               ? "bg-neutral-700 text-white"
               : "text-neutral-400"
           }`}
-          onClick={async () => {
-            setActiveFile(fullPath);
-            setActiveLanguage(getFileLanguage(item.name));
-            const content = await loadFileContent(fullPath);
-            setFileContent(content);
+          onClick={() => {
+            setActiveFile?.(fullPath);
           }}
         >
           <File className="h-4 w-4" />

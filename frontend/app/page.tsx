@@ -7,11 +7,11 @@ import { toast } from "sonner";
 import Image from "next/image";
 import { Terminal as XTerm } from "@xterm/xterm";
 
-import CodeEditor from "@/components/code-editor";
+import CodeEditor, { ROOT_PATH } from "@/components/code-editor";
 import Markdown from "@/components/markdown";
 import QuestionInput from "@/components/question-input";
 import { Button } from "@/components/ui/button";
-import { ActionStep, ThoughtStep, ThoughtType } from "@/typings/agent";
+import { ActionStep, ThoughtType } from "@/typings/agent";
 import Terminal from "@/components/terminal";
 import Browser from "@/components/browser";
 import SearchBrowser from "@/components/search-browser";
@@ -26,14 +26,14 @@ enum TAB {
 export default function Home() {
   const [question, setQuestion] = useState("");
   const [isInChatView, setIsInChatView] = useState(false);
-  const [thoughtData, setThoughtData] = useState<ThoughtStep[]>([]);
-  const [isStreamingThought, setIsStreamingThought] = useState(false);
   const [streamedResponse, setStreamedResponse] = useState("");
   const [eventSourceInstance, setEventSourceInstance] =
     useState<EventSource | null>(null);
   const [reasoningData, setReasoningData] = useState([""]);
   const [activeTab, setActiveTab] = useState(TAB.BROWSER);
   const [currentActionData, setCurrentActionData] = useState<ActionStep>();
+  const [actions, setActions] = useState<ActionStep[]>([]);
+  const [activeFileCodeEditor, setActiveFileCodeEditor] = useState("");
   const xtermRef = useRef<XTerm | null>(null);
 
   const [sources, setSources] = useState<{
@@ -44,7 +44,6 @@ export default function Home() {
       };
     };
   }>({});
-  const [modelType, setModelType] = useState("reasoning");
 
   const handleClickAction = (data: ActionStep) => {
     switch (data.type) {
@@ -70,6 +69,9 @@ export default function Home() {
       case ThoughtType.EDIT_FILE:
         setActiveTab(TAB.CODE);
         setCurrentActionData(data);
+        if (data.data.query) {
+          setActiveFileCodeEditor(`${ROOT_PATH}/${data.data.query}`);
+        }
         break;
 
       default:
@@ -81,15 +83,10 @@ export default function Home() {
     if (!question.trim()) return;
 
     setIsInChatView(true);
-    setIsStreamingThought(true);
 
     const encodedQuestion = encodeURIComponent(question);
     const eventSource = new EventSource(
-      `${
-        process.env.NEXT_PUBLIC_API_URL
-      }/search?question=${encodedQuestion}&is_reasoning=${
-        modelType == "reasoning"
-      }`
+      `${process.env.NEXT_PUBLIC_API_URL}/search?question=${encodedQuestion}`
     );
     setEventSourceInstance(eventSource);
     if (eventSource) {
@@ -103,30 +100,6 @@ export default function Home() {
             case ThoughtType.KNOWLEDGE:
               break;
             case ThoughtType.TOOL:
-              if (data.data.name == "web_search") {
-                setThoughtData((prev) => [
-                  ...prev,
-                  {
-                    type: ThoughtType.SEARCH,
-                    data: {
-                      queries: data.data.arguments.queries,
-                    },
-                    timestamp: data.data.timestamp,
-                  },
-                ]);
-              }
-              if (data.data.name == "page_visit") {
-                setThoughtData((prev) => [
-                  ...prev,
-                  {
-                    type: ThoughtType.VISIT,
-                    data: {
-                      urls: data.data.arguments.urls,
-                    },
-                    timestamp: data.data.timestamp,
-                  },
-                ]);
-              }
               setReasoningData((prev) => [...prev, ""]);
               break;
 
@@ -167,30 +140,10 @@ export default function Home() {
                   ...prev,
                   ...urlResultMap,
                 }));
-                setThoughtData((prev) => [
-                  ...prev,
-                  {
-                    type: ThoughtType.VISIT,
-                    data: {
-                      results: data.data.results.map(
-                        (item: {
-                          url: string;
-                          result: { content: string };
-                        }) => ({
-                          url: item.url,
-                          title: item.url,
-                          description: item.result.content,
-                        })
-                      ),
-                    },
-                    timestamp: data.timestamp,
-                  },
-                ]);
               }
               break;
 
             case ThoughtType.WRITING_REPORT:
-              setIsStreamingThought(false);
               setStreamedResponse(data.data.final_report);
               break;
 
@@ -199,7 +152,6 @@ export default function Home() {
               eventSource.close();
               break;
             default:
-              setThoughtData((prev) => [...prev, data]);
               break;
           }
         } catch (error) {
@@ -209,7 +161,6 @@ export default function Home() {
 
       eventSource.onerror = () => {
         toast.error("An error occurred");
-        setIsStreamingThought(false);
         eventSource.close();
       };
     }
@@ -226,8 +177,6 @@ export default function Home() {
     eventSourceInstance?.close();
     setIsInChatView(false);
     setQuestion("");
-    setThoughtData([]);
-    setIsStreamingThought(false);
     setStreamedResponse("");
     setReasoningData([""]);
   };
@@ -244,6 +193,70 @@ export default function Home() {
       }
     };
   }, [eventSourceInstance]);
+
+  useEffect(() => {
+    const actions = [
+      {
+        type: ThoughtType.SEARCH,
+        data: {
+          query: "Group Relative Policy Optimization reinforcement learning",
+        },
+      },
+      {
+        type: ThoughtType.VISIT,
+        data: {
+          url: "https://arxiv.org/pdf/2402.03300",
+          screenshot: "/arxiv.webp",
+        },
+      },
+      {
+        type: ThoughtType.EXECUTE_COMMAND,
+        data: {
+          query: "mkdir -p research && cd research && touch todo.md",
+        },
+      },
+      {
+        type: ThoughtType.CREATE_FILE,
+        data: {
+          query: "todo.md",
+        },
+      },
+      {
+        type: ThoughtType.EDIT_FILE,
+        data: {
+          query: "todo.md",
+        },
+      },
+      {
+        type: ThoughtType.EXECUTE_COMMAND,
+        data: {
+          query: "vim todo.md",
+        },
+      },
+    ];
+
+    setActions([]);
+
+    const interval = setInterval(() => {
+      let nextAction: ActionStep | undefined = undefined;
+      setActions((prevActions) => {
+        if (prevActions.length < actions.length) {
+          nextAction = actions[prevActions.length];
+          return [...prevActions, actions[prevActions.length]];
+        } else {
+          clearInterval(interval);
+          return prevActions;
+        }
+      });
+      setTimeout(() => {
+        if (nextAction) {
+          handleClickAction(nextAction);
+        }
+      }, 500);
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen dark:bg-slate-850">
@@ -288,8 +301,6 @@ export default function Home() {
               setQuestion={setQuestion}
               handleKeyDown={handleKeyDown}
               handleSubmit={handleSubmit}
-              modelType={modelType}
-              setModelType={setModelType}
             />
           ) : (
             <motion.div
@@ -332,83 +343,23 @@ export default function Home() {
                     </motion.div>
                   </motion.div>
                 )}
-                {/* <Thoughts
-                  isStreamingThought={isStreamingThought}
-                  thoughtData={thoughtData}
-                  sources={sources}
-                /> */}
                 <div className="flex flex-col items-start gap-y-4">
                   {`I'll help you explore how to incorporate expert demonstrations
                   into Group Relative Policy Optimization (Group RPO) to enhance
                   sample efficiency. I'll research this topic thoroughly and
                   provide you with a comprehensive analysis. Let me get started
                   right away.`}
-                  <Action
-                    type={ThoughtType.SEARCH}
-                    value="Group Relative Policy Optimization reinforcement learning"
-                    onClick={() =>
-                      handleClickAction({
-                        type: ThoughtType.SEARCH,
-                        data: {
-                          query:
-                            "Group Relative Policy Optimization reinforcement learning",
-                        },
-                      })
-                    }
-                  />
-                  <Action
-                    type={ThoughtType.VISIT}
-                    value="https://arxiv.org/pdf/2402.03300"
-                    onClick={() =>
-                      handleClickAction({
-                        type: ThoughtType.VISIT,
-                        data: {
-                          url: "https://arxiv.org/pdf/2402.03300",
-                          screenshot: "/arxiv.webp",
-                        },
-                      })
-                    }
-                  />
-                  <Action
-                    type={ThoughtType.EXECUTE_COMMAND}
-                    value="mkdir -p research && cd research && touch todo.md"
-                    onClick={() =>
-                      handleClickAction({
-                        type: ThoughtType.EXECUTE_COMMAND,
-                        data: {
-                          query:
-                            "mkdir -p research && cd research && touch todo.md",
-                        },
-                      })
-                    }
-                  />
-                  <Action
-                    type={ThoughtType.CREATE_FILE}
-                    value="todo.md"
-                    onClick={() =>
-                      handleClickAction({
-                        type: ThoughtType.CREATE_FILE,
-                        data: {
-                          query: "todo.md",
-                        },
-                      })
-                    }
-                  />
-                  <Action
-                    type={ThoughtType.EDIT_FILE}
-                    value="todo.md"
-                    onClick={() =>
-                      handleClickAction({
-                        type: ThoughtType.EDIT_FILE,
-                        data: {
-                          query: "todo.md",
-                        },
-                      })
-                    }
-                  />
+                  {actions?.map((action, index) => (
+                    <Action
+                      key={`${action.type}_${index}`}
+                      type={action.type}
+                      value={action.data.query || action.data.url || ""}
+                      onClick={() => handleClickAction(action)}
+                    />
+                  ))}
                 </div>
 
-                {streamedResponse ? (
+                {streamedResponse && (
                   <motion.div
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -435,39 +386,18 @@ export default function Home() {
                       )}
                     </Markdown>
                   </motion.div>
-                ) : (
-                  thoughtData.length > 0 &&
-                  !isStreamingThought && (
-                    <motion.div
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      className="flex items-center space-x-2 p-3 bg-neutral-800 rounded-lg w-fit"
-                    >
-                      <span className="text-sm text-gray-300">
-                        Writing report
-                      </span>
-                      <span className="flex space-x-1">
-                        {[0, 1, 2].map((i) => (
-                          <motion.span
-                            key={i}
-                            className="w-1.5 h-1.5 bg-gray-300 rounded-full"
-                            initial={{ opacity: 0.3 }}
-                            animate={{ opacity: 1 }}
-                            transition={{
-                              repeat: Infinity,
-                              repeatType: "reverse",
-                              duration: 0.4,
-                              delay: i * 0.15,
-                            }}
-                          />
-                        ))}
-                      </span>
-                    </motion.div>
-                  )
                 )}
+                <motion.div>
+                  <QuestionInput
+                    question={question}
+                    setQuestion={setQuestion}
+                    handleKeyDown={handleKeyDown}
+                    handleSubmit={handleSubmit}
+                  />
+                </motion.div>
               </motion.div>
 
-              {modelType == "reasoning" && reasoningData && (
+              {reasoningData && (
                 <motion.div className="col-span-6 border-l border-neutral-500">
                   <div className="p-4 bg-neutral-850 flex items-center justify-between">
                     <div className="flex gap-x-4">
@@ -540,6 +470,8 @@ export default function Home() {
                   />
                   <CodeEditor
                     className={activeTab === TAB.CODE ? "" : "hidden"}
+                    activeFile={activeFileCodeEditor}
+                    setActiveFile={setActiveFileCodeEditor}
                   />
                   <Terminal
                     ref={xtermRef}
