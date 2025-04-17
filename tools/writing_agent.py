@@ -160,9 +160,12 @@ Use this for creating comprehensive reports, documentation, articles, or any tex
                 )
             
             # Ensure the directory exists
-            dir_path = os.path.dirname(os.path.abspath(file_path))
-            if dir_path:  # Check if dirname is not empty (for files in current dir)
-                os.makedirs(dir_path, exist_ok=True)
+            # dir_path = os.path.dirname(os.path.abspath(file_path))
+            # if dir_path:  # Check if dirname is not empty (for files in current dir)
+            #     os.makedirs(dir_path, exist_ok=True)
+            # puth file_path in workspace folder
+            file_path = os.path.join("workspace", file_path)
+            
             
             # Write the content to the specified file
             with open(file_path, 'w') as f:

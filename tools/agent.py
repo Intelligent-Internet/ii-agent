@@ -127,6 +127,7 @@ try breaking down the task into smaller steps. After call this tool to update or
         else:
             bash_tool = create_bash_tool(
                 ask_user_permission=ask_user_permission,
+                cwd=workspace_manager.root,
             )
 
         self.tools = [

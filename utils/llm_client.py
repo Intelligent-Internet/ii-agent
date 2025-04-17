@@ -399,6 +399,11 @@ class AnthropicDirectClient(LLMClient):
                     print(f"Retrying LLM request: {retry + 1}/{self.max_retries}")
                     # Sleep 4-6 seconds with jitter to avoid thundering herd.
                     time.sleep(5 * random.uniform(0.8, 1.2))
+            except Exception as e:
+                print(f"Error in Anthropic request: {e}")
+                with open("anthropic_error.json", "a") as f:
+                    json.dump(anthropic_messages, f)
+                raise e
 
         # Convert messages back to Augment format
         augment_messages = []
