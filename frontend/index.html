@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agent WebSocket Interface</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .status {
+            text-align: center;
+            margin-bottom: 20px;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .status.connected {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .status.disconnected {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        .button-container {
+            display: flex;
+            gap: 10px;
+        }
+        .input-area {
+            display: flex;
+            margin-bottom: 20px;
+        }
+        #user-input {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px 0 0 4px;
+            font-size: 16px;
+        }
+        #send-btn {
+            padding: 10px 20px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 0 4px 4px 0;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s;
+        }
+        #cancel-btn {
+            padding: 10px 20px;
+            background-color: #e74c3c;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s;
+            display: none;
+        }
+        #send-btn:hover {
+            background-color: #2980b9;
+        }
+        #cancel-btn:hover {
+            background-color: #c0392b;
+        }
+        #send-btn:disabled {
+            background-color: #95a5a6;
+            cursor: not-allowed;
+        }
+        .conversation {
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 15px;
+            height: 400px;
+            overflow-y: auto;
+            background-color: #f9f9f9;
+        }
+        .message {
+            margin-bottom: 15px;
+            padding: 10px;
+            border-radius: 4px;
+            max-width: 80%;
+        }
+        .user-message {
+            background-color: #d6eaf8;
+            margin-left: auto;
+            color: #2c3e50;
+            border-radius: 12px 12px 0 12px;
+        }
+        .agent-message {
+            background-color: #eaeded;
+            margin-right: auto;
+            color: #2c3e50;
+            border-radius: 12px 12px 12px 0;
+            white-space: pre-wrap;
+        }
+        .system-message {
+            background-color: #fadbd8;
+            margin: 0 auto;
+            text-align: center;
+            color: #943126;
+            font-style: italic;
+        }
+        .spinner {
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+            margin-left: 10px;
+            vertical-align: middle;
+        }
+        .workspace-info {
+            margin-top: 20px;
+            padding: 10px;
+            background-color: #ebf5fb;
+            border-radius: 4px;
+            color: #2874a6;
+            font-size: 0.9em;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Agent WebSocket Interface</h1>
+        <div id="status" class="status disconnected">Disconnected</div>
+        
+        <div id="workspace-info" class="workspace-info" style="display: none;"></div>
+        
+        <div class="input-area">
+            <input type="text" id="user-input" placeholder="Type your query here..." />
+            <div class="button-container">
+                <button id="send-btn" disabled>Send</button>
+                <button id="cancel-btn">Cancel</button>
+            </div>
+        </div>
+        
+        <div class="conversation" id="conversation">
+            <div class="message system-message">Welcome! Connect to a WebSocket server to begin.</div>
+        </div>
+    </div>
+
+    <script>
+        // DOM elements
+        const statusElement = document.getElementById('status');
+        const userInput = document.getElementById('user-input');
+        const sendButton = document.getElementById('send-btn');
+        const cancelButton = document.getElementById('cancel-btn');
+        const conversationDiv = document.getElementById('conversation');
+        const workspaceInfoDiv = document.getElementById('workspace-info');
+        
+        // WebSocket connection
+        let socket = null;
+        let isProcessing = false;
+        
+        // Connect to WebSocket server
+        function connect() {
+            const host = window.location.hostname;
+            const port = window.location.port;
+            
+            // Use the current host but with WebSocket protocol
+            const wsUrl = `ws://${host}:${port}/ws`;
+            
+            // Create WebSocket connection
+            socket = new WebSocket(wsUrl);
+            
+            // Connection opened
+            socket.addEventListener('open', (event) => {
+                statusElement.textContent = 'Connected';
+                statusElement.className = 'status connected';
+                sendButton.disabled = false;
+                addSystemMessage('Connected to the server');
+            });
+            
+            // Connection closed
+            socket.addEventListener('close', (event) => {
+                statusElement.textContent = 'Disconnected';
+                statusElement.className = 'status disconnected';
+                sendButton.disabled = true;
+                cancelButton.style.display = 'none';
+                isProcessing = false;
+                addSystemMessage('Disconnected from the server');
+                
+                // Try to reconnect after 5 seconds
+                setTimeout(connect, 5000);
+            });
+            
+            // Connection error
+            socket.addEventListener('error', (event) => {
+                statusElement.textContent = 'Connection Error';
+                statusElement.className = 'status disconnected';
+                sendButton.disabled = true;
+                cancelButton.style.display = 'none';
+                isProcessing = false;
+                addSystemMessage('WebSocket connection error');
+            });
+            
+            // Listen for messages
+            socket.addEventListener('message', (event) => {
+                try {
+                    const message = JSON.parse(event.data);
+                    handleMessage(message);
+                } catch (error) {
+                    console.error('Error parsing message:', error);
+                    addSystemMessage('Error: Could not parse server message');
+                }
+            });
+        }
+        
+        // Handle incoming messages
+        function handleMessage(message) {
+            console.log('Received message:', message);
+            
+            switch (message.type) {
+                case 'connection_established':
+                    addSystemMessage(message.content.message);
+                    // Request workspace info after connection
+                    sendMessage({
+                        type: 'workspace_info',
+                        content: {}
+                    });
+                    break;
+                    
+                case 'workspace_info':
+                    workspaceInfoDiv.textContent = `Workspace: ${message.content.path}`;
+                    workspaceInfoDiv.style.display = 'block';
+                    break;
+                    
+                case 'processing':
+                    isProcessing = true;
+                    // Show cancel button
+                    cancelButton.style.display = 'block';
+                    // Add a spinner to the last system message
+                    const processingMsg = document.createElement('div');
+                    processingMsg.className = 'message system-message';
+                    processingMsg.id = 'processing-message';
+                    processingMsg.textContent = message.content.message + ' ';
+                    
+                    const spinner = document.createElement('span');
+                    spinner.className = 'spinner';
+                    processingMsg.appendChild(spinner);
+                    
+                    conversationDiv.appendChild(processingMsg);
+                    conversationDiv.scrollTop = conversationDiv.scrollHeight;
+                    break;
+                    
+                case 'agent_response':
+                    isProcessing = false;
+                    // Hide cancel button
+                    cancelButton.style.display = 'none';
+                    // Remove processing message if it exists
+                    const processingMessage = document.getElementById('processing-message');
+                    if (processingMessage) {
+                        processingMessage.remove();
+                    }
+                    
+                    // Add agent response
+                    addAgentMessage(message.content.text);
+                    break;
+                    
+                case 'error':
+                    isProcessing = false;
+                    // Hide cancel button
+                    cancelButton.style.display = 'none';
+                    // Remove processing message if it exists
+                    const errorProcessingMessage = document.getElementById('processing-message');
+                    if (errorProcessingMessage) {
+                        errorProcessingMessage.remove();
+                    }
+                    addSystemMessage(`Error: ${message.content.message}`);
+                    break;
+                    
+                case 'system':
+                    // General system messages
+                    addSystemMessage(message.content.message);
+                    
+                    // If it's a cancellation message, update UI state
+                    if (message.content.message === 'Query canceled') {
+                        isProcessing = false;
+                        cancelButton.style.display = 'none';
+                        // Remove processing message if it exists
+                        const cancelProcessingMessage = document.getElementById('processing-message');
+                        if (cancelProcessingMessage) {
+                            cancelProcessingMessage.remove();
+                        }
+                    }
+                    break;
+                    
+                case 'pong':
+                    // Ping-pong to keep connection alive
+                    console.log('Pong received');
+                    break;
+                    
+                default:
+                    console.warn('Unknown message type:', message.type);
+                    addSystemMessage(`Received unknown message type: ${message.type}`);
+                    break;
+            }
+        }
+        
+        // Send a message to the server
+        function sendMessage(message) {
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                socket.send(JSON.stringify(message));
+            } else {
+                addSystemMessage('Cannot send message: Not connected to server');
+            }
+        }
+        
+        // Add a user message to the conversation
+        function addUserMessage(text) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message user-message';
+            messageDiv.textContent = text;
+            conversationDiv.appendChild(messageDiv);
+            conversationDiv.scrollTop = conversationDiv.scrollHeight;
+        }
+        
+        // Add an agent message to the conversation
+        function addAgentMessage(text) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message agent-message';
+            messageDiv.textContent = text;
+            conversationDiv.appendChild(messageDiv);
+            conversationDiv.scrollTop = conversationDiv.scrollHeight;
+        }
+        
+        // Add a system message to the conversation
+        function addSystemMessage(text) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message system-message';
+            messageDiv.textContent = text;
+            conversationDiv.appendChild(messageDiv);
+            conversationDiv.scrollTop = conversationDiv.scrollHeight;
+        }
+        
+        // Handle send button click
+        sendButton.addEventListener('click', () => {
+            const text = userInput.value.trim();
+            if (text && !isProcessing) {
+                addUserMessage(text);
+                
+                sendMessage({
+                    type: 'query',
+                    content: {
+                        text: text,
+                        resume: false
+                    }
+                });
+                
+                userInput.value = '';
+            }
+        });
+        
+        // Handle cancel button click
+        cancelButton.addEventListener('click', () => {
+            if (isProcessing) {
+                sendMessage({
+                    type: 'cancel',
+                    content: {}
+                });
+                
+                addSystemMessage('Canceling query...');
+            }
+        });
+        
+        // Handle Enter key press
+        userInput.addEventListener('keypress', (event) => {
+            if (event.key === 'Enter') {
+                sendButton.click();
+            }
+        });
+        
+        // Send a ping every 30 seconds to keep the connection alive
+        setInterval(() => {
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                sendMessage({
+                    type: 'ping',
+                    content: {}
+                });
+            }
+        }, 30000);
+        
+        // Connect when the page loads
+        window.addEventListener('load', connect);
+    </script>
+</body>
+</html> 
