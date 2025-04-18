@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Expert-Enhanced Group RPO</title>
+    <!-- Update the CSS link to be more specific -->
+    <link rel="stylesheet" href="./css/styles.css" />
+    <link rel="stylesheet" href="./css/additional-styles.css" />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/katex@0.16.0/dist/katex.min.css"
+    />
+    <script
+      defer
+      src="https://cdn.jsdelivr.net/npm/katex@0.16.0/dist/katex.min.js"
+    ></script>
+    <script
+      defer
+      src="https://cdn.jsdelivr.net/npm/katex@0.16.0/dist/contrib/auto-render.min.js"
+    ></script>
+  </head>
+  <body>
+    <header>
+      <div class="container">
+        <h1>Expert-Enhanced Group RPO</h1>
+        <p class="subtitle">
+          Incorporating Expert Demonstrations into Group Relative Policy
+          Optimization to Enhance Sample Efficiency
+        </p>
+      </div>
+    </header>
+
+    <nav>
+      <div class="container">
+        <ul>
+          <li><a href="#introduction">Introduction</a></li>
+          <li><a href="#group-rpo">Group RPO</a></li>
+          <li><a href="#expert-demos">Expert Demonstrations</a></li>
+          <li><a href="#integration">Integration Approaches</a></li>
+          <li><a href="#framework">Theoretical Framework</a></li>
+          <li><a href="#implementation">Implementation</a></li>
+          <li><a href="#conclusion">Conclusion</a></li>
+        </ul>
+      </div>
+    </nav>
+
+    <main class="container">
+      <section id="executive-summary">
+        <h2>Executive Summary</h2>
+        <div class="content-box">
+          <p>
+            This website presents a comprehensive approach to incorporating
+            expert demonstrations into Group Relative Policy Optimization (Group
+            RPO) to enhance sample efficiency in reinforcement learning. By
+            combining the computational efficiency advantages of Group RPO with
+            the guidance provided by expert demonstrations, we develop a novel
+            framework called Expert-Enhanced Group RPO (E-GRPO) that
+            significantly improves sample efficiency while maintaining the core
+            benefits of Group RPO.
+          </p>
+          <div class="note">
+            <strong>Key Innovation:</strong> The integration approach leverages
+            expert demonstrations to guide exploration, enhance group formation,
+            and provide better baselines for advantage estimation.
+          </div>
+          <p>
+            We present a detailed theoretical framework with mathematical
+            formulations, algorithm modifications, and implementation
+            considerations to enable practical application of this approach.
+          </p>
+        </div>
+      </section>
+
+      <section id="introduction">
+        <h2>1. Introduction</h2>
+        <div class="content-box">
+          <p>
+            Reinforcement learning (RL) has demonstrated remarkable success in
+            solving complex decision-making problems. However, traditional RL
+            methods often suffer from poor sample efficiency, requiring millions
+            of environment interactions to learn effective policies. This
+            limitation becomes particularly problematic in real-world
+            applications where data collection is expensive, time-consuming, or
+            potentially dangerous.
+          </p>
+          <div class="highlight">
+            Group Relative Policy Optimization (Group RPO) is a recent
+            advancement in RL that enhances computational efficiency by
+            eliminating the need for a critic model and using group-based
+            relative evaluation instead.
+          </div>
+          <p>
+            While Group RPO offers significant computational advantages, it
+            still faces sample efficiency challenges inherent to RL methods.
+            Expert demonstrations provide a valuable source of information that
+            can guide the learning process, reducing the need for extensive
+            exploration and accelerating convergence.
+          </p>
+          <div class="warning">
+            <strong>Challenge:</strong> Balancing the computational benefits of
+            Group RPO with the integration of expert demonstrations requires
+            careful consideration of various trade-offs.
+          </div>
+          <p>
+            This website presents a comprehensive approach to incorporating
+            expert demonstrations into Group RPO, including theoretical
+            foundations, integration approaches, and practical implementation
+            considerations.
+          </p>
+        </div>
+      </section>
+
+      <section id="group-rpo">
+        <h2>2. Group Relative Policy Optimization Fundamentals</h2>
+        <div class="content-box">
+          <div class="math-block">
+            <p>
+              The standard Group RPO objective function can be formulated as:
+            </p>
+            <p>
+              $$J_{GRPO}(\theta) = \mathbb{E}_{s,a \sim \pi_{\theta_{old}}}
+              \left[ \min\left(\frac{\pi_\theta(a|s)}{\pi_{\theta_{old}}(a|s)}
+              A^{group}(s,a),
+              \text{clip}\left(\frac{\pi_\theta(a|s)}{\pi_{\theta_{old}}(a|s)},
+              1-\epsilon, 1+\epsilon\right) A^{group}(s,a)\right) \right]$$
+            </p>
+            <p>Where:</p>
+            <ul>
+              <li>
+                $\pi_\theta$ is the current policy with parameters $\theta$
+              </li>
+              <li>
+                $\pi_{\theta_{old}}$ is the old policy with parameters
+                $\theta_{old}$
+              </li>
+              <li>$A^{group}(s,a)$ is the group advantage function</li>
+              <li>
+                $\epsilon$ is a hyperparameter that controls the clipping range
+              </li>
+            </ul>
+            <p>The group advantage function $A^{group}(s,a)$ is defined as:</p>
+            <p>$$A^{group}(s,a) = R(s,a) - \bar{R}_g$$</p>
+            <p>Where:</p>
+            <ul>
+              <li>$R(s,a)$ is the reward for taking action $a$ in state $s$</li>
+              <li>
+                $\bar{R}_g$ is the average reward within the group, serving as
+                the baseline
+              </li>
+            </ul>
+          </div>
+          <p>Content will be added in the next step...</p>
+        </div>
+      </section>
+
+      <section id="expert-demos">
+        <h2>3. Expert Demonstrations in Reinforcement Learning</h2>
+        <div class="content-box">
+          <p>Content will be added in the next step...</p>
+        </div>
+      </section>
+
+      <section id="integration">
+        <h2>4. Integration Approaches</h2>
+        <div class="content-box">
+          <p>Content will be added in the next step...</p>
+        </div>
+      </section>
+
+      <section id="framework">
+        <h2>5. Theoretical Framework</h2>
+        <div class="content-box">
+          <p>Content will be added in the next step...</p>
+        </div>
+      </section>
+
+      <section id="implementation">
+        <h2>6. Implementation Considerations</h2>
+        <div class="content-box">
+          <p>Content will be added in the next step...</p>
+        </div>
+      </section>
+
+      <section id="conclusion">
+        <h2>7. Conclusion</h2>
+        <div class="content-box">
+          <p>Content will be added in the next step...</p>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <div class="container">
+        <p>&copy; 2025 Expert-Enhanced Group RPO Research</p>
+      </div>
+    </footer>
+
+    <!-- Back to top button -->
+    <button class="back-to-top" id="backToTop">
+      <i class="fas fa-arrow-up"></i>
+    </button>
+
+    <script src="js/script.js"></script>
+    <script src="js/enhanced-navigation.js"></script>
+    <script>
+      // Initialize KaTeX rendering
+      document.addEventListener("DOMContentLoaded", function () {
+        renderMathInElement(document.body, {
+          delimiters: [
+            { left: "$$", right: "$$", display: true },
+            { left: "$", right: "$", display: false },
+          ],
+        });
+
+        // Back to top button functionality
+        const backToTopButton = document.getElementById("backToTop");
+
+        window.addEventListener("scroll", () => {
+          if (window.pageYOffset > 300) {
+            backToTopButton.classList.add("visible");
+          } else {
+            backToTopButton.classList.remove("visible");
+          }
+        });
+
+        backToTopButton.addEventListener("click", () => {
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        });
+      });
+    </script>
+  </body>
+</html>
