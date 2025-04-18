@@ -35,8 +35,7 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false);
   const [isInChatView, setIsInChatView] = useState(false);
   const [streamedResponse, setStreamedResponse] = useState("");
-  const [eventSourceInstance, setEventSourceInstance] =
-    useState<EventSource | null>(null);
+  const [socket, setSocket] = useState<WebSocket | null>(null);
   const [reasoningData, setReasoningData] = useState([""]);
   const [activeTab, setActiveTab] = useState(TAB.BROWSER);
   const [currentActionData, setCurrentActionData] = useState<ActionStep>();
@@ -101,65 +100,71 @@ export default function Home() {
 
     setMessages((prev) => [...prev, newUserMessage]);
 
-    const encodedQuestion = encodeURIComponent(newQuestion);
-    const eventSource = new EventSource(
-      `${process.env.NEXT_PUBLIC_API_URL}/search?question=${encodedQuestion}`
-    );
-    setEventSourceInstance(eventSource);
+    // Create WebSocket connection
+    const ws = new WebSocket(`${process.env.NEXT_PUBLIC_WS_URL}/ws/search`);
+    setSocket(ws);
 
-    if (eventSource) {
-      eventSource.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          switch (data.type) {
-            case ThoughtType.START:
-              setStreamedResponse("");
-              break;
+    ws.onopen = () => {
+      // Send the question when connection is established
+      ws.send(JSON.stringify({ question: newQuestion }));
+    };
 
-            case ThoughtType.WRITING_REPORT:
-              setStreamedResponse(data.data.final_report);
-              break;
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        switch (data.type) {
+          case ThoughtType.START:
+            setStreamedResponse("");
+            break;
 
-            case "complete":
-              // Add assistant message when complete
-              const newAssistantMessage: Message = {
-                id: Date.now().toString(),
-                role: "assistant",
-                content: data.data.final_report,
-                timestamp: Date.now(),
-              };
-              setMessages((prev) => [...prev, newAssistantMessage]);
-              setStreamedResponse(data.data.final_report);
-              eventSource.close();
-              setIsLoading(false);
-              break;
+          case ThoughtType.WRITING_REPORT:
+            setStreamedResponse(data.data.final_report);
+            break;
 
-            case ThoughtType.TOOL:
-              setReasoningData((prev) => [...prev, ""]);
-              break;
+          case "complete":
+            // Add assistant message when complete
+            const newAssistantMessage: Message = {
+              id: Date.now().toString(),
+              role: "assistant",
+              content: data.data.final_report,
+              timestamp: Date.now(),
+            };
+            setMessages((prev) => [...prev, newAssistantMessage]);
+            setStreamedResponse(data.data.final_report);
+            ws.close();
+            setIsLoading(false);
+            break;
 
-            case ThoughtType.REASONING:
-              setReasoningData((prev) => {
-                const lastItem = prev[prev.length - 1];
-                return [...prev.slice(0, -1), lastItem + data.data.reasoning];
-              });
-              break;
+          case ThoughtType.TOOL:
+            setReasoningData((prev) => [...prev, ""]);
+            break;
 
-            default:
-              break;
-          }
-        } catch (error) {
-          console.error("Error parsing SSE data:", error);
-          setIsLoading(false);
+          case ThoughtType.REASONING:
+            setReasoningData((prev) => {
+              const lastItem = prev[prev.length - 1];
+              return [...prev.slice(0, -1), lastItem + data.data.reasoning];
+            });
+            break;
+
+          default:
+            break;
         }
-      };
-
-      eventSource.onerror = () => {
-        toast.error("An error occurred");
-        eventSource.close();
+      } catch (error) {
+        console.error("Error parsing WebSocket data:", error);
         setIsLoading(false);
-      };
-    }
+      }
+    };
+
+    ws.onerror = (error) => {
+      console.error("WebSocket error:", error);
+      toast.error("An error occurred");
+      ws.close();
+      setIsLoading(false);
+    };
+
+    ws.onclose = () => {
+      setSocket(null);
+    };
 
     handleMockData();
   };
@@ -172,7 +177,9 @@ export default function Home() {
   };
 
   const resetChat = () => {
-    eventSourceInstance?.close();
+    if (socket) {
+      socket.close();
+    }
     setIsInChatView(false);
     setStreamedResponse("");
     setReasoningData([""]);
@@ -254,11 +261,11 @@ export default function Home() {
 
   useEffect(() => {
     return () => {
-      if (eventSourceInstance) {
-        eventSourceInstance.close();
+      if (socket) {
+        socket.close();
       }
     };
-  }, [eventSourceInstance]);
+  }, [socket]);
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen dark:bg-slate-850">
