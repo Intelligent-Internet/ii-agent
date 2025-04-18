@@ -12,14 +12,16 @@ import asyncio
 import json
 import logging
 from pathlib import Path
+from sys import argv
 from typing import Dict, List, Optional, Any, Set
 
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+import anyio
 
-from tools.agent import Agent
+from tools.agent import Agent, RealtimeEvent
 from utils.workspace_manager import WorkspaceManager
 from utils.llm_client import get_client
 from prompts.instruction import INSTRUCTION_PROMPT
@@ -57,8 +59,14 @@ logger.setLevel(logging.INFO)
 # Active WebSocket connections
 active_connections: Set[WebSocket] = set()
 
+# Active agents for each connection
+active_agents: Dict[WebSocket, Agent] = {}
+
 # Active agent tasks
 active_tasks: Dict[WebSocket, asyncio.Task] = {}
+
+# Store message processors for each connection
+message_processors: Dict[WebSocket, asyncio.Task] = {}
 
 # WebSocket message models
 class ClientMessage(BaseModel):
@@ -69,17 +77,47 @@ class ServerMessage(BaseModel):
     type: str
     content: Dict[str, Any]
 
-# Agent instance and workspace manager
-agent = None
-workspace_manager = None
+# Store global args for use in endpoint
+global_args = None
+
+async def process_agent_messages(websocket: WebSocket, agent: Agent):
+    """Process messages from the agent and send them to the websocket."""
+    try:
+        while True:
+            # Use anyio.to_thread.run_sync for blocking operations
+            try:
+                message = await agent.message_queue.get()
+                
+                if websocket in active_connections:
+                    await websocket.send_json({
+                        "type": message.type,
+                        "content": message.raw_message
+                    })
+                
+                agent.message_queue.task_done()
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Error processing message: {str(e)}")
+    except asyncio.CancelledError:
+        logger.info("Message processor stopped")
+    except Exception as e:
+        logger.error(f"Error in message processor: {str(e)}")
 
 async def run_agent_async(websocket: WebSocket, user_input: str, resume: bool = False):
     """Run the agent asynchronously and send results back to the websocket."""
-    global agent
+    agent = active_agents.get(websocket)
+    
+    if not agent:
+        await websocket.send_json({
+            "type": "error",
+            "content": {"message": "Agent not initialized for this connection"}
+        })
+        return
     
     try:
         # Run the agent with the query
-        result = agent.run_agent(user_input, resume=resume)
+        result = await anyio.to_thread.run_sync(agent.run_agent, user_input, resume)
         
         # Send result back to client
         await websocket.send_json({
@@ -88,6 +126,8 @@ async def run_agent_async(websocket: WebSocket, user_input: str, resume: bool = 
         })
     except Exception as e:
         logger.error(f"Error running agent: {str(e)}")
+        import traceback
+        traceback.print_exc()
         await websocket.send_json({
             "type": "error",
             "content": {"message": f"Error running agent: {str(e)}"}
@@ -97,13 +137,67 @@ async def run_agent_async(websocket: WebSocket, user_input: str, resume: bool = 
         if websocket in active_tasks:
             del active_tasks[websocket]
 
+def create_agent_for_connection(websocket: WebSocket):
+    """Create a new agent instance for a websocket connection."""
+    global global_args
+    
+    # Setup logging
+    logger_for_agent_logs = logging.getLogger(f"agent_logs_{id(websocket)}")
+    logger_for_agent_logs.setLevel(logging.DEBUG)
+    
+    # Ensure we don't duplicate handlers
+    if not logger_for_agent_logs.handlers:
+        logger_for_agent_logs.addHandler(logging.FileHandler(global_args.logs_path))
+        if not global_args.minimize_stdout_logs:
+            logger_for_agent_logs.addHandler(logging.StreamHandler())
+        else:
+            logger_for_agent_logs.propagate = False
+    
+    # Create console for agent
+    from rich.console import Console
+    console = Console()
+    
+    # Initialize LLM client
+    client = get_client(
+        "anthropic-direct",
+        model_name="claude-3-7-sonnet@20250219",
+        use_caching=False,
+    )
+    
+    # Initialize workspace manager
+    workspace_path = Path(global_args.workspace).resolve()
+    workspace_manager = WorkspaceManager(
+        root=workspace_path, container_workspace=global_args.use_container_workspace
+    )
+    
+    # Initialize agent with websocket
+    agent = Agent(
+        client=client,
+        workspace_manager=workspace_manager,
+        console=console,
+        logger_for_agent_logs=logger_for_agent_logs,
+        max_output_tokens_per_turn=MAX_OUTPUT_TOKENS_PER_TURN,
+        max_turns=MAX_TURNS,
+        ask_user_permission=global_args.needs_permission,
+        docker_container_id=global_args.docker_container_id,
+        websocket=websocket,
+    )
+    
+    return agent
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
-    global agent, workspace_manager
-    
     # Accept the connection
     await websocket.accept()
     active_connections.add(websocket)
+    
+    # Create a new agent for this connection
+    agent = create_agent_for_connection(websocket)
+    active_agents[websocket] = agent
+    
+    # Start message processor for this connection
+    message_processor = asyncio.create_task(process_agent_messages(websocket, agent))
+    message_processors[websocket] = message_processor
     
     try:
         # Initial connection message
@@ -146,10 +240,10 @@ async def websocket_endpoint(websocket: WebSocket):
                 
                 elif msg_type == "workspace_info":
                     # Send information about the current workspace
-                    if workspace_manager:
+                    if agent and agent.workspace_manager:
                         await websocket.send_json({
                             "type": "workspace_info",
-                            "content": {"path": str(workspace_manager.root)}
+                            "content": {"path": str(agent.workspace_manager.root)}
                         })
                     else:
                         await websocket.send_json({
@@ -199,21 +293,32 @@ async def websocket_endpoint(websocket: WebSocket):
                 
     except WebSocketDisconnect:
         # Handle disconnection
-        active_connections.remove(websocket)
-        # Cancel any running tasks
-        if websocket in active_tasks and not active_tasks[websocket].done():
-            active_tasks[websocket].cancel()
-            del active_tasks[websocket]
         logger.info("Client disconnected")
+        cleanup_connection(websocket)
     except Exception as e:
         # Handle other exceptions
-        if websocket in active_connections:
-            active_connections.remove(websocket)
-        # Cancel any running tasks
-        if websocket in active_tasks and not active_tasks[websocket].done():
-            active_tasks[websocket].cancel()
-            del active_tasks[websocket]
         logger.error(f"WebSocket error: {str(e)}")
+        cleanup_connection(websocket)
+
+def cleanup_connection(websocket: WebSocket):
+    """Clean up resources associated with a websocket connection."""
+    # Remove from active connections
+    if websocket in active_connections:
+        active_connections.remove(websocket)
+    
+    # Cancel message processor
+    if websocket in message_processors:
+        message_processors[websocket].cancel()
+        del message_processors[websocket]
+    
+    # Cancel any running tasks
+    if websocket in active_tasks and not active_tasks[websocket].done():
+        active_tasks[websocket].cancel()
+        del active_tasks[websocket]
+    
+    # Remove agent for this connection
+    if websocket in active_agents:
+        del active_agents[websocket]
 
 @app.get("/")
 async def redirect_to_frontend():
@@ -221,54 +326,10 @@ async def redirect_to_frontend():
     from fastapi.responses import RedirectResponse
     return RedirectResponse(url="/frontend/index.html")
 
-def initialize_agent(args):
-    """Initialize the agent with command line arguments."""
-    global agent, workspace_manager
-    
-    # Setup logging
-    if os.path.exists(args.logs_path):
-        os.remove(args.logs_path)
-    logger_for_agent_logs = logging.getLogger("agent_logs")
-    logger_for_agent_logs.setLevel(logging.DEBUG)
-    logger_for_agent_logs.addHandler(logging.FileHandler(args.logs_path))
-    if not args.minimize_stdout_logs:
-        logger_for_agent_logs.addHandler(logging.StreamHandler())
-    else:
-        logger_for_agent_logs.propagate = False
-    
-    # Create console for agent
-    from rich.console import Console
-    console = Console()
-    
-    # Initialize LLM client
-    client = get_client(
-        "anthropic-direct",
-        model_name="claude-3-7-sonnet@20250219",
-        use_caching=False,
-    )
-    
-    # Initialize workspace manager
-    workspace_path = Path(args.workspace).resolve()
-    workspace_manager = WorkspaceManager(
-        root=workspace_path, container_workspace=args.use_container_workspace
-    )
-    
-    # Initialize agent
-    agent = Agent(
-        client=client,
-        workspace_manager=workspace_manager,
-        console=console,
-        logger_for_agent_logs=logger_for_agent_logs,
-        max_output_tokens_per_turn=MAX_OUTPUT_TOKENS_PER_TURN,
-        max_turns=MAX_TURNS,
-        ask_user_permission=args.needs_permission,
-        docker_container_id=args.docker_container_id,
-    )
-    
-    return agent
-
 def main():
     """Main entry point for the WebSocket server."""
+    global global_args
+    
     # Parse command-line arguments
     parser = argparse.ArgumentParser(description="WebSocket Server for interacting with the Agent")
     parser.add_argument(
@@ -322,9 +383,7 @@ def main():
     )
     
     args = parser.parse_args()
-    
-    # Initialize the agent
-    initialize_agent(args)
+    global_args = args
     
     # Start the FastAPI server
     logger.info(f"Starting WebSocket server on {args.host}:{args.port}")

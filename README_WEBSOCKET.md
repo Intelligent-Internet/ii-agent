@@ -8,6 +8,7 @@ This project extends the Agent CLI to support real-time communication with a fro
 - Built with FastAPI and WebSockets
 - Simple HTML/CSS/JS frontend included
 - Support for querying the Agent and receiving responses
+- **Real-time streaming of agent thinking, tool calls, and tool results**
 - Cancel functionality for long-running queries
 - Automatic reconnection on disconnection
 
@@ -130,14 +131,39 @@ The server responds with messages in the following format:
 1. `connection_established` - Sent when a client connects
 2. `workspace_info` - Contains information about the workspace
 3. `processing` - Indicates that a query is being processed
-4. `agent_response` - Contains the Agent's response to a query
-5. `error` - Sent when an error occurs
-6. `system` - System notifications (e.g., cancellations)
-7. `pong` - Response to a ping message
+4. `agent_thinking` - Contains the agent's thinking/planning text
+5. `tool_call` - Contains information about a tool being called
+6. `tool_result` - Contains the result of a tool call
+7. `agent_response` - Contains the Agent's final response to a query
+8. `stream_complete` - Indicates that the streaming process is complete
+9. `error` - Sent when an error occurs
+10. `system` - System notifications (e.g., cancellations)
+11. `pong` - Response to a ping message
+
+### Streaming Workflow
+
+The server now supports streaming real-time updates as the agent works:
+
+1. Client sends a `query` message
+2. Server sends `processing` message to acknowledge
+3. As the agent works, the server sends:
+   - `agent_thinking` messages with the agent's reasoning
+   - `tool_call` messages when a tool is being used
+   - `tool_result` messages with results from tools
+4. When the agent completes its task:
+   - `agent_response` message with the final response
+   - `stream_complete` message to indicate the stream has ended
+
+This real-time streaming provides visibility into the agent's thought process and actions as they happen, rather than waiting for the final result.
 
 ## Customizing the Frontend
 
 The frontend is a simple HTML/CSS/JavaScript application located in the `frontend` directory. You can customize it to fit your needs by modifying the HTML, CSS, and JavaScript code.
+
+The frontend now includes specialized UI components for displaying:
+- Agent thinking/reasoning messages
+- Tool calls with formatted inputs
+- Tool results with proper formatting for different data types
 
 ## Integration with Other Frontends
 
@@ -167,8 +193,17 @@ socket.addEventListener('message', (event) => {
   
   // Handle different message types
   switch (message.type) {
+    case 'agent_thinking':
+      console.log('Agent is thinking:', message.content.text);
+      break;
+    case 'tool_call':
+      console.log(`Tool called: ${message.content.tool_name}`, message.content.tool_input);
+      break;
+    case 'tool_result':
+      console.log(`Tool result from ${message.content.tool_name}:`, message.content.result);
+      break;
     case 'agent_response':
-      console.log('Agent response:', message.content.text);
+      console.log('Final response:', message.content.text);
       break;
     // Handle other message types
   }

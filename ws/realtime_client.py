@@ -13,8 +13,9 @@ class RealtimeEvent(BaseModel):
 
 
 class RealtimeClientBase:
-    def __init__(self):
+    def __init__(self, connection: AsyncGenerator[dict[str, Any], None]):
         self._eventQueue = asyncio.Queue()
+        self._connection = connection
 
     async def add_event(self, event: Optional[RealtimeEvent]):
         await self._eventQueue.put(event)
@@ -47,6 +48,19 @@ class RealtimeClientBase:
                         break
                 except Exception:
                     break
+    
+    async def read_events(self) -> AsyncGenerator[RealtimeEvent, None]:
+        """Read messages from the OpenAI Realtime API."""
+        if self._connection is None:
+            raise RuntimeError("Client is not connected, call connect() first.")
+
+        try:
+            async for event in self._read_events():
+                yield event
+
+        finally:
+            self._connection = None
+
 
     def connect(self) -> AsyncContextManager[None]: ...
 

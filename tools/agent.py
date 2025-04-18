@@ -1,5 +1,9 @@
+import asyncio
 from copy import deepcopy
 from typing import Any, Optional, Dict, List
+import anyio
+
+from flask import make_response
 from tools.bash_tool import create_bash_tool, create_docker_bash_tool
 from utils.common import (
     DialogMessages,
@@ -21,7 +25,14 @@ from tools.file_write_tool import FileWriteTool
 from termcolor import colored
 from rich.console import Console
 import logging
+from fastapi import WebSocket
+from pydantic import BaseModel
+from typing import Literal
+from asyncer import syncify
 
+class RealtimeEvent(BaseModel):
+    type: Literal["make_response", "tool_call", "tool_result"]
+    raw_message: dict[str, Any]
 
 class Agent(LLMTool):
     name = "general_agent"
@@ -64,6 +75,7 @@ try breaking down the task into smaller steps. After call this tool to update or
         use_prompt_budgeting: bool = True,
         ask_user_permission: bool = False,
         docker_container_id: Optional[str] = None,
+        websocket: Optional[WebSocket] = None,
     ):
         """Initialize the agent.
 
@@ -142,6 +154,31 @@ try breaking down the task into smaller steps. After call this tool to update or
             self.complete_tool,
             FileWriteTool(),
         ]
+        self.websocket = websocket
+        self.message_queue = asyncio.Queue()
+
+
+        
+    async def _process_messages(self):
+        while True:
+            try:
+                message = await self.message_queue.get()
+
+                await self.websocket.send_json({
+                    "type": message.type,
+                    "content": message.content
+                })
+
+                self.message_queue.task_done()
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                self.logger_for_agent_logs.error(f"Error processing WebSocket message: {str(e)}")
+
+    async def start_message_processing(self):
+        """Start processing the message queue."""
+        # self.message_processing_task = anyio.create_task_group().start_soon(self._process_messages)
+        self.message_processing_task = asyncio.create_task(self._process_messages())
 
     def run_impl(
         self,
@@ -210,6 +247,15 @@ try breaking down the task into smaller steps. After call this tool to update or
                 # ToolCallParameters(tool_call_id='toolu_vrtx_01YV2bk3haVVECPECN4AWCTz', tool_name='bash', tool_input={'command': 'ls -la /home/pvduy/phu/ii-agent/workspace'})
                 tool_call = pending_tool_calls[0]
 
+                self.message_queue.put_nowait(RealtimeEvent(
+                    type="tool_call",
+                    raw_message={
+                        "tool_call_id": tool_call.tool_call_id,
+                        "tool_name": tool_call.tool_name,
+                        "tool_input": tool_call.tool_input,
+                    }
+                ))
+
                 text_results = [
                     item for item in model_response if isinstance(item, TextResult)
                 ]
@@ -232,6 +278,8 @@ try breaking down the task into smaller steps. After call this tool to update or
                     tool_input_str = "\n".join(
                         [f" - {k}: {v}" for k, v in tool_call.tool_input.items()]
                     )
+
+
                     log_message = f"Calling tool {tool_call.tool_name} with input:\n{tool_input_str}"
                     log_message += f"\nTool output: \n{result}\n\n"
                     self.logger_for_agent_logs.info(log_message)
@@ -244,6 +292,15 @@ try breaking down the task into smaller steps. After call this tool to update or
 
                     self.dialog.add_tool_call_result(tool_call, tool_result)
 
+                    self.message_queue.put_nowait(RealtimeEvent(
+                        type="tool_result",
+                        raw_message={
+                            "tool_call_id": tool_call.tool_call_id,
+                            # "tool_result": tool_result,
+                            "tool_name": tool_call.tool_name,
+                            "result": tool_result,
+                        }
+                    ))
                     if self.complete_tool.should_stop:
                         # Add a fake model response, so the next turn is the user's
                         # turn in case they want to resume

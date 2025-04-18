@@ -112,6 +112,29 @@
             border-radius: 12px 12px 12px 0;
             white-space: pre-wrap;
         }
+        .thinking-message {
+            background-color: #ebf5fb;
+            margin-right: auto;
+            color: #2980b9;
+            border-radius: 12px 12px 12px 0;
+            white-space: pre-wrap;
+            border-left: 3px solid #3498db;
+        }
+        .tool-call-message {
+            background-color: #f8f9f9;
+            margin-right: auto;
+            color: #566573;
+            border-radius: 12px 12px 12px 0;
+            border-left: 3px solid #7f8c8d;
+        }
+        .tool-result-message {
+            background-color: #e8f8f5;
+            margin-right: auto;
+            color: #1e8449;
+            border-radius: 12px 12px 12px 0;
+            white-space: pre-wrap;
+            border-left: 3px solid #2ecc71;
+        }
         .system-message {
             background-color: #fadbd8;
             margin: 0 auto;
@@ -137,6 +160,19 @@
             border-radius: 4px;
             color: #2874a6;
             font-size: 0.9em;
+        }
+        .code {
+            background-color: #f7f7f7;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: monospace;
+            overflow-x: auto;
+            margin-top: 5px;
+        }
+        .tool-details {
+            margin-top: 5px;
+            padding-left: 10px;
+            border-left: 2px solid #7f8c8d;
         }
         @keyframes spin {
             0% { transform: rotate(0deg); }
@@ -231,6 +267,19 @@
             });
         }
         
+        // Function to format JSON as a code block for display
+        function formatJsonForDisplay(json) {
+            if (typeof json === 'string') {
+                try {
+                    json = JSON.parse(json);
+                } catch (e) {
+                    // Not JSON, return as is
+                    return json;
+                }
+            }
+            return JSON.stringify(json, null, 2);
+        }
+        
         // Handle incoming messages
         function handleMessage(message) {
             console.log('Received message:', message);
@@ -268,6 +317,21 @@
                     conversationDiv.scrollTop = conversationDiv.scrollHeight;
                     break;
                     
+                case 'agent_thinking':
+                    // Add agent thinking content
+                    addThinkingMessage(message.content.text);
+                    break;
+                    
+                case 'tool_call':
+                    // Add tool call information
+                    addToolCallMessage(message.content.tool_name, message.content.tool_input);
+                    break;
+                    
+                case 'tool_result':
+                    // Add tool result
+                    addToolResultMessage(message.content.tool_name, message.content.result);
+                    break;
+                    
                 case 'agent_response':
                     isProcessing = false;
                     // Hide cancel button
@@ -280,6 +344,18 @@
                     
                     // Add agent response
                     addAgentMessage(message.content.text);
+                    break;
+                    
+                case 'stream_complete':
+                    // Stream is complete
+                    isProcessing = false;
+                    // Hide cancel button
+                    cancelButton.style.display = 'none';
+                    // Remove processing message if it exists
+                    const streamProcessingMessage = document.getElementById('processing-message');
+                    if (streamProcessingMessage) {
+                        streamProcessingMessage.remove();
+                    }
                     break;
                     
                 case 'error':
@@ -345,6 +421,105 @@
             const messageDiv = document.createElement('div');
             messageDiv.className = 'message agent-message';
             messageDiv.textContent = text;
+            conversationDiv.appendChild(messageDiv);
+            conversationDiv.scrollTop = conversationDiv.scrollHeight;
+        }
+        
+        // Add an agent thinking message to the conversation
+        function addThinkingMessage(text) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message thinking-message';
+            messageDiv.textContent = text;
+            conversationDiv.appendChild(messageDiv);
+            conversationDiv.scrollTop = conversationDiv.scrollHeight;
+        }
+        
+        // Add a tool call message to the conversation
+        function addToolCallMessage(toolName, toolInput) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message tool-call-message';
+            
+            // Create tool call header
+            const header = document.createElement('div');
+            header.textContent = `🔧 Using tool: ${toolName}`;
+            header.style.fontWeight = 'bold';
+            messageDiv.appendChild(header);
+            
+            // Create tool input details
+            const details = document.createElement('div');
+            details.className = 'tool-details';
+            
+            if (typeof toolInput === 'object' && toolInput !== null) {
+                // For command tools, display the command specially
+                if (toolName === 'bash' && toolInput.command) {
+                    details.textContent = `$ ${toolInput.command}`;
+                } else {
+                    // For other tools, format all inputs
+                    for (const [key, value] of Object.entries(toolInput)) {
+                        const inputItem = document.createElement('div');
+                        inputItem.textContent = `${key}: `;
+                        
+                        if (typeof value === 'object' && value !== null) {
+                            // For nested objects, create a code block
+                            const codeBlock = document.createElement('pre');
+                            codeBlock.className = 'code';
+                            codeBlock.textContent = formatJsonForDisplay(value);
+                            inputItem.appendChild(codeBlock);
+                        } else {
+                            inputItem.textContent += value;
+                        }
+                        
+                        details.appendChild(inputItem);
+                    }
+                }
+            } else if (toolInput) {
+                details.textContent = toolInput;
+            }
+            
+            messageDiv.appendChild(details);
+            conversationDiv.appendChild(messageDiv);
+            conversationDiv.scrollTop = conversationDiv.scrollHeight;
+        }
+        
+        // Add a tool result message to the conversation
+        function addToolResultMessage(toolName, result) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message tool-result-message';
+            
+            // Create tool result header
+            const header = document.createElement('div');
+            header.textContent = `📊 Result from: ${toolName}`;
+            header.style.fontWeight = 'bold';
+            messageDiv.appendChild(header);
+            
+            // Create result content
+            if (typeof result === 'string' && result.length > 0) {
+                // Try to detect if result is JSON
+                try {
+                    const jsonResult = JSON.parse(result);
+                    const codeBlock = document.createElement('pre');
+                    codeBlock.className = 'code';
+                    codeBlock.textContent = formatJsonForDisplay(jsonResult);
+                    messageDiv.appendChild(codeBlock);
+                } catch (e) {
+                    // Not JSON, show as plain text
+                    const resultText = document.createElement('div');
+                    resultText.style.whiteSpace = 'pre-wrap';
+                    resultText.textContent = result;
+                    messageDiv.appendChild(resultText);
+                }
+            } else if (result) {
+                const resultText = document.createElement('div');
+                resultText.style.whiteSpace = 'pre-wrap';
+                resultText.textContent = JSON.stringify(result, null, 2);
+                messageDiv.appendChild(resultText);
+            } else {
+                const resultText = document.createElement('div');
+                resultText.textContent = "No result returned";
+                resultText.style.fontStyle = 'italic';
+                messageDiv.appendChild(resultText);
+            }
+            
             conversationDiv.appendChild(messageDiv);
             conversationDiv.scrollTop = conversationDiv.scrollHeight;
         }
