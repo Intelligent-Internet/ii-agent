@@ -1,21 +1,12 @@
 "use client";
 
-import { ThoughtType } from "@/typings/agent";
-import {
-  Check,
-  Code,
-  Globe,
-  Lightbulb,
-  NotebookPen,
-  Pencil,
-  Search,
-  Terminal,
-} from "lucide-react";
+import { ActionStep, TOOL } from "@/typings/agent";
+import { Code, Globe, Lightbulb, Search, Terminal } from "lucide-react";
 import { useMemo } from "react";
 
 interface ActionProps {
-  type: ThoughtType;
-  value: string;
+  type: TOOL;
+  value: ActionStep["data"];
   onClick: () => void;
 }
 
@@ -24,25 +15,18 @@ const Action = ({ type, value, onClick }: ActionProps) => {
     const className =
       "h-4 w-4 text-neutral-500 dark:text-neutral-100 flex-shrink-0";
     switch (type) {
-      case ThoughtType.THINKING:
+      case TOOL.SEQUENTIAL_THINKING:
         return <Lightbulb className={className} />;
-      case ThoughtType.SEARCH:
+      case TOOL.TAVILY_SEARCH:
         return <Search className={className} />;
-      case ThoughtType.SEARCH_RESULTS:
-        return <Search className={className} />;
-      case ThoughtType.VISIT:
+      case TOOL.TAVILY_VISIT:
+      case TOOL.BROWSER_USE:
         return <Globe className={className} />;
-      case ThoughtType.DRAFT_ANSWER:
-        return <Pencil className={className} />;
-      case ThoughtType.EVAL_ANSWER:
-        return <Check className={className} />;
-      case ThoughtType.GENERATING_REPORT:
-        return <NotebookPen className={className} />;
-      case ThoughtType.EXECUTE_COMMAND:
+      case TOOL.BASH:
         return <Terminal className={className} />;
-      case ThoughtType.CREATE_FILE:
+      case TOOL.FILE_WRITE:
         return <Code className={className} />;
-      case ThoughtType.EDIT_FILE:
+      case TOOL.STR_REPLACE_EDITOR:
         return <Code className={className} />;
 
       default:
@@ -52,31 +36,46 @@ const Action = ({ type, value, onClick }: ActionProps) => {
 
   const step_title = useMemo(() => {
     switch (type) {
-      case ThoughtType.THINKING:
+      case TOOL.SEQUENTIAL_THINKING:
         return "Thinking";
-      case ThoughtType.SEARCH:
+      case TOOL.TAVILY_SEARCH:
         return "Searching";
-      case ThoughtType.SEARCH_RESULTS:
-        return "Search Results";
-      case ThoughtType.VISIT:
+      case TOOL.TAVILY_VISIT:
+      case TOOL.BROWSER_USE:
         return "Browsing";
-      case ThoughtType.DRAFT_ANSWER:
-        return "Drafting Answer";
-      case ThoughtType.EVAL_ANSWER:
-        return "Evaluating Answer";
-      case ThoughtType.GENERATING_REPORT:
-        return "Writing Report";
-      case ThoughtType.EXECUTE_COMMAND:
+      case TOOL.BASH:
         return "Executing Command";
-      case ThoughtType.CREATE_FILE:
+      case TOOL.FILE_WRITE:
         return "Creating File";
-      case ThoughtType.EDIT_FILE:
+      case TOOL.STR_REPLACE_EDITOR:
         return "Editing File";
 
       default:
         break;
     }
   }, [type]);
+
+  const step_value = useMemo(() => {
+    switch (type) {
+      case TOOL.SEQUENTIAL_THINKING:
+        return value.tool_input?.thought;
+      case TOOL.TAVILY_SEARCH:
+        return value.tool_input?.query;
+      case TOOL.TAVILY_VISIT:
+        return value.tool_input?.url;
+      case TOOL.BASH:
+        return value.tool_input?.command;
+      case TOOL.FILE_WRITE:
+        return value.tool_input?.path;
+      case TOOL.STR_REPLACE_EDITOR:
+        return value.tool_input?.path;
+
+      default:
+        break;
+    }
+  }, [type, value]);
+
+  if (type === TOOL.COMPLETE) return null;
 
   return (
     <div
@@ -94,7 +93,7 @@ const Action = ({ type, value, onClick }: ActionProps) => {
           {step_title}
         </span>
         <span className="text-neutral-500 dark:text-neutral-400 font-medium truncate pl-1 group-hover:text-neutral-600 dark:group-hover:text-neutral-300">
-          {value}
+          {step_value}
         </span>
       </div>
     </div>

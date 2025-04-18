@@ -1,7 +1,6 @@
 import asyncio
 from locale import currency
 
-from flask import current_app
 from .utils import truncate_content
 from utils.common import (
     DialogMessages,

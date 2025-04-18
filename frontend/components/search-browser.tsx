@@ -1,12 +1,16 @@
-import { SEARCH_RESULTS } from "@/app/mock";
 import { SearchIcon } from "lucide-react";
 
 interface SearchBrowserProps {
   className?: string;
   keyword?: string;
+  search_results?: string | Record<string, unknown> | undefined;
 }
 
-const SearchBrowser = ({ className, keyword }: SearchBrowserProps) => {
+const SearchBrowser = ({
+  className,
+  keyword,
+  search_results,
+}: SearchBrowserProps) => {
   if (!keyword) return;
 
   return (
@@ -31,27 +35,28 @@ const SearchBrowser = ({ className, keyword }: SearchBrowserProps) => {
         </div>
       </div>
       <div className="flex-1 px-6 divide-y divide-y-neutral-200 overflow-auto">
-        {SEARCH_RESULTS.map((item, index) => (
-          <div
-            key={index}
-            className="flex flex-col gap-y-2 py-6 hover:bg-neutral-50 dark:hover:bg-neutral-900 transition-colors"
-          >
-            <a
-              href={item.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="font-semibold text-blue-600 dark:text-blue-400 hover:underline text-lg"
+        {Array.isArray(search_results) &&
+          search_results?.map((item, index) => (
+            <div
+              key={index}
+              className="flex flex-col gap-y-2 py-6 hover:bg-neutral-50 dark:hover:bg-neutral-900 transition-colors"
             >
-              {item.title}
-            </a>
-            <p className="text-neutral-600 dark:text-neutral-400 text-sm line-clamp-2">
-              {item.description}
-            </p>
-            <span className="text-green-600 dark:text-green-400 text-xs">
-              {item.url}
-            </span>
-          </div>
-        ))}
+              <a
+                href={item.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-semibold text-blue-600 dark:text-blue-400 hover:underline text-lg"
+              >
+                {item.title}
+              </a>
+              <p className="text-neutral-600 dark:text-neutral-400 text-sm line-clamp-2">
+                {item.content}
+              </p>
+              <span className="text-green-600 dark:text-green-400 text-xs">
+                {item.url}
+              </span>
+            </div>
+          ))}
       </div>
     </div>
   );

@@ -13,8 +13,10 @@ import QuestionInput from "@/components/question-input";
 import SearchBrowser from "@/components/search-browser";
 import Terminal from "@/components/terminal";
 import { Button } from "@/components/ui/button";
-import { ActionStep, ThoughtType } from "@/typings/agent";
+import { ActionStep, AgentEvent, TOOL } from "@/typings/agent";
 import Action from "@/components/action";
+import Markdown from "@/components/markdown";
+import { cloneDeep } from "lodash";
 
 enum TAB {
   BROWSER = "browser",
@@ -26,8 +28,8 @@ interface Message {
   id: string;
   role: "user" | "assistant";
   content?: string;
-  action?: ActionStep;
   timestamp: number;
+  action?: ActionStep;
 }
 
 export default function Home() {
@@ -42,6 +44,7 @@ export default function Home() {
   const [activeFileCodeEditor, setActiveFileCodeEditor] = useState("");
   const [currentQuestion, setCurrentQuestion] = useState("");
   const xtermRef = useRef<XTerm | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const handleClickAction = (
     data: ActionStep | undefined,
@@ -49,33 +52,35 @@ export default function Home() {
   ) => {
     if (!data) return;
 
+    setActiveFileCodeEditor("");
+
     switch (data.type) {
-      case ThoughtType.SEARCH:
+      case TOOL.TAVILY_SEARCH:
         setActiveTab(TAB.BROWSER);
         setCurrentActionData(data);
         break;
 
-      case ThoughtType.VISIT:
+      case TOOL.TAVILY_VISIT:
         setActiveTab(TAB.BROWSER);
         setCurrentActionData(data);
         break;
 
-      case ThoughtType.EXECUTE_COMMAND:
+      case TOOL.BASH:
         setActiveTab(TAB.TERMINAL);
         if (!showTabOnly) {
           setTimeout(() => {
-            xtermRef.current?.write(data.data.query + "");
+            xtermRef.current?.write(data.data.tool_input?.command + "");
             xtermRef.current?.write("\r\n$ ");
           }, 500);
         }
         break;
 
-      case ThoughtType.CREATE_FILE:
-      case ThoughtType.EDIT_FILE:
+      case TOOL.FILE_WRITE:
+      case TOOL.STR_REPLACE_EDITOR:
         setActiveTab(TAB.CODE);
         setCurrentActionData(data);
-        if (data.data.query) {
-          setActiveFileCodeEditor(`${ROOT_PATH}/${data.data.query}`);
+        if (data.data.tool_input?.path) {
+          setActiveFileCodeEditor(`${ROOT_PATH}/${data.data.tool_input.path}`);
         }
         break;
 
@@ -101,49 +106,98 @@ export default function Home() {
     setMessages((prev) => [...prev, newUserMessage]);
 
     // Create WebSocket connection
-    const ws = new WebSocket(`${process.env.NEXT_PUBLIC_WS_URL}/ws/search`);
+    const ws = new WebSocket(`${process.env.NEXT_PUBLIC_API_URL}/ws`);
     setSocket(ws);
 
     ws.onopen = () => {
       // Send the question when connection is established
-      ws.send(JSON.stringify({ question: newQuestion }));
+      ws.send(
+        JSON.stringify({
+          type: "query",
+          content: {
+            text: newQuestion,
+            resume: false,
+          },
+        })
+      );
     };
 
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
         switch (data.type) {
-          case ThoughtType.START:
-            setStreamedResponse("");
+          case AgentEvent.PROCESSING:
+            setIsLoading(true);
+            break;
+          case AgentEvent.AGENT_THINKING:
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: Date.now().toString(),
+                role: "assistant",
+                content: data.content.text,
+                timestamp: Date.now(),
+              },
+            ]);
             break;
 
-          case ThoughtType.WRITING_REPORT:
-            setStreamedResponse(data.data.final_report);
+          case AgentEvent.TOOL_CALL:
+            if (data.content.tool_name === TOOL.SEQUENTIAL_THINKING) {
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: Date.now().toString(),
+                  role: "assistant",
+                  content: data.content.tool_input.thought,
+                  timestamp: Date.now(),
+                },
+              ]);
+            } else {
+              const message: Message = {
+                id: Date.now().toString(),
+                role: "assistant",
+                action: {
+                  type: data.content.tool_name,
+                  data: data.content,
+                },
+                timestamp: Date.now(),
+              };
+              setMessages((prev) => [...prev, message]);
+              handleClickAction(message.action);
+            }
             break;
 
-          case "complete":
-            // Add assistant message when complete
-            const newAssistantMessage: Message = {
-              id: Date.now().toString(),
-              role: "assistant",
-              content: data.data.final_report,
-              timestamp: Date.now(),
-            };
-            setMessages((prev) => [...prev, newAssistantMessage]);
-            setStreamedResponse(data.data.final_report);
-            ws.close();
+          case AgentEvent.TOOL_RESULT:
+            if (data.content.tool_name !== TOOL.SEQUENTIAL_THINKING) {
+              setMessages((prev) => {
+                const lastMessage = cloneDeep(prev[prev.length - 1]);
+                if (
+                  lastMessage.action &&
+                  lastMessage.action?.type === data.content.tool_name
+                ) {
+                  lastMessage.action.data.result = data.content.result;
+                  setTimeout(() => {
+                    handleClickAction(lastMessage.action);
+                  }, 500);
+                  return [...prev];
+                } else {
+                  return [...prev, { ...lastMessage, action: data.content }];
+                }
+              });
+            }
+            break;
+
+          case AgentEvent.AGENT_RESPONSE:
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: Date.now().toString(),
+                role: "assistant",
+                content: data.content.text,
+                timestamp: Date.now(),
+              },
+            ]);
             setIsLoading(false);
-            break;
-
-          case ThoughtType.TOOL:
-            setReasoningData((prev) => [...prev, ""]);
-            break;
-
-          case ThoughtType.REASONING:
-            setReasoningData((prev) => {
-              const lastItem = prev[prev.length - 1];
-              return [...prev.slice(0, -1), lastItem + data.data.reasoning];
-            });
             break;
 
           default:
@@ -165,8 +219,6 @@ export default function Home() {
     ws.onclose = () => {
       setSocket(null);
     };
-
-    handleMockData();
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -188,75 +240,17 @@ export default function Home() {
   };
 
   const handleOpenVSCode = () => {
-    const url = process.env.NEXT_PUBLIC_ROOT_PATH || "http://localhost:8080";
+    let url = process.env.NEXT_PUBLIC_ROOT_PATH || "http://localhost:8080";
+    url += `/?folder=${ROOT_PATH}`;
     window.open(url, "_blank");
   };
 
-  const handleMockData = () => {
-    const actions = [
-      {
-        type: ThoughtType.SEARCH,
-        data: {
-          query: "Group Relative Policy Optimization reinforcement learning",
-        },
-      },
-      {
-        type: ThoughtType.VISIT,
-        data: {
-          url: "https://arxiv.org/pdf/2402.03300",
-          screenshot: "/arxiv.webp",
-        },
-      },
-      {
-        type: ThoughtType.EXECUTE_COMMAND,
-        data: {
-          query: "mkdir -p research && cd research && touch todo.md",
-        },
-      },
-      {
-        type: ThoughtType.CREATE_FILE,
-        data: {
-          query: "todo.md",
-        },
-      },
-      {
-        type: ThoughtType.EDIT_FILE,
-        data: {
-          query: "todo.md",
-        },
-      },
-      {
-        type: ThoughtType.EXECUTE_COMMAND,
-        data: {
-          query: "vim todo.md",
-        },
-      },
-    ];
-
-    let currentIndex = 0;
-    const interval = setInterval(() => {
-      if (currentIndex >= actions.length) {
-        clearInterval(interval);
-        return;
-      }
-
-      const nextAction = actions[currentIndex];
-      setMessages((prevMessages) => [
-        ...prevMessages,
-        {
-          id: Date.now().toString(),
-          role: "assistant",
-          action: nextAction,
-          timestamp: Date.now(),
-        },
-      ]);
-
-      setTimeout(() => {
-        handleClickAction(nextAction);
-      }, 500);
-
-      currentIndex++;
-    }, 2000);
+  const parseJson = (jsonString: string) => {
+    try {
+      return JSON.parse(jsonString);
+    } catch {
+      return null;
+    }
   };
 
   useEffect(() => {
@@ -266,6 +260,10 @@ export default function Home() {
       }
     };
   }, [socket]);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages?.length]);
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen dark:bg-slate-850">
@@ -343,9 +341,9 @@ export default function Home() {
                   >
                     {message.content && (
                       <motion.div
-                        className={`inline-block p-3 max-w-[80%] text-left rounded-lg ${
+                        className={`inline-block p-3 text-left rounded-lg ${
                           message.role === "user"
-                            ? "bg-white text-black"
+                            ? "bg-white text-black max-w-[80%]"
                             : "bg-neutral-800 text-white"
                         }`}
                         initial={{ scale: 0.9 }}
@@ -356,7 +354,11 @@ export default function Home() {
                           damping: 30,
                         }}
                       >
-                        {message.content}
+                        {message.role === "user" ? (
+                          message.content
+                        ) : (
+                          <Markdown>{message.content}</Markdown>
+                        )}
                       </motion.div>
                     )}
                     {message.action && (
@@ -368,7 +370,7 @@ export default function Home() {
                       >
                         <Action
                           type={message.action.type}
-                          value={message.action.data.query || ""}
+                          value={message.action.data}
                           onClick={() =>
                             handleClickAction(message.action, true)
                           }
@@ -389,6 +391,8 @@ export default function Home() {
                     </motion.div>
                   </motion.div>
                 )}
+
+                <div ref={messagesEndRef} />
 
                 <motion.div
                   className="fixed bottom-0 left-0 w-[40%]"
@@ -463,21 +467,34 @@ export default function Home() {
                   <Browser
                     className={
                       activeTab === TAB.BROWSER &&
-                      currentActionData?.type === ThoughtType.VISIT
+                      currentActionData?.type === TOOL.TAVILY_VISIT
                         ? ""
                         : "hidden"
                     }
-                    url={currentActionData?.data.url}
-                    screenshot={currentActionData?.data.screenshot}
+                    url={currentActionData?.data?.tool_input?.url}
+                    // screenshot={currentActionData?.data.result as string}
+                    rawData={
+                      currentActionData?.type === TOOL.TAVILY_VISIT &&
+                      parseJson(currentActionData?.data?.result as string)
+                        ? parseJson(currentActionData?.data?.result as string)
+                            ?.raw_content
+                        : undefined
+                    }
                   />
                   <SearchBrowser
                     className={
                       activeTab === TAB.BROWSER &&
-                      currentActionData?.type === ThoughtType.SEARCH
+                      currentActionData?.type === TOOL.TAVILY_SEARCH
                         ? ""
                         : "hidden"
                     }
-                    keyword={currentActionData?.data.query}
+                    keyword={currentActionData?.data.tool_input?.query}
+                    search_results={
+                      currentActionData?.type === TOOL.TAVILY_SEARCH &&
+                      currentActionData?.data?.result
+                        ? parseJson(currentActionData?.data?.result as string)
+                        : undefined
+                    }
                   />
                   <CodeEditor
                     className={activeTab === TAB.CODE ? "" : "hidden"}

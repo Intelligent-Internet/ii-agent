@@ -1,14 +1,16 @@
 import Image from "next/image";
 import { Globe, SquareArrowOutUpRight } from "lucide-react";
+import Markdown from "./markdown";
 
 interface BrowserProps {
   className?: string;
   url?: string;
   screenshot?: string;
+  rawData?: string;
 }
 
-const Browser = ({ className, url, screenshot }: BrowserProps) => {
-  if (!screenshot) return;
+const Browser = ({ className, url, screenshot, rawData }: BrowserProps) => {
+  if (!url) return;
 
   return (
     <div
@@ -39,13 +41,20 @@ const Browser = ({ className, url, screenshot }: BrowserProps) => {
           </button>
         </div>
       </div>
-      <Image
-        src={screenshot}
-        alt="Browser"
-        width={1000}
-        height={1000}
-        className="w-full h-full object-contain object-top"
-      />
+      {screenshot && (
+        <Image
+          src={screenshot}
+          alt="Browser"
+          width={1000}
+          height={1000}
+          className="w-full h-full object-contain object-top"
+        />
+      )}
+      {rawData && (
+        <div className="p-4">
+          <Markdown>{rawData}</Markdown>
+        </div>
+      )}
     </div>
   );
 };
