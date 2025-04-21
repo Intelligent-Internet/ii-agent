@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { useRef, useState, useEffect } from "react";
 
-export const ROOT_PATH = "/Users/quypham/Documents/ii_inc/ii-agent/workspace";
+export const ROOT_PATH = process.env.NEXT_PUBLIC_WORKSPACE_PATH || "/";
 const ROOT_NAME = "ii-agent";
 
 // Map file extensions to Monaco editor language IDs

@@ -6,6 +6,7 @@ import { Code, Globe, Terminal as TerminalIcon, X } from "lucide-react";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { cloneDeep } from "lodash";
 
 import Browser from "@/components/browser";
 import CodeEditor, { ROOT_PATH } from "@/components/code-editor";
@@ -16,7 +17,6 @@ import { Button } from "@/components/ui/button";
 import { ActionStep, AgentEvent, TOOL } from "@/typings/agent";
 import Action from "@/components/action";
 import Markdown from "@/components/markdown";
-import { cloneDeep } from "lodash";
 
 enum TAB {
   BROWSER = "browser",
@@ -36,9 +36,7 @@ export default function Home() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isInChatView, setIsInChatView] = useState(false);
-  const [streamedResponse, setStreamedResponse] = useState("");
   const [socket, setSocket] = useState<WebSocket | null>(null);
-  const [reasoningData, setReasoningData] = useState([""]);
   const [activeTab, setActiveTab] = useState(TAB.BROWSER);
   const [currentActionData, setCurrentActionData] = useState<ActionStep>();
   const [activeFileCodeEditor, setActiveFileCodeEditor] = useState("");
@@ -233,14 +231,12 @@ export default function Home() {
       socket.close();
     }
     setIsInChatView(false);
-    setStreamedResponse("");
-    setReasoningData([""]);
     setMessages([]);
     setIsLoading(false);
   };
 
   const handleOpenVSCode = () => {
-    let url = process.env.NEXT_PUBLIC_ROOT_PATH || "http://localhost:8080";
+    let url = process.env.NEXT_PUBLIC_VSCODE_URL || "http://127.0.0.1:8080";
     url += `/?folder=${ROOT_PATH}`;
     window.open(url, "_blank");
   };
@@ -380,14 +376,30 @@ export default function Home() {
                   </motion.div>
                 ))}
 
-                {isLoading && streamedResponse && (
+                {isLoading && (
                   <motion.div
                     className="mb-4 text-left"
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
+                    transition={{ type: "spring", stiffness: 300, damping: 30 }}
                   >
-                    <motion.div className="inline-block p-3 max-w-[80%] text-left rounded-lg bg-neutral-800 text-white">
-                      {streamedResponse}
+                    <motion.div
+                      className="inline-block p-4 text-left rounded-lg bg-neutral-800/90 text-white backdrop-blur-sm"
+                      initial={{ scale: 0.95 }}
+                      animate={{ scale: 1 }}
+                      transition={{
+                        type: "spring",
+                        stiffness: 400,
+                        damping: 25,
+                      }}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="flex space-x-2">
+                          <div className="w-2.5 h-2.5 bg-white rounded-full animate-[dot-bounce_1.2s_ease-in-out_infinite_0ms]" />
+                          <div className="w-2.5 h-2.5 bg-white rounded-full animate-[dot-bounce_1.2s_ease-in-out_infinite_200ms]" />
+                          <div className="w-2.5 h-2.5 bg-white rounded-full animate-[dot-bounce_1.2s_ease-in-out_infinite_400ms]" />
+                        </div>
+                      </div>
                     </motion.div>
                   </motion.div>
                 )}
@@ -412,101 +424,99 @@ export default function Home() {
                 </motion.div>
               </motion.div>
 
-              {reasoningData && (
-                <motion.div className="col-span-6 border-l border-neutral-500">
-                  <div className="p-4 bg-neutral-850 flex items-center justify-between">
-                    <div className="flex gap-x-4">
-                      <Button
-                        className={`cursor-pointer ${
-                          activeTab === TAB.BROWSER
-                            ? "bg-gradient-skyblue-lavender !text-black"
-                            : ""
-                        }`}
-                        variant="outline"
-                        onClick={() => setActiveTab(TAB.BROWSER)}
-                      >
-                        <Globe className="size-4" /> Browser
-                      </Button>
-                      <Button
-                        className={`cursor-pointer ${
-                          activeTab === TAB.CODE
-                            ? "bg-gradient-skyblue-lavender !text-black"
-                            : ""
-                        }`}
-                        variant="outline"
-                        onClick={() => setActiveTab(TAB.CODE)}
-                      >
-                        <Code className="size-4" /> Code
-                      </Button>
-                      <Button
-                        className={`cursor-pointer ${
-                          activeTab === TAB.TERMINAL
-                            ? "bg-gradient-skyblue-lavender !text-black"
-                            : ""
-                        }`}
-                        variant="outline"
-                        onClick={() => setActiveTab(TAB.TERMINAL)}
-                      >
-                        <TerminalIcon className="size-4" /> Terminal
-                      </Button>
-                    </div>
+              <motion.div className="col-span-6 border-l border-neutral-500">
+                <div className="p-4 bg-neutral-850 flex items-center justify-between">
+                  <div className="flex gap-x-4">
                     <Button
-                      className="cursor-pointer"
+                      className={`cursor-pointer ${
+                        activeTab === TAB.BROWSER
+                          ? "bg-gradient-skyblue-lavender !text-black"
+                          : ""
+                      }`}
                       variant="outline"
-                      onClick={handleOpenVSCode}
+                      onClick={() => setActiveTab(TAB.BROWSER)}
                     >
-                      <Image
-                        src={"/vscode.png"}
-                        alt="VS Code"
-                        width={20}
-                        height={20}
-                      />{" "}
-                      Open with VS Code
+                      <Globe className="size-4" /> Browser
+                    </Button>
+                    <Button
+                      className={`cursor-pointer ${
+                        activeTab === TAB.CODE
+                          ? "bg-gradient-skyblue-lavender !text-black"
+                          : ""
+                      }`}
+                      variant="outline"
+                      onClick={() => setActiveTab(TAB.CODE)}
+                    >
+                      <Code className="size-4" /> Code
+                    </Button>
+                    <Button
+                      className={`cursor-pointer ${
+                        activeTab === TAB.TERMINAL
+                          ? "bg-gradient-skyblue-lavender !text-black"
+                          : ""
+                      }`}
+                      variant="outline"
+                      onClick={() => setActiveTab(TAB.TERMINAL)}
+                    >
+                      <TerminalIcon className="size-4" /> Terminal
                     </Button>
                   </div>
-                  <Browser
-                    className={
-                      activeTab === TAB.BROWSER &&
-                      currentActionData?.type === TOOL.TAVILY_VISIT
-                        ? ""
-                        : "hidden"
-                    }
-                    url={currentActionData?.data?.tool_input?.url}
-                    // screenshot={currentActionData?.data.result as string}
-                    rawData={
-                      currentActionData?.type === TOOL.TAVILY_VISIT &&
-                      parseJson(currentActionData?.data?.result as string)
-                        ? parseJson(currentActionData?.data?.result as string)
-                            ?.raw_content
-                        : undefined
-                    }
-                  />
-                  <SearchBrowser
-                    className={
-                      activeTab === TAB.BROWSER &&
-                      currentActionData?.type === TOOL.TAVILY_SEARCH
-                        ? ""
-                        : "hidden"
-                    }
-                    keyword={currentActionData?.data.tool_input?.query}
-                    search_results={
-                      currentActionData?.type === TOOL.TAVILY_SEARCH &&
-                      currentActionData?.data?.result
-                        ? parseJson(currentActionData?.data?.result as string)
-                        : undefined
-                    }
-                  />
-                  <CodeEditor
-                    className={activeTab === TAB.CODE ? "" : "hidden"}
-                    activeFile={activeFileCodeEditor}
-                    setActiveFile={setActiveFileCodeEditor}
-                  />
-                  <Terminal
-                    ref={xtermRef}
-                    className={activeTab === TAB.TERMINAL ? "" : "hidden"}
-                  />
-                </motion.div>
-              )}
+                  <Button
+                    className="cursor-pointer"
+                    variant="outline"
+                    onClick={handleOpenVSCode}
+                  >
+                    <Image
+                      src={"/vscode.png"}
+                      alt="VS Code"
+                      width={20}
+                      height={20}
+                    />{" "}
+                    Open with VS Code
+                  </Button>
+                </div>
+                <Browser
+                  className={
+                    activeTab === TAB.BROWSER &&
+                    currentActionData?.type === TOOL.TAVILY_VISIT
+                      ? ""
+                      : "hidden"
+                  }
+                  url={currentActionData?.data?.tool_input?.url}
+                  // screenshot={currentActionData?.data.result as string}
+                  rawData={
+                    currentActionData?.type === TOOL.TAVILY_VISIT &&
+                    parseJson(currentActionData?.data?.result as string)
+                      ? parseJson(currentActionData?.data?.result as string)
+                          ?.raw_content
+                      : undefined
+                  }
+                />
+                <SearchBrowser
+                  className={
+                    activeTab === TAB.BROWSER &&
+                    currentActionData?.type === TOOL.TAVILY_SEARCH
+                      ? ""
+                      : "hidden"
+                  }
+                  keyword={currentActionData?.data.tool_input?.query}
+                  search_results={
+                    currentActionData?.type === TOOL.TAVILY_SEARCH &&
+                    currentActionData?.data?.result
+                      ? parseJson(currentActionData?.data?.result as string)
+                      : undefined
+                  }
+                />
+                <CodeEditor
+                  className={activeTab === TAB.CODE ? "" : "hidden"}
+                  activeFile={activeFileCodeEditor}
+                  setActiveFile={setActiveFileCodeEditor}
+                />
+                <Terminal
+                  ref={xtermRef}
+                  className={activeTab === TAB.TERMINAL ? "" : "hidden"}
+                />
+              </motion.div>
             </motion.div>
           )}
         </AnimatePresence>
