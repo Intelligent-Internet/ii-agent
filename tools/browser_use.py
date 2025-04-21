@@ -7,21 +7,21 @@ from utils.common import (
     LLMTool,
     ToolImplOutput,
 )
-from index import Agent, AnthropicProvider
+from index import Agent, AnthropicProvider, BrowserConfig
 
 from typing import Optional, Any
 
 class BrowserUse(LLMTool):
     name = "browser_use"
     description = (
-        "Use this tool to browse the web. You can use it to get information, find answers, or anything else you need."
+        "Use this tool to visit a specific web page and extract information based on a given query."
     )
     input_schema = {
         "type": "object",
         "properties": {
             "query": {
                 "type": "string",
-                "description": "The query to search the web for.",
+                "description": "The specific information you want to extract from the web page.",
             },
             "url": {
                 "type": "string",
@@ -32,6 +32,9 @@ class BrowserUse(LLMTool):
     }
     output_type = "string"
 
+    def __init__(self, message_queue: asyncio.Queue):
+        self.message_queue = message_queue
+
     def run_impl(
         self,
         tool_input: dict[str, Any],
@@ -41,13 +44,19 @@ class BrowserUse(LLMTool):
             model="claude-3-7-sonnet",
             enable_thinking=False, 
             thinking_token_budget=2048)
-
-        agent = Agent(llm=llm)
+    
+        # Create an agent with the LLM
+        agent = Agent(
+            llm=llm, 
+            browser_config=BrowserConfig(start_at_url=tool_input['url']), 
+            log_dir="logs/browser_use/",
+            message_queue=self.message_queue
+        )
 
         async def _run():
             try:
                 output = await agent.run(
-                    prompt=f"Navigate to {tool_input['url']}. Task: {tool_input['query']}"
+                    prompt=tool_input['query']
                 )
                 if output.result.error:
                     return "Error: " + output.result.error
