@@ -15,7 +15,7 @@ const SearchBrowser = ({
 
   return (
     <div
-      className={`h-[calc(100vh-142px)] flex flex-col overflow-hidden border border-neutral-200 dark:border-neutral-800 ${className}`}
+      className={`h-[calc(100vh-156px)] flex rounded-xl flex-col overflow-hidden border border-neutral-200 dark:border-neutral-800 ${className}`}
     >
       <div className="flex items-center gap-3 px-3 py-2.5 bg-white/80 dark:bg-black/80 backdrop-blur-xl border-b border-neutral-200 dark:border-neutral-800">
         <div className="flex items-center gap-1.5">
@@ -34,7 +34,7 @@ const SearchBrowser = ({
           </div>
         </div>
       </div>
-      <div className="flex-1 px-6 divide-y divide-y-neutral-200 overflow-auto">
+      <div className="flex-1 bg-black/80 px-6 divide-y divide-y-neutral-200 overflow-auto">
         {Array.isArray(search_results) &&
           search_results?.map((item, index) => (
             <div

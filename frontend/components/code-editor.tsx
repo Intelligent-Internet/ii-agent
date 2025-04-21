@@ -232,7 +232,7 @@ const CodeEditor = ({
   };
 
   return (
-    <div className={`flex flex-col h-[calc(100vh-128px)] ${className}`}>
+    <div className={`flex flex-col h-[calc(100vh-156px)] ${className}`}>
       <div className="flex flex-1 h-full">
         {/* File Explorer */}
         <div className="w-64 bg-neutral-900 border-r border-neutral-700 flex flex-col">
@@ -245,7 +245,7 @@ const CodeEditor = ({
         </div>
 
         {/* Editor Section */}
-        <div className="flex-1 flex flex-col">
+        <div className="flex-1 flex flex-col overflow-y-auto">
           {renderBreadcrumb()}
           <Editor
             theme="vs-dark"

@@ -59,6 +59,7 @@ export default function Home() {
         break;
 
       case TOOL.TAVILY_VISIT:
+      case TOOL.BROWSER_USE:
         setActiveTab(TAB.BROWSER);
         setCurrentActionData(data);
         break;
@@ -67,7 +68,10 @@ export default function Home() {
         setActiveTab(TAB.TERMINAL);
         if (!showTabOnly) {
           setTimeout(() => {
+            // query
             xtermRef.current?.write(data.data.tool_input?.command + "");
+            // result
+            xtermRef.current?.write(data.data.result + "");
             xtermRef.current?.write("\r\n$ ");
           }, 500);
         }
@@ -123,6 +127,7 @@ export default function Home() {
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
+
         switch (data.type) {
           case AgentEvent.PROCESSING:
             setIsLoading(true);
@@ -165,6 +170,27 @@ export default function Home() {
             }
             break;
 
+          case TOOL.BROWSER_USE:
+            setMessages((prev) => {
+              const lastMessage = cloneDeep(prev[prev.length - 1]);
+              if (!data.content.screenshot) {
+                return prev;
+              }
+              if (
+                lastMessage.action &&
+                lastMessage.action?.type === data.type
+              ) {
+                lastMessage.action.data.result = data.content.screenshot;
+                setTimeout(() => {
+                  handleClickAction(lastMessage.action);
+                }, 500);
+                return [...prev];
+              } else {
+                return [...prev, { ...lastMessage, action: data.content }];
+              }
+            });
+            break;
+
           case AgentEvent.TOOL_RESULT:
             if (data.content.tool_name !== TOOL.SEQUENTIAL_THINKING) {
               setMessages((prev) => {
@@ -183,6 +209,7 @@ export default function Home() {
                 }
               });
             }
+
             break;
 
           case AgentEvent.AGENT_RESPONSE:
@@ -263,11 +290,7 @@ export default function Home() {
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen dark:bg-slate-850">
-      <div
-        className={`flex justify-between w-full px-6 py-4 ${
-          isInChatView && "border-b border-neutral-500"
-        }`}
-      >
+      <div className={`flex justify-between w-full p-4`}>
         {!isInChatView && <div />}
         <motion.h1
           className={`font-semibold text-center ${
@@ -285,7 +308,7 @@ export default function Home() {
               className="rounded-sm"
             />
           )}
-          II-Agent
+          {`II-Agent`}
         </motion.h1>
         {isInChatView ? (
           <Button className="cursor-pointer" onClick={resetChat}>
@@ -300,6 +323,7 @@ export default function Home() {
         <AnimatePresence mode="wait">
           {!isInChatView ? (
             <QuestionInput
+              placeholder="Give II-Agent a task to work on..."
               value={currentQuestion}
               setValue={setCurrentQuestion}
               handleKeyDown={handleKeyDown}
@@ -317,10 +341,10 @@ export default function Home() {
                 damping: 30,
                 mass: 1,
               }}
-              className="w-full grid grid-cols-10 write-report shadow-lg overflow-hidden flex-1"
+              className="w-full grid grid-cols-10 write-report shadow-lg overflow-hidden flex-1 pr-4 pb-4"
             >
               <motion.div
-                className="p-4 col-span-4 w-full max-h-[calc(100vh-78px)] pb-[160px] overflow-y-auto relative"
+                className="p-4 pt-0 col-span-4 w-full max-h-[calc(100vh-78px)] pb-[160px] overflow-y-auto relative"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ delay: 0.2, duration: 0.3 }}
@@ -337,10 +361,10 @@ export default function Home() {
                   >
                     {message.content && (
                       <motion.div
-                        className={`inline-block p-3 text-left rounded-lg ${
+                        className={`inline-block text-left rounded-lg ${
                           message.role === "user"
-                            ? "bg-white text-black max-w-[80%]"
-                            : "bg-neutral-800 text-white"
+                            ? "bg-neutral-800 p-3 text-white max-w-[80%]"
+                            : "text-white"
                         }`}
                         initial={{ scale: 0.9 }}
                         animate={{ scale: 1 }}
@@ -384,7 +408,7 @@ export default function Home() {
                     transition={{ type: "spring", stiffness: 300, damping: 30 }}
                   >
                     <motion.div
-                      className="inline-block p-4 text-left rounded-lg bg-neutral-800/90 text-white backdrop-blur-sm"
+                      className="inline-block p-3 text-left rounded-lg bg-neutral-800/90 text-white backdrop-blur-sm"
                       initial={{ scale: 0.95 }}
                       animate={{ scale: 1 }}
                       transition={{
@@ -395,9 +419,9 @@ export default function Home() {
                     >
                       <div className="flex items-center gap-3">
                         <div className="flex space-x-2">
-                          <div className="w-2.5 h-2.5 bg-white rounded-full animate-[dot-bounce_1.2s_ease-in-out_infinite_0ms]" />
-                          <div className="w-2.5 h-2.5 bg-white rounded-full animate-[dot-bounce_1.2s_ease-in-out_infinite_200ms]" />
-                          <div className="w-2.5 h-2.5 bg-white rounded-full animate-[dot-bounce_1.2s_ease-in-out_infinite_400ms]" />
+                          <div className="w-2 h-2 bg-white rounded-full animate-[dot-bounce_1.2s_ease-in-out_infinite_0ms]" />
+                          <div className="w-2 h-2 bg-white rounded-full animate-[dot-bounce_1.2s_ease-in-out_infinite_200ms]" />
+                          <div className="w-2 h-2 bg-white rounded-full animate-[dot-bounce_1.2s_ease-in-out_infinite_400ms]" />
                         </div>
                       </div>
                     </motion.div>
@@ -424,11 +448,11 @@ export default function Home() {
                 </motion.div>
               </motion.div>
 
-              <motion.div className="col-span-6 border-l border-neutral-500">
-                <div className="p-4 bg-neutral-850 flex items-center justify-between">
+              <motion.div className="col-span-6 bg-neutral-800 p-4 rounded-2xl">
+                <div className="pb-4 bg-neutral-850 flex items-center justify-between">
                   <div className="flex gap-x-4">
                     <Button
-                      className={`cursor-pointer ${
+                      className={`cursor-pointer hover:!bg-black ${
                         activeTab === TAB.BROWSER
                           ? "bg-gradient-skyblue-lavender !text-black"
                           : ""
@@ -439,7 +463,7 @@ export default function Home() {
                       <Globe className="size-4" /> Browser
                     </Button>
                     <Button
-                      className={`cursor-pointer ${
+                      className={`cursor-pointer hover:!bg-black ${
                         activeTab === TAB.CODE
                           ? "bg-gradient-skyblue-lavender !text-black"
                           : ""
@@ -450,7 +474,7 @@ export default function Home() {
                       <Code className="size-4" /> Code
                     </Button>
                     <Button
-                      className={`cursor-pointer ${
+                      className={`cursor-pointer hover:!bg-black ${
                         activeTab === TAB.TERMINAL
                           ? "bg-gradient-skyblue-lavender !text-black"
                           : ""
@@ -478,12 +502,13 @@ export default function Home() {
                 <Browser
                   className={
                     activeTab === TAB.BROWSER &&
-                    currentActionData?.type === TOOL.TAVILY_VISIT
+                    (currentActionData?.type === TOOL.TAVILY_VISIT ||
+                      currentActionData?.type === TOOL.BROWSER_USE)
                       ? ""
                       : "hidden"
                   }
                   url={currentActionData?.data?.tool_input?.url}
-                  // screenshot={currentActionData?.data.result as string}
+                  screenshot={currentActionData?.data.result as string}
                   rawData={
                     currentActionData?.type === TOOL.TAVILY_VISIT &&
                     parseJson(currentActionData?.data?.result as string)

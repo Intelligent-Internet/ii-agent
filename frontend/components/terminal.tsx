@@ -147,7 +147,12 @@ const Terminal = (
   };
 
   return (
-    <div className={clsx("bg-[#1e1e1e] p-4 h-full", className)}>
+    <div
+      className={clsx(
+        "bg-[#1e1e1e] p-4 h-[calc(100vh-156px)] overflow-auto",
+        className
+      )}
+    >
       <div
         ref={terminalRef}
         className="h-full w-full"

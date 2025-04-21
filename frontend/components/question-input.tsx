@@ -34,7 +34,7 @@ const QuestionInput = ({
         damping: 30,
         mass: 1,
       }}
-      className={`w-full max-w-2xl shadow-[0_2px_6px_rgba(0,0,0,0.07)] dark:shadow-[0_2px_6px_rgba(255,255,255,0.07)] z-50 ${className}`}
+      className={`w-full max-w-2xl z-50 ${className}`}
     >
       <motion.div
         className="relative rounded-xl bg-white/50 dark:bg-slate-800/50"

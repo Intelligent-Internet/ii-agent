@@ -63,10 +63,12 @@ const Action = ({ type, value, onClick }: ActionProps) => {
         return value.tool_input?.query;
       case TOOL.TAVILY_VISIT:
         return value.tool_input?.url;
+      case TOOL.BROWSER_USE:
+        return value.tool_input?.url;
       case TOOL.BASH:
         return value.tool_input?.command;
       case TOOL.FILE_WRITE:
-        return value.tool_input?.path;
+        return value.tool_input?.file;
       case TOOL.STR_REPLACE_EDITOR:
         return value.tool_input?.path;
 
@@ -88,11 +90,11 @@ const Action = ({ type, value, onClick }: ActionProps) => {
       active:scale-[0.98]"
     >
       {step_icon}
-      <div className="flex gap-1.5 text-sm">
+      <div className="flex flex-col gap-1.5 text-sm">
         <span className="text-neutral-900 dark:text-neutral-100 font-medium group-hover:text-neutral-800 dark:group-hover:text-white">
           {step_title}
         </span>
-        <span className="text-neutral-500 dark:text-neutral-400 font-medium truncate pl-1 group-hover:text-neutral-600 dark:group-hover:text-neutral-300">
+        <span className="text-neutral-500 dark:text-neutral-400 font-medium truncate group-hover:text-neutral-600 dark:group-hover:text-neutral-300">
           {step_value}
         </span>
       </div>
