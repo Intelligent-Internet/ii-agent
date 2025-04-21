@@ -20,6 +20,7 @@ from tools.tavily_visit_webpage import TavilyVisitWebpageTool
 from tools.planner_agent import PlannerAgent
 from tools.writing_agent import WritingAgent
 from tools.file_write_tool import FileWriteTool
+from tools.browser_use import BrowserUse
 from termcolor import colored
 from rich.console import Console
 import logging
@@ -148,7 +149,7 @@ try breaking down the task into smaller steps. After call this tool to update or
             SequentialThinkingTool(),
             TavilySearchTool(),
             TavilyVisitWebpageTool(),
-            # BrowserUse(),
+            BrowserUse(message_queue=self.message_queue),
             self.complete_tool,
             FileWriteTool(),
         ]
