@@ -37,7 +37,7 @@ const QuestionInput = ({
       className={`w-full max-w-2xl z-50 ${className}`}
     >
       <motion.div
-        className="relative rounded-xl bg-white/50 dark:bg-slate-800/50"
+        className="relative rounded-xl bg-white/50 dark:bg-slate-800/50 border border-[#ffffff0f] shadow-[0px_0px_8px_0px_rgba(0,0,0,0.02)]"
         initial={{ y: 20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ delay: 0.1 }}

@@ -232,7 +232,9 @@ const CodeEditor = ({
   };
 
   return (
-    <div className={`flex flex-col h-[calc(100vh-156px)] ${className}`}>
+    <div
+      className={`flex flex-col h-[calc(100vh-156px)] rounded-xl ${className}`}
+    >
       <div className="flex flex-1 h-full">
         {/* File Explorer */}
         <div className="w-64 bg-neutral-900 border-r border-neutral-700 flex flex-col">

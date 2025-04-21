@@ -2,7 +2,7 @@
 
 import { Terminal as XTerm } from "@xterm/xterm";
 import { AnimatePresence, LayoutGroup, motion } from "framer-motion";
-import { Code, Globe, Terminal as TerminalIcon, X } from "lucide-react";
+import { Check, Code, Globe, Terminal as TerminalIcon, X } from "lucide-react";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -43,6 +43,7 @@ export default function Home() {
   const [currentQuestion, setCurrentQuestion] = useState("");
   const xtermRef = useRef<XTerm | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [isCompleted, setIsCompleted] = useState(false);
 
   const handleClickAction = (
     data: ActionStep | undefined,
@@ -192,22 +193,34 @@ export default function Home() {
             break;
 
           case AgentEvent.TOOL_RESULT:
-            if (data.content.tool_name !== TOOL.SEQUENTIAL_THINKING) {
-              setMessages((prev) => {
-                const lastMessage = cloneDeep(prev[prev.length - 1]);
-                if (
-                  lastMessage.action &&
-                  lastMessage.action?.type === data.content.tool_name
-                ) {
-                  lastMessage.action.data.result = data.content.result;
-                  setTimeout(() => {
-                    handleClickAction(lastMessage.action);
-                  }, 500);
-                  return [...prev];
-                } else {
-                  return [...prev, { ...lastMessage, action: data.content }];
-                }
-              });
+            if (data.content.tool_name === TOOL.BROWSER_USE) {
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: Date.now().toString(),
+                  role: "assistant",
+                  content: data.content.result,
+                  timestamp: Date.now(),
+                },
+              ]);
+            } else {
+              if (data.content.tool_name !== TOOL.SEQUENTIAL_THINKING) {
+                setMessages((prev) => {
+                  const lastMessage = cloneDeep(prev[prev.length - 1]);
+                  if (
+                    lastMessage.action &&
+                    lastMessage.action?.type === data.content.tool_name
+                  ) {
+                    lastMessage.action.data.result = data.content.result;
+                    setTimeout(() => {
+                      handleClickAction(lastMessage.action);
+                    }, 500);
+                    return [...prev];
+                  } else {
+                    return [...prev, { ...lastMessage, action: data.content }];
+                  }
+                });
+              }
             }
 
             break;
@@ -222,6 +235,7 @@ export default function Home() {
                 timestamp: Date.now(),
               },
             ]);
+            setIsCompleted(true);
             setIsLoading(false);
             break;
 
@@ -260,6 +274,7 @@ export default function Home() {
     setIsInChatView(false);
     setMessages([]);
     setIsLoading(false);
+    setIsCompleted(false);
   };
 
   const handleOpenVSCode = () => {
@@ -341,7 +356,7 @@ export default function Home() {
                 damping: 30,
                 mass: 1,
               }}
-              className="w-full grid grid-cols-10 write-report shadow-lg overflow-hidden flex-1 pr-4 pb-4"
+              className="w-full grid grid-cols-10 write-report overflow-hidden flex-1 pr-4 pb-4 "
             >
               <motion.div
                 className="p-4 pt-0 col-span-4 w-full max-h-[calc(100vh-78px)] pb-[160px] overflow-y-auto relative"
@@ -363,7 +378,7 @@ export default function Home() {
                       <motion.div
                         className={`inline-block text-left rounded-lg ${
                           message.role === "user"
-                            ? "bg-neutral-800 p-3 text-white max-w-[80%]"
+                            ? "bg-neutral-800 p-3 text-white max-w-[80%] border border-[#ffffff0f] shadow-[0px_0px_8px_0px_rgba(0,0,0,0.02)]"
                             : "text-white"
                         }`}
                         initial={{ scale: 0.9 }}
@@ -428,6 +443,13 @@ export default function Home() {
                   </motion.div>
                 )}
 
+                {isCompleted && (
+                  <div className="flex gap-x-2 items-center bg-[#25BA3B1E] text-green-600 text-sm p-2 rounded-full">
+                    <Check className="size-4" />
+                    <span>II-Agent has completed the current task.</span>
+                  </div>
+                )}
+
                 <div ref={messagesEndRef} />
 
                 <motion.div
@@ -448,7 +470,7 @@ export default function Home() {
                 </motion.div>
               </motion.div>
 
-              <motion.div className="col-span-6 bg-neutral-800 p-4 rounded-2xl">
+              <motion.div className="col-span-6 bg-neutral-800 p-4 rounded-2xl border border-[#ffffff0f] shadow-[0px_0px_8px_0px_rgba(0,0,0,0.02)]">
                 <div className="pb-4 bg-neutral-850 flex items-center justify-between">
                   <div className="flex gap-x-4">
                     <Button

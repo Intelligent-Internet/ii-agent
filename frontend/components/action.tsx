@@ -13,7 +13,7 @@ interface ActionProps {
 const Action = ({ type, value, onClick }: ActionProps) => {
   const step_icon = useMemo(() => {
     const className =
-      "h-4 w-4 text-neutral-500 dark:text-neutral-100 flex-shrink-0";
+      "h-4 w-4 text-neutral-500 dark:text-neutral-100 flex-shrink-0 mt-[2px]";
     switch (type) {
       case TOOL.SEQUENTIAL_THINKING:
         return <Lightbulb className={className} />;
@@ -82,12 +82,13 @@ const Action = ({ type, value, onClick }: ActionProps) => {
   return (
     <div
       onClick={onClick}
-      className="group cursor-pointer flex items-center gap-2 px-3 py-2 bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl backdrop-blur-sm 
+      className="group cursor-pointer flex items-start gap-2 px-3 py-2 bg-neutral-50 dark:bg-neutral-800 rounded-xl backdrop-blur-sm 
+      border border-[#ffffff0f] shadow-[0px_0px_8px_0px_rgba(0,0,0,0.02)]
       transition-all duration-200 ease-out
       hover:bg-neutral-100 dark:hover:bg-neutral-800
       hover:border-neutral-300 dark:hover:border-neutral-700
       hover:shadow-[0_2px_8px_rgba(0,0,0,0.04)] dark:hover:shadow-[0_2px_8px_rgba(0,0,0,0.24)]
-      active:scale-[0.98]"
+      active:scale-[0.98] overflow-hidden"
     >
       {step_icon}
       <div className="flex flex-col gap-1.5 text-sm">
