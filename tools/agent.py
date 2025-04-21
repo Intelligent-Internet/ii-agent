@@ -141,6 +141,7 @@ try breaking down the task into smaller steps. After call this tool to update or
                 cwd=workspace_manager.root,
             )
 
+        self.message_queue = asyncio.Queue()
         self.tools = [
             # self.planner_agent,
             self.writing_agent,
@@ -154,7 +155,6 @@ try breaking down the task into smaller steps. After call this tool to update or
             FileWriteTool(),
         ]
         self.websocket = websocket
-        self.message_queue = asyncio.Queue()
 
 
         
