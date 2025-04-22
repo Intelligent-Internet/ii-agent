@@ -88,7 +88,7 @@ export default function Home() {
         setActiveTab(TAB.CODE);
         setCurrentActionData(data);
         if (data.data.tool_input?.path) {
-          setActiveFileCodeEditor(`${ROOT_PATH}/${data.data.tool_input.path}`);
+          setActiveFileCodeEditor(`${data.data.tool_input.path}`);
         }
         break;
 
@@ -103,6 +103,7 @@ export default function Home() {
     setIsLoading(true);
     setIsInChatView(true);
     setCurrentQuestion("");
+    setIsCompleted(false);
 
     const newUserMessage: Message = {
       id: Date.now().toString(),
@@ -112,23 +113,35 @@ export default function Home() {
     };
 
     setMessages((prev) => [...prev, newUserMessage]);
+    let ws = socket;
 
-    // Create WebSocket connection
-    const ws = new WebSocket(`${process.env.NEXT_PUBLIC_API_URL}/ws`);
-    setSocket(ws);
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      // Create WebSocket connection if it doesn't exist or is not open
+      ws = new WebSocket(`${process.env.NEXT_PUBLIC_API_URL}/ws`);
+      setSocket(ws);
 
-    ws.onopen = () => {
-      // Send the question when connection is established
+      ws.onopen = () => {
+        ws?.send(
+          JSON.stringify({
+            type: "query",
+            content: {
+              text: newQuestion,
+              resume: messages.length > 0,
+            },
+          })
+        );
+      };
+    } else {
+      // WebSocket is already open, send message directly
       ws.send(
         JSON.stringify({
           type: "query",
           content: {
             text: newQuestion,
-            resume: false,
           },
         })
       );
-    };
+    }
 
     ws.onmessage = (event) => {
       try {
@@ -560,6 +573,7 @@ export default function Home() {
                   }
                 />
                 <CodeEditor
+                  key={JSON.stringify(messages)}
                   className={activeTab === TAB.CODE ? "" : "hidden"}
                   activeFile={activeFileCodeEditor}
                   setActiveFile={setActiveFileCodeEditor}

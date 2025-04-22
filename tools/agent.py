@@ -29,45 +29,11 @@ import logging
 from fastapi import WebSocket
 from pydantic import BaseModel
 from typing import Literal
-from asyncer import syncify
-
-import http.server
-import socketserver
-import threading
-from pathlib import Path
 
 class RealtimeEvent(BaseModel):
     type: Literal["make_response", "tool_call", "tool_result"]
     raw_message: dict[str, Any]
 
-class WorkspaceFileServer:
-    def __init__(self, workspace_path: Path, port: int = 8088):
-        self.workspace_path = workspace_path
-        self.port = port
-        self.httpd = None
-
-    def start(self):
-        # Change to workspace directory
-        os.chdir(self.workspace_path)
-
-        # Create handler that serves files from current directory
-        handler = http.server.SimpleHTTPRequestHandler
-
-        try:
-            self.httpd = socketserver.TCPServer(("", self.port), handler)
-            # Start server in a separate thread
-            server_thread = threading.Thread(target=self.httpd.serve_forever)
-            server_thread.daemon = True  # Thread will close when main program exits
-            server_thread.start()
-            logging.info(f"Started file server on port {self.port}")
-        except OSError as e:
-            logging.error(f"Failed to start file server: {e}")
-            raise
-
-    def stop(self):
-        if self.httpd:
-            self.httpd.shutdown()
-            self.httpd.server_close()
 
 class Agent(LLMTool):
     name = "general_agent"
@@ -111,6 +77,7 @@ try breaking down the task into smaller steps. After call this tool to update or
         ask_user_permission: bool = False,
         docker_container_id: Optional[str] = None,
         websocket: Optional[WebSocket] = None,
+        file_server_port: int = 8088,
     ):
         """Initialize the agent.
 
@@ -179,13 +146,7 @@ try breaking down the task into smaller steps. After call this tool to update or
 
         self.message_queue = asyncio.Queue()
         # Start file server
-        self.file_server_port = 8088  # You can make this configurable
-        self.file_server = WorkspaceFileServer(workspace_manager.root, self.file_server_port)
-        try:
-            self.file_server.start()
-        except Exception as e:
-            logging.error(f"Failed to start file server: {e}")
-            raise
+        self.file_server_port = file_server_port
 
         # Initialize tools with file server port
         self.tools = [
@@ -206,10 +167,6 @@ try breaking down the task into smaller steps. After call this tool to update or
         ]
         self.websocket = websocket
 
-    def __del__(self):
-        # Clean up file server when agent is destroyed
-        if hasattr(self, 'file_server'):
-            self.file_server.stop()
 
 
 

@@ -51,7 +51,7 @@ class StaticDeployTool(LLMTool):
         rel_path = ws_path.relative_to(self.workspace_manager.root)
 
         # Construct the public URL using the file server port
-        public_url = f"http://localhost:{self.file_server_port}/{rel_path}"
+        public_url = f"http://localhost:{self.file_server_port}/workspace/{rel_path}"
 
         # return {"url": public_url, "message": f"Static file available at: {public_url}"}
         return ToolImplOutput(
