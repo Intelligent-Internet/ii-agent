@@ -103,6 +103,7 @@ export default function Home() {
     setIsLoading(true);
     setIsInChatView(true);
     setCurrentQuestion("");
+    setIsCompleted(false);
 
     const newUserMessage: Message = {
       id: Date.now().toString(),
@@ -560,6 +561,7 @@ export default function Home() {
                   }
                 />
                 <CodeEditor
+                  key={JSON.stringify(messages)}
                   className={activeTab === TAB.CODE ? "" : "hidden"}
                   activeFile={activeFileCodeEditor}
                   setActiveFile={setActiveFileCodeEditor}
