@@ -26,6 +26,7 @@ export enum TOOL {
   BASH = "bash",
   FILE_WRITE = "file_write",
   COMPLETE = "complete",
+  STATIC_DEPLOY = "static_deploy",
 }
 
 export type ActionStep = {
@@ -36,6 +37,7 @@ export type ActionStep = {
       thought?: string;
       path?: string;
       file_text?: string;
+      file_path?: string;
       command?: string;
       url?: string;
       query?: string;

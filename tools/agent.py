@@ -1,4 +1,5 @@
 import asyncio
+import os
 from copy import deepcopy
 from typing import Any, Optional, Dict, List
 
@@ -21,6 +22,7 @@ from tools.planner_agent import PlannerAgent
 from tools.writing_agent import WritingAgent
 from tools.file_write_tool import FileWriteTool
 from tools.browser_use import BrowserUse
+from tools.static_deploy_tool import StaticDeployTool
 from termcolor import colored
 from rich.console import Console
 import logging
@@ -29,9 +31,43 @@ from pydantic import BaseModel
 from typing import Literal
 from asyncer import syncify
 
+import http.server
+import socketserver
+import threading
+from pathlib import Path
+
 class RealtimeEvent(BaseModel):
     type: Literal["make_response", "tool_call", "tool_result"]
     raw_message: dict[str, Any]
+
+class WorkspaceFileServer:
+    def __init__(self, workspace_path: Path, port: int = 8088):
+        self.workspace_path = workspace_path
+        self.port = port
+        self.httpd = None
+
+    def start(self):
+        # Change to workspace directory
+        os.chdir(self.workspace_path)
+
+        # Create handler that serves files from current directory
+        handler = http.server.SimpleHTTPRequestHandler
+
+        try:
+            self.httpd = socketserver.TCPServer(("", self.port), handler)
+            # Start server in a separate thread
+            server_thread = threading.Thread(target=self.httpd.serve_forever)
+            server_thread.daemon = True  # Thread will close when main program exits
+            server_thread.start()
+            logging.info(f"Started file server on port {self.port}")
+        except OSError as e:
+            logging.error(f"Failed to start file server: {e}")
+            raise
+
+    def stop(self):
+        if self.httpd:
+            self.httpd.shutdown()
+            self.httpd.server_close()
 
 class Agent(LLMTool):
     name = "general_agent"
@@ -102,7 +138,7 @@ try breaking down the task into smaller steps. After call this tool to update or
 
         # Create and store the complete tool
         self.complete_tool = CompleteTool()
-        
+
         # Create writing agent
         self.writing_agent = WritingAgent(
             client=client,
@@ -142,6 +178,16 @@ try breaking down the task into smaller steps. After call this tool to update or
             )
 
         self.message_queue = asyncio.Queue()
+        # Start file server
+        self.file_server_port = 8088  # You can make this configurable
+        self.file_server = WorkspaceFileServer(workspace_manager.root, self.file_server_port)
+        try:
+            self.file_server.start()
+        except Exception as e:
+            logging.error(f"Failed to start file server: {e}")
+            raise
+
+        # Initialize tools with file server port
         self.tools = [
             # self.planner_agent,
             self.writing_agent,
@@ -153,11 +199,20 @@ try breaking down the task into smaller steps. After call this tool to update or
             BrowserUse(message_queue=self.message_queue),
             self.complete_tool,
             FileWriteTool(),
+            StaticDeployTool(
+                workspace_manager=workspace_manager,
+                file_server_port=self.file_server_port
+            ),
         ]
         self.websocket = websocket
 
+    def __del__(self):
+        # Clean up file server when agent is destroyed
+        if hasattr(self, 'file_server'):
+            self.file_server.stop()
 
-        
+
+
     async def _process_messages(self):
         while True:
             try:
@@ -389,15 +444,15 @@ try breaking down the task into smaller steps. After call this tool to update or
 
     def write_content(self, file_path: str, instruction: str, content_id: Optional[str] = None) -> str:
         """Hand off to the writing agent to generate content and write to a file.
-        
+
         The writing agent will use this agent's dialog history and context to create
         a comprehensive report based on the provided instructions.
-        
+
         Args:
             file_path: The path where the content should be written.
             instruction: Instructions for generating the writeup.
             content_id: Optional identifier for the content, used for tracking.
-            
+
         Returns:
             The generated content.
         """
@@ -405,36 +460,36 @@ try breaking down the task into smaller steps. After call this tool to update or
         if content_id is None:
             import uuid
             content_id = f"content_{uuid.uuid4().hex[:8]}"
-        
+
         # Register the content with the file manager
         registered_path = self.file_manager.register_content(content_id, file_path)
-        
+
         # Set as active content
         self.file_manager.set_active_content(content_id)
-        
+
         # Use the registered path for the content
         result = self.writing_agent.write_content(registered_path, instruction)
-        
+
         # Update the metadata
         metadata = {
             "last_instruction": instruction,
         }
         self.file_manager.update_content_metadata(metadata, content_id)
-        
+
         return result
-    
+
     def plan_task(self, instruction: str, plan_file_path: str, action: str = "create", plan_id: Optional[str] = None) -> Dict:
         """Hand off to the planner agent to create, update, or get a plan.
-        
+
         The planner agent will use this agent's dialog history and context to create
         or manage a structured plan based on the provided instructions.
-        
+
         Args:
             instruction: Instructions for the planning task.
             plan_file_path: Path where the plan should be stored.
             action: Action to perform: 'create', 'update', or 'get'.
             plan_id: Optional identifier for the plan, used for tracking.
-            
+
         Returns:
             The plan as a dictionary.
         """
@@ -442,16 +497,16 @@ try breaking down the task into smaller steps. After call this tool to update or
         if plan_id is None:
             import uuid
             plan_id = f"plan_{uuid.uuid4().hex[:8]}"
-        
+
         # Register the plan with the file manager
         registered_path = self.file_manager.register_plan(plan_id, plan_file_path)
-        
+
         # Set as active plan
         self.file_manager.set_active_plan(plan_id)
-        
+
         # Use the registered path for the plan
         result = self.planner_agent.plan(instruction, registered_path, action)
-        
+
         # If successful and this is a create/update, update the metadata
         if action in ["create", "update"] and isinstance(result, dict):
             metadata = {
@@ -459,36 +514,36 @@ try breaking down the task into smaller steps. After call this tool to update or
                 "last_instruction": instruction,
             }
             self.file_manager.update_plan_metadata(metadata, plan_id)
-        
+
         return result
-    
+
     def get_active_plan_path(self) -> Optional[str]:
         """Get the path of the currently active plan.
-        
+
         Returns:
             The path to the active plan file, or None if no active plan exists
         """
         return self.file_manager.get_plan_path()
-    
+
     def get_active_content_path(self) -> Optional[str]:
         """Get the path of the currently active content.
-        
+
         Returns:
             The path to the active content file, or None if no active content exists
         """
         return self.file_manager.get_content_path()
-    
+
     def list_plans(self) -> List[Dict]:
         """List all registered plans.
-        
+
         Returns:
             A list of plans with their IDs, paths, and metadata
         """
         return self.file_manager.list_plans()
-    
+
     def list_content(self) -> List[Dict]:
         """List all registered content.
-        
+
         Returns:
             A list of content items with their IDs, paths, and metadata
         """
