@@ -376,108 +376,113 @@ export default function Home() {
               }}
               className="w-full grid grid-cols-10 write-report overflow-hidden flex-1 pr-4 pb-4 "
             >
-              <motion.div
-                className="p-4 pt-0 col-span-4 w-full max-h-[calc(100vh-78px)] pb-[160px] overflow-y-auto relative"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.2, duration: 0.3 }}
-              >
-                {messages.map((message, index) => (
-                  <motion.div
-                    key={message.id}
-                    className={`mb-4 ${
-                      message.role === "user" ? "text-right" : "text-left"
-                    }`}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.1 * index, duration: 0.3 }}
-                  >
-                    {message.content && (
+              <div className="col-span-4">
+                <motion.div
+                  className="p-4 pt-0 w-full h-full max-h-[calc(100vh-230px)] overflow-y-auto relative"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 0.2, duration: 0.3 }}
+                >
+                  {messages.map((message, index) => (
+                    <motion.div
+                      key={message.id}
+                      className={`mb-4 ${
+                        message.role === "user" ? "text-right" : "text-left"
+                      }`}
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.1 * index, duration: 0.3 }}
+                    >
+                      {message.content && (
+                        <motion.div
+                          className={`inline-block text-left rounded-lg ${
+                            message.role === "user"
+                              ? "bg-neutral-800 p-3 text-white max-w-[80%] border border-[#ffffff0f] shadow-[0px_0px_8px_0px_rgba(0,0,0,0.02)]"
+                              : "text-white"
+                          }`}
+                          initial={{ scale: 0.9 }}
+                          animate={{ scale: 1 }}
+                          transition={{
+                            type: "spring",
+                            stiffness: 500,
+                            damping: 30,
+                          }}
+                        >
+                          {message.role === "user" ? (
+                            message.content
+                          ) : (
+                            <Markdown>{message.content}</Markdown>
+                          )}
+                        </motion.div>
+                      )}
+                      {message.action && (
+                        <motion.div
+                          className="mt-2"
+                          initial={{ opacity: 0, y: 20 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: 0.1 * index, duration: 0.3 }}
+                        >
+                          <Action
+                            type={message.action.type}
+                            value={message.action.data}
+                            onClick={() =>
+                              handleClickAction(message.action, true)
+                            }
+                          />
+                        </motion.div>
+                      )}
+                    </motion.div>
+                  ))}
+
+                  {isLoading && (
+                    <motion.div
+                      className="mb-4 text-left"
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{
+                        type: "spring",
+                        stiffness: 300,
+                        damping: 30,
+                      }}
+                    >
                       <motion.div
-                        className={`inline-block text-left rounded-lg ${
-                          message.role === "user"
-                            ? "bg-neutral-800 p-3 text-white max-w-[80%] border border-[#ffffff0f] shadow-[0px_0px_8px_0px_rgba(0,0,0,0.02)]"
-                            : "text-white"
-                        }`}
-                        initial={{ scale: 0.9 }}
+                        className="inline-block p-3 text-left rounded-lg bg-neutral-800/90 text-white backdrop-blur-sm"
+                        initial={{ scale: 0.95 }}
                         animate={{ scale: 1 }}
                         transition={{
                           type: "spring",
-                          stiffness: 500,
-                          damping: 30,
+                          stiffness: 400,
+                          damping: 25,
                         }}
                       >
-                        {message.role === "user" ? (
-                          message.content
-                        ) : (
-                          <Markdown>{message.content}</Markdown>
-                        )}
-                      </motion.div>
-                    )}
-                    {message.action && (
-                      <motion.div
-                        className="mt-2"
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.1 * index, duration: 0.3 }}
-                      >
-                        <Action
-                          type={message.action.type}
-                          value={message.action.data}
-                          onClick={() =>
-                            handleClickAction(message.action, true)
-                          }
-                        />
-                      </motion.div>
-                    )}
-                  </motion.div>
-                ))}
-
-                {isLoading && (
-                  <motion.div
-                    className="mb-4 text-left"
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                  >
-                    <motion.div
-                      className="inline-block p-3 text-left rounded-lg bg-neutral-800/90 text-white backdrop-blur-sm"
-                      initial={{ scale: 0.95 }}
-                      animate={{ scale: 1 }}
-                      transition={{
-                        type: "spring",
-                        stiffness: 400,
-                        damping: 25,
-                      }}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="flex space-x-2">
-                          <div className="w-2 h-2 bg-white rounded-full animate-[dot-bounce_1.2s_ease-in-out_infinite_0ms]" />
-                          <div className="w-2 h-2 bg-white rounded-full animate-[dot-bounce_1.2s_ease-in-out_infinite_200ms]" />
-                          <div className="w-2 h-2 bg-white rounded-full animate-[dot-bounce_1.2s_ease-in-out_infinite_400ms]" />
+                        <div className="flex items-center gap-3">
+                          <div className="flex space-x-2">
+                            <div className="w-2 h-2 bg-white rounded-full animate-[dot-bounce_1.2s_ease-in-out_infinite_0ms]" />
+                            <div className="w-2 h-2 bg-white rounded-full animate-[dot-bounce_1.2s_ease-in-out_infinite_200ms]" />
+                            <div className="w-2 h-2 bg-white rounded-full animate-[dot-bounce_1.2s_ease-in-out_infinite_400ms]" />
+                          </div>
                         </div>
-                      </div>
+                      </motion.div>
                     </motion.div>
-                  </motion.div>
-                )}
+                  )}
 
-                {isCompleted && (
-                  <div className="flex gap-x-2 items-center bg-[#25BA3B1E] text-green-600 text-sm p-2 rounded-full">
-                    <Check className="size-4" />
-                    <span>II-Agent has completed the current task.</span>
-                  </div>
-                )}
+                  {isCompleted && (
+                    <div className="flex gap-x-2 items-center bg-[#25BA3B1E] text-green-600 text-sm p-2 rounded-full">
+                      <Check className="size-4" />
+                      <span>II-Agent has completed the current task.</span>
+                    </div>
+                  )}
 
-                <div ref={messagesEndRef} />
-
+                  <div ref={messagesEndRef} />
+                </motion.div>
                 <motion.div
-                  className="fixed bottom-0 left-0 w-[40%]"
+                  className="sticky bottom-0 left-0 w-full"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{ delay: 0.2, duration: 0.3 }}
                 >
                   <QuestionInput
-                    className="px-6 py-4"
+                    className="p-4 pb-0"
                     textareaClassName="h-30"
                     placeholder="Ask me anything..."
                     value={currentQuestion}
@@ -486,7 +491,7 @@ export default function Home() {
                     handleSubmit={handleQuestionSubmit}
                   />
                 </motion.div>
-              </motion.div>
+              </div>
 
               <motion.div className="col-span-6 bg-neutral-800 p-4 rounded-2xl border border-[#ffffff0f] shadow-[0px_0px_8px_0px_rgba(0,0,0,0.02)]">
                 <div className="pb-4 bg-neutral-850 flex items-center justify-between">
