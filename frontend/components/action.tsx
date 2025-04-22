@@ -1,7 +1,7 @@
 "use client";
 
 import { ActionStep, TOOL } from "@/typings/agent";
-import { Code, Globe, Lightbulb, Search, Terminal } from "lucide-react";
+import { Code, Globe, Lightbulb, Rocket, Search, Terminal } from "lucide-react";
 import { useMemo } from "react";
 
 interface ActionProps {
@@ -28,6 +28,8 @@ const Action = ({ type, value, onClick }: ActionProps) => {
         return <Code className={className} />;
       case TOOL.STR_REPLACE_EDITOR:
         return <Code className={className} />;
+      case TOOL.STATIC_DEPLOY:
+        return <Rocket className={className} />;
 
       default:
         return <></>;
@@ -51,6 +53,8 @@ const Action = ({ type, value, onClick }: ActionProps) => {
         return value?.tool_input?.command === "create"
           ? "Creating File"
           : "Editing File";
+      case TOOL.STATIC_DEPLOY:
+        return "Deploying";
 
       default:
         break;
@@ -73,6 +77,8 @@ const Action = ({ type, value, onClick }: ActionProps) => {
         return value.tool_input?.file;
       case TOOL.STR_REPLACE_EDITOR:
         return value.tool_input?.path;
+      case TOOL.STATIC_DEPLOY:
+        return value.tool_input?.file_path;
 
       default:
         break;
