@@ -27,6 +27,7 @@ from utils.llm_client import get_client
 from prompts.instruction import INSTRUCTION_PROMPT
 from dotenv import load_dotenv
 
+from fastapi.staticfiles import StaticFiles
 load_dotenv()
 MAX_OUTPUT_TOKENS_PER_TURN = 32768
 MAX_TURNS = 200
@@ -44,13 +45,14 @@ app.add_middleware(
 )
 
 # Serve static files from frontend directory
-from fastapi.staticfiles import StaticFiles
+
+# Serve workspace directory for static file access
 try:
-    app.mount("/frontend", StaticFiles(directory="frontend"), name="frontend")
+    app.mount("/workspace", StaticFiles(directory="workspace", html=True), name="workspace")
 except RuntimeError:
     # Directory might not exist yet
-    os.makedirs("frontend", exist_ok=True)
-    app.mount("/frontend", StaticFiles(directory="frontend"), name="frontend")
+    os.makedirs("workspace", exist_ok=True)
+    app.mount("/workspace", StaticFiles(directory="workspace", html=True), name="workspace")
 
 # Create a logger
 logger = logging.getLogger("websocket_server")
@@ -87,13 +89,13 @@ async def process_agent_messages(websocket: WebSocket, agent: Agent):
             # Use anyio.to_thread.run_sync for blocking operations
             try:
                 message = await agent.message_queue.get()
-                
+
                 if websocket in active_connections:
                     await websocket.send_json({
                         "type": message.type,
                         "content": message.raw_message
                     })
-                
+
                 agent.message_queue.task_done()
             except asyncio.CancelledError:
                 break
@@ -107,18 +109,18 @@ async def process_agent_messages(websocket: WebSocket, agent: Agent):
 async def run_agent_async(websocket: WebSocket, user_input: str, resume: bool = False):
     """Run the agent asynchronously and send results back to the websocket."""
     agent = active_agents.get(websocket)
-    
+
     if not agent:
         await websocket.send_json({
             "type": "error",
             "content": {"message": "Agent not initialized for this connection"}
         })
         return
-    
+
     try:
         # Run the agent with the query
         result = await anyio.to_thread.run_sync(agent.run_agent, user_input, resume)
-        
+
         # Send result back to client
         await websocket.send_json({
             "type": "agent_response",
@@ -140,11 +142,11 @@ async def run_agent_async(websocket: WebSocket, user_input: str, resume: bool = 
 def create_agent_for_connection(websocket: WebSocket):
     """Create a new agent instance for a websocket connection."""
     global global_args
-    
+
     # Setup logging
     logger_for_agent_logs = logging.getLogger(f"agent_logs_{id(websocket)}")
     logger_for_agent_logs.setLevel(logging.DEBUG)
-    
+
     # Ensure we don't duplicate handlers
     if not logger_for_agent_logs.handlers:
         logger_for_agent_logs.addHandler(logging.FileHandler(global_args.logs_path))
@@ -152,24 +154,24 @@ def create_agent_for_connection(websocket: WebSocket):
             logger_for_agent_logs.addHandler(logging.StreamHandler())
         else:
             logger_for_agent_logs.propagate = False
-    
+
     # Create console for agent
     from rich.console import Console
     console = Console()
-    
+
     # Initialize LLM client
     client = get_client(
         "anthropic-direct",
         model_name="claude-3-7-sonnet@20250219",
         use_caching=False,
     )
-    
+
     # Initialize workspace manager
     workspace_path = Path(global_args.workspace).resolve()
     workspace_manager = WorkspaceManager(
         root=workspace_path, container_workspace=global_args.use_container_workspace
     )
-    
+
     # Initialize agent with websocket
     agent = Agent(
         client=client,
@@ -181,8 +183,9 @@ def create_agent_for_connection(websocket: WebSocket):
         ask_user_permission=global_args.needs_permission,
         docker_container_id=global_args.docker_container_id,
         websocket=websocket,
+        file_server_port=global_args.port,
     )
-    
+
     return agent
 
 @app.websocket("/ws")
@@ -190,22 +193,22 @@ async def websocket_endpoint(websocket: WebSocket):
     # Accept the connection
     await websocket.accept()
     active_connections.add(websocket)
-    
+
     # Create a new agent for this connection
     agent = create_agent_for_connection(websocket)
     active_agents[websocket] = agent
-    
+
     # Start message processor for this connection
     message_processor = asyncio.create_task(process_agent_messages(websocket, agent))
     message_processors[websocket] = message_processor
-    
+
     try:
         # Initial connection message
         await websocket.send_json({
             "type": "connection_established",
             "content": {"message": "Connected to Agent WebSocket Server"}
         })
-        
+
         # Process messages from the client
         while True:
             # Receive and parse message
@@ -214,7 +217,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 message = json.loads(data)
                 msg_type = message.get("type")
                 content = message.get("content", {})
-                
+
                 if msg_type == "query":
                     # Check if there's an active task for this connection
                     if websocket in active_tasks and not active_tasks[websocket].done():
@@ -223,21 +226,21 @@ async def websocket_endpoint(websocket: WebSocket):
                             "content": {"message": "A query is already being processed"}
                         })
                         continue
-                        
+
                     # Process a query to the agent
                     user_input = content.get("text", "")
                     resume = content.get("resume", False)
-                    
+
                     # Send acknowledgment
                     await websocket.send_json({
                         "type": "processing",
                         "content": {"message": "Processing your request..."}
                     })
-                    
+
                     # Run the agent with the query in a separate task
                     task = asyncio.create_task(run_agent_async(websocket, user_input, resume))
                     active_tasks[websocket] = task
-                
+
                 elif msg_type == "workspace_info":
                     # Send information about the current workspace
                     if agent and agent.workspace_manager:
@@ -250,14 +253,14 @@ async def websocket_endpoint(websocket: WebSocket):
                             "type": "error",
                             "content": {"message": "Workspace not initialized"}
                         })
-                
+
                 elif msg_type == "ping":
                     # Simple ping to keep connection alive
                     await websocket.send_json({
                         "type": "pong",
                         "content": {}
                     })
-                
+
                 elif msg_type == "cancel":
                     # Cancel the current agent task if one exists
                     if websocket in active_tasks and not active_tasks[websocket].done():
@@ -271,14 +274,14 @@ async def websocket_endpoint(websocket: WebSocket):
                             "type": "error",
                             "content": {"message": "No active query to cancel"}
                         })
-                
+
                 else:
                     # Unknown message type
                     await websocket.send_json({
                         "type": "error",
                         "content": {"message": f"Unknown message type: {msg_type}"}
                     })
-            
+
             except json.JSONDecodeError:
                 await websocket.send_json({
                     "type": "error",
@@ -290,7 +293,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     "type": "error",
                     "content": {"message": f"Error processing request: {str(e)}"}
                 })
-                
+
     except WebSocketDisconnect:
         # Handle disconnection
         logger.info("Client disconnected")
@@ -305,17 +308,17 @@ def cleanup_connection(websocket: WebSocket):
     # Remove from active connections
     if websocket in active_connections:
         active_connections.remove(websocket)
-    
+
     # Cancel message processor
     if websocket in message_processors:
         message_processors[websocket].cancel()
         del message_processors[websocket]
-    
+
     # Cancel any running tasks
     if websocket in active_tasks and not active_tasks[websocket].done():
         active_tasks[websocket].cancel()
         del active_tasks[websocket]
-    
+
     # Remove agent for this connection
     if websocket in active_agents:
         del active_agents[websocket]
@@ -329,7 +332,7 @@ async def redirect_to_frontend():
 def main():
     """Main entry point for the WebSocket server."""
     global global_args
-    
+
     # Parse command-line arguments
     parser = argparse.ArgumentParser(description="WebSocket Server for interacting with the Agent")
     parser.add_argument(
@@ -381,13 +384,13 @@ def main():
         default=8000,
         help="Port to run the server on",
     )
-    
+
     args = parser.parse_args()
     global_args = args
-    
+
     # Start the FastAPI server
     logger.info(f"Starting WebSocket server on {args.host}:{args.port}")
     uvicorn.run(app, host=args.host, port=args.port)
 
 if __name__ == "__main__":
-    main() 
+    main()
