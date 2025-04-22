@@ -134,7 +134,7 @@ const CodeEditor = ({
 
   useEffect(() => {
     loadDirectory(ROOT_PATH);
-  }, []);
+  }, [activeFile]);
 
   const toggleFolder = (folderPath: string) => {
     setExpandedFolders((prev) => {

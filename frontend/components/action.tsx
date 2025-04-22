@@ -48,12 +48,14 @@ const Action = ({ type, value, onClick }: ActionProps) => {
       case TOOL.FILE_WRITE:
         return "Creating File";
       case TOOL.STR_REPLACE_EDITOR:
-        return "Editing File";
+        return value?.tool_input?.command === "create"
+          ? "Creating File"
+          : "Editing File";
 
       default:
         break;
     }
-  }, [type]);
+  }, [type, value?.tool_input?.command]);
 
   const step_value = useMemo(() => {
     switch (type) {

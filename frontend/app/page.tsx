@@ -72,8 +72,13 @@ export default function Home() {
             // query
             xtermRef.current?.write(data.data.tool_input?.command + "");
             // result
-            xtermRef.current?.write(data.data.result + "");
-            xtermRef.current?.write("\r\n$ ");
+            if (data.data.result) {
+              xtermRef.current?.write("\r\n");
+              xtermRef.current?.write(`${data.data.result}`);
+              xtermRef.current?.write("\r\n$ ");
+            } else {
+              xtermRef.current?.write("\r\n$ ");
+            }
           }, 500);
         }
         break;
