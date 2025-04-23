@@ -50,7 +50,8 @@ class BrowserUse(LLMTool):
             llm=llm, 
             browser_config=BrowserConfig(start_at_url=tool_input['url']), 
             log_dir="logs/browser_use/",
-            message_queue=self.message_queue
+            message_queue=self.message_queue,
+            vision_only=True
         )
 
         async def _run():
