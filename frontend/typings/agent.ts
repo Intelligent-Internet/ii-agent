@@ -32,6 +32,7 @@ export enum TOOL {
 export type ActionStep = {
   type: TOOL;
   data: {
+    isResult?: boolean;
     tool_name?: string;
     tool_input?: {
       thought?: string;

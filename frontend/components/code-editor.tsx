@@ -11,7 +11,6 @@ import {
 } from "lucide-react";
 import { useRef, useState, useEffect } from "react";
 
-export const ROOT_PATH = process.env.NEXT_PUBLIC_WORKSPACE_PATH || "/";
 const ROOT_NAME = "ii-agent";
 
 // Map file extensions to Monaco editor language IDs
@@ -61,12 +60,14 @@ interface FileStructure {
 
 interface CodeEditorProps {
   className?: string;
+  workspaceInfo?: string;
   activeFile?: string;
   setActiveFile?: (file: string) => void;
 }
 
 const CodeEditor = ({
   className,
+  workspaceInfo,
   activeFile,
   setActiveFile,
 }: CodeEditorProps) => {
@@ -133,8 +134,10 @@ const CodeEditor = ({
   };
 
   useEffect(() => {
-    loadDirectory(ROOT_PATH);
-  }, [activeFile]);
+    if (workspaceInfo) {
+      loadDirectory(workspaceInfo);
+    }
+  }, [activeFile, workspaceInfo]);
 
   const toggleFolder = (folderPath: string) => {
     setExpandedFolders((prev) => {
@@ -149,9 +152,9 @@ const CodeEditor = ({
   };
 
   const renderBreadcrumb = () => {
-    if (!activeFile) return null;
+    if (!activeFile || !workspaceInfo) return null;
 
-    const relativePath = activeFile.replace(ROOT_PATH, "");
+    const relativePath = activeFile.replace(workspaceInfo, "");
     const parts = relativePath.split("/").filter(Boolean);
     const fileName = parts[parts.length - 1];
     const folderName = ROOT_NAME;

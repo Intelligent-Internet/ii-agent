@@ -6,10 +6,10 @@ import { Check, Code, Globe, Terminal as TerminalIcon, X } from "lucide-react";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { cloneDeep } from "lodash";
+import { cloneDeep, debounce } from "lodash";
 
 import Browser from "@/components/browser";
-import CodeEditor, { ROOT_PATH } from "@/components/code-editor";
+import CodeEditor from "@/components/code-editor";
 import QuestionInput from "@/components/question-input";
 import SearchBrowser from "@/components/search-browser";
 import Terminal from "@/components/terminal";
@@ -33,6 +33,9 @@ interface Message {
 }
 
 export default function Home() {
+  const xtermRef = useRef<XTerm | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isInChatView, setIsInChatView] = useState(false);
@@ -41,61 +44,65 @@ export default function Home() {
   const [currentActionData, setCurrentActionData] = useState<ActionStep>();
   const [activeFileCodeEditor, setActiveFileCodeEditor] = useState("");
   const [currentQuestion, setCurrentQuestion] = useState("");
-  const xtermRef = useRef<XTerm | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
   const [isCompleted, setIsCompleted] = useState(false);
+  const [workspaceInfo, setWorkspaceInfo] = useState("");
 
-  const handleClickAction = (
-    data: ActionStep | undefined,
-    showTabOnly = false
-  ) => {
-    if (!data) return;
+  const handleClickAction = debounce(
+    (data: ActionStep | undefined, showTabOnly = false) => {
+      if (!data) return;
 
-    setActiveFileCodeEditor("");
+      setActiveFileCodeEditor("");
 
-    switch (data.type) {
-      case TOOL.TAVILY_SEARCH:
-        setActiveTab(TAB.BROWSER);
-        setCurrentActionData(data);
-        break;
+      switch (data.type) {
+        case TOOL.TAVILY_SEARCH:
+          setActiveTab(TAB.BROWSER);
+          setCurrentActionData(data);
+          break;
 
-      case TOOL.TAVILY_VISIT:
-      case TOOL.BROWSER_USE:
-        setActiveTab(TAB.BROWSER);
-        setCurrentActionData(data);
-        break;
+        case TOOL.TAVILY_VISIT:
+        case TOOL.BROWSER_USE:
+          setActiveTab(TAB.BROWSER);
+          setCurrentActionData(data);
+          break;
 
-      case TOOL.BASH:
-        setActiveTab(TAB.TERMINAL);
-        if (!showTabOnly) {
-          setTimeout(() => {
-            // query
-            xtermRef.current?.write(data.data.tool_input?.command + "");
-            // result
-            if (data.data.result) {
-              xtermRef.current?.write("\r\n");
-              xtermRef.current?.write(`${data.data.result}`);
-              xtermRef.current?.write("\r\n$ ");
-            } else {
-              xtermRef.current?.write("\r\n$ ");
-            }
-          }, 500);
-        }
-        break;
+        case TOOL.BASH:
+          setActiveTab(TAB.TERMINAL);
+          if (!showTabOnly) {
+            setTimeout(() => {
+              if (!data.data?.isResult) {
+                // query
+                xtermRef.current?.writeln(
+                  `${data.data.tool_input?.command || ""}`
+                );
+              }
+              // result
+              if (data.data.result) {
+                xtermRef.current?.writeln(`${data.data.result || ""}`);
+                xtermRef.current?.write("$ ");
+              }
+            }, 500);
+          }
+          break;
 
-      case TOOL.FILE_WRITE:
-      case TOOL.STR_REPLACE_EDITOR:
-        setActiveTab(TAB.CODE);
-        setCurrentActionData(data);
-        if (data.data.tool_input?.path) {
-          setActiveFileCodeEditor(`${data.data.tool_input.path}`);
-        }
-        break;
+        case TOOL.FILE_WRITE:
+        case TOOL.STR_REPLACE_EDITOR:
+          setActiveTab(TAB.CODE);
+          setCurrentActionData(data);
+          if (data.data.tool_input?.path) {
+            setActiveFileCodeEditor(
+              data.data.tool_input.path.startsWith("/")
+                ? data.data.tool_input.path
+                : `${workspaceInfo}${data.data.tool_input.path}`
+            );
+          }
+          break;
 
-      default:
-        break;
-    }
-  };
+        default:
+          break;
+      }
+    },
+    50
+  );
 
   const handleQuestionSubmit = async (newQuestion: string) => {
     if (!newQuestion.trim() || isLoading) return;
@@ -121,6 +128,15 @@ export default function Home() {
       setSocket(ws);
 
       ws.onopen = () => {
+        // First request workspace info
+        ws?.send(
+          JSON.stringify({
+            type: "workspace_info",
+            content: {},
+          })
+        );
+
+        // Then send the query
         ws?.send(
           JSON.stringify({
             type: "query",
@@ -150,6 +166,9 @@ export default function Home() {
         switch (data.type) {
           case AgentEvent.PROCESSING:
             setIsLoading(true);
+            break;
+          case AgentEvent.WORKSPACE_INFO:
+            setWorkspaceInfo(data.content.path);
             break;
           case AgentEvent.AGENT_THINKING:
             setMessages((prev) => [
@@ -230,9 +249,8 @@ export default function Home() {
                     lastMessage.action?.type === data.content.tool_name
                   ) {
                     lastMessage.action.data.result = data.content.result;
-                    setTimeout(() => {
-                      handleClickAction(lastMessage.action);
-                    }, 500);
+                    lastMessage.action.data.isResult = true;
+                    handleClickAction(lastMessage.action);
                     return [...prev];
                   } else {
                     return [...prev, { ...lastMessage, action: data.content }];
@@ -297,7 +315,7 @@ export default function Home() {
 
   const handleOpenVSCode = () => {
     let url = process.env.NEXT_PUBLIC_VSCODE_URL || "http://127.0.0.1:8080";
-    url += `/?folder=${ROOT_PATH}`;
+    url += `/?folder=${workspaceInfo}`;
     window.open(url, "_blank");
   };
 
@@ -580,6 +598,7 @@ export default function Home() {
                 <CodeEditor
                   key={JSON.stringify(messages)}
                   className={activeTab === TAB.CODE ? "" : "hidden"}
+                  workspaceInfo={workspaceInfo}
                   activeFile={activeFileCodeEditor}
                   setActiveFile={setActiveFileCodeEditor}
                 />
