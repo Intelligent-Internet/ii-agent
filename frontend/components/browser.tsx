@@ -40,17 +40,17 @@ const Browser = ({ className, url, screenshot, rawData }: BrowserProps) => {
           </button>
         </div>
       </div>
-      <div className="bg-black/80 h-full">
-        {screenshot && !rawData && (
+      {screenshot && !rawData && (
+        <div className="bg-black/80 h-full">
           <img
             src={`data:image/jpeg;base64,${screenshot}`}
             alt="Browser"
             className="w-full h-full object-contain object-top"
           />
-        )}
-      </div>
+        </div>
+      )}
       {rawData && !screenshot && (
-        <div className="p-4 bg-black/80">
+        <div className="p-4 bg-black/80 h-full overflow-auto">
           <Markdown>{rawData}</Markdown>
         </div>
       )}

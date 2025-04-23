@@ -250,8 +250,10 @@ export default function Home() {
                   ) {
                     lastMessage.action.data.result = data.content.result;
                     lastMessage.action.data.isResult = true;
-                    handleClickAction(lastMessage.action);
-                    return [...prev];
+                    setTimeout(() => {
+                      handleClickAction(lastMessage.action);
+                    }, 500);
+                    return [...prev.slice(0, -1), lastMessage];
                   } else {
                     return [...prev, { ...lastMessage, action: data.content }];
                   }
@@ -571,7 +573,11 @@ export default function Home() {
                       : "hidden"
                   }
                   url={currentActionData?.data?.tool_input?.url}
-                  screenshot={currentActionData?.data.result as string}
+                  screenshot={
+                    currentActionData?.type === TOOL.BROWSER_USE
+                      ? (currentActionData?.data.result as string)
+                      : undefined
+                  }
                   rawData={
                     currentActionData?.type === TOOL.TAVILY_VISIT &&
                     parseJson(currentActionData?.data?.result as string)
