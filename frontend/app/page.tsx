@@ -92,7 +92,7 @@ export default function Home() {
             setActiveFileCodeEditor(
               data.data.tool_input.path.startsWith("/")
                 ? data.data.tool_input.path
-                : `${workspaceInfo}${data.data.tool_input.path}`
+                : `${workspaceInfo}/${data.data.tool_input.path}`
             );
           }
           break;
@@ -502,8 +502,8 @@ export default function Home() {
                   transition={{ delay: 0.2, duration: 0.3 }}
                 >
                   <QuestionInput
-                    className="p-4 pb-0"
-                    textareaClassName="h-30"
+                    className="p-4 pb-0 w-full max-w-none"
+                    textareaClassName="h-30 w-full"
                     placeholder="Ask me anything..."
                     value={currentQuestion}
                     setValue={setCurrentQuestion}
