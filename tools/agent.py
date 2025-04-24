@@ -17,11 +17,12 @@ from prompts.system_prompt import SYSTEM_PROMPT
 from tools.str_replace_tool import StrReplaceEditorTool
 from tools.sequential_thinking_tool import SequentialThinkingTool
 from tools.tavily_web_search import TavilySearchTool
-from tools.tavily_visit_webpage import TavilyVisitWebpageTool
+# from tools.tavily_visit_webpage import TavilyVisitWebpageTool
 from tools.planner_agent import PlannerAgent
 from tools.writing_agent import WritingAgent
 from tools.file_write_tool import FileWriteTool
 from tools.browser_use import BrowserUse
+from tools.browser_use_faker import TavilyVisitWebpageTool
 from tools.static_deploy_tool import StaticDeployTool
 from termcolor import colored
 from rich.console import Console
@@ -156,8 +157,8 @@ try breaking down the task into smaller steps. After call this tool to update or
             StrReplaceEditorTool(workspace_manager=workspace_manager),
             SequentialThinkingTool(),
             TavilySearchTool(),
-            TavilyVisitWebpageTool(),
-            BrowserUse(message_queue=self.message_queue),
+            TavilyVisitWebpageTool(message_queue=self.message_queue),
+            # BrowserUse(message_queue=self.message_queue),
             self.complete_tool,
             FileWriteTool(),
             StaticDeployTool(
