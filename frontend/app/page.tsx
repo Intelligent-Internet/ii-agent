@@ -7,12 +7,15 @@ import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { cloneDeep, debounce } from "lodash";
+import dynamic from "next/dynamic";
 
 import Browser from "@/components/browser";
 import CodeEditor from "@/components/code-editor";
 import QuestionInput from "@/components/question-input";
 import SearchBrowser from "@/components/search-browser";
-import Terminal from "@/components/terminal";
+const Terminal = dynamic(() => import("@/components/terminal"), {
+  ssr: false,
+});
 import { Button } from "@/components/ui/button";
 import { ActionStep, AgentEvent, TOOL } from "@/typings/agent";
 import Action from "@/components/action";
@@ -77,7 +80,10 @@ export default function Home() {
               }
               // result
               if (data.data.result) {
-                xtermRef.current?.writeln(`${data.data.result || ""}`);
+                const lines = `${data.data.result || ""}`.split("\n");
+                lines.forEach((line) => {
+                  xtermRef.current?.writeln(line);
+                });
                 xtermRef.current?.write("$ ");
               }
             }, 500);
@@ -88,11 +94,10 @@ export default function Home() {
         case TOOL.STR_REPLACE_EDITOR:
           setActiveTab(TAB.CODE);
           setCurrentActionData(data);
-          if (data.data.tool_input?.path) {
+          const path = data.data.tool_input?.path || data.data.tool_input?.file;
+          if (path) {
             setActiveFileCodeEditor(
-              data.data.tool_input.path.startsWith("/")
-                ? data.data.tool_input.path
-                : `${workspaceInfo}/${data.data.tool_input.path}`
+              path.startsWith(workspaceInfo) ? path : `${workspaceInfo}/${path}`
             );
           }
           break;
@@ -216,8 +221,11 @@ export default function Home() {
               }
               if (
                 lastMessage.action &&
-                lastMessage.action?.type === data.type
+                (lastMessage.action?.type === TOOL.BROWSER_USE ||
+                  lastMessage.action?.type === TOOL.TAVILY_VISIT)
               ) {
+                lastMessage.id = Date.now().toString();
+                lastMessage.action.type = TOOL.BROWSER_USE;
                 lastMessage.action.data.result = data.content.screenshot;
                 setTimeout(() => {
                   handleClickAction(lastMessage.action);
@@ -241,13 +249,17 @@ export default function Home() {
                 },
               ]);
             } else {
-              if (data.content.tool_name !== TOOL.SEQUENTIAL_THINKING) {
+              if (
+                data.content.tool_name !== TOOL.SEQUENTIAL_THINKING &&
+                data.content.tool_name !== TOOL.TAVILY_VISIT
+              ) {
                 setMessages((prev) => {
                   const lastMessage = cloneDeep(prev[prev.length - 1]);
                   if (
                     lastMessage.action &&
                     lastMessage.action?.type === data.content.tool_name
                   ) {
+                    lastMessage.id = Date.now().toString();
                     lastMessage.action.data.result = data.content.result;
                     lastMessage.action.data.isResult = true;
                     setTimeout(() => {
@@ -576,13 +588,6 @@ export default function Home() {
                   screenshot={
                     currentActionData?.type === TOOL.BROWSER_USE
                       ? (currentActionData?.data.result as string)
-                      : undefined
-                  }
-                  rawData={
-                    currentActionData?.type === TOOL.TAVILY_VISIT &&
-                    parseJson(currentActionData?.data?.result as string)
-                      ? parseJson(currentActionData?.data?.result as string)
-                          ?.raw_content
                       : undefined
                   }
                 />

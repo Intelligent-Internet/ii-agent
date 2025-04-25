@@ -1,7 +1,7 @@
 "use client";
 
 import { Terminal as XTerm } from "@xterm/xterm";
-// import { FitAddon } from "@xterm/addon-fit";
+import { FitAddon } from "@xterm/addon-fit";
 // import { WebLinksAddon } from "@xterm/addon-web-links";
 // import { SearchAddon } from "@xterm/addon-search";
 import { forwardRef, Ref, useEffect, useRef } from "react";
@@ -47,13 +47,13 @@ const Terminal = (
           allowTransparency: true,
         });
 
-        // const fitAddon = new FitAddon();
-        // term.loadAddon(fitAddon);
+        const fitAddon = new FitAddon();
+        term.loadAddon(fitAddon);
         // term.loadAddon(new WebLinksAddon());
         // term.loadAddon(new SearchAddon());
 
         term.open(container);
-        // fitAddon.fit();
+        fitAddon.fit();
 
         term.writeln("Welcome to II-Agent!");
         prompt(term);
@@ -112,7 +112,7 @@ const Terminal = (
         });
 
         const handleResize = () => {
-          // fitAddon.fit();
+          fitAddon.fit();
         };
         window.addEventListener("resize", handleResize);
         if (typeof xtermRef === "function") {

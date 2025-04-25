@@ -1,14 +1,12 @@
 import { Globe, SquareArrowOutUpRight } from "lucide-react";
-import Markdown from "./markdown";
 
 interface BrowserProps {
   className?: string;
   url?: string;
   screenshot?: string;
-  rawData?: string;
 }
 
-const Browser = ({ className, url, screenshot, rawData }: BrowserProps) => {
+const Browser = ({ className, url, screenshot }: BrowserProps) => {
   if (!url) return;
 
   return (
@@ -40,20 +38,15 @@ const Browser = ({ className, url, screenshot, rawData }: BrowserProps) => {
           </button>
         </div>
       </div>
-      {screenshot && !rawData && (
-        <div className="bg-black/80 h-full">
+      <div className="bg-black/80 h-full">
+        {screenshot && (
           <img
             src={`data:image/jpeg;base64,${screenshot}`}
             alt="Browser"
             className="w-full h-full object-contain object-top"
           />
-        </div>
-      )}
-      {rawData && !screenshot && (
-        <div className="p-4 bg-black/80 h-full overflow-auto">
-          <Markdown>{rawData}</Markdown>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 };
