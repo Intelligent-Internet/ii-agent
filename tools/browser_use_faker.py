@@ -69,9 +69,10 @@ class FakeBrowserUse:
                 bypass_csp=True,
                 ignore_https_errors=True,
             )
+        self._apply_anti_detection_scripts()
         self.current_page = await self.context.new_page()
         try:
-            await self.current_page.goto(self.url, wait_until="load", timeout=30)
+            await self.current_page.goto(self.url, wait_until="load", timeout=30000)
         except TimeoutError as e:
             raise Exception(f"Timeout error while going to the webpage {self.url}")
         
@@ -110,6 +111,7 @@ class FakeBrowserUse:
 
     async def forward(self):
         await self._setup()
+        
         if self.is_pdf:
             time.sleep(5)
             await self.current_page.keyboard.press("Control+\\")
@@ -171,6 +173,44 @@ class FakeBrowserUse:
         except requests.RequestException as e:
             # Log or handle as needed in real prod code
             return False
+        
+    async def _apply_anti_detection_scripts(self):
+        """Apply scripts to avoid detection as automation"""
+        await self.context.add_init_script(
+            """
+            // Webdriver property
+            Object.defineProperty(navigator, 'webdriver', {
+                get: () => undefined
+            });
+
+            // Languages
+            Object.defineProperty(navigator, 'languages', {
+                get: () => ['en-US']
+            });
+
+            // Plugins
+            Object.defineProperty(navigator, 'plugins', {
+                get: () => [1, 2, 3, 4, 5]
+            });
+
+            // Chrome runtime
+            window.chrome = { runtime: {} };
+
+            // Permissions
+            const originalQuery = window.navigator.permissions.query;
+            window.navigator.permissions.query = (parameters) => (
+                parameters.name === 'notifications' ?
+                    Promise.resolve({ state: Notification.permission }) :
+                    originalQuery(parameters)
+            );
+            (function () {
+                const originalAttachShadow = Element.prototype.attachShadow;
+                Element.prototype.attachShadow = function attachShadow(options) {
+                    return originalAttachShadow.call(this, { ...options, mode: "open" });
+                };
+            })();
+            """
+        )
         
 
 class TavilyVisitWebpageTool(LLMTool):
