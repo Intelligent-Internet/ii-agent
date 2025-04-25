@@ -1,4 +1,5 @@
 import json
+import asyncio
 from utils.common import (
     DialogMessages,
     LLMTool,
@@ -10,7 +11,7 @@ import random
 from PIL import Image
 from io import BytesIO
 from base64 import b64decode
-from playwright.sync_api import sync_playwright
+from playwright.async_api import async_playwright
 from asyncio import Queue
 from typing import Any, Optional
 from pydantic import BaseModel
@@ -45,8 +46,12 @@ class FakeBrowserUse:
         self.url = url
         self.message_queue = message_queue
         self._cdp_session = None
-        self.playwright = sync_playwright().start()
-        self.playwright_browser = self.playwright.chromium.launch(
+
+        self.is_pdf = self._is_pdf_url(self.url)
+
+    async def _setup(self):
+        self.playwright = await async_playwright().start()
+        self.playwright_browser = await self.playwright.chromium.launch(
                 headless=False,
                 channel="chrome",
                 args=[
@@ -57,29 +62,28 @@ class FakeBrowserUse:
                     '--disable-features=IsolateOrigins,site-per-process',
                 ]
             )
-        self.context = self.playwright_browser.new_context(
+        self.context = await self.playwright_browser.new_context(
                 user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.102 Safari/537.36',
                 java_script_enabled=True,
                 bypass_csp=True,
                 ignore_https_errors=True,
             )
+        self.current_page = await self.context.new_page()
+        await self.current_page.goto(self.url, wait_until="domcontentloaded")
+        
 
-        self.is_pdf = self._is_pdf_url(self.url)
-        self.current_page = self.context.new_page()
-        self.current_page.goto(self.url, wait_until="domcontentloaded")
-
-    def get_cdp_session(self):
+    async def get_cdp_session(self):
         # Create a new session if we don't have one or the page has changed
         if (self._cdp_session is None or 
             not hasattr(self._cdp_session, '_page') or 
             self._cdp_session._page != self.current_page):
-            self._cdp_session = self.context.new_cdp_session(self.current_page)
+            self._cdp_session = await self.context.new_cdp_session(self.current_page)
             # Store reference to the page this session belongs to
             self._cdp_session._page = self.current_page
             
         return self._cdp_session
     
-    def fast_screenshot(self) -> str:
+    async def fast_screenshot(self) -> str:
         """
 		Returns a base64 encoded screenshot of the current page.
 			
@@ -87,7 +91,7 @@ class FakeBrowserUse:
 			Base64 encoded screenshot
 		"""
 		# Use cached CDP session instead of creating a new one each time
-        cdp_session = self.get_cdp_session()
+        cdp_session = await self.get_cdp_session()
         screenshot_params = {
             "format": "png",
             "fromSurface": False,
@@ -95,15 +99,16 @@ class FakeBrowserUse:
         }
 
         # Capture screenshot using CDP Session
-        screenshot_data = cdp_session.send("Page.captureScreenshot", screenshot_params)
+        screenshot_data = await cdp_session.send("Page.captureScreenshot", screenshot_params)
         screenshot_b64 = screenshot_data["data"]
 
         return screenshot_b64
 
-    def forward(self):
+    async def forward(self):
+        await self._setup()
         if self.is_pdf:
             time.sleep(5)
-            self.current_page.keyboard.press("Control+\\")
+            await self.current_page.keyboard.press("Control+\\")
             num_down_scrolls = random.randint(5, 8)
             delay = 3
         else:   
@@ -112,7 +117,7 @@ class FakeBrowserUse:
 
         for i in range(num_down_scrolls):
             time.sleep(delay)
-            screenshot = self.fast_screenshot()
+            screenshot = await self.fast_screenshot()
             if self.message_queue:
                 self.message_queue.put_nowait(
                     RealtimeEvent(
@@ -123,11 +128,11 @@ class FakeBrowserUse:
                         }
                     )
                 )
-            self.current_page.keyboard.press("PageDown")
+            await self.current_page.keyboard.press("PageDown")
 
         time.sleep(delay)
 
-        self.current_page.close()
+        await self.current_page.close()
 
     def _is_pdf_url(self, url: str, timeout: float = 5.0) -> bool:
         import requests
@@ -188,7 +193,7 @@ class TavilyVisitWebpageTool(LLMTool):
             print("Warning: TAVILY_API_KEY environment variable not set. Tool may not function correctly.")
         self.message_queue = message_queue
 
-    def forward(self, url: str) -> str:
+    async def forward(self, url: str) -> str:
         try:
             from tavily import TavilyClient
             from .utils import truncate_content
@@ -198,7 +203,7 @@ class TavilyVisitWebpageTool(LLMTool):
             ) from e
 
         browser_use = FakeBrowserUse(url, self.message_queue)
-        browser_use.forward()
+        await browser_use.forward()
         
         try:
             # Initialize Tavily client
@@ -227,7 +232,26 @@ class TavilyVisitWebpageTool(LLMTool):
         dialog_messages: Optional[DialogMessages] = None,
     ) -> ToolImplOutput:
         url = tool_input["url"]
-        output = self.forward(url)
+
+        async def _run(): 
+            output = await self.forward(url)
+            return output
+
+        try:
+            # Try to get the existing event loop
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            # If no event loop exists, create a new one
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+        try:
+            output = loop.run_until_complete(_run())
+        finally:
+            # Clean up the event loop if we created it
+            if loop.is_running():
+                loop.close()
+
         return ToolImplOutput(
             output,
             f"Webpage {url} successfully visited using Tavily",
