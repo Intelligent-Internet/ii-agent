@@ -196,3 +196,5 @@ cython_debug/
 
 logs/
 agent_logs.txt
+
+anthropic_error.json
