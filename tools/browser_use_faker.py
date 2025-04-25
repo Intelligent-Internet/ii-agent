@@ -12,6 +12,7 @@ from PIL import Image
 from io import BytesIO
 from base64 import b64decode
 from playwright.async_api import async_playwright
+from playwright.async_api import TimeoutError
 from asyncio import Queue
 from typing import Any, Optional
 from pydantic import BaseModel
@@ -69,7 +70,10 @@ class FakeBrowserUse:
                 ignore_https_errors=True,
             )
         self.current_page = await self.context.new_page()
-        await self.current_page.goto(self.url, wait_until="domcontentloaded")
+        try:
+            await self.current_page.goto(self.url, wait_until="load", timeout=30)
+        except TimeoutError as e:
+            raise Exception(f"Timeout error while going to the webpage {self.url}")
         
 
     async def get_cdp_session(self):
@@ -203,8 +207,11 @@ class TavilyVisitWebpageTool(LLMTool):
             ) from e
 
         browser_use = FakeBrowserUse(url, self.message_queue)
-        await browser_use.forward()
-        
+        try:
+            await browser_use.forward()
+        except Exception as e:
+            return f"Error visiting the webpage {url}: {str(e)}"
+
         try:
             # Initialize Tavily client
             tavily_client = TavilyClient(api_key=self.api_key)
