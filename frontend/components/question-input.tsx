@@ -37,13 +37,13 @@ const QuestionInput = ({
       className={`w-full max-w-2xl z-50 ${className}`}
     >
       <motion.div
-        className="relative rounded-xl bg-white/50 dark:bg-slate-800/50 border border-[#ffffff0f] shadow-[0px_0px_8px_0px_rgba(0,0,0,0.02)]"
+        className="relative rounded-xl"
         initial={{ y: 20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ delay: 0.1 }}
       >
         <Textarea
-          className={`w-full h-40 p-4 rounded-lg !text-lg bg-transparent border-none focus:ring-0 focus:border-none resize-none ${textareaClassName}`}
+          className={`w-full h-40 p-4 rounded-xl !text-lg focus:ring-0 resize-none border-[#ffffff0f] shadow-[0px_0px_10px_0px_rgba(0,0,0,0.02)] ${textareaClassName}`}
           placeholder={
             placeholder ||
             "Enter your research query or complex question for in-depth analysis..."

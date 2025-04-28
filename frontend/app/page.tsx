@@ -354,8 +354,21 @@ export default function Home() {
   }, [messages?.length]);
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen dark:bg-slate-850">
-      <div className={`flex justify-between w-full p-4`}>
+    <div className="flex flex-col items-center justify-center min-h-screen bg-slate-850">
+      {!isInChatView && (
+        <Image
+          src="/logo-only.png"
+          alt="II-Agent Logo"
+          width={80}
+          height={80}
+          className="rounded-sm"
+        />
+      )}
+      <div
+        className={`flex justify-between w-full ${
+          !isInChatView ? "pt-0 pb-8" : "p-4"
+        }`}
+      >
         {!isInChatView && <div />}
         <motion.h1
           className={`font-semibold text-center ${
@@ -366,7 +379,7 @@ export default function Home() {
         >
           {isInChatView && (
             <Image
-              src="/logo.png"
+              src="/logo-only.png"
               alt="II-Agent Logo"
               width={40}
               height={40}
