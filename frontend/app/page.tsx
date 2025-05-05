@@ -442,7 +442,7 @@ export default function Home() {
                         <motion.div
                           className={`inline-block text-left rounded-lg ${
                             message.role === "user"
-                              ? "bg-neutral-800 p-3 text-white max-w-[80%] border border-[#ffffff0f] shadow-[0px_0px_8px_0px_rgba(0,0,0,0.02)]"
+                              ? "bg-[#35363a] p-3 text-white max-w-[80%] border border-[#3A3B3F] shadow-sm"
                               : "text-white"
                           }`}
                           initial={{ scale: 0.9 }}
@@ -538,7 +538,7 @@ export default function Home() {
                 </motion.div>
               </div>
 
-              <motion.div className="col-span-6 bg-neutral-800 p-4 rounded-2xl border border-[#ffffff0f] shadow-[0px_0px_8px_0px_rgba(0,0,0,0.02)]">
+              <motion.div className="col-span-6 bg-[#1e1f23] border border-[#3A3B3F] p-4 rounded-2xl">
                 <div className="pb-4 bg-neutral-850 flex items-center justify-between">
                   <div className="flex gap-x-4">
                     <Button

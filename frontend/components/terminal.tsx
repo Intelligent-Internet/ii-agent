@@ -37,7 +37,7 @@ const Terminal = (
           fontSize: 14,
           fontFamily: "monospace",
           theme: {
-            background: "#1e1e1e",
+            background: "rgba(0,0,0,0.8)",
             foreground: "#ffffff",
             cursor: "#ffffff",
             cursorAccent: "#1a1b26",
@@ -149,7 +149,7 @@ const Terminal = (
   return (
     <div
       className={clsx(
-        "bg-[#1e1e1e] p-4 h-[calc(100vh-178px)] rounded-xl overflow-auto",
+        "bg-black/80 border border-[#3A3B3F] shadow-sm p-4 h-[calc(100vh-178px)] rounded-xl overflow-auto",
         className
       )}
     >

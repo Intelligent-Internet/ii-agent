@@ -43,7 +43,7 @@ const QuestionInput = ({
         transition={{ delay: 0.1 }}
       >
         <Textarea
-          className={`w-full h-40 p-4 rounded-xl !text-lg focus:ring-0 resize-none border-[#ffffff0f] shadow-[0px_0px_10px_0px_rgba(0,0,0,0.02)] ${textareaClassName}`}
+          className={`w-full h-40 p-4 rounded-xl !text-lg focus:ring-0 resize-none !placeholder-gray-400 !bg-[#35363a] border-[#ffffff0f] shadow-[0px_0px_10px_0px_rgba(0,0,0,0.02)] ${textareaClassName}`}
           placeholder={
             placeholder ||
             "Enter your research query or complex question for in-depth analysis..."

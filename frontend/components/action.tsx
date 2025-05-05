@@ -90,8 +90,8 @@ const Action = ({ type, value, onClick }: ActionProps) => {
   return (
     <div
       onClick={onClick}
-      className="group cursor-pointer flex items-start gap-2 px-3 py-2 bg-neutral-50 dark:bg-neutral-800 rounded-xl backdrop-blur-sm 
-      border border-[#ffffff0f] shadow-[0px_0px_8px_0px_rgba(0,0,0,0.02)]
+      className="group cursor-pointer flex items-start gap-2 px-3 py-2 bg-[#35363a] rounded-xl backdrop-blur-sm 
+      shadow-sm
       transition-all duration-200 ease-out
       hover:bg-neutral-100 dark:hover:bg-neutral-800
       hover:border-neutral-300 dark:hover:border-neutral-700
