@@ -47,13 +47,15 @@ class StaticDeployTool(LLMTool):
                 f"Path is not a file: {file_path}",
             )
 
+        # Get the UUID from the workspace path (it's the last directory in the path)
+        connection_uuid = self.workspace_manager.root.name
+
         # Get the relative path from workspace root
         rel_path = ws_path.relative_to(self.workspace_manager.root)
 
-        # Construct the public URL using the file server port
-        public_url = f"http://localhost:{self.file_server_port}/workspace/{rel_path}"
+        # Construct the public URL using the file server port and connection UUID
+        public_url = f"https://api-deep-search.ii.inc/workspace/{connection_uuid}/{rel_path}"
 
-        # return {"url": public_url, "message": f"Static file available at: {public_url}"}
         return ToolImplOutput(
             public_url,
             f"Static file available at: {public_url}",

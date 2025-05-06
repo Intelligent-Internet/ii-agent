@@ -54,7 +54,6 @@ class FakeBrowserUse:
         self.playwright = await async_playwright().start()
         self.playwright_browser = await self.playwright.chromium.launch(
                 headless=False,
-                channel="chrome",
                 args=[
                     '--no-sandbox',
                     '--disable-blink-features=AutomationControlled',
