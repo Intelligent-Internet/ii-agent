@@ -468,6 +468,7 @@ export default function Home() {
                           transition={{ delay: 0.1 * index, duration: 0.3 }}
                         >
                           <Action
+                            workspaceInfo={workspaceInfo}
                             type={message.action.type}
                             value={message.action.data}
                             onClick={() =>

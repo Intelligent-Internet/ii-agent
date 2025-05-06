@@ -5,12 +5,13 @@ import { Code, Globe, Lightbulb, Rocket, Search, Terminal } from "lucide-react";
 import { useMemo } from "react";
 
 interface ActionProps {
+  workspaceInfo: string;
   type: TOOL;
   value: ActionStep["data"];
   onClick: () => void;
 }
 
-const Action = ({ type, value, onClick }: ActionProps) => {
+const Action = ({ workspaceInfo, type, value, onClick }: ActionProps) => {
   const step_icon = useMemo(() => {
     const className =
       "h-4 w-4 text-neutral-500 dark:text-neutral-100 flex-shrink-0 mt-[2px]";
@@ -74,16 +75,16 @@ const Action = ({ type, value, onClick }: ActionProps) => {
       case TOOL.BASH:
         return value.tool_input?.command;
       case TOOL.FILE_WRITE:
-        return value.tool_input?.file;
+        return value.tool_input?.file?.replace(workspaceInfo, "");
       case TOOL.STR_REPLACE_EDITOR:
-        return value.tool_input?.path;
+        return value.tool_input?.path?.replace(workspaceInfo, "");
       case TOOL.STATIC_DEPLOY:
-        return value.tool_input?.file_path;
+        return value.tool_input?.file_path?.replace(workspaceInfo, "");
 
       default:
         break;
     }
-  }, [type, value]);
+  }, [type, value, workspaceInfo]);
 
   if (type === TOOL.COMPLETE) return null;
 
