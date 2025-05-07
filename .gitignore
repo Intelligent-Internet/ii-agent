@@ -16,7 +16,8 @@ wheels/
 .LSOverride
 
 # Icon must end with two \r
-Icon
+Icon
+
 
 # Thumbnails
 ._*
@@ -175,3 +176,6 @@ dist
 .pnp.*
 
 agent_logs.txt
+workspace/
+
+.vscode/

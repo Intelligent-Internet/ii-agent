@@ -1,5 +1,5 @@
+from ii_agent.llm.message_history import MessageHistory
 from ii_agent.tools.base import (
-    DialogMessages,
     LLMTool,
     ToolImplOutput,
 )
@@ -24,7 +24,7 @@ class DuckDuckGoSearchTool(LLMTool):
             from duckduckgo_search import DDGS
         except ImportError as e:
             raise ImportError(
-                "You must install package `duckduckgo_search` to run this tool: for instance run `pip install duckduckgo-search`."
+                "You must install package `duckduckgo-search` to run this tool: for instance run `pip install duckduckgo-search`."
             ) from e
         self.ddgs = DDGS(**kwargs)
 
@@ -41,7 +41,7 @@ class DuckDuckGoSearchTool(LLMTool):
     def run_impl(
         self,
         tool_input: dict[str, Any],
-        dialog_messages: Optional[DialogMessages] = None,
+        message_history: Optional[MessageHistory] = None,
     ) -> ToolImplOutput:
         query = tool_input["query"]
         try:

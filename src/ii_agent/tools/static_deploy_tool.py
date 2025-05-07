@@ -4,9 +4,8 @@ from pathlib import Path
 from ii_agent.tools.base import (
     ToolImplOutput,
     LLMTool,
-    DialogMessages,
 )
-
+from ii_agent.llm.message_history import MessageHistory
 from ii_agent.utils import WorkspaceManager
 
 
@@ -35,7 +34,7 @@ class StaticDeployTool(LLMTool):
     def run_impl(
         self,
         tool_input: dict[str, Any],
-        dialog_messages: Optional[DialogMessages] = None,
+        message_history: Optional[MessageHistory] = None,
     ) -> ToolImplOutput:
         file_path = tool_input["file_path"]
         ws_path = self.workspace_manager.workspace_path(Path(file_path))

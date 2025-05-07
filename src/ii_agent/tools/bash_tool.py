@@ -15,7 +15,8 @@ import pexpect
 import re
 from abc import ABC, abstractmethod
 
-from ii_agent.tools.base import DialogMessages, LLMTool, ToolImplOutput
+from ii_agent.llm.message_history import MessageHistory
+from ii_agent.tools.base import LLMTool, ToolImplOutput
 
 
 def start_persistent_shell(timeout: int):
@@ -250,13 +251,13 @@ Run commands in a bash shell
     def run_impl(
         self,
         tool_input: Dict[str, Any],
-        dialog_messages: Optional[DialogMessages] = None,
+        message_history: Optional[MessageHistory] = None,
     ) -> ToolImplOutput:
         """Execute a bash command and return its output.
 
         Args:
             tool_input: Dictionary containing the command to execute
-            dialog_messages: Optional dialog messages for context
+            message_history: Optional dialog messages for context
 
         Returns:
             ToolImplOutput containing the command output

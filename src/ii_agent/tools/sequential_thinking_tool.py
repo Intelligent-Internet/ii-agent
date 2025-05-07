@@ -12,8 +12,8 @@ import json
 import logging
 from typing import Any, Dict, List, Optional, TypedDict
 
+from ii_agent.llm.message_history import MessageHistory
 from ii_agent.tools.base import (
-    DialogMessages,
     LLMTool,
     ToolImplOutput,
 )
@@ -237,13 +237,13 @@ You should:
     def run_impl(
         self,
         tool_input: Dict[str, Any],
-        dialog_messages: Optional[DialogMessages] = None,
+        message_history: Optional[MessageHistory] = None,
     ) -> ToolImplOutput:
         """Run the sequential thinking tool.
 
         Args:
             tool_input: The input data for the tool
-            dialog_messages: Optional dialog messages
+            message_history: Optional dialog messages
 
         Returns:
             Tool output with the result

@@ -7,8 +7,8 @@ import os
 import subprocess
 from typing import Any, Optional
 
+from ii_agent.llm.message_history import MessageHistory
 from ii_agent.tools.base import (
-    DialogMessages,
     LLMTool,
     ToolImplOutput,
 )
@@ -48,7 +48,7 @@ class FileWriteTool(LLMTool):
     def run_impl(
         self,
         tool_input: dict[str, Any],
-        dialog_messages: Optional[DialogMessages] = None,
+        message_history: Optional[MessageHistory] = None,
     ) -> ToolImplOutput:
         file_path = tool_input["file"]
         content = tool_input["content"]

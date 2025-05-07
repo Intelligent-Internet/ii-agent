@@ -1,7 +1,8 @@
 """Tool for indicating task completion."""
 
 from typing import Any, Optional
-from ii_agent.tools.base import DialogMessages, LLMTool, ToolImplOutput
+from ii_agent.llm.message_history import MessageHistory
+from ii_agent.tools.base import LLMTool, ToolImplOutput
 
 
 class CompleteTool(LLMTool):
@@ -34,7 +35,7 @@ class CompleteTool(LLMTool):
     def run_impl(
         self,
         tool_input: dict[str, Any],
-        dialog_messages: Optional[DialogMessages] = None,
+        message_history: Optional[MessageHistory] = None,
     ) -> ToolImplOutput:
         assert tool_input["answer"], "Model returned empty answer"
         self.answer = tool_input["answer"]

@@ -1,6 +1,6 @@
 import json
+from ii_agent.llm.message_history import MessageHistory
 from ii_agent.tools.base import (
-    DialogMessages,
     LLMTool,
     ToolImplOutput,
 )
@@ -36,7 +36,7 @@ class TavilySearchTool(LLMTool):
             from .utils import truncate_content
         except ImportError as e:
             raise ImportError(
-                "You must install package `tavily` to run this tool: for instance run `pip install tavily`."
+                "You must install package `tavily` to run this tool: for instance run `pip install tavily-python`."
             ) from e
 
         try:
@@ -60,7 +60,7 @@ class TavilySearchTool(LLMTool):
     def run_impl(
         self,
         tool_input: dict[str, Any],
-        dialog_messages: Optional[DialogMessages] = None,
+        message_history: Optional[MessageHistory] = None,
     ) -> ToolImplOutput:
         query = tool_input["query"]
         try:
