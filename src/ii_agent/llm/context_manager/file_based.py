@@ -5,8 +5,6 @@ from ii_agent.llm.base import GeneralContentBlock, ToolFormattedResult, ToolCall
 from ii_agent.llm.context_manager.base import ContextManager
 from ii_agent.llm.token_counter import TokenCounter
 import logging
-from typing import Optional
-import json
 import os
 from termcolor import colored
 import copy
@@ -14,10 +12,16 @@ from ii_agent.tools import TOOLS_NEED_INPUT_TRUNCATION, TOOLS_NEED_OUTPUT_TRUNCA
 
 HASH_LENGTH = 10
 
+
 class FileBasedContextManager(ContextManager):
-    TRUNCATED_TOOL_OUTPUT_MSG = "[Truncated...re-run tool if you need to see output again.]"
-    TRUNCATED_TOOL_INPUT_MSG = "[Truncated...re-run tool if you need to see input/output again.]"
-    TRUNCATED_FILE_MSG = "[Truncated...content saved to {filename}. You can view it in the {truncated_content_dir} directory if needed.]"
+    TRUNCATED_TOOL_OUTPUT_MSG = (
+        "[Truncated...re-run tool if you need to see output again.]"
+    )
+    TRUNCATED_TOOL_INPUT_MSG = (
+        "[Truncated...re-run tool if you need to see input/output again.]"
+    )
+    TRUNCATED_FILE_MSG = "[Truncated...content saved to {filename}. You can view it in the {agent_memory_dir} directory if needed.]"
+
     def __init__(
         self,
         workspace_dir: Path,
@@ -38,12 +42,14 @@ class FileBasedContextManager(ContextManager):
         """
         super().__init__(token_counter, logger, token_budget)
         self.hash_map = {}
-        self.truncated_content_dir = workspace_dir / "truncated_content"
+        self.agent_memory_dir = workspace_dir / "agent_memory"
         self.truncate_keep_n_turns = truncate_keep_n_turns
         self.min_length_to_truncate = min_length_to_truncate
-        os.makedirs(self.truncated_content_dir, exist_ok=True)
-        assert self.min_length_to_truncate > len(self.TRUNCATED_FILE_MSG.split(" ")), "min_length_to_truncate must be greater than the length of the truncated file message"
-        self.logger.info(f"Truncated content will be saved to {self.truncated_content_dir}")
+        os.makedirs(self.agent_memory_dir, exist_ok=True)
+        assert self.min_length_to_truncate > len(self.TRUNCATED_FILE_MSG.split(" ")), (
+            "min_length_to_truncate must be greater than the length of the truncated file message"
+        )
+        self.logger.info(f"Agent memory will be saved to {self.agent_memory_dir}")
 
     def _sanitize_for_filename(self, text: str, max_len: int = 30) -> str:
         """Removes unsafe characters and shortens text for filenames."""
@@ -61,7 +67,7 @@ class FileBasedContextManager(ContextManager):
         hasher = hashlib.sha256()
         hasher.update(content.encode("utf-8"))
         return hasher.hexdigest()[:HASH_LENGTH]
- 
+
     def apply_truncation_if_needed(
         self, message_lists: list[list[GeneralContentBlock]]
     ) -> list[list[GeneralContentBlock]]:
@@ -92,20 +98,31 @@ class FileBasedContextManager(ContextManager):
             for message in turn:
                 if isinstance(message, ToolFormattedResult):
                     # Check if content is long enough to truncate
-                    if self.token_counter.count_tokens(message.tool_output) >= self.min_length_to_truncate:
+                    if (
+                        self.token_counter.count_tokens(message.tool_output)
+                        >= self.min_length_to_truncate
+                    ):
                         if message.tool_name in TOOLS_NEED_OUTPUT_TRUNCATION:
                             # For tools in the list, save to file
                             content_hash = self._get_content_hash(message.tool_output)
                             if message.tool_name == "tavily_visit_webpage":
                                 # NOTE: assume that the previous message is a tool call
-                                url = truncated_message_lists[turn_idx - 1][0].tool_input.get("url", "unknown_url")
-                                filename = self._generate_filename_from_url(url, content_hash)
+                                url = truncated_message_lists[turn_idx - 1][
+                                    0
+                                ].tool_input.get("url", "unknown_url")
+                                filename = self._generate_filename_from_url(
+                                    url, content_hash
+                                )
                             else:
                                 filename = f"{message.tool_name}_{content_hash}.txt"
-                            filepath = os.path.join(self.truncated_content_dir, filename)
+                            filepath = os.path.join(self.agent_memory_dir, filename)
 
                             # Only save if content is long enough and file doesn't exist
-                            if self.token_counter.count_tokens(message.tool_output) >= self.min_length_to_truncate and not os.path.exists(filepath):
+                            if self.token_counter.count_tokens(
+                                message.tool_output
+                            ) >= self.min_length_to_truncate and not os.path.exists(
+                                filepath
+                            ):
                                 # Save content to file
                                 with open(filepath, "w") as f:
                                     f.write(message.tool_output)
@@ -113,11 +130,14 @@ class FileBasedContextManager(ContextManager):
                             # Update message with reference to file
                             message.tool_output = self.TRUNCATED_FILE_MSG.format(
                                 filename=filename,
-                                truncated_content_dir=self.truncated_content_dir
+                                agent_memory_dir=self.agent_memory_dir,
                             )
                         else:
                             # For other tools, use simple truncation if content is long enough
-                            if self.token_counter.count_tokens(message.tool_output) >= self.min_length_to_truncate:
+                            if (
+                                self.token_counter.count_tokens(message.tool_output)
+                                >= self.min_length_to_truncate
+                            ):
                                 message.tool_output = self.TRUNCATED_TOOL_OUTPUT_MSG
 
                 elif isinstance(message, ToolCall):
@@ -125,8 +145,13 @@ class FileBasedContextManager(ContextManager):
                         for field in TOOLS_NEED_INPUT_TRUNCATION[message.tool_name]:
                             if field in message.tool_input:
                                 field_value = str(message.tool_input[field])
-                                if self.token_counter.count_tokens(field_value) >= self.min_length_to_truncate:
-                                    message.tool_input[field] = self.TRUNCATED_TOOL_INPUT_MSG
+                                if (
+                                    self.token_counter.count_tokens(field_value)
+                                    >= self.min_length_to_truncate
+                                ):
+                                    message.tool_input[field] = (
+                                        self.TRUNCATED_TOOL_INPUT_MSG
+                                    )
 
         new_token_count = self.count_tokens(truncated_message_lists)
         tokens_saved = current_tokens - new_token_count
@@ -145,18 +170,18 @@ class FileBasedContextManager(ContextManager):
     def _generate_filename_from_url(self, url: str, content_hash: str) -> str:
         """Generates a filename based on URL and content hash."""
         # Extract domain and path from URL
-        url_parts = re.sub(r'^https?://', '', url).split('/')
+        url_parts = re.sub(r"^https?://", "", url).split("/")
         domain = url_parts[0]
-        path = '_'.join(url_parts[1:]) if len(url_parts) > 1 else ''
-        
+        path = "_".join(url_parts[1:]) if len(url_parts) > 1 else ""
+
         # Sanitize and limit length
         domain = self._sanitize_for_filename(domain, max_len=20)
         path = self._sanitize_for_filename(path, max_len=30)
-        
+
         # Construct filename: domain_path_hash.txt
         filename = f"{domain}"
         if path:
             filename += f"_{path}"
         filename += f"_{content_hash}.txt"
-        
+
         return filename

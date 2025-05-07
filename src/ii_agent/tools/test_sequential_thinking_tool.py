@@ -33,18 +33,10 @@ class TestSequentialThinkingTool(unittest.TestCase):
             "nextThoughtNeeded": True,
         }
         result = self.tool._validate_thought_data(valid_input)
-        self.assertEqual(
-            result["thought"], "This is a test thought"
-        )  # pyright: ignore[reportTypedDictNotRequiredAccess]
-        self.assertEqual(
-            result["thoughtNumber"], 1
-        )  # pyright: ignore[reportTypedDictNotRequiredAccess]
-        self.assertEqual(
-            result["totalThoughts"], 5
-        )  # pyright: ignore[reportTypedDictNotRequiredAccess]
-        self.assertTrue(
-            result["nextThoughtNeeded"]
-        )  # pyright: ignore[reportTypedDictNotRequiredAccess]
+        self.assertEqual(result["thought"], "This is a test thought")  # pyright: ignore[reportTypedDictNotRequiredAccess]
+        self.assertEqual(result["thoughtNumber"], 1)  # pyright: ignore[reportTypedDictNotRequiredAccess]
+        self.assertEqual(result["totalThoughts"], 5)  # pyright: ignore[reportTypedDictNotRequiredAccess]
+        self.assertTrue(result["nextThoughtNeeded"])  # pyright: ignore[reportTypedDictNotRequiredAccess]
 
     def test_validate_thought_data_invalid(self):
         """Test validation with invalid input."""
@@ -75,9 +67,7 @@ class TestSequentialThinkingTool(unittest.TestCase):
             "totalThoughts": 5,
             "nextThoughtNeeded": True,
         }
-        formatted = self.tool._format_thought(
-            thought_data
-        )  # pyright: ignore[reportArgumentType]
+        formatted = self.tool._format_thought(thought_data)  # pyright: ignore[reportArgumentType]
         self.assertIn("💭 Thought 1/5", formatted)
         self.assertIn("This is a regular thought", formatted)
 
@@ -91,9 +81,7 @@ class TestSequentialThinkingTool(unittest.TestCase):
             "isRevision": True,
             "revisesThought": 1,
         }
-        formatted = self.tool._format_thought(
-            thought_data
-        )  # pyright: ignore[reportArgumentType]
+        formatted = self.tool._format_thought(thought_data)  # pyright: ignore[reportArgumentType]
         self.assertIn("🔄 Revision 2/5", formatted)
         self.assertIn("(revising thought 1)", formatted)
         self.assertIn("This is a revision", formatted)
@@ -108,9 +96,7 @@ class TestSequentialThinkingTool(unittest.TestCase):
             "branchFromThought": 2,
             "branchId": "branch-1",
         }
-        formatted = self.tool._format_thought(
-            thought_data
-        )  # pyright: ignore[reportArgumentType]
+        formatted = self.tool._format_thought(thought_data)  # pyright: ignore[reportArgumentType]
         self.assertIn("🌿 Branch 3/5", formatted)
         self.assertIn("(from thought 2, ID: branch-1)", formatted)
         self.assertIn("This is a branch", formatted)
@@ -144,9 +130,7 @@ class TestSequentialThinkingTool(unittest.TestCase):
             # Verify thought was added to history
             self.assertEqual(len(self.tool.thought_history), 1)
             self.assertEqual(
-                self.tool.thought_history[0][
-                    "thought"
-                ],  # pyright: ignore[reportTypedDictNotRequiredAccess]
+                self.tool.thought_history[0]["thought"],  # pyright: ignore[reportTypedDictNotRequiredAccess]
                 "This is a test thought",
             )
 
@@ -214,9 +198,7 @@ class TestSequentialThinkingTool(unittest.TestCase):
 
         # Verify totalThoughts was adjusted
         self.assertEqual(output_data["totalThoughts"], 10)
-        self.assertEqual(
-            self.tool.thought_history[0]["totalThoughts"], 10
-        )  # pyright: ignore[reportTypedDictNotRequiredAccess]
+        self.assertEqual(self.tool.thought_history[0]["totalThoughts"], 10)  # pyright: ignore[reportTypedDictNotRequiredAccess]
 
     def test_get_tool_start_message(self):
         """Test the get_tool_start_message method."""

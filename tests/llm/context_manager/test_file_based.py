@@ -15,9 +15,6 @@ def mock_file_writer():
     return Mock(spec=StrReplaceEditorTool)
 
 
-
-
-
 @pytest.fixture
 def mock_logger():
     return Mock()
@@ -92,14 +89,12 @@ def test_apply_truncation_if_needed(context_manager):
     tavily_visit_webpage = ToolFormattedResult(
         tool_name="tavily_visit_webpage",
         tool_output="This is a long tool output that should be truncated" * 1000,
-        tool_call_id="test_call_3"
+        tool_call_id="test_call_3",
     )
     tavily_visit_webpage_call = ToolCall(
         tool_name="tavily_visit_webpage",
-        tool_input={
-            "url": "https://www.google.com"
-        },
-        tool_call_id="test_call_3"
+        tool_input={"url": "https://www.google.com"},
+        tool_call_id="test_call_3",
     )
 
     message_lists = [
@@ -114,8 +109,14 @@ def test_apply_truncation_if_needed(context_manager):
 
     # Verify truncation
     assert len(truncated_lists) == 20
-    assert truncated_lists[0][0].tool_input["file_text"] == FileBasedContextManager.TRUNCATED_TOOL_INPUT_MSG
-    assert truncated_lists[1][0].tool_output == FileBasedContextManager.TRUNCATED_TOOL_OUTPUT_MSG
+    assert (
+        truncated_lists[0][0].tool_input["file_text"]
+        == FileBasedContextManager.TRUNCATED_TOOL_INPUT_MSG
+    )
+    assert (
+        truncated_lists[1][0].tool_output
+        == FileBasedContextManager.TRUNCATED_TOOL_OUTPUT_MSG
+    )
     assert "Truncated...content saved to" in truncated_lists[3][0].tool_output
 
     # Verify files were created

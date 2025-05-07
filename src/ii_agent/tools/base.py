@@ -1,30 +1,15 @@
-import copy
-import json
-import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any, Optional, cast
+from typing import Any, Optional
 
 import jsonschema
 from anthropic import BadRequestError
-from termcolor import colored
 from typing_extensions import final
 
 from ii_agent.llm.base import (
-    AnthropicRedactedThinkingBlock,
-    AnthropicThinkingBlock,
-    AssistantContentBlock,
-    GeneralContentBlock,
-    LLMMessages,
-    TextPrompt,
-    TextResult,
-    ToolCall,
-    ToolCallParameters,
-    ToolFormattedResult,
     ToolParam,
 )
 from ii_agent.llm.message_history import MessageHistory
-from ii_agent.llm.token_counter import TokenCounter
 
 ToolInputSchema = dict[str, Any]
 
@@ -42,9 +27,6 @@ class ToolImplOutput:
     tool_output: str
     tool_result_message: str
     auxiliary_data: dict[str, Any] = field(default_factory=dict)
-
-
-
 
 
 class LLMTool(ABC):

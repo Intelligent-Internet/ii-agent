@@ -21,6 +21,9 @@ from ii_agent.agents.anthropic_fc import AnthropicFC
 from ii_agent.utils import WorkspaceManager
 from ii_agent.llm import get_client
 from dotenv import load_dotenv
+from ii_agent.llm.context_manager.file_based import FileBasedContextManager
+from ii_agent.llm.context_manager.standard import StandardContextManager
+from ii_agent.llm.token_counter import TokenCounter
 
 load_dotenv()
 MAX_OUTPUT_TOKENS_PER_TURN = 32768
@@ -80,11 +83,30 @@ def main():
         root=workspace_path, container_workspace=args.use_container_workspace
     )
 
+    # Initialize token counter
+    token_counter = TokenCounter()
+
+    # Create context manager based on argument
+    if args.context_manager == "file-based":
+        context_manager = FileBasedContextManager(
+            workspace_dir=workspace_path,
+            token_counter=token_counter,
+            logger=logger_for_agent_logs,
+            token_budget=120_000,
+        )
+    else:  # standard
+        context_manager = StandardContextManager(
+            token_counter=token_counter,
+            logger=logger_for_agent_logs,
+            token_budget=120_000,
+        )
+
     # Initialize agent
     agent = AnthropicFC(
         client=client,
         workspace_manager=workspace_manager,
         logger_for_agent_logs=logger_for_agent_logs,
+        context_manager=context_manager,
         max_output_tokens_per_turn=MAX_OUTPUT_TOKENS_PER_TURN,
         max_turns=MAX_TURNS,
         ask_user_permission=args.needs_permission,

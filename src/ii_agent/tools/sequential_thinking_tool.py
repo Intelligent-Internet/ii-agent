@@ -196,15 +196,9 @@ You should:
         Returns:
             Formatted thought string
         """
-        thought_number = thought_data[
-            "thoughtNumber"
-        ]  # pyright: ignore[reportTypedDictNotRequiredAccess]
-        total_thoughts = thought_data[
-            "totalThoughts"
-        ]  # pyright: ignore[reportTypedDictNotRequiredAccess]
-        thought = thought_data[
-            "thought"
-        ]  # pyright: ignore[reportTypedDictNotRequiredAccess]
+        thought_number = thought_data["thoughtNumber"]  # pyright: ignore[reportTypedDictNotRequiredAccess]
+        total_thoughts = thought_data["totalThoughts"]  # pyright: ignore[reportTypedDictNotRequiredAccess]
+        thought = thought_data["thought"]  # pyright: ignore[reportTypedDictNotRequiredAccess]
         is_revision = thought_data.get("isRevision", False)
         revises_thought = thought_data.get("revisesThought")
         branch_from_thought = thought_data.get("branchFromThought")
@@ -252,12 +246,8 @@ You should:
             validated_input = self._validate_thought_data(tool_input)
 
             # Adjust total thoughts if needed
-            if (
-                validated_input["thoughtNumber"] > validated_input["totalThoughts"]
-            ):  # pyright: ignore[reportTypedDictNotRequiredAccess]
-                validated_input["totalThoughts"] = validated_input[
-                    "thoughtNumber"
-                ]  # pyright: ignore[reportTypedDictNotRequiredAccess]
+            if validated_input["thoughtNumber"] > validated_input["totalThoughts"]:  # pyright: ignore[reportTypedDictNotRequiredAccess]
+                validated_input["totalThoughts"] = validated_input["thoughtNumber"]  # pyright: ignore[reportTypedDictNotRequiredAccess]
 
             # Add to thought history
             self.thought_history.append(validated_input)
@@ -266,14 +256,10 @@ You should:
             if validated_input.get("branchFromThought") and validated_input.get(
                 "branchId"
             ):
-                branch_id = validated_input[
-                    "branchId"
-                ]  # pyright: ignore[reportTypedDictNotRequiredAccess]
+                branch_id = validated_input["branchId"]  # pyright: ignore[reportTypedDictNotRequiredAccess]
                 if branch_id not in self.branches:
                     self.branches[branch_id] = []  # pyright: ignore[reportArgumentType]
-                self.branches[branch_id].append(
-                    validated_input
-                )  # pyright: ignore[reportArgumentType]
+                self.branches[branch_id].append(validated_input)  # pyright: ignore[reportArgumentType]
 
             # Format and log the thought
             formatted_thought = self._format_thought(validated_input)
@@ -282,15 +268,9 @@ You should:
 
             # Prepare response
             response = {
-                "thoughtNumber": validated_input[
-                    "thoughtNumber"
-                ],  # pyright: ignore[reportTypedDictNotRequiredAccess]
-                "totalThoughts": validated_input[
-                    "totalThoughts"
-                ],  # pyright: ignore[reportTypedDictNotRequiredAccess]
-                "nextThoughtNeeded": validated_input[
-                    "nextThoughtNeeded"
-                ],  # pyright: ignore[reportTypedDictNotRequiredAccess]
+                "thoughtNumber": validated_input["thoughtNumber"],  # pyright: ignore[reportTypedDictNotRequiredAccess]
+                "totalThoughts": validated_input["totalThoughts"],  # pyright: ignore[reportTypedDictNotRequiredAccess]
+                "nextThoughtNeeded": validated_input["nextThoughtNeeded"],  # pyright: ignore[reportTypedDictNotRequiredAccess]
                 "branches": list(self.branches.keys()),
                 "thoughtHistoryLength": len(self.thought_history),
             }

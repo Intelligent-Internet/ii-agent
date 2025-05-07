@@ -11,9 +11,9 @@ from ii_agent.utils import match_indent, match_indent_by_first_line, WorkspaceMa
 from ii_agent.llm.message_history import MessageHistory
 from ii_agent.tools.base import (
     LLMTool,
-    ToolCallParameters,
     ToolImplOutput,
 )
+from ii_agent.llm.base import ToolCallParameters
 
 from typing import Any, Literal, Optional, get_args
 import logging
@@ -83,9 +83,7 @@ class ToolError(Exception):
 
 SNIPPET_LINES: int = 4
 
-TRUNCATED_MESSAGE: str = (
-    "<response clipped><NOTE>To save on context only part of this file has been shown to you. You should retry this tool after you have searched inside the file with `grep -n` in order to find the line numbers of what you are looking for.</NOTE>"
-)
+TRUNCATED_MESSAGE: str = "<response clipped><NOTE>To save on context only part of this file has been shown to you. You should retry this tool after you have searched inside the file with `grep -n` in order to find the line numbers of what you are looking for.</NOTE>"
 # original value from Anthropic code
 # MAX_RESPONSE_LEN: int = 16000
 MAX_RESPONSE_LEN: int = 200000

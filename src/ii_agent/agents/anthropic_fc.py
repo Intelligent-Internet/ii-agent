@@ -6,10 +6,8 @@ from fastapi import WebSocket
 from ii_agent.agents.base import BaseAgent
 from ii_agent.core.event import RealtimeEvent
 from ii_agent.llm.base import LLMClient, TextResult
-# from ii_agent.llm.context_manager import StandardContextManager
-from ii_agent.llm.context_manager.file_based import FileBasedContextManager
+from ii_agent.llm.context_manager.base import ContextManager
 from ii_agent.llm.message_history import MessageHistory
-from ii_agent.llm.token_counter import TokenCounter
 from ii_agent.prompts.system_prompt import SYSTEM_PROMPT
 from ii_agent.tools import (
     CompleteTool,
@@ -60,6 +58,7 @@ try breaking down the task into smaller steps. After call this tool to update or
         client: LLMClient,
         workspace_manager: WorkspaceManager,
         logger_for_agent_logs: logging.Logger,
+        context_manager: ContextManager,
         max_output_tokens_per_turn: int = 8192,
         max_turns: int = 10,
         ask_user_permission: bool = False,
@@ -71,9 +70,15 @@ try breaking down the task into smaller steps. After call this tool to update or
 
         Args:
             client: The LLM client to use
+            workspace_manager: Workspace manager for taking snapshots
+            logger_for_agent_logs: Logger for agent logs
+            context_manager: Context manager for managing conversation context
             max_output_tokens_per_turn: Maximum tokens per turn
             max_turns: Maximum number of turns
-            workspace_manager: Optional workspace manager for taking snapshots
+            ask_user_permission: Whether to ask for permission before executing commands
+            docker_container_id: Optional Docker container ID to run commands in
+            websocket: Optional WebSocket for real-time communication
+            file_server_port: Port for the file server
         """
         super().__init__()
         self.client = client
@@ -83,19 +88,7 @@ try breaking down the task into smaller steps. After call this tool to update or
         self.workspace_manager = workspace_manager
         self.interrupted = False
         self.history = MessageHistory()
-        token_counter = TokenCounter()
-        # self.context_manager = StandardContextManager(
-        #     token_counter=token_counter,
-        #     logger=self.logger_for_agent_logs,
-        #     token_budget=120_000,
-        # )
-        self.context_manager = FileBasedContextManager(
-            workspace_dir=workspace_manager.root,
-            token_counter=token_counter,
-            logger=self.logger_for_agent_logs,
-            # token_budget=120_000,
-            token_budget=10000,
-        )
+        self.context_manager = context_manager
 
         # Create and store the complete tool
         self.complete_tool = CompleteTool()
@@ -202,7 +195,7 @@ try breaking down the task into smaller steps. After call this tool to update or
                 truncated_messages_for_llm = (
                     self.context_manager.apply_truncation_if_needed(current_messages)
                 )
-                
+
                 # NOTE:
                 # If truncation happened, the `history` object itself was modified.
                 # We need to update the message list in the `history` object to use the truncated version.

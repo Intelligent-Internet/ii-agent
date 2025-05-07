@@ -69,9 +69,9 @@ class MessageHistory:
         self, parameters: list[ToolCallParameters], results: list[str]
     ):
         """Add the result of a tool call to the dialog."""
-        assert (
-            self.is_next_turn_user()
-        ), "Cannot add tool call results, expected user turn next."
+        assert self.is_next_turn_user(), (
+            "Cannot add tool call results, expected user turn next."
+        )
         self._message_lists.append(
             [
                 ToolFormattedResult(

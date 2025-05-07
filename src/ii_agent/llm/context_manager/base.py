@@ -1,4 +1,3 @@
-import copy
 import json
 import logging
 from abc import ABC, abstractmethod
@@ -76,5 +75,3 @@ class ContextManager(ABC):
     ) -> list[list[GeneralContentBlock]]:
         """Apply truncation to message lists if needed."""
         pass
-
-

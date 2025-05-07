@@ -17,9 +17,7 @@ TOOLS_NEED_INPUT_TRUNCATION = {
 }
 
 # Tools that need output truncation (ToolFormattedResult)
-TOOLS_NEED_OUTPUT_TRUNCATION = {
-    TavilyVisitWebpageTool.name
-}
+TOOLS_NEED_OUTPUT_TRUNCATION = {TavilyVisitWebpageTool.name}
 
 __all__ = [
     "DuckDuckGoSearchTool",

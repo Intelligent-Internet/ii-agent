@@ -6,12 +6,17 @@ from ii_agent.llm.base import GeneralContentBlock, ToolCall, ToolFormattedResult
 from ii_agent.llm.context_manager.base import ContextManager
 from ii_agent.llm.token_counter import TokenCounter
 
+
 class StandardContextManager(ContextManager):
     """Standard implementation of context management with token counting and truncation."""
-    
-    TRUNCATED_TOOL_OUTPUT_MSG = "[Truncated...re-run tool if you need to see output again.]"
-    TRUNCATED_TOOL_INPUT_MSG = "[Truncated...re-run tool if you need to see input/output again.]"
-    
+
+    TRUNCATED_TOOL_OUTPUT_MSG = (
+        "[Truncated...re-run tool if you need to see output again.]"
+    )
+    TRUNCATED_TOOL_INPUT_MSG = (
+        "[Truncated...re-run tool if you need to see input/output again.]"
+    )
+
     def __init__(
         self,
         token_counter: TokenCounter,
@@ -58,11 +63,17 @@ class StandardContextManager(ContextManager):
                         message.tool_input["thought"] = self.TRUNCATED_TOOL_INPUT_MSG
                     elif message.tool_name == "str_replace_editor":
                         if "file_text" in message.tool_input:
-                            message.tool_input["file_text"] = self.TRUNCATED_TOOL_INPUT_MSG
+                            message.tool_input["file_text"] = (
+                                self.TRUNCATED_TOOL_INPUT_MSG
+                            )
                         if "old_str" in message.tool_input:
-                            message.tool_input["old_str"] = self.TRUNCATED_TOOL_INPUT_MSG
+                            message.tool_input["old_str"] = (
+                                self.TRUNCATED_TOOL_INPUT_MSG
+                            )
                         if "new_str" in message.tool_input:
-                            message.tool_input["new_str"] = self.TRUNCATED_TOOL_INPUT_MSG
+                            message.tool_input["new_str"] = (
+                                self.TRUNCATED_TOOL_INPUT_MSG
+                            )
 
                 # We could also truncate TextPrompt/TextResult if needed
                 # elif isinstance(message, TextPrompt):
@@ -71,7 +82,7 @@ class StandardContextManager(ContextManager):
                 #     message.text = generic_truncation_message
 
         new_token_count = self.count_tokens(truncated_message_lists)
-        tokens_saved = current_tokens - new_token_count 
+        tokens_saved = current_tokens - new_token_count
         self.logger.info(
             f"Truncation saved ~{tokens_saved} tokens. New count: {new_token_count}"
         )

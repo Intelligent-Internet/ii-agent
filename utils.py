@@ -51,4 +51,11 @@ def parse_common_args(parser: ArgumentParser):
         default=None,
         help="Region to use for Anthropic",
     )
+    parser.add_argument(
+        "--context-manager",
+        type=str,
+        default="file-based",
+        choices=["file-based", "standard"],
+        help="Type of context manager to use (file-based or standard)",
+    )
     return parser

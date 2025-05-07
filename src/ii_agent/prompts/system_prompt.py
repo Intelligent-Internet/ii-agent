@@ -170,4 +170,3 @@ Sleep Settings:
 
 Today is {datetime.now().strftime("%Y-%m-%d")}. The first step of a task is to use sequential thinking module to plan the task. then regularly update the todo.md file to track the progress.
 """
-
