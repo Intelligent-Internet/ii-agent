@@ -83,6 +83,60 @@ class ServerMessage(BaseModel):
 # Store global args for use in endpoint
 global_args = None
 
+async def save_uploaded_file(websocket: WebSocket, file_path: str, file_content: str) -> str:
+    """Save an uploaded file to the workspace.
+    
+    Args:
+        websocket: The WebSocket connection
+        file_path: The path where the file should be saved (relative to workspace)
+        file_content: The content of the file (base64 encoded if binary)
+        
+    Returns:
+        The absolute path where the file was saved
+    """
+    agent = active_agents.get(websocket)
+    
+    if not agent:
+        raise ValueError("Agent not initialized for this connection")
+    
+    # Get the workspace path for this connection
+    workspace_root = agent.workspace_manager.root
+    
+    # Ensure the file path is relative to the workspace
+    if Path(file_path).is_absolute():
+        file_path = Path(file_path).name  # Just use the filename if absolute path provided
+    
+    # Create the full path
+    full_path = workspace_root / file_path
+    
+    # Ensure the directory exists
+    full_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    # Check if content is base64 encoded (for binary files)
+    if file_content.startswith("data:"):
+        # Handle data URLs (e.g., "data:application/pdf;base64,...")
+        import base64
+        
+        # Split the header from the base64 content
+        header, encoded = file_content.split(",", 1)
+        
+        # Decode the content
+        decoded = base64.b64decode(encoded)
+        
+        # Write binary content
+        with open(full_path, "wb") as f:
+            f.write(decoded)
+    else:
+        # Write text content
+        with open(full_path, "w") as f:
+            f.write(file_content)
+    
+    # Log the upload
+    logger.info(f"File uploaded to {full_path}")
+    
+    # Return the path where the file was saved
+    return str(full_path)
+
 async def process_agent_messages(websocket: WebSocket, agent: Agent):
     """Process messages from the agent and send them to the websocket."""
     try:
@@ -260,6 +314,53 @@ async def websocket_endpoint(websocket: WebSocket):
                             "type": "error",
                             "content": {"message": "Workspace not initialized"}
                         })
+                        
+                elif msg_type == "upload_file":
+                    # Handle file upload (single or multiple)
+                    files = content.get("files", [])
+                    
+                    # For backward compatibility, also support single file upload
+                    if not files and content.get("path") and "content" in content:
+                        files = [{
+                            "path": content.get("path", ""),
+                            "content": content.get("content", "")
+                        }]
+                    
+                    if not files:
+                        await websocket.send_json({
+                            "type": "error",
+                            "content": {"message": "No files provided for upload"}
+                        })
+                        continue
+                    
+                    try:
+                        results = []
+                        for file_info in files:
+                            file_path = file_info.get("path", "")
+                            file_content = file_info.get("content", "")
+                            
+                            if not file_path:
+                                continue
+                                
+                            result = await save_uploaded_file(websocket, file_path, file_content)
+                            results.append({
+                                "path": file_path,
+                                "saved_path": result
+                            })
+                        
+                        await websocket.send_json({
+                            "type": "upload_success",
+                            "content": {
+                                "message": f"Successfully uploaded {len(results)} file(s)",
+                                "files": results
+                            }
+                        })
+                    except Exception as e:
+                        logger.error(f"Error uploading files: {str(e)}")
+                        await websocket.send_json({
+                            "type": "error",
+                            "content": {"message": f"Error uploading files: {str(e)}"}
+                        })
 
                 elif msg_type == "ping":
                     # Simple ping to keep connection alive
@@ -401,3 +502,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+

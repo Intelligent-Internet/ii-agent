@@ -15,6 +15,7 @@ export enum AgentEvent {
   ERROR = "error",
   SYSTEM = "system",
   PONG = "pong",
+  UPLOAD_SUCCESS = "upload_success",
 }
 
 export enum TOOL {

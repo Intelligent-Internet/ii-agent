@@ -75,11 +75,17 @@ const Action = ({ workspaceInfo, type, value, onClick }: ActionProps) => {
       case TOOL.BASH:
         return value.tool_input?.command;
       case TOOL.FILE_WRITE:
-        return value.tool_input?.file?.replace(workspaceInfo, "");
+        return value.tool_input?.file === workspaceInfo
+          ? workspaceInfo
+          : value.tool_input?.file?.replace(workspaceInfo, "");
       case TOOL.STR_REPLACE_EDITOR:
-        return value.tool_input?.path?.replace(workspaceInfo, "");
+        return value.tool_input?.path === workspaceInfo
+          ? workspaceInfo
+          : value.tool_input?.path?.replace(workspaceInfo, "");
       case TOOL.STATIC_DEPLOY:
-        return value.tool_input?.file_path?.replace(workspaceInfo, "");
+        return value.tool_input?.file_path === workspaceInfo
+          ? workspaceInfo
+          : value.tool_input?.file_path?.replace(workspaceInfo, "");
 
       default:
         break;

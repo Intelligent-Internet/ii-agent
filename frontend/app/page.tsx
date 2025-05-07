@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { ActionStep, AgentEvent, TOOL } from "@/typings/agent";
 import Action from "@/components/action";
 import Markdown from "@/components/markdown";
+import { getFileIconAndColor } from "@/utils/file-utils";
 
 enum TAB {
   BROWSER = "browser",
@@ -33,6 +34,7 @@ interface Message {
   content?: string;
   timestamp: number;
   action?: ActionStep;
+  files?: string[]; // Add this to store file information
 }
 
 export default function Home() {
@@ -49,6 +51,8 @@ export default function Home() {
   const [currentQuestion, setCurrentQuestion] = useState("");
   const [isCompleted, setIsCompleted] = useState(false);
   const [workspaceInfo, setWorkspaceInfo] = useState("");
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadedFiles, setUploadedFiles] = useState<string[]>([]);
 
   const handleClickAction = debounce(
     (data: ActionStep | undefined, showTabOnly = false) => {
@@ -125,189 +129,40 @@ export default function Home() {
     };
 
     setMessages((prev) => [...prev, newUserMessage]);
-    let ws = socket;
 
-    if (!ws || ws.readyState !== WebSocket.OPEN) {
-      // Create WebSocket connection if it doesn't exist or is not open
-      ws = new WebSocket(`${process.env.NEXT_PUBLIC_API_URL}/ws`);
-      setSocket(ws);
-
-      ws.onopen = () => {
-        // First request workspace info
-        ws?.send(
-          JSON.stringify({
-            type: "workspace_info",
-            content: {},
-          })
-        );
-
-        // Then send the query
-        ws?.send(
-          JSON.stringify({
-            type: "query",
-            content: {
-              text: newQuestion,
-              resume: messages.length > 0,
-            },
-          })
-        );
-      };
-    } else {
-      // WebSocket is already open, send message directly
-      ws.send(
-        JSON.stringify({
-          type: "query",
-          content: {
-            text: newQuestion,
-          },
-        })
-      );
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      toast.error("WebSocket connection is not open. Please try again.");
+      setIsLoading(false);
+      return;
     }
 
-    ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
+    // Create a modified question that includes information about uploaded files if needed
+    let finalQuestion = newQuestion;
 
-        switch (data.type) {
-          case AgentEvent.PROCESSING:
-            setIsLoading(true);
-            break;
-          case AgentEvent.WORKSPACE_INFO:
-            setWorkspaceInfo(data.content.path);
-            break;
-          case AgentEvent.AGENT_THINKING:
-            setMessages((prev) => [
-              ...prev,
-              {
-                id: Date.now().toString(),
-                role: "assistant",
-                content: data.content.text,
-                timestamp: Date.now(),
-              },
-            ]);
-            break;
+    // If files have been uploaded, add a note to the question with file names
+    if (uploadedFiles.length > 0) {
+      finalQuestion = `${newQuestion}\n\nNote: I've already uploaded the following files that you can use:\n${uploadedFiles
+        .map((file) => `- ${file}`)
+        .join("\n")}`;
+    }
 
-          case AgentEvent.TOOL_CALL:
-            if (data.content.tool_name === TOOL.SEQUENTIAL_THINKING) {
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: Date.now().toString(),
-                  role: "assistant",
-                  content: data.content.tool_input.thought,
-                  timestamp: Date.now(),
-                },
-              ]);
-            } else {
-              const message: Message = {
-                id: Date.now().toString(),
-                role: "assistant",
-                action: {
-                  type: data.content.tool_name,
-                  data: data.content,
-                },
-                timestamp: Date.now(),
-              };
-              setMessages((prev) => [...prev, message]);
-              handleClickAction(message.action);
-            }
-            break;
+    // If files have been uploaded, add a note to the question with file names
+    if (uploadedFiles.length > 0) {
+      finalQuestion = `${newQuestion}\n\nNote: I've already uploaded the following files that you can use:\n${uploadedFiles
+        .map((file) => `- ${file}`)
+        .join("\n")}`;
+    }
 
-          case TOOL.BROWSER_USE:
-            setMessages((prev) => {
-              const lastMessage = cloneDeep(prev[prev.length - 1]);
-              if (!data.content.screenshot) {
-                return prev;
-              }
-              if (
-                lastMessage.action &&
-                (lastMessage.action?.type === TOOL.BROWSER_USE ||
-                  lastMessage.action?.type === TOOL.TAVILY_VISIT)
-              ) {
-                lastMessage.id = Date.now().toString();
-                lastMessage.action.type = TOOL.BROWSER_USE;
-                lastMessage.action.data.result = data.content.screenshot;
-                setTimeout(() => {
-                  handleClickAction(lastMessage.action);
-                }, 500);
-                return [...prev];
-              } else {
-                return [...prev, { ...lastMessage, action: data.content }];
-              }
-            });
-            break;
-
-          case AgentEvent.TOOL_RESULT:
-            if (data.content.tool_name === TOOL.BROWSER_USE) {
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: Date.now().toString(),
-                  role: "assistant",
-                  content: data.content.result,
-                  timestamp: Date.now(),
-                },
-              ]);
-            } else {
-              if (
-                data.content.tool_name !== TOOL.SEQUENTIAL_THINKING &&
-                data.content.tool_name !== TOOL.TAVILY_VISIT
-              ) {
-                setMessages((prev) => {
-                  const lastMessage = cloneDeep(prev[prev.length - 1]);
-                  if (
-                    lastMessage.action &&
-                    lastMessage.action?.type === data.content.tool_name
-                  ) {
-                    lastMessage.id = Date.now().toString();
-                    lastMessage.action.data.result = data.content.result;
-                    lastMessage.action.data.isResult = true;
-                    setTimeout(() => {
-                      handleClickAction(lastMessage.action);
-                    }, 500);
-                    return [...prev.slice(0, -1), lastMessage];
-                  } else {
-                    return [...prev, { ...lastMessage, action: data.content }];
-                  }
-                });
-              }
-            }
-
-            break;
-
-          case AgentEvent.AGENT_RESPONSE:
-            setMessages((prev) => [
-              ...prev,
-              {
-                id: Date.now().toString(),
-                role: "assistant",
-                content: data.content.text,
-                timestamp: Date.now(),
-              },
-            ]);
-            setIsCompleted(true);
-            setIsLoading(false);
-            break;
-
-          default:
-            break;
-        }
-      } catch (error) {
-        console.error("Error parsing WebSocket data:", error);
-        setIsLoading(false);
-      }
-    };
-
-    ws.onerror = (error) => {
-      console.error("WebSocket error:", error);
-      toast.error("An error occurred");
-      ws.close();
-      setIsLoading(false);
-    };
-
-    ws.onclose = () => {
-      setSocket(null);
-    };
+    // Send the query using the existing socket connection
+    socket.send(
+      JSON.stringify({
+        type: "query",
+        content: {
+          text: finalQuestion,
+          resume: messages.length > 0,
+        },
+      })
+    );
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -341,13 +196,277 @@ export default function Home() {
     }
   };
 
+  const handleFileUpload = async (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    if (!event.target.files || event.target.files.length === 0) return;
+
+    const files = Array.from(event.target.files);
+    const filePromises = files.map((file) => {
+      return new Promise<{ path: string; content: string }>((resolve) => {
+        const reader = new FileReader();
+
+        reader.onload = (e) => {
+          const result = e.target?.result;
+
+          // For binary files, use base64 encoding
+          if (typeof result === "string" && result.startsWith("data:")) {
+            resolve({
+              path: file.name,
+              content: result,
+            });
+          }
+          // For text files
+          else if (typeof result === "string") {
+            resolve({
+              path: file.name,
+              content: result,
+            });
+          }
+        };
+
+        // Read as data URL for binary files, as text for text files
+        if (
+          file.type.startsWith("text/") ||
+          file.type === "application/json" ||
+          file.type === "application/javascript"
+        ) {
+          reader.readAsText(file);
+        } else {
+          reader.readAsDataURL(file);
+        }
+      });
+    });
+
+    try {
+      setIsUploading(true);
+      const fileContents = await Promise.all(filePromises);
+
+      // Add files to message history
+      const newUserMessage: Message = {
+        id: Date.now().toString(),
+        role: "user",
+        files: files.map((file) => file.name),
+        timestamp: Date.now(),
+      };
+
+      setMessages((prev) => [...prev, newUserMessage]);
+
+      if (!socket || socket.readyState !== WebSocket.OPEN) {
+        toast.error("WebSocket connection is not open. Please try again.");
+        setIsUploading(false);
+        return;
+      }
+
+      socket.send(
+        JSON.stringify({
+          type: "upload_file",
+          content: {
+            files: fileContents,
+          },
+        })
+      );
+
+      // Clear the input
+      event.target.value = "";
+    } catch (error) {
+      console.error("Error uploading files:", error);
+      toast.error("Error uploading files");
+      setIsUploading(false);
+    }
+  };
+
   useEffect(() => {
+    // Connect to WebSocket when the component mounts
+    const connectWebSocket = () => {
+      const ws = new WebSocket(`${process.env.NEXT_PUBLIC_API_URL}/ws`);
+
+      ws.onopen = () => {
+        console.log("WebSocket connection established");
+        // Request workspace info immediately after connection
+        ws.send(
+          JSON.stringify({
+            type: "workspace_info",
+            content: {},
+          })
+        );
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+
+          switch (data.type) {
+            case AgentEvent.PROCESSING:
+              setIsLoading(true);
+              break;
+            case AgentEvent.WORKSPACE_INFO:
+              setWorkspaceInfo(data.content.path);
+              break;
+            case AgentEvent.AGENT_THINKING:
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: Date.now().toString(),
+                  role: "assistant",
+                  content: data.content.text,
+                  timestamp: Date.now(),
+                },
+              ]);
+              break;
+
+            case AgentEvent.TOOL_CALL:
+              if (data.content.tool_name === TOOL.SEQUENTIAL_THINKING) {
+                setMessages((prev) => [
+                  ...prev,
+                  {
+                    id: Date.now().toString(),
+                    role: "assistant",
+                    content: data.content.tool_input.thought,
+                    timestamp: Date.now(),
+                  },
+                ]);
+              } else {
+                const message: Message = {
+                  id: Date.now().toString(),
+                  role: "assistant",
+                  action: {
+                    type: data.content.tool_name,
+                    data: data.content,
+                  },
+                  timestamp: Date.now(),
+                };
+                setMessages((prev) => [...prev, message]);
+                handleClickAction(message.action);
+              }
+              break;
+
+            case TOOL.BROWSER_USE:
+              setMessages((prev) => {
+                const lastMessage = cloneDeep(prev[prev.length - 1]);
+                if (!data.content.screenshot) {
+                  return prev;
+                }
+                if (
+                  lastMessage.action &&
+                  (lastMessage.action?.type === TOOL.BROWSER_USE ||
+                    lastMessage.action?.type === TOOL.TAVILY_VISIT)
+                ) {
+                  lastMessage.id = Date.now().toString();
+                  lastMessage.action.type = TOOL.BROWSER_USE;
+                  lastMessage.action.data.result = data.content.screenshot;
+                  setTimeout(() => {
+                    handleClickAction(lastMessage.action);
+                  }, 500);
+                  return [...prev];
+                } else {
+                  return [...prev, { ...lastMessage, action: data.content }];
+                }
+              });
+              break;
+
+            case AgentEvent.TOOL_RESULT:
+              if (data.content.tool_name === TOOL.BROWSER_USE) {
+                setMessages((prev) => [
+                  ...prev,
+                  {
+                    id: Date.now().toString(),
+                    role: "assistant",
+                    content: data.content.result,
+                    timestamp: Date.now(),
+                  },
+                ]);
+              } else {
+                if (
+                  data.content.tool_name !== TOOL.SEQUENTIAL_THINKING &&
+                  data.content.tool_name !== TOOL.TAVILY_VISIT
+                ) {
+                  setMessages((prev) => {
+                    const lastMessage = cloneDeep(prev[prev.length - 1]);
+                    if (
+                      lastMessage.action &&
+                      lastMessage.action?.type === data.content.tool_name
+                    ) {
+                      lastMessage.id = Date.now().toString();
+                      lastMessage.action.data.result = data.content.result;
+                      lastMessage.action.data.isResult = true;
+                      setTimeout(() => {
+                        handleClickAction(lastMessage.action);
+                      }, 500);
+                      return [...prev.slice(0, -1), lastMessage];
+                    } else {
+                      return [
+                        ...prev,
+                        { ...lastMessage, action: data.content },
+                      ];
+                    }
+                  });
+                }
+              }
+
+              break;
+
+            case AgentEvent.AGENT_RESPONSE:
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: Date.now().toString(),
+                  role: "assistant",
+                  content: data.content.text,
+                  timestamp: Date.now(),
+                },
+              ]);
+              setIsCompleted(true);
+              setIsLoading(false);
+              break;
+
+            case AgentEvent.UPLOAD_SUCCESS:
+              toast.success(data.content.message);
+              setIsUploading(false);
+
+              // Update the uploaded files state
+              const newFiles = data.content.files.map(
+                (f: { path: string; saved_path: string }) => f.path
+              );
+              setUploadedFiles((prev) => [...prev, ...newFiles]);
+
+              break;
+
+            case "error":
+              toast.error(data.content.message);
+              setIsUploading(false);
+              setIsLoading(false);
+              break;
+          }
+        } catch (error) {
+          console.error("Error parsing WebSocket data:", error);
+        }
+      };
+
+      ws.onerror = (error) => {
+        console.error("WebSocket error:", error);
+        toast.error("WebSocket connection error");
+      };
+
+      ws.onclose = () => {
+        console.log("WebSocket connection closed");
+        setSocket(null);
+        // Try to reconnect after a delay
+        setTimeout(connectWebSocket, 3000);
+      };
+
+      setSocket(ws);
+    };
+
+    connectWebSocket();
+
+    // Clean up the WebSocket connection when the component unmounts
     return () => {
       if (socket) {
         socket.close();
       }
     };
-  }, [socket]);
+  }, []); // Empty dependency array means this effect runs once on mount
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -406,6 +525,8 @@ export default function Home() {
               setValue={setCurrentQuestion}
               handleKeyDown={handleKeyDown}
               handleSubmit={handleQuestionSubmit}
+              handleFileUpload={handleFileUpload}
+              isUploading={isUploading}
             />
           ) : (
             <motion.div
@@ -438,6 +559,38 @@ export default function Home() {
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: 0.1 * index, duration: 0.3 }}
                     >
+                      {message.files && message.files.length > 0 && (
+                        <div className="flex flex-col gap-2 mb-2">
+                          {message.files.map((fileName, fileIndex) => {
+                            const { IconComponent, bgColor, label } =
+                              getFileIconAndColor(fileName);
+
+                            return (
+                              <div
+                                key={`${message.id}-file-${fileIndex}`}
+                                className="inline-block ml-auto bg-white dark:bg-[#35363a] text-black dark:text-white rounded-2xl px-4 py-3 border border-gray-200 dark:border-gray-700 shadow-sm"
+                              >
+                                <div className="flex items-center gap-3">
+                                  <div
+                                    className={`flex items-center justify-center w-12 h-12 ${bgColor} rounded-xl`}
+                                  >
+                                    <IconComponent className="size-6 text-white" />
+                                  </div>
+                                  <div className="flex flex-col">
+                                    <span className="text-base font-medium">
+                                      {fileName}
+                                    </span>
+                                    <span className="text-left text-sm text-gray-500">
+                                      {label}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
                       {message.content && (
                         <motion.div
                           className={`inline-block text-left rounded-lg ${
@@ -460,6 +613,7 @@ export default function Home() {
                           )}
                         </motion.div>
                       )}
+
                       {message.action && (
                         <motion.div
                           className="mt-2"
@@ -535,6 +689,8 @@ export default function Home() {
                     setValue={setCurrentQuestion}
                     handleKeyDown={handleKeyDown}
                     handleSubmit={handleQuestionSubmit}
+                    handleFileUpload={handleFileUpload}
+                    isUploading={isUploading}
                   />
                 </motion.div>
               </div>
