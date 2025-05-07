@@ -13,7 +13,7 @@ const Browser = ({ className, url, screenshot }: BrowserProps) => {
     <div
       className={`h-[calc(100vh-178px)] border border-[#3A3B3F] rounded-xl overflow-hidden shadow-sm ${className}`}
     >
-      <div className="flex items-center gap-3 px-3 py-2.5 bg-black/80 border-b border-neutral-200 dark:border-neutral-800">
+      <div className="flex items-center gap-3 px-3 py-2.5 bg-black/80 border-b border-neutral-800">
         <div className="flex items-center gap-1.5">
           <div className="flex gap-1.5">
             <div className="w-3 h-3 rounded-full bg-[#ff5f57]" />
@@ -31,7 +31,7 @@ const Browser = ({ className, url, screenshot }: BrowserProps) => {
         </div>
         <div className="flex items-center gap-1">
           <button
-            className="p-1.5 rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+            className="p-1.5 rounded-md hover:bg-neutral-800 transition-colors"
             onClick={() => window.open(url, "_blank")}
           >
             <SquareArrowOutUpRight className="h-4 w-4 text-white" />

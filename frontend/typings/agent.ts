@@ -28,6 +28,7 @@ export enum TOOL {
   FILE_WRITE = "file_write",
   COMPLETE = "complete",
   STATIC_DEPLOY = "static_deploy",
+  PDF_TEXT_EXTRACT = "pdf_text_extract",
 }
 
 export type ActionStep = {

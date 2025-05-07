@@ -24,6 +24,7 @@ from tools.file_write_tool import FileWriteTool
 from tools.browser_use import BrowserUse
 from tools.browser_use_faker import TavilyVisitWebpageTool
 from tools.static_deploy_tool import StaticDeployTool
+from tools.read_pdf_tool import PdfTextExtractTool
 from termcolor import colored
 from rich.console import Console
 import logging
@@ -165,6 +166,7 @@ try breaking down the task into smaller steps. After call this tool to update or
                 workspace_manager=workspace_manager,
                 file_server_port=self.file_server_port
             ),
+            PdfTextExtractTool(workspace_manager=workspace_manager)
         ]
         self.websocket = websocket
 

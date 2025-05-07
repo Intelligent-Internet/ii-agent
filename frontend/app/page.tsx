@@ -421,7 +421,6 @@ export default function Home() {
               break;
 
             case AgentEvent.UPLOAD_SUCCESS:
-              toast.success(data.content.message);
               setIsUploading(false);
 
               // Update the uploaded files state
@@ -568,7 +567,7 @@ export default function Home() {
                             return (
                               <div
                                 key={`${message.id}-file-${fileIndex}`}
-                                className="inline-block ml-auto bg-white dark:bg-[#35363a] text-black dark:text-white rounded-2xl px-4 py-3 border border-gray-200 dark:border-gray-700 shadow-sm"
+                                className="inline-block ml-auto bg-[#35363a] text-white rounded-2xl px-4 py-3 border border-gray-700 shadow-sm"
                               >
                                 <div className="flex items-center gap-3">
                                   <div

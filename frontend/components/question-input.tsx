@@ -90,7 +90,7 @@ const QuestionInput = ({
               return (
                 <div
                   key={file.name}
-                  className="flex items-center gap-2 bg-neutral-900 text-black dark:text-white rounded-full px-3 py-2 border border-gray-200 dark:border-gray-700 shadow-sm"
+                  className="flex items-center gap-2 bg-neutral-900 text-white rounded-full px-3 py-2 border border-gray-700 shadow-sm"
                 >
                   <div
                     className={`flex items-center justify-center w-10 h-10 ${bgColor} rounded-full`}
@@ -109,7 +109,7 @@ const QuestionInput = ({
                   </div>
                   <button
                     onClick={() => removeFile(file.name)}
-                    className="ml-2 rounded-full p-1 hover:bg-gray-200 dark:hover:bg-gray-700"
+                    className="ml-2 rounded-full p-1 hover:bg-gray-700"
                   >
                     <X className="size-4" />
                   </button>
@@ -159,7 +159,7 @@ const QuestionInput = ({
           <Button
             disabled={!value.trim()}
             onClick={() => handleSubmit(value)}
-            className="cursor-pointer !border !border-red p-4 size-10 font-bold bg-gradient-skyblue-lavender rounded-full hover:scale-105 active:scale-95 transition-transform shadow-[0_4px_10px_rgba(0,0,0,0.1)] dark:shadow-[0_4px_10px_rgba(0,0,0,0.2)]"
+            className="cursor-pointer !border !border-red p-4 size-10 font-bold bg-gradient-skyblue-lavender rounded-full hover:scale-105 active:scale-95 transition-transform shadow-[0_4px_10px_rgba(0,0,0,0.2)]"
           >
             <ArrowUp className="size-5" />
           </Button>
