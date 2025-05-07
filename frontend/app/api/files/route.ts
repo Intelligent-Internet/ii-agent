@@ -1,8 +1,17 @@
-import { NextResponse } from 'next/server';
-import fs from 'fs/promises';
-import path from 'path';
+import { NextResponse } from "next/server";
+import fs from "fs/promises";
+import path from "path";
 
-async function readDirectory(dirPath: string): Promise<any[]> {
+interface FileStructure {
+  name: string;
+  type: "file" | "folder";
+  children?: FileStructure[];
+  language?: string;
+  value?: string;
+  path: string;
+}
+
+async function readDirectory(dirPath: string): Promise<FileStructure[]> {
   const items = await fs.readdir(dirPath, { withFileTypes: true });
   const result = await Promise.all(
     items.map(async (item) => {
@@ -11,34 +20,37 @@ async function readDirectory(dirPath: string): Promise<any[]> {
         const children = await readDirectory(fullPath);
         return {
           name: item.name,
-          type: 'folder',
+          type: "folder",
           children,
           path: fullPath,
         };
       } else {
         return {
           name: item.name,
-          type: 'file',
+          type: "file",
           path: fullPath,
-          language: path.extname(item.name).slice(1) || 'plaintext'
+          language: path.extname(item.name).slice(1) || "plaintext",
         };
       }
     })
   );
-  return result;
+  return result as FileStructure[];
 }
 
 export async function POST(request: Request) {
   try {
     const { path: dirPath } = await request.json();
     if (!dirPath) {
-      return NextResponse.json({ error: 'Path is required' }, { status: 400 });
+      return NextResponse.json({ error: "Path is required" }, { status: 400 });
     }
 
     const files = await readDirectory(dirPath);
     return NextResponse.json({ files });
   } catch (error) {
-    console.error('Error reading directory:', error);
-    return NextResponse.json({ error: 'Failed to read directory' }, { status: 500 });
+    console.error("Error reading directory:", error);
+    return NextResponse.json(
+      { error: "Failed to read directory" },
+      { status: 500 }
+    );
   }
 }

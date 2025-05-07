@@ -1,7 +1,7 @@
 "use client";
 
 import { Terminal as XTerm } from "@xterm/xterm";
-// import { FitAddon } from "@xterm/addon-fit";
+import { FitAddon } from "@xterm/addon-fit";
 // import { WebLinksAddon } from "@xterm/addon-web-links";
 // import { SearchAddon } from "@xterm/addon-search";
 import { forwardRef, Ref, useEffect, useRef } from "react";
@@ -37,7 +37,7 @@ const Terminal = (
           fontSize: 14,
           fontFamily: "monospace",
           theme: {
-            background: "#1e1e1e",
+            background: "rgba(0,0,0,0.8)",
             foreground: "#ffffff",
             cursor: "#ffffff",
             cursorAccent: "#1a1b26",
@@ -47,13 +47,13 @@ const Terminal = (
           allowTransparency: true,
         });
 
-        // const fitAddon = new FitAddon();
-        // term.loadAddon(fitAddon);
+        const fitAddon = new FitAddon();
+        term.loadAddon(fitAddon);
         // term.loadAddon(new WebLinksAddon());
         // term.loadAddon(new SearchAddon());
 
         term.open(container);
-        // fitAddon.fit();
+        fitAddon.fit();
 
         term.writeln("Welcome to II-Agent!");
         prompt(term);
@@ -112,7 +112,7 @@ const Terminal = (
         });
 
         const handleResize = () => {
-          // fitAddon.fit();
+          fitAddon.fit();
         };
         window.addEventListener("resize", handleResize);
         if (typeof xtermRef === "function") {
@@ -147,7 +147,12 @@ const Terminal = (
   };
 
   return (
-    <div className={clsx("bg-[#1e1e1e] p-4 h-full", className)}>
+    <div
+      className={clsx(
+        "bg-black/80 border border-[#3A3B3F] shadow-sm p-4 h-[calc(100vh-178px)] rounded-xl overflow-auto",
+        className
+      )}
+    >
       <div
         ref={terminalRef}
         className="h-full w-full"

@@ -11,7 +11,6 @@ import {
 } from "lucide-react";
 import { useRef, useState, useEffect } from "react";
 
-export const ROOT_PATH = process.env.NEXT_PUBLIC_WORKSPACE_PATH || "/";
 const ROOT_NAME = "ii-agent";
 
 // Map file extensions to Monaco editor language IDs
@@ -61,12 +60,14 @@ interface FileStructure {
 
 interface CodeEditorProps {
   className?: string;
+  workspaceInfo?: string;
   activeFile?: string;
   setActiveFile?: (file: string) => void;
 }
 
 const CodeEditor = ({
   className,
+  workspaceInfo,
   activeFile,
   setActiveFile,
 }: CodeEditorProps) => {
@@ -133,8 +134,10 @@ const CodeEditor = ({
   };
 
   useEffect(() => {
-    loadDirectory(ROOT_PATH);
-  }, []);
+    if (workspaceInfo) {
+      loadDirectory(workspaceInfo);
+    }
+  }, [activeFile, workspaceInfo]);
 
   const toggleFolder = (folderPath: string) => {
     setExpandedFolders((prev) => {
@@ -149,9 +152,9 @@ const CodeEditor = ({
   };
 
   const renderBreadcrumb = () => {
-    if (!activeFile) return null;
+    if (!activeFile || !workspaceInfo) return null;
 
-    const relativePath = activeFile.replace(ROOT_PATH, "");
+    const relativePath = activeFile.replace(workspaceInfo, "");
     const parts = relativePath.split("/").filter(Boolean);
     const fileName = parts[parts.length - 1];
     const folderName = ROOT_NAME;
@@ -232,11 +235,13 @@ const CodeEditor = ({
   };
 
   return (
-    <div className={`flex flex-col h-[calc(100vh-128px)] ${className}`}>
+    <div
+      className={`flex flex-col h-[calc(100vh-178px)] rounded-xl border border-[#3A3B3F] shadow-sm overflow-hidden ${className}`}
+    >
       <div className="flex flex-1 h-full">
         {/* File Explorer */}
         <div className="w-64 bg-neutral-900 border-r border-neutral-700 flex flex-col">
-          <div className="px-2 py-1 text-sm font-medium text-neutral-400 border-b border-neutral-700">
+          <div className="px-3 py-1 text-sm font-medium text-neutral-400 border-b border-neutral-700">
             {ROOT_NAME}
           </div>
           <div className="overflow-y-auto flex-1">
@@ -245,7 +250,7 @@ const CodeEditor = ({
         </div>
 
         {/* Editor Section */}
-        <div className="flex-1 flex flex-col">
+        <div className="flex-1 flex flex-col overflow-y-auto">
           {renderBreadcrumb()}
           <Editor
             theme="vs-dark"

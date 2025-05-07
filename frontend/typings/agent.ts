@@ -15,6 +15,7 @@ export enum AgentEvent {
   ERROR = "error",
   SYSTEM = "system",
   PONG = "pong",
+  UPLOAD_SUCCESS = "upload_success",
 }
 
 export enum TOOL {
@@ -26,16 +27,20 @@ export enum TOOL {
   BASH = "bash",
   FILE_WRITE = "file_write",
   COMPLETE = "complete",
+  STATIC_DEPLOY = "static_deploy",
+  PDF_TEXT_EXTRACT = "pdf_text_extract",
 }
 
 export type ActionStep = {
   type: TOOL;
   data: {
+    isResult?: boolean;
     tool_name?: string;
     tool_input?: {
       thought?: string;
       path?: string;
       file_text?: string;
+      file_path?: string;
       command?: string;
       url?: string;
       query?: string;
