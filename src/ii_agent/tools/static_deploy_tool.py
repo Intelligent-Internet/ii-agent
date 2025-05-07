@@ -1,5 +1,6 @@
 from typing import Any, Optional
 from pathlib import Path
+import os
 
 from ii_agent.tools.base import (
     ToolImplOutput,
@@ -30,6 +31,7 @@ class StaticDeployTool(LLMTool):
         super().__init__()
         self.workspace_manager = workspace_manager
         self.file_server_port = file_server_port
+        self.base_url = os.getenv("STATIC_FILE_BASE_URL", "http://localhost:8888")
 
     def run_impl(
         self,
@@ -52,11 +54,14 @@ class StaticDeployTool(LLMTool):
                 f"Path is not a file: {file_path}",
             )
 
+        # Get the UUID from the workspace path (it's the last directory in the path)
+        connection_uuid = self.workspace_manager.root.name
+
         # Get the relative path from workspace root
         rel_path = ws_path.relative_to(self.workspace_manager.root)
 
-        # Construct the public URL using the file server port
-        public_url = f"http://localhost:{self.file_server_port}/workspace/{rel_path}"
+        # Construct the public URL using the base URL and connection UUID
+        public_url = f"{self.base_url}/workspace/{connection_uuid}/{rel_path}"
 
         return ToolImplOutput(
             public_url,

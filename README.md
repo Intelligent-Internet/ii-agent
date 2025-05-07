@@ -14,7 +14,7 @@ II Agent is built around providing an agentic interface to Anthropic Claude mode
 
 - Python 3.10+
 - Node.js 18+ (for frontend)
-- Google Cloud project with Vertex AI API enabled
+- Google Cloud project with Vertex AI API enabled or Anthropic API key
 
 ## Installation
 
@@ -31,13 +31,6 @@ II Agent is built around providing an agentic interface to Anthropic Claude mode
    cd frontend
    npm install
    ```
-
-## Configuration
-
-Create a `.env` file with the following variables:
-```
-GOOGLE_APPLICATION_CREDENTIALS=path/to/your/credentials.json
-```
 
 ## Usage
 
@@ -61,6 +54,7 @@ Options:
 1. Start the WebSocket server:
 
 ```bash
+export STATIC_FILE_BASE_URL=http://localhost:8000
 python ws_server.py --port 8000 --project-id YOUR_PROJECT_ID --region YOUR_REGION
 ```
 

@@ -12,6 +12,7 @@ import argparse
 import asyncio
 import json
 import logging
+import uuid
 from pathlib import Path
 from typing import Dict, Set
 
@@ -286,10 +287,16 @@ def create_agent_for_connection(websocket: WebSocket):
         region=global_args.region,
     )
 
-    # Initialize workspace manager
+    # Create unique subdirectory for this connection
+    connection_id = str(uuid.uuid4())
     workspace_path = Path(global_args.workspace).resolve()
+    connection_workspace = workspace_path / connection_id
+    connection_workspace.mkdir(parents=True, exist_ok=True)
+
+    # Initialize workspace manager with connection-specific subdirectory
     workspace_manager = WorkspaceManager(
-        root=workspace_path, container_workspace=global_args.use_container_workspace
+        root=connection_workspace,
+        container_workspace=global_args.use_container_workspace
     )
 
     # Initialize agent with websocket
