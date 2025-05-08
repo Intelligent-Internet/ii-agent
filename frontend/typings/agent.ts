@@ -16,6 +16,7 @@ export enum AgentEvent {
   SYSTEM = "system",
   PONG = "pong",
   UPLOAD_SUCCESS = "upload_success",
+  BROWSER_USE = "browser_use",
 }
 
 export enum TOOL {
@@ -29,6 +30,19 @@ export enum TOOL {
   COMPLETE = "complete",
   STATIC_DEPLOY = "static_deploy",
   PDF_TEXT_EXTRACT = "pdf_text_extract",
+
+  BROWSER_NAVIGATION = "browser_navigation",
+  BROWSER_RESTART = "browser_restart",
+  BROWSER_WAIT = "browser_wait",
+  BROWSER_SCROLL_DOWN = "browser_scroll_down",
+  BROWSER_SCROLL_UP = "browser_scroll_up",
+  BROWSER_CLICK = "browser_click",
+  BROWSER_ENTER_TEXT = "browser_enter_text",
+  BROWSER_PRESS_KEY = "browser_press_key",
+  BROWSER_GET_SELECT_OPTIONS = "browser_get_select_options",
+  BROWSER_SELECT_DROPDOWN_OPTION = "browser_select_dropdown_option",
+  BROWSER_SWITCH_TAB = "browser_switch_tab",
+  BROWSER_OPEN_NEW_TAB = "browser_open_new_tab",
 }
 
 export type ActionStep = {

@@ -2,13 +2,15 @@ import { motion } from "framer-motion";
 import { ArrowUp, X, Loader2, Paperclip } from "lucide-react";
 import { Button } from "./ui/button";
 import { Textarea } from "./ui/textarea";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { getFileIconAndColor } from "@/utils/file-utils";
 
 interface FileUploadStatus {
   name: string;
   loading: boolean;
   error?: string;
+  preview?: string; // Add preview URL for images
+  isImage: boolean; // Flag to identify image files
 }
 
 interface QuestionInputProps {
@@ -36,14 +38,35 @@ const QuestionInput = ({
 }: QuestionInputProps) => {
   const [files, setFiles] = useState<FileUploadStatus[]>([]);
 
+  // Clean up object URLs when component unmounts
+  useEffect(() => {
+    return () => {
+      files.forEach((file) => {
+        if (file.preview) URL.revokeObjectURL(file.preview);
+      });
+    };
+  }, [files]);
+
+  const isImageFile = (fileName: string): boolean => {
+    const ext = fileName.split(".").pop()?.toLowerCase() || "";
+    return ["jpg", "jpeg", "png", "gif", "webp", "bmp"].includes(ext);
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || !handleFileUpload) return;
 
     // Create file status objects
-    const newFiles = Array.from(e.target.files).map((file) => ({
-      name: file.name,
-      loading: true,
-    }));
+    const newFiles = Array.from(e.target.files).map((file) => {
+      const isImage = isImageFile(file.name);
+      const preview = isImage ? URL.createObjectURL(file) : undefined;
+
+      return {
+        name: file.name,
+        loading: true,
+        isImage,
+        preview,
+      };
+    });
 
     setFiles((prev) => [...prev, ...newFiles]);
 
@@ -57,7 +80,18 @@ const QuestionInput = ({
   };
 
   const removeFile = (fileName: string) => {
-    setFiles((prev) => prev.filter((file) => file.name !== fileName));
+    setFiles((prev) => {
+      // Find the file to remove
+      const fileToRemove = prev.find((file) => file.name === fileName);
+
+      // Revoke object URL if it exists
+      if (fileToRemove?.preview) {
+        URL.revokeObjectURL(fileToRemove.preview);
+      }
+
+      // Filter out the file
+      return prev.filter((file) => file.name !== fileName);
+    });
   };
 
   return (
@@ -81,8 +115,33 @@ const QuestionInput = ({
         transition={{ delay: 0.1 }}
       >
         {files.length > 0 && (
-          <div className="absolute top-2 left-2 right-2 flex flex-wrap gap-2 z-10">
+          <div className="absolute top-4 left-4 right-2 flex flex-wrap gap-2 z-10">
             {files.map((file) => {
+              if (file.isImage && file.preview) {
+                return (
+                  <div key={file.name} className="relative">
+                    <div className="w-20 h-20 rounded-xl overflow-hidden">
+                      <img
+                        src={file.preview}
+                        alt={file.name}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                    <button
+                      onClick={() => removeFile(file.name)}
+                      className="absolute -top-2 -right-2 bg-black rounded-full p-1 hover:bg-gray-700"
+                    >
+                      <X className="size-4 text-white" />
+                    </button>
+                    {file.loading && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/30 rounded-xl">
+                        <Loader2 className="size-5 text-white animate-spin" />
+                      </div>
+                    )}
+                  </div>
+                );
+              }
+
               const { IconComponent, bgColor, label } = getFileIconAndColor(
                 file.name
               );
@@ -120,7 +179,7 @@ const QuestionInput = ({
         )}
         <Textarea
           className={`w-full p-4 rounded-xl !text-lg focus:ring-0 resize-none !placeholder-gray-400 !bg-[#35363a] border-[#ffffff0f] shadow-[0px_0px_10px_0px_rgba(0,0,0,0.02)] ${
-            files.length > 0 ? "pt-20 h-60" : "h-40"
+            files.length > 0 ? "pt-24 h-60" : "h-40"
           } ${textareaClassName}`}
           placeholder={
             placeholder ||

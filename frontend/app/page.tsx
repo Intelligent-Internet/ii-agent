@@ -34,7 +34,8 @@ interface Message {
   content?: string;
   timestamp: number;
   action?: ActionStep;
-  files?: string[]; // Add this to store file information
+  files?: string[]; // File names
+  fileContents?: { [filename: string]: string }; // Base64 content of files
 }
 
 export default function Home() {
@@ -203,38 +204,19 @@ export default function Home() {
 
     const files = Array.from(event.target.files);
     const filePromises = files.map((file) => {
-      return new Promise<{ path: string; content: string }>((resolve) => {
+      return new Promise<{ name: string; content: string }>((resolve) => {
         const reader = new FileReader();
 
         reader.onload = (e) => {
           const result = e.target?.result;
-
-          // For binary files, use base64 encoding
-          if (typeof result === "string" && result.startsWith("data:")) {
-            resolve({
-              path: file.name,
-              content: result,
-            });
-          }
-          // For text files
-          else if (typeof result === "string") {
-            resolve({
-              path: file.name,
-              content: result,
-            });
-          }
+          resolve({
+            name: file.name,
+            content: result as string,
+          });
         };
 
-        // Read as data URL for binary files, as text for text files
-        if (
-          file.type.startsWith("text/") ||
-          file.type === "application/json" ||
-          file.type === "application/javascript"
-        ) {
-          reader.readAsText(file);
-        } else {
-          reader.readAsDataURL(file);
-        }
+        // Read as data URL for all files
+        reader.readAsDataURL(file);
       });
     });
 
@@ -242,11 +224,18 @@ export default function Home() {
       setIsUploading(true);
       const fileContents = await Promise.all(filePromises);
 
+      // Create a map of filename to content
+      const fileContentMap: { [filename: string]: string } = {};
+      fileContents.forEach(({ name, content }) => {
+        fileContentMap[name] = content;
+      });
+
       // Add files to message history
       const newUserMessage: Message = {
         id: Date.now().toString(),
         role: "user",
         files: files.map((file) => file.name),
+        fileContents: fileContentMap,
         timestamp: Date.now(),
       };
 
@@ -443,15 +432,13 @@ export default function Home() {
       };
 
       ws.onerror = (error) => {
-        console.error("WebSocket error:", error);
+        console.log("WebSocket error:", error);
         toast.error("WebSocket connection error");
       };
 
       ws.onclose = () => {
         console.log("WebSocket connection closed");
         setSocket(null);
-        // Try to reconnect after a delay
-        setTimeout(connectWebSocket, 3000);
       };
 
       setSocket(ws);
@@ -561,6 +548,33 @@ export default function Home() {
                       {message.files && message.files.length > 0 && (
                         <div className="flex flex-col gap-2 mb-2">
                           {message.files.map((fileName, fileIndex) => {
+                            // Check if the file is an image
+                            const isImage =
+                              fileName.match(/\.(jpeg|jpg|gif|png|webp)$/i) !==
+                              null;
+
+                            if (
+                              isImage &&
+                              message.fileContents &&
+                              message.fileContents[fileName]
+                            ) {
+                              return (
+                                <div
+                                  key={`${message.id}-file-${fileIndex}`}
+                                  className="inline-block ml-auto rounded-3xl overflow-hidden max-w-[320px]"
+                                >
+                                  <div className="w-40 h-40 rounded-xl overflow-hidden">
+                                    <img
+                                      src={message.fileContents[fileName]}
+                                      alt={fileName}
+                                      className="w-full h-full object-cover"
+                                    />
+                                  </div>
+                                </div>
+                              );
+                            }
+
+                            // For non-image files, use the existing code
                             const { IconComponent, bgColor, label } =
                               getFileIconAndColor(fileName);
 
