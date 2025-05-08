@@ -142,16 +142,20 @@ class FileBasedContextManager(ContextManager):
 
                 elif isinstance(message, ToolCall):
                     if message.tool_name in TOOLS_NEED_INPUT_TRUNCATION:
+                        # Check if any field exceeds the token limit
+                        should_truncate_all = False
                         for field in TOOLS_NEED_INPUT_TRUNCATION[message.tool_name]:
                             if field in message.tool_input:
                                 field_value = str(message.tool_input[field])
-                                if (
-                                    self.token_counter.count_tokens(field_value)
-                                    >= self.min_length_to_truncate
-                                ):
-                                    message.tool_input[field] = (
-                                        self.TRUNCATED_TOOL_INPUT_MSG
-                                    )
+                                if self.token_counter.count_tokens(field_value) >= self.min_length_to_truncate:
+                                    should_truncate_all = True
+                                    break
+                        
+                        # If any field exceeds the limit, truncate all fields
+                        if should_truncate_all:
+                            for field in TOOLS_NEED_INPUT_TRUNCATION[message.tool_name]:
+                                if field in message.tool_input:
+                                    message.tool_input[field] = self.TRUNCATED_TOOL_INPUT_MSG
 
         new_token_count = self.count_tokens(truncated_message_lists)
         tokens_saved = current_tokens - new_token_count
