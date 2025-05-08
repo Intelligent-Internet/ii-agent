@@ -2,11 +2,16 @@
 
 import { ActionStep, TOOL } from "@/typings/agent";
 import {
+  ChevronDown,
+  ChevronUp,
   Code,
   FileText,
   Globe,
   Lightbulb,
+  LoaderCircle,
+  MousePointerClick,
   Rocket,
+  RotateCcw,
   Search,
   Terminal,
 } from "lucide-react";
@@ -41,6 +46,33 @@ const Action = ({ workspaceInfo, type, value, onClick }: ActionProps) => {
       case TOOL.PDF_TEXT_EXTRACT:
         return <FileText className={className} />;
 
+      case TOOL.BROWSER_WAIT:
+        return <LoaderCircle className={className} />;
+      case TOOL.BROWSER_VIEW:
+        return <Globe className={className} />;
+      case TOOL.BROWSER_NAVIGATION:
+        return <Globe className={className} />;
+      case TOOL.BROWSER_RESTART:
+        return <RotateCcw className={className} />;
+      case TOOL.BROWSER_SCROLL_DOWN:
+        return <ChevronDown className={className} />;
+      case TOOL.BROWSER_SCROLL_UP:
+        return <ChevronUp className={className} />;
+      case TOOL.BROWSER_CLICK:
+        return <MousePointerClick className={className} />;
+      case TOOL.BROWSER_ENTER_TEXT:
+        return <Globe className={className} />;
+      case TOOL.BROWSER_PRESS_KEY:
+        return <Globe className={className} />;
+      case TOOL.BROWSER_GET_SELECT_OPTIONS:
+        return <Globe className={className} />;
+      case TOOL.BROWSER_SELECT_DROPDOWN_OPTION:
+        return <Globe className={className} />;
+      case TOOL.BROWSER_SWITCH_TAB:
+        return <Globe className={className} />;
+      case TOOL.BROWSER_OPEN_NEW_TAB:
+        return <Globe className={className} />;
+
       default:
         return <></>;
     }
@@ -69,6 +101,33 @@ const Action = ({ workspaceInfo, type, value, onClick }: ActionProps) => {
         return "Deploying";
       case TOOL.PDF_TEXT_EXTRACT:
         return "Extracting Text";
+
+      case TOOL.BROWSER_WAIT:
+        return "Waiting for Page to Load";
+      case TOOL.BROWSER_VIEW:
+        return "Viewing Page";
+      case TOOL.BROWSER_NAVIGATION:
+        return "Navigating to URL";
+      case TOOL.BROWSER_RESTART:
+        return "Restarting Browser";
+      case TOOL.BROWSER_SCROLL_DOWN:
+        return "Scrolling Down";
+      case TOOL.BROWSER_SCROLL_UP:
+        return "Scrolling Up";
+      case TOOL.BROWSER_CLICK:
+        return "Clicking Element";
+      case TOOL.BROWSER_ENTER_TEXT:
+        return "Entering Text";
+      case TOOL.BROWSER_PRESS_KEY:
+        return "Pressing Key";
+      case TOOL.BROWSER_GET_SELECT_OPTIONS:
+        return "Getting Select Options";
+      case TOOL.BROWSER_SELECT_DROPDOWN_OPTION:
+        return "Selecting Dropdown Option";
+      case TOOL.BROWSER_SWITCH_TAB:
+        return "Switching Tab";
+      case TOOL.BROWSER_OPEN_NEW_TAB:
+        return "Opening New Tab";
 
       default:
         break;
@@ -104,12 +163,39 @@ const Action = ({ workspaceInfo, type, value, onClick }: ActionProps) => {
           ? workspaceInfo
           : value.tool_input?.file_path?.replace(workspaceInfo, "");
 
+      case TOOL.BROWSER_WAIT:
+        return value.tool_input?.url;
+      case TOOL.BROWSER_VIEW:
+        return value.tool_input?.url;
+      case TOOL.BROWSER_NAVIGATION:
+        return value.tool_input?.url;
+      case TOOL.BROWSER_RESTART:
+        return value.tool_input?.url;
+      case TOOL.BROWSER_SCROLL_DOWN:
+        return value.tool_input?.url;
+      case TOOL.BROWSER_SCROLL_UP:
+        return value.tool_input?.url;
+      case TOOL.BROWSER_CLICK:
+        return value.tool_input?.url;
+      case TOOL.BROWSER_ENTER_TEXT:
+        return value.tool_input?.url;
+      case TOOL.BROWSER_PRESS_KEY:
+        return value.tool_input?.url;
+      case TOOL.BROWSER_GET_SELECT_OPTIONS:
+        return value.tool_input?.url;
+      case TOOL.BROWSER_SELECT_DROPDOWN_OPTION:
+        return value.tool_input?.url;
+      case TOOL.BROWSER_SWITCH_TAB:
+        return value.tool_input?.url;
+      case TOOL.BROWSER_OPEN_NEW_TAB:
+        return value.tool_input?.url;
+
       default:
         break;
     }
   }, [type, value, workspaceInfo]);
 
-  if (type === TOOL.COMPLETE) return null;
+  if (type === TOOL.COMPLETE || type === TOOL.BROWSER_VIEW) return null;
 
   return (
     <div

@@ -1,12 +1,14 @@
 import { Globe, SquareArrowOutUpRight } from "lucide-react";
+import Markdown from "./markdown";
 
 interface BrowserProps {
   className?: string;
   url?: string;
   screenshot?: string;
+  raw?: string;
 }
 
-const Browser = ({ className, url, screenshot }: BrowserProps) => {
+const Browser = ({ className, url, screenshot, raw }: BrowserProps) => {
   if (!url) return;
 
   return (
@@ -45,6 +47,11 @@ const Browser = ({ className, url, screenshot }: BrowserProps) => {
             alt="Browser"
             className="w-full h-full object-contain object-top"
           />
+        )}
+        {raw && (
+          <div className="p-4 overflow-auto h-[calc(100vh-234px)]">
+            <Markdown>{raw}</Markdown>
+          </div>
         )}
       </div>
     </div>

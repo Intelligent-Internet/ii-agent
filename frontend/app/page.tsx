@@ -67,10 +67,26 @@ export default function Home() {
           setCurrentActionData(data);
           break;
 
-        case TOOL.TAVILY_VISIT:
         case TOOL.BROWSER_USE:
+        case TOOL.TAVILY_VISIT:
           setActiveTab(TAB.BROWSER);
           setCurrentActionData(data);
+          break;
+
+        case TOOL.BROWSER_CLICK:
+        case TOOL.BROWSER_ENTER_TEXT:
+        case TOOL.BROWSER_PRESS_KEY:
+        case TOOL.BROWSER_GET_SELECT_OPTIONS:
+        case TOOL.BROWSER_SELECT_DROPDOWN_OPTION:
+        case TOOL.BROWSER_SWITCH_TAB:
+        case TOOL.BROWSER_OPEN_NEW_TAB:
+        case TOOL.BROWSER_VIEW:
+        case TOOL.BROWSER_NAVIGATION:
+        case TOOL.BROWSER_RESTART:
+        case TOOL.BROWSER_WAIT:
+        case TOOL.BROWSER_SCROLL_DOWN:
+        case TOOL.BROWSER_SCROLL_UP:
+          setActiveTab(TAB.BROWSER);
           break;
 
         case TOOL.BASH:
@@ -251,7 +267,10 @@ export default function Home() {
         JSON.stringify({
           type: "upload_file",
           content: {
-            files: fileContents,
+            files: fileContents.map(({ name, content }) => ({
+              path: name,
+              content,
+            })),
           },
         })
       );
@@ -330,31 +349,45 @@ export default function Home() {
               }
               break;
 
-            case TOOL.BROWSER_USE:
-              setMessages((prev) => {
-                const lastMessage = cloneDeep(prev[prev.length - 1]);
-                if (!data.content.screenshot) {
-                  return prev;
-                }
-                if (
-                  lastMessage.action &&
-                  (lastMessage.action?.type === TOOL.BROWSER_USE ||
-                    lastMessage.action?.type === TOOL.TAVILY_VISIT)
-                ) {
-                  lastMessage.id = Date.now().toString();
-                  lastMessage.action.type = TOOL.BROWSER_USE;
-                  lastMessage.action.data.result = data.content.screenshot;
-                  setTimeout(() => {
-                    handleClickAction(lastMessage.action);
-                  }, 500);
-                  return [...prev];
-                } else {
-                  return [...prev, { ...lastMessage, action: data.content }];
-                }
-              });
+            case AgentEvent.BROWSER_USE:
+              const message: Message = {
+                id: Date.now().toString(),
+                role: "assistant",
+                action: {
+                  type: data.type,
+                  data: {
+                    result: data.content.screenshot,
+                    tool_input: {
+                      url: data.content.url,
+                    },
+                  },
+                },
+                timestamp: Date.now(),
+              };
+              setMessages((prev) => [...prev, message]);
+              handleClickAction(message.action);
               break;
 
             case AgentEvent.TOOL_RESULT:
+              if (
+                [
+                  TOOL.BROWSER_VIEW,
+                  TOOL.BROWSER_CLICK,
+                  TOOL.BROWSER_ENTER_TEXT,
+                  TOOL.BROWSER_PRESS_KEY,
+                  TOOL.BROWSER_GET_SELECT_OPTIONS,
+                  TOOL.BROWSER_SELECT_DROPDOWN_OPTION,
+                  TOOL.BROWSER_SWITCH_TAB,
+                  TOOL.BROWSER_OPEN_NEW_TAB,
+                  TOOL.BROWSER_WAIT,
+                  TOOL.BROWSER_SCROLL_DOWN,
+                  TOOL.BROWSER_SCROLL_UP,
+                  TOOL.BROWSER_NAVIGATION,
+                  TOOL.BROWSER_RESTART,
+                ].includes(data.content.tool_name)
+              ) {
+                break;
+              }
               if (data.content.tool_name === TOOL.BROWSER_USE) {
                 setMessages((prev) => [
                   ...prev,
@@ -366,10 +399,7 @@ export default function Home() {
                   },
                 ]);
               } else {
-                if (
-                  data.content.tool_name !== TOOL.SEQUENTIAL_THINKING &&
-                  data.content.tool_name !== TOOL.TAVILY_VISIT
-                ) {
+                if (data.content.tool_name !== TOOL.SEQUENTIAL_THINKING) {
                   setMessages((prev) => {
                     const lastMessage = cloneDeep(prev[prev.length - 1]);
                     if (
@@ -771,6 +801,12 @@ export default function Home() {
                   screenshot={
                     currentActionData?.type === TOOL.BROWSER_USE
                       ? (currentActionData?.data.result as string)
+                      : undefined
+                  }
+                  raw={
+                    currentActionData?.type === TOOL.TAVILY_VISIT
+                      ? parseJson(currentActionData?.data?.result as string)
+                          ?.raw_content
                       : undefined
                   }
                 />

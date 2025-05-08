@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { ArrowUp, X, Loader2, Paperclip } from "lucide-react";
+import { ArrowUp, Loader2, Paperclip } from "lucide-react";
 import { Button } from "./ui/button";
 import { Textarea } from "./ui/textarea";
 import { useState, useEffect } from "react";
@@ -79,20 +79,20 @@ const QuestionInput = ({
     }, 5000);
   };
 
-  const removeFile = (fileName: string) => {
-    setFiles((prev) => {
-      // Find the file to remove
-      const fileToRemove = prev.find((file) => file.name === fileName);
+  // const removeFile = (fileName: string) => {
+  //   setFiles((prev) => {
+  //     // Find the file to remove
+  //     const fileToRemove = prev.find((file) => file.name === fileName);
 
-      // Revoke object URL if it exists
-      if (fileToRemove?.preview) {
-        URL.revokeObjectURL(fileToRemove.preview);
-      }
+  //     // Revoke object URL if it exists
+  //     if (fileToRemove?.preview) {
+  //       URL.revokeObjectURL(fileToRemove.preview);
+  //     }
 
-      // Filter out the file
-      return prev.filter((file) => file.name !== fileName);
-    });
-  };
+  //     // Filter out the file
+  //     return prev.filter((file) => file.name !== fileName);
+  //   });
+  // };
 
   return (
     <motion.div
@@ -127,12 +127,12 @@ const QuestionInput = ({
                         className="w-full h-full object-cover"
                       />
                     </div>
-                    <button
+                    {/* <button
                       onClick={() => removeFile(file.name)}
                       className="absolute -top-2 -right-2 bg-black rounded-full p-1 hover:bg-gray-700"
                     >
                       <X className="size-4 text-white" />
-                    </button>
+                    </button> */}
                     {file.loading && (
                       <div className="absolute inset-0 flex items-center justify-center bg-black/30 rounded-xl">
                         <Loader2 className="size-5 text-white animate-spin" />
@@ -166,12 +166,12 @@ const QuestionInput = ({
                     </span>
                     <span className="text-xs text-gray-500">{label}</span>
                   </div>
-                  <button
+                  {/* <button
                     onClick={() => removeFile(file.name)}
                     className="ml-2 rounded-full p-1 hover:bg-gray-700"
                   >
                     <X className="size-4" />
-                  </button>
+                  </button> */}
                 </div>
               );
             })}

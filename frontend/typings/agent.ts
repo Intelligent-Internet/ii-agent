@@ -31,6 +31,7 @@ export enum TOOL {
   STATIC_DEPLOY = "static_deploy",
   PDF_TEXT_EXTRACT = "pdf_text_extract",
 
+  BROWSER_VIEW = "browser_view",
   BROWSER_NAVIGATION = "browser_navigation",
   BROWSER_RESTART = "browser_restart",
   BROWSER_WAIT = "browser_wait",
