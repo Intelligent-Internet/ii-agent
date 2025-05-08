@@ -20,6 +20,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 import anyio
 
+from ii_agent.core.event import RealtimeEvent, EventType
 from utils import parse_common_args
 from ii_agent.agents.anthropic_fc import AnthropicFC
 from ii_agent.agents.base import BaseAgent
@@ -78,46 +79,51 @@ message_processors: Dict[WebSocket, asyncio.Task] = {}
 # Store global args for use in endpoint
 global_args = None
 
-async def save_uploaded_file(websocket: WebSocket, file_path: str, file_content: str) -> str:
+
+async def save_uploaded_file(
+    websocket: WebSocket, file_path: str, file_content: str
+) -> str:
     """Save an uploaded file to the workspace.
-    
+
     Args:
         websocket: The WebSocket connection
         file_path: The path where the file should be saved (relative to workspace)
         file_content: The content of the file (base64 encoded if binary)
-        
+
     Returns:
         The absolute path where the file was saved
     """
     agent = active_agents.get(websocket)
-    
+
     if not agent:
         raise ValueError("Agent not initialized for this connection")
-    
+
     # Get the workspace path for this connection
     workspace_root = agent.workspace_manager.root
-    
+
     # Ensure the file path is relative to the workspace
     if Path(file_path).is_absolute():
-        file_path = Path(file_path).name  # Just use the filename if absolute path provided
-    
+        file_path = Path(
+            file_path
+        ).name  # Just use the filename if absolute path provided
+
     # Create the full path
     full_path = workspace_root / file_path
-    
+
     # Ensure the directory exists
     full_path.parent.mkdir(parents=True, exist_ok=True)
-    
+
     # Check if content is base64 encoded (for binary files)
     if file_content.startswith("data:"):
         # Handle data URLs (e.g., "data:application/pdf;base64,...")
         import base64
-        
+
         # Split the header from the base64 content
         header, encoded = file_content.split(",", 1)
-        
+
         # Decode the content
         decoded = base64.b64decode(encoded)
-        
+
         # Write binary content
         with open(full_path, "wb") as f:
             f.write(decoded)
@@ -125,12 +131,13 @@ async def save_uploaded_file(websocket: WebSocket, file_path: str, file_content:
         # Write text content
         with open(full_path, "w") as f:
             f.write(file_content)
-    
+
     # Log the upload
     logger.info(f"File uploaded to {full_path}")
-    
+
     # Return the path where the file was saved
     return str(full_path)
+
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -148,10 +155,10 @@ async def websocket_endpoint(websocket: WebSocket):
     try:
         # Initial connection message
         await websocket.send_json(
-            {
-                "type": "connection_established",
-                "content": {"message": "Connected to Agent WebSocket Server"},
-            }
+            RealtimeEvent(
+                type=EventType.CONNECTION_ESTABLISHED,
+                content={"message": "Connected to Agent WebSocket Server"},
+            ).model_dump()
         )
 
         # Process messages from the client
@@ -167,12 +174,12 @@ async def websocket_endpoint(websocket: WebSocket):
                     # Check if there's an active task for this connection
                     if websocket in active_tasks and not active_tasks[websocket].done():
                         await websocket.send_json(
-                            {
-                                "type": "error",
-                                "content": {
+                            RealtimeEvent(
+                                type=EventType.ERROR,
+                                content={
                                     "message": "A query is already being processed"
                                 },
-                            }
+                            ).model_dump()
                         )
                         continue
 
@@ -182,10 +189,10 @@ async def websocket_endpoint(websocket: WebSocket):
 
                     # Send acknowledgment
                     await websocket.send_json(
-                        {
-                            "type": "processing",
-                            "content": {"message": "Processing your request..."},
-                        }
+                        RealtimeEvent(
+                            type=EventType.PROCESSING,
+                            content={"message": "Processing your request..."},
+                        ).model_dump()
                     )
 
                     # Run the agent with the query in a separate task
@@ -198,103 +205,119 @@ async def websocket_endpoint(websocket: WebSocket):
                     # Send information about the current workspace
                     if agent and agent.workspace_manager:
                         await websocket.send_json(
-                            {
-                                "type": "workspace_info",
-                                "content": {"path": str(agent.workspace_manager.root)},
-                            }
+                            RealtimeEvent(
+                                type=EventType.WORKSPACE_INFO,
+                                content={"path": str(agent.workspace_manager.root)},
+                            ).model_dump()
                         )
                     else:
-                        await websocket.send_json({
-                            "type": "error",
-                            "content": {"message": "Workspace not initialized"}
-                        })
-                        
+                        await websocket.send_json(
+                            RealtimeEvent(
+                                type=EventType.ERROR,
+                                content={"message": "Workspace not initialized"},
+                            ).model_dump()
+                        )
+
                 elif msg_type == "upload_file":
                     # Handle file upload (single or multiple)
                     files = content.get("files", [])
-                    
+
                     # For backward compatibility, also support single file upload
                     if not files and content.get("path") and "content" in content:
-                        files = [{
-                            "path": content.get("path", ""),
-                            "content": content.get("content", "")
-                        }]
-                    
+                        files = [
+                            {
+                                "path": content.get("path", ""),
+                                "content": content.get("content", ""),
+                            }
+                        ]
+
                     if not files:
-                        await websocket.send_json({
-                            "type": "error",
-                            "content": {"message": "No files provided for upload"}
-                        })
+                        await websocket.send_json(
+                            RealtimeEvent(
+                                type=EventType.ERROR,
+                                content={"message": "No files provided for upload"},
+                            ).model_dump()
+                        )
                         continue
-                    
+
                     try:
                         results = []
                         for file_info in files:
                             file_path = file_info.get("path", "")
                             file_content = file_info.get("content", "")
-                            
+
                             if not file_path:
                                 continue
-                                
-                            result = await save_uploaded_file(websocket, file_path, file_content)
-                            results.append({
-                                "path": file_path,
-                                "saved_path": result
-                            })
-                        
-                        await websocket.send_json({
-                            "type": "upload_success",
-                            "content": {
-                                "message": f"Successfully uploaded {len(results)} file(s)",
-                                "files": results
-                            }
-                        })
+
+                            result = await save_uploaded_file(
+                                websocket, file_path, file_content
+                            )
+                            results.append({"path": file_path, "saved_path": result})
+
+                        await websocket.send_json(
+                            RealtimeEvent(
+                                type=EventType.UPLOAD_SUCCESS,
+                                content={
+                                    "message": f"Successfully uploaded {len(results)} file(s)",
+                                    "files": results,
+                                },
+                            ).model_dump()
+                        )
                     except Exception as e:
                         logger.error(f"Error uploading files: {str(e)}")
-                        await websocket.send_json({
-                            "type": "error",
-                            "content": {"message": f"Error uploading files: {str(e)}"}
-                        })
+                        await websocket.send_json(
+                            RealtimeEvent(
+                                type=EventType.ERROR,
+                                content={"message": f"Error uploading files: {str(e)}"},
+                            ).model_dump()
+                        )
 
                 elif msg_type == "ping":
                     # Simple ping to keep connection alive
-                    await websocket.send_json({"type": "pong", "content": {}})
+                    await websocket.send_json(
+                        RealtimeEvent(type=EventType.PONG, content={}).model_dump()
+                    )
 
                 elif msg_type == "cancel":
                     # Cancel the current agent task if one exists
                     if websocket in active_tasks and not active_tasks[websocket].done():
                         active_tasks[websocket].cancel()
                         await websocket.send_json(
-                            {"type": "system", "content": {"message": "Query canceled"}}
+                            RealtimeEvent(
+                                type=EventType.SYSTEM,
+                                content={"message": "Query canceled"},
+                            ).model_dump()
                         )
                     else:
                         await websocket.send_json(
-                            {
-                                "type": "error",
-                                "content": {"message": "No active query to cancel"},
-                            }
+                            RealtimeEvent(
+                                type=EventType.ERROR,
+                                content={"message": "No active query to cancel"},
+                            ).model_dump()
                         )
 
                 else:
                     # Unknown message type
                     await websocket.send_json(
-                        {
-                            "type": "error",
-                            "content": {"message": f"Unknown message type: {msg_type}"},
-                        }
+                        RealtimeEvent(
+                            type=EventType.ERROR,
+                            content={"message": f"Unknown message type: {msg_type}"},
+                        ).model_dump()
                     )
 
             except json.JSONDecodeError:
                 await websocket.send_json(
-                    {"type": "error", "content": {"message": "Invalid JSON format"}}
+                    RealtimeEvent(
+                        type=EventType.ERROR, content={"message": "Invalid JSON format"}
+                    ).model_dump()
                 )
             except Exception as e:
                 logger.error(f"Error processing message: {str(e)}")
                 await websocket.send_json(
-                    {
-                        "type": "error",
-                        "content": {"message": f"Error processing request: {str(e)}"},
-                    }
+                    RealtimeEvent(
+                        type=EventType.ERROR,
+                        content={"message": f"Error processing request: {str(e)}"},
+                    ).model_dump()
                 )
 
     except WebSocketDisconnect:
@@ -313,10 +336,10 @@ async def run_agent_async(websocket: WebSocket, user_input: str, resume: bool = 
 
     if not agent:
         await websocket.send_json(
-            {
-                "type": "error",
-                "content": {"message": "Agent not initialized for this connection"},
-            }
+            RealtimeEvent(
+                type=EventType.ERROR,
+                content={"message": "Agent not initialized for this connection"},
+            ).model_dump()
         )
         return
 
@@ -326,7 +349,9 @@ async def run_agent_async(websocket: WebSocket, user_input: str, resume: bool = 
 
         # Send result back to client
         await websocket.send_json(
-            {"type": "agent_response", "content": {"text": result}}
+            RealtimeEvent(
+                type=EventType.AGENT_RESPONSE, content={"text": result}
+            ).model_dump()
         )
     except Exception as e:
         logger.error(f"Error running agent: {str(e)}")
@@ -334,7 +359,10 @@ async def run_agent_async(websocket: WebSocket, user_input: str, resume: bool = 
 
         traceback.print_exc()
         await websocket.send_json(
-            {"type": "error", "content": {"message": f"Error running agent: {str(e)}"}}
+            RealtimeEvent(
+                type=EventType.ERROR,
+                content={"message": f"Error running agent: {str(e)}"},
+            ).model_dump()
         )
     finally:
         # Clean up the task reference
@@ -429,7 +457,6 @@ def create_agent_for_connection(websocket: WebSocket):
         ask_user_permission=global_args.needs_permission,
         docker_container_id=global_args.docker_container_id,
         websocket=websocket,
-        file_server_port=global_args.port,
     )
 
     return agent
