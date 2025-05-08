@@ -2,9 +2,11 @@
 
 import { ActionStep, TOOL } from "@/typings/agent";
 import {
+  AudioLines,
   ChevronDown,
   ChevronUp,
   Code,
+  FileAudio,
   FileText,
   Globe,
   Lightbulb,
@@ -45,6 +47,10 @@ const Action = ({ workspaceInfo, type, value, onClick }: ActionProps) => {
         return <Rocket className={className} />;
       case TOOL.PDF_TEXT_EXTRACT:
         return <FileText className={className} />;
+      case TOOL.AUDIO_TRANSCRIBE:
+        return <FileAudio className={className} />;
+      case TOOL.GENERATE_AUDIO_RESPONSE:
+        return <AudioLines className={className} />;
 
       case TOOL.BROWSER_WAIT:
         return <LoaderCircle className={className} />;
@@ -101,6 +107,10 @@ const Action = ({ workspaceInfo, type, value, onClick }: ActionProps) => {
         return "Deploying";
       case TOOL.PDF_TEXT_EXTRACT:
         return "Extracting Text";
+      case TOOL.AUDIO_TRANSCRIBE:
+        return "Transcribing Audio";
+      case TOOL.GENERATE_AUDIO_RESPONSE:
+        return "Generating Audio";
 
       case TOOL.BROWSER_WAIT:
         return "Waiting for Page to Load";
@@ -162,6 +172,14 @@ const Action = ({ workspaceInfo, type, value, onClick }: ActionProps) => {
         return value.tool_input?.file_path === workspaceInfo
           ? workspaceInfo
           : value.tool_input?.file_path?.replace(workspaceInfo, "");
+      case TOOL.AUDIO_TRANSCRIBE:
+        return value.tool_input?.file_path === workspaceInfo
+          ? workspaceInfo
+          : value.tool_input?.file_path?.replace(workspaceInfo, "");
+      case TOOL.GENERATE_AUDIO_RESPONSE:
+        return value.tool_input?.output_filename === workspaceInfo
+          ? workspaceInfo
+          : value.tool_input?.output_filename?.replace(workspaceInfo, "");
 
       case TOOL.BROWSER_WAIT:
         return value.tool_input?.url;

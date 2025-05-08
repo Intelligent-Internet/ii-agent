@@ -44,6 +44,8 @@ export enum TOOL {
   BROWSER_SELECT_DROPDOWN_OPTION = "browser_select_dropdown_option",
   BROWSER_SWITCH_TAB = "browser_switch_tab",
   BROWSER_OPEN_NEW_TAB = "browser_open_new_tab",
+  AUDIO_TRANSCRIBE = "audio_transcribe",
+  GENERATE_AUDIO_RESPONSE = "generate_audio_response",
 }
 
 export type ActionStep = {
@@ -61,6 +63,7 @@ export type ActionStep = {
       query?: string;
       file?: string;
       instruction?: string;
+      output_filename?: string;
     };
     result?: string | Record<string, unknown>;
     query?: string;
