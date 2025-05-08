@@ -27,10 +27,9 @@ class StaticDeployTool(LLMTool):
         "required": ["file_path"],
     }
 
-    def __init__(self, workspace_manager: WorkspaceManager, file_server_port: int):
+    def __init__(self, workspace_manager: WorkspaceManager):
         super().__init__()
         self.workspace_manager = workspace_manager
-        self.file_server_port = file_server_port
         self.base_url = os.getenv("STATIC_FILE_BASE_URL", "http://localhost:8888")
 
     def run_impl(

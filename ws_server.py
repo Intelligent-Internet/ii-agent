@@ -311,7 +311,7 @@ def create_agent_for_connection(websocket: WebSocket):
             workspace_dir=connection_workspace,
             token_counter=token_counter,
             logger=logger_for_agent_logs,
-            token_budget=120000,
+            token_budget=120_000,
         )
     else:  # standard
         context_manager = StandardContextManager(

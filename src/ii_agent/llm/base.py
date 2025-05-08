@@ -54,7 +54,7 @@ class ToolFormattedResult(DataClassJsonMixin):
 
     tool_call_id: str
     tool_name: str
-    tool_output: str
+    tool_output: list[dict[str, Any]] | str
 
 
 @dataclass

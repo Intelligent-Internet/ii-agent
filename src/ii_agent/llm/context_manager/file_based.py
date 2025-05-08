@@ -8,7 +8,7 @@ import logging
 import os
 from termcolor import colored
 import copy
-from ii_agent.tools import TOOLS_NEED_INPUT_TRUNCATION, TOOLS_NEED_OUTPUT_TRUNCATION
+from ii_agent.tools import TOOLS_NEED_INPUT_TRUNCATION, TOOLS_NEED_OUTPUT_FILE_SAVE
 
 HASH_LENGTH = 10
 
@@ -29,7 +29,7 @@ class FileBasedContextManager(ContextManager):
         logger: logging.Logger,
         token_budget: int = 120_000,
         truncate_keep_n_turns: int = 3,
-        min_length_to_truncate: int = 2000,
+        min_length_to_truncate: int = 1499,
     ):
         """
         Args:
@@ -102,7 +102,7 @@ class FileBasedContextManager(ContextManager):
                         self.token_counter.count_tokens(message.tool_output)
                         >= self.min_length_to_truncate
                     ):
-                        if message.tool_name in TOOLS_NEED_OUTPUT_TRUNCATION:
+                        if message.tool_name in TOOLS_NEED_OUTPUT_FILE_SAVE:
                             # For tools in the list, save to file
                             content_hash = self._get_content_hash(message.tool_output)
                             if message.tool_name == "tavily_visit_webpage":

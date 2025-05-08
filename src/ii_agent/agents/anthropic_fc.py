@@ -4,7 +4,7 @@ import logging
 from typing import Any, Optional
 from fastapi import WebSocket
 from ii_agent.agents.base import BaseAgent
-from ii_agent.core.event import RealtimeEvent
+from ii_agent.core.event import EventType, RealtimeEvent
 from ii_agent.llm.base import LLMClient, TextResult
 from ii_agent.llm.context_manager.base import ContextManager
 from ii_agent.llm.message_history import MessageHistory
@@ -19,8 +19,30 @@ from ii_agent.tools import (
     TavilyVisitWebpageTool,
     StaticDeployTool,
 )
-from ii_agent.tools.base import ToolImplOutput
+from ii_agent.tools.base import ToolImplOutput, LLMTool
+from ii_agent.tools.browser_tool import (
+    BrowserNavigationTool,
+    BrowserRestartTool,
+    BrowserScrollDownTool,
+    BrowserScrollUpTool,
+    BrowserViewTool,
+    BrowserWaitTool,
+    BrowserSwitchTabTool,
+    BrowserOpenNewTabTool,
+    BrowserClickTool,
+    BrowserEnterTextTool,
+    BrowserPressKeyTool,
+    BrowserGetSelectOptionsTool,
+    BrowserSelectDropdownOptionTool,
+)
+
+from ii_agent.tools.advanced_tools.audio_tool import (
+    AudioTranscribeTool,
+    AudioGenerateTool,
+)
+from ii_agent.tools.advanced_tools.pdf_tool import PdfTextExtractTool
 from ii_agent.utils import WorkspaceManager
+from ii_agent.browser.browser import Browser
 
 
 class AnthropicFC(BaseAgent):
@@ -64,7 +86,6 @@ try breaking down the task into smaller steps. After call this tool to update or
         ask_user_permission: bool = False,
         docker_container_id: Optional[str] = None,
         websocket: Optional[WebSocket] = None,
-        file_server_port: int = 8088,
     ):
         """Initialize the agent.
 
@@ -78,7 +99,6 @@ try breaking down the task into smaller steps. After call this tool to update or
             ask_user_permission: Whether to ask for permission before executing commands
             docker_container_id: Optional Docker container ID to run commands in
             websocket: Optional WebSocket for real-time communication
-            file_server_port: Port for the file server
         """
         super().__init__()
         self.client = client
@@ -108,8 +128,9 @@ try breaking down the task into smaller steps. After call this tool to update or
             )
 
         self.message_queue = asyncio.Queue()
-        # Start file server
-        self.file_server_port = file_server_port
+
+        self.browser = Browser()
+        self.browser._init_browser()
 
         self.tools = [
             bash_tool,
@@ -118,10 +139,26 @@ try breaking down the task into smaller steps. After call this tool to update or
             TavilySearchTool(),
             TavilyVisitWebpageTool(),
             self.complete_tool,
-            StaticDeployTool(
-                workspace_manager=workspace_manager,
-                file_server_port=self.file_server_port,
-            ),
+            StaticDeployTool(workspace_manager=workspace_manager),
+            # Browser tools
+            BrowserNavigationTool(browser=self.browser),
+            BrowserRestartTool(browser=self.browser),
+            BrowserScrollDownTool(browser=self.browser),
+            BrowserScrollUpTool(browser=self.browser),
+            BrowserViewTool(browser=self.browser, message_queue=self.message_queue),
+            BrowserWaitTool(browser=self.browser),
+            BrowserSwitchTabTool(browser=self.browser),
+            BrowserOpenNewTabTool(browser=self.browser),
+            BrowserClickTool(browser=self.browser),
+            BrowserEnterTextTool(browser=self.browser),
+            BrowserPressKeyTool(browser=self.browser),
+            BrowserGetSelectOptionsTool(browser=self.browser),
+            BrowserSelectDropdownOptionTool(browser=self.browser),
+            # audio tools
+            AudioTranscribeTool(workspace_manager=workspace_manager),
+            AudioGenerateTool(workspace_manager=workspace_manager),
+            # pdf tools
+            PdfTextExtractTool(workspace_manager=workspace_manager),
         ]
         self.websocket = websocket
 
@@ -132,11 +169,9 @@ try breaking down the task into smaller steps. After call this tool to update or
         try:
             while True:
                 try:
-                    message = await self.message_queue.get()
+                    message: RealtimeEvent = await self.message_queue.get()
 
-                    await self.websocket.send_json(
-                        {"type": message.type, "content": message.content}
-                    )
+                    await self.websocket.send_json(message.model_dump())
 
                     self.message_queue.task_done()
                 except asyncio.CancelledError:
@@ -231,7 +266,7 @@ try breaking down the task into smaller steps. After call this tool to update or
 
                 self.message_queue.put_nowait(
                     RealtimeEvent(
-                        type="tool_call",
+                        type=EventType.TOOL_CALL,
                         content={
                             "tool_call_id": tool_call.tool_call_id,
                             "tool_name": tool_call.tool_name,
@@ -250,7 +285,9 @@ try breaking down the task into smaller steps. After call this tool to update or
                     )
 
                 try:
-                    tool = next(t for t in self.tools if t.name == tool_call.tool_name)
+                    tool: LLMTool = next(
+                        t for t in self.tools if t.name == tool_call.tool_name
+                    )
                 except StopIteration as exc:
                     raise ValueError(
                         f"Tool with name {tool_call.tool_name} not found"
@@ -264,7 +301,11 @@ try breaking down the task into smaller steps. After call this tool to update or
                     )
 
                     log_message = f"Calling tool {tool_call.tool_name} with input:\n{tool_input_str}"
-                    log_message += f"\nTool output: \n{result}\n\n"
+                    if isinstance(result, str):
+                        log_message += f"\nTool output: \n{result}\n\n"
+                    else:
+                        log_message += f"\nTool output: \n{result[0]}\n\n"
+
                     self.logger_for_agent_logs.info(log_message)
 
                     # Handle both ToolResult objects and tuples
@@ -277,10 +318,9 @@ try breaking down the task into smaller steps. After call this tool to update or
 
                     self.message_queue.put_nowait(
                         RealtimeEvent(
-                            type="tool_result",
+                            type=EventType.TOOL_RESULT,
                             content={
                                 "tool_call_id": tool_call.tool_call_id,
-                                # "tool_result": tool_result,
                                 "tool_name": tool_call.tool_name,
                                 "result": tool_result,
                             },

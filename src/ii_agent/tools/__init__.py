@@ -16,8 +16,8 @@ TOOLS_NEED_INPUT_TRUNCATION = {
     BashTool.name: ["command"],
 }
 
-# Tools that need output truncation (ToolFormattedResult)
-TOOLS_NEED_OUTPUT_TRUNCATION = {TavilyVisitWebpageTool.name}
+# Tools that need output truncation with file save (ToolFormattedResult)
+TOOLS_NEED_OUTPUT_FILE_SAVE = {TavilyVisitWebpageTool.name}
 
 __all__ = [
     "DuckDuckGoSearchTool",
@@ -33,5 +33,5 @@ __all__ = [
     "create_bash_tool",
     "create_docker_bash_tool",
     "TOOLS_NEED_INPUT_TRUNCATION",
-    "TOOLS_NEED_OUTPUT_TRUNCATION",
+    "TOOLS_NEED_OUTPUT_FILE_SAVE",
 ]

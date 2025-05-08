@@ -19,12 +19,12 @@ class ToolImplOutput:
     """Output from an LLM tool implementation.
 
     Attributes:
-        tool_output: The main output string that will be shown to the model.
+        tool_output: The main output string or list of dicts that will be shown to the model.
         tool_result_message: A description of what the tool did, for logging purposes.
         auxiliary_data: Additional data that the tool wants to pass along for logging only.
     """
 
-    tool_output: str
+    tool_output: list[dict[str, Any]] | str
     tool_result_message: str
     auxiliary_data: dict[str, Any] = field(default_factory=dict)
 
@@ -53,7 +53,7 @@ class LLMTool(ABC):
         self,
         tool_input: dict[str, Any],
         message_history: Optional[MessageHistory] = None,
-    ) -> str:
+    ) -> str | list[dict[str, Any]]:
         """Run the tool.
 
         Args:

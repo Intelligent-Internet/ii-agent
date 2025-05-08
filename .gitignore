@@ -177,5 +177,6 @@ dist
 
 agent_logs.txt
 workspace/
+tmp/
 
 .vscode/

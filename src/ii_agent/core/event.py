@@ -1,18 +1,24 @@
 from pydantic import BaseModel
-from typing import Literal, Any, Dict
+from typing import Any
+import enum
+
+
+class EventType(str, enum.Enum):
+    CONNECTION_ESTABLISHED = "connection_established"
+    WORKSPACE_INFO = "workspace_info"
+    PROCESSING = "processing"
+    AGENT_THINKING = "agent_thinking"
+    TOOL_CALL = "tool_call"
+    TOOL_RESULT = "tool_result"
+    AGENT_RESPONSE = "agent_response"
+    STREAM_COMPLETE = "stream_complete"
+    ERROR = "error"
+    SYSTEM = "system"
+    PONG = "pong"
+    UPLOAD_SUCCESS = "upload_success"
+    BROWSER_USE = "browser_use"
 
 
 class RealtimeEvent(BaseModel):
-    type: Literal["make_response", "tool_call", "tool_result"]
+    type: EventType
     content: dict[str, Any]
-
-
-# WebSocket message models
-class ClientMessage(BaseModel):
-    type: str
-    content: Dict[str, Any]
-
-
-class ServerMessage(BaseModel):
-    type: str
-    content: Dict[str, Any]

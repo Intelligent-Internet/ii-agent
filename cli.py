@@ -14,8 +14,6 @@ import logging
 from utils import parse_common_args
 from rich.console import Console
 from rich.panel import Panel
-from prompt_toolkit import prompt
-from prompt_toolkit.history import InMemoryHistory
 
 from ii_agent.agents.anthropic_fc import AnthropicFC
 from ii_agent.utils import WorkspaceManager
@@ -113,12 +111,10 @@ def main():
         docker_container_id=args.docker_container_id,
     )
 
-    history = InMemoryHistory()
     # Main interaction loop
     try:
         while True:
-            user_input = prompt("User input: ", history=history)
-            history.append_string(user_input)
+            user_input = input("User input: ")
 
             # Check for exit commands
             if user_input.lower() in ["exit", "quit"]:
