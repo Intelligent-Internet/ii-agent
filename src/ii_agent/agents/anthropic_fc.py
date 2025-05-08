@@ -130,7 +130,6 @@ try breaking down the task into smaller steps. After call this tool to update or
         self.message_queue = asyncio.Queue()
 
         self.browser = Browser()
-        self.browser._init_browser()
 
         self.tools = [
             bash_tool,

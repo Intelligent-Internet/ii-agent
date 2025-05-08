@@ -1,5 +1,5 @@
+import asyncio
 import json
-import time
 from ii_agent.tools.base import (
     LLMTool,
     ToolImplOutput,
@@ -9,9 +9,19 @@ from playwright.sync_api import TimeoutError
 from ii_agent.browser.browser import Browser
 from ii_agent.browser.utils import is_pdf_url
 from ii_agent.core.event import EventType, RealtimeEvent
-from ii_agent.tools.utils import save_base64_image_png
 from asyncio import Queue
 from typing import Any, Optional
+
+
+def get_event_loop():
+    try:
+        # Try to get the existing event loop
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        # If no event loop exists, create a new one
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    return loop
 
 
 class BrowserNavigationTool(LLMTool):
@@ -38,22 +48,26 @@ class BrowserNavigationTool(LLMTool):
     ) -> ToolImplOutput:
         url = tool_input["url"]
 
-        page = self.browser.get_current_page()
-        try:
-            page.goto(url, wait_until="domcontentloaded")
-        except TimeoutError:
-            msg = f"Timeout error navigating to {url}"
+        async def _run():
+            page = await self.browser.get_current_page()
+            try:
+                await page.goto(url, wait_until="domcontentloaded")
+            except TimeoutError:
+                msg = f"Timeout error navigating to {url}"
+                return ToolImplOutput(msg, msg)
+
+            is_pdf = is_pdf_url(url)
+            if is_pdf:
+                await asyncio.sleep(3)
+                await page.keyboard.press("Control+\\")
+                await asyncio.sleep(0.1)
+            else:
+                await asyncio.sleep(1.5)
+            msg = f"Navigated to {url}"
             return ToolImplOutput(msg, msg)
 
-        is_pdf = is_pdf_url(url)
-        if is_pdf:
-            time.sleep(3)
-            page.keyboard.press("Control+\\")
-            time.sleep(0.1)
-        else:
-            time.sleep(1.5)
-        msg = f"Navigated to {url}"
-        return ToolImplOutput(msg, msg)
+        loop = get_event_loop()
+        return loop.run_until_complete(_run())
 
 
 class BrowserRestartTool(LLMTool):
@@ -78,23 +92,27 @@ class BrowserRestartTool(LLMTool):
         tool_input: dict[str, Any],
         message_history: Optional[MessageHistory] = None,
     ) -> ToolImplOutput:
-        url = tool_input["url"]
-        self.browser.restart()
-        page = self.browser.get_current_page()
-        try:
-            page.goto(url, wait_until="domcontentloaded")
-        except TimeoutError:
-            msg = f"Timeout error navigating to {url}"
-            return ToolImplOutput(msg, msg)
-        is_pdf = is_pdf_url(url)
-        if is_pdf:
-            time.sleep(3)
-            page.keyboard.press("Control+\\")
-            time.sleep(0.1)
-        else:
-            time.sleep(1.5)
-        msg = f"Navigated to {url}"
-        return ToolImplOutput(msg, msg)
+        async def _run():
+            url = tool_input["url"]
+            await self.browser.restart()
+            page = await self.browser.get_current_page()
+            try:
+                await page.goto(url, wait_until="domcontentloaded")
+            except TimeoutError:
+                msg = f"Timeout error navigating to {url}"
+                return ToolImplOutput(msg, msg)
+            is_pdf = is_pdf_url(url)
+            if is_pdf:
+                await asyncio.sleep(3)
+                await page.keyboard.press("Control+\\")
+                await asyncio.sleep(0.1)
+            else:
+                await asyncio.sleep(1.5)
+                msg = f"Navigated to {url}"
+                return ToolImplOutput(msg, msg)
+
+        loop = get_event_loop()
+        return loop.run_until_complete(_run())
 
 
 class BrowserViewTool(LLMTool):
@@ -111,81 +129,61 @@ class BrowserViewTool(LLMTool):
         tool_input: dict[str, Any],
         message_history: Optional[MessageHistory] = None,
     ) -> ToolImplOutput:
-        state = self.browser.update_state()
+        async def _run():
+            state = await self.browser.update_state()
 
-        if self.message_queue:
-            self.message_queue.put_nowait(
-                RealtimeEvent(
-                    type=EventType.BROWSER_USE,
-                    content={
-                        "url": state.url,
-                        "screenshot": state.screenshot,
-                        "screenshot_with_highlights": state.screenshot_with_highlights,
-                    },
+            if self.message_queue:
+                self.message_queue.put_nowait(
+                    RealtimeEvent(
+                        type=EventType.BROWSER_USE,
+                        content={
+                            "url": state.url,
+                            "screenshot": state.screenshot,
+                            "screenshot_with_highlights": state.screenshot_with_highlights,
+                        },
+                    )
                 )
+
+            highlighted_elements = "<highlighted_elements>\n"
+            if state.interactive_elements:
+                for element in state.interactive_elements.values():
+                    start_tag = f"[{element.index}]<{element.tag_name}"
+
+                    if element.input_type:
+                        start_tag += f' type="{element.input_type}"'
+
+                    start_tag += ">"
+                    element_text = element.text.replace("\n", " ")
+                    highlighted_elements += (
+                        f"{start_tag}{element_text}</{element.tag_name}>\n"
+                    )
+            highlighted_elements += "</highlighted_elements>"
+
+            state_description = f"""Current URL: {state.url}
+
+    Current viewport information:
+    {highlighted_elements}
+
+    Screenshot with bounding boxes and labels drawn around interactable elements:"""
+
+            tool_output = [
+                {"type": "text", "text": state_description},
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "image/png",
+                        "data": state.screenshot_with_highlights,
+                    },
+                },
+            ]
+
+            return ToolImplOutput(
+                tool_output=tool_output, tool_result_message=state_description
             )
 
-        highlighted_elements = "<highlighted_elements>\n"
-        if state.interactive_elements:
-            for element in state.interactive_elements.values():
-                start_tag = f"[{element.index}]<{element.tag_name}"
-
-                if element.input_type:
-                    start_tag += f' type="{element.input_type}"'
-
-                start_tag += ">"
-                element_text = element.text.replace("\n", " ")
-                highlighted_elements += (
-                    f"{start_tag}{element_text}</{element.tag_name}>\n"
-                )
-        highlighted_elements += "</highlighted_elements>"
-
-        state_description = f"""Current URL: {state.url}
-
-Current viewport information:
-{highlighted_elements}
-
-Screenshot with bounding boxes and labels drawn around interactable elements:"""
-
-        tool_output = [
-            {"type": "text", "text": state_description},
-            {
-                "type": "image",
-                "source": {
-                    "type": "base64",
-                    "media_type": "image/png",
-                    "data": state.screenshot_with_highlights,
-                },
-            },
-        ]
-
-        # Adhoc save screenshot and highlights to tmp folder
-        # ------------------------------------------------------------------------
-        from glob import glob
-        import os
-
-        # Create tmp directory if it doesn't exist
-        os.makedirs("tmp", exist_ok=True)
-
-        # check how many directories are in tmp folder
-        tmp_dir = "tmp"
-        num_dirs = len(glob(os.path.join(tmp_dir, "*")))
-        new_dir_name = f"view_{num_dirs + 1}"
-        new_dir_path = os.path.join(tmp_dir, new_dir_name)
-        os.makedirs(new_dir_path, exist_ok=True)
-
-        save_base64_image_png(
-            state.screenshot_with_highlights,
-            f"{new_dir_path}/screenshot_with_highlights.png",
-        )
-
-        with open(f"{new_dir_path}/elements.txt", "w") as f:
-            f.write(highlighted_elements)
-        # ------------------------------------------------------------------------
-
-        return ToolImplOutput(
-            tool_output=tool_output, tool_result_message=state_description
-        )
+        loop = get_event_loop()
+        return loop.run_until_complete(_run())
 
 
 class BrowserWaitTool(LLMTool):
@@ -201,15 +199,20 @@ class BrowserWaitTool(LLMTool):
         tool_input: dict[str, Any],
         message_history: Optional[MessageHistory] = None,
     ) -> ToolImplOutput:
-        time.sleep(1)
-        is_pdf = is_pdf_url(self.browser.get_current_page().url)
-        if is_pdf:
-            self.browser.get_current_page().keyboard.press("Control+\\")
-            time.sleep(0.1)
-        return ToolImplOutput(
-            tool_output="Waited for page to load",
-            tool_result_message="Waited for page to load",
-        )
+        async def _run():
+            await asyncio.sleep(1)
+            page = await self.browser.get_current_page()
+            is_pdf = is_pdf_url(page.url)
+            if is_pdf:
+                await page.keyboard.press("Control+\\")
+                await asyncio.sleep(0.1)
+            return ToolImplOutput(
+                tool_output="Waited for page to load",
+                tool_result_message="Waited for page to load",
+            )
+
+        loop = get_event_loop()
+        return loop.run_until_complete(_run())
 
 
 class BrowserScrollDownTool(LLMTool):
@@ -225,20 +228,28 @@ class BrowserScrollDownTool(LLMTool):
         tool_input: dict[str, Any],
         message_history: Optional[MessageHistory] = None,
     ) -> ToolImplOutput:
-        page = self.browser.get_current_page()
-        state = self.browser.get_state()
-        is_pdf = is_pdf_url(state.url)
-        if is_pdf:
-            page.keyboard.press("PageDown")
-            time.sleep(0.1)
-        else:
-            page.mouse.move(state.viewport.width / 2, state.viewport.height / 2)
-            time.sleep(0.1)
-            page.mouse.wheel(0, state.viewport.height * 0.8)
-            time.sleep(0.1)
+        async def _run():
+            page = await self.browser.get_current_page()
+            state = self.browser.get_state()
+            is_pdf = is_pdf_url(state.url)
+            if is_pdf:
+                await page.keyboard.press("PageDown")
+                await asyncio.sleep(0.1)
+            else:
+                await page.mouse.move(
+                    state.viewport.width / 2, state.viewport.height / 2
+                )
+                await asyncio.sleep(0.1)
+                await page.mouse.wheel(0, state.viewport.height * 0.8)
+                await asyncio.sleep(0.1)
 
-        tool_output = "Scrolled page down"
-        return ToolImplOutput(tool_output=tool_output, tool_result_message=tool_output)
+            tool_output = "Scrolled page down"
+            return ToolImplOutput(
+                tool_output=tool_output, tool_result_message=tool_output
+            )
+
+        loop = get_event_loop()
+        return loop.run_until_complete(_run())
 
 
 class BrowserScrollUpTool(LLMTool):
@@ -254,20 +265,28 @@ class BrowserScrollUpTool(LLMTool):
         tool_input: dict[str, Any],
         message_history: Optional[MessageHistory] = None,
     ) -> ToolImplOutput:
-        page = self.browser.get_current_page()
-        state = self.browser.get_state()
-        is_pdf = is_pdf_url(state.url)
-        if is_pdf:
-            page.keyboard.press("PageUp")
-            time.sleep(0.1)
-        else:
-            page.mouse.move(state.viewport.width / 2, state.viewport.height / 2)
-            time.sleep(0.1)
-            page.mouse.wheel(0, -state.viewport.height * 0.8)
-            time.sleep(0.1)
+        async def _run():
+            page = await self.browser.get_current_page()
+            state = self.browser.get_state()
+            is_pdf = is_pdf_url(state.url)
+            if is_pdf:
+                await page.keyboard.press("PageUp")
+                await asyncio.sleep(0.1)
+            else:
+                await page.mouse.move(
+                    state.viewport.width / 2, state.viewport.height / 2
+                )
+                await asyncio.sleep(0.1)
+                await page.mouse.wheel(0, -state.viewport.height * 0.8)
+                await asyncio.sleep(0.1)
 
-        tool_output = "Scrolled page up"
-        return ToolImplOutput(tool_output=tool_output, tool_result_message=tool_output)
+            tool_output = "Scrolled page up"
+            return ToolImplOutput(
+                tool_output=tool_output, tool_result_message=tool_output
+            )
+
+        loop = get_event_loop()
+        return loop.run_until_complete(_run())
 
 
 class BrowserClickTool(LLMTool):
@@ -294,27 +313,33 @@ class BrowserClickTool(LLMTool):
         tool_input: dict[str, Any],
         message_history: Optional[MessageHistory] = None,
     ) -> ToolImplOutput:
-        index = int(tool_input["index"])
-        state = self.browser.get_state()
-        if index not in state.interactive_elements:
-            return ToolImplOutput(
-                tool_output=f"Element with index {index} does not exist - retry or use alternative tool.",
-                tool_result_message=f"Element with index {index} does not exist - retry or use alternative tool.",
+        async def _run():
+            index = int(tool_input["index"])
+            state = self.browser.get_state()
+            if index not in state.interactive_elements:
+                return ToolImplOutput(
+                    tool_output=f"Element with index {index} does not exist - retry or use alternative tool.",
+                    tool_result_message=f"Element with index {index} does not exist - retry or use alternative tool.",
+                )
+            element = state.interactive_elements[index]
+            initial_pages = (
+                len(self.browser.context.pages) if self.browser.context else 0
             )
-        element = state.interactive_elements[index]
-        initial_pages = len(self.browser.context.pages) if self.browser.context else 0
 
-        page = self.browser.get_current_page()
-        page.mouse.click(element.center.x, element.center.y)
+            page = await self.browser.get_current_page()
+            await page.mouse.click(element.center.x, element.center.y)
 
-        msg = f"Clicked element with index {index}: <{element.tag_name}></{element.tag_name}>"
+            msg = f"Clicked element with index {index}: <{element.tag_name}></{element.tag_name}>"
 
-        if self.browser.context and len(self.browser.context.pages) > initial_pages:
-            new_tab_msg = "New tab opened - switching to it"
-            msg += f" - {new_tab_msg}"
-            self.browser.switch_to_tab(-1)
+            if self.browser.context and len(self.browser.context.pages) > initial_pages:
+                new_tab_msg = "New tab opened - switching to it"
+                msg += f" - {new_tab_msg}"
+                await self.browser.switch_to_tab(-1)
 
-        return ToolImplOutput(tool_output=msg, tool_result_message=msg)
+            return ToolImplOutput(tool_output=msg, tool_result_message=msg)
+
+        loop = get_event_loop()
+        return loop.run_until_complete(_run())
 
 
 class BrowserEnterTextTool(LLMTool):
@@ -340,25 +365,29 @@ class BrowserEnterTextTool(LLMTool):
         tool_input: dict[str, Any],
         message_history: Optional[MessageHistory] = None,
     ) -> ToolImplOutput:
-        text = tool_input["text"]
-        press_enter = tool_input.get("press_enter", False)
+        async def _run():
+            text = tool_input["text"]
+            press_enter = tool_input.get("press_enter", False)
 
-        page = self.browser.get_current_page()
-        page.keyboard.press("ControlOrMeta+a")
+            page = await self.browser.get_current_page()
+            await page.keyboard.press("ControlOrMeta+a")
 
-        time.sleep(0.1)
-        page.keyboard.press("Backspace")
-        time.sleep(0.1)
+            await asyncio.sleep(0.1)
+            await page.keyboard.press("Backspace")
+            await asyncio.sleep(0.1)
 
-        page.keyboard.type(text)
+            await page.keyboard.type(text)
 
-        if press_enter:
-            page.keyboard.press("Enter")
-            time.sleep(2)
+            if press_enter:
+                await page.keyboard.press("Enter")
+                await asyncio.sleep(2)
 
-        msg = f'Entered "{text}" on the keyboard. Make sure to double check that the text was entered to where you intended.'
+            msg = f'Entered "{text}" on the keyboard. Make sure to double check that the text was entered to where you intended.'
 
-        return ToolImplOutput(tool_output=msg, tool_result_message=msg)
+            return ToolImplOutput(tool_output=msg, tool_result_message=msg)
+
+        loop = get_event_loop()
+        return loop.run_until_complete(_run())
 
 
 class BrowserPressKeyTool(LLMTool):
@@ -383,13 +412,17 @@ class BrowserPressKeyTool(LLMTool):
         tool_input: dict[str, Any],
         message_history: Optional[MessageHistory] = None,
     ) -> ToolImplOutput:
-        key = tool_input["key"]
-        page = self.browser.get_current_page()
-        page.keyboard.press(key)
-        time.sleep(0.5)
+        async def _run():
+            key = tool_input["key"]
+            page = await self.browser.get_current_page()
+            await page.keyboard.press(key)
+            await asyncio.sleep(0.5)
 
-        msg = f'Pressed "{key}" on the keyboard.'
-        return ToolImplOutput(tool_output=msg, tool_result_message=msg)
+            msg = f'Pressed "{key}" on the keyboard.'
+            return ToolImplOutput(tool_output=msg, tool_result_message=msg)
+
+        loop = get_event_loop()
+        return loop.run_until_complete(_run())
 
 
 class BrowserGetSelectOptionsTool(LLMTool):
@@ -414,61 +447,65 @@ class BrowserGetSelectOptionsTool(LLMTool):
         tool_input: dict[str, Any],
         message_history: Optional[MessageHistory] = None,
     ) -> ToolImplOutput:
-        index = int(tool_input["index"])
+        async def _run():
+            index = int(tool_input["index"])
 
-        # Get the page and element information
-        page = self.browser.get_current_page()
-        interactive_elements = self.browser.get_state().interactive_elements
+            # Get the page and element information
+            page = await self.browser.get_current_page()
+            interactive_elements = self.browser.get_state().interactive_elements
 
-        # Verify the element exists and is a select
-        if index not in interactive_elements:
-            return ToolImplOutput(
-                tool_output=f"No element found with index {index}",
-                tool_result_message=f"No element found with index {index}",
+            # Verify the element exists and is a select
+            if index not in interactive_elements:
+                return ToolImplOutput(
+                    tool_output=f"No element found with index {index}",
+                    tool_result_message=f"No element found with index {index}",
+                )
+
+            element = interactive_elements[index]
+
+            # Check if it's a select element
+            if element.tag_name.lower() != "select":
+                return ToolImplOutput(
+                    tool_output=f"Element {index} is not a select element, it's a {element.tag_name}",
+                    tool_result_message=f"Element {index} is not a select element, it's a {element.tag_name}",
+                )
+
+            # Use the unique ID to find the element
+            options_data = await page.evaluate(
+                """
+            (args) => {
+                // Find the select element using the unique ID
+                const select = document.querySelector(`[data-browser-agent-id="${args.browserAgentId}"]`);
+                if (!select) return null;
+                
+                // Get all options	
+                return {
+                    options: Array.from(select.options).map(opt => ({
+                        text: opt.text,
+                        value: opt.value,
+                        index: opt.index
+                    })),
+                    id: select.id,
+                    name: select.name
+                };
+            }
+            """,
+                {"browserAgentId": element.browser_agent_id},
             )
 
-        element = interactive_elements[index]
+            # Process options from direct approach
+            formatted_options = []
+            for opt in options_data["options"]:
+                encoded_text = json.dumps(opt["text"])
+                formatted_options.append(f"{opt['index']}: option={encoded_text}")
 
-        # Check if it's a select element
-        if element.tag_name.lower() != "select":
-            return ToolImplOutput(
-                tool_output=f"Element {index} is not a select element, it's a {element.tag_name}",
-                tool_result_message=f"Element {index} is not a select element, it's a {element.tag_name}",
-            )
+            msg = "\n".join(formatted_options)
+            msg += "\nIf you decide to use this select element, use the exact option name in select_dropdown_option"
 
-        # Use the unique ID to find the element
-        options_data = page.evaluate(
-            """
-        (args) => {
-            // Find the select element using the unique ID
-            const select = document.querySelector(`[data-browser-agent-id="${args.browserAgentId}"]`);
-            if (!select) return null;
-            
-            // Get all options	
-            return {
-                options: Array.from(select.options).map(opt => ({
-                    text: opt.text,
-                    value: opt.value,
-                    index: opt.index
-                })),
-                id: select.id,
-                name: select.name
-            };
-        }
-        """,
-            {"browserAgentId": element.browser_agent_id},
-        )
+            return ToolImplOutput(tool_output=msg, tool_result_message=msg)
 
-        # Process options from direct approach
-        formatted_options = []
-        for opt in options_data["options"]:
-            encoded_text = json.dumps(opt["text"])
-            formatted_options.append(f"{opt['index']}: option={encoded_text}")
-
-        msg = "\n".join(formatted_options)
-        msg += "\nIf you decide to use this select element, use the exact option name in select_dropdown_option"
-
-        return ToolImplOutput(tool_output=msg, tool_result_message=msg)
+        loop = get_event_loop()
+        return loop.run_until_complete(_run())
 
 
 class BrowserSelectDropdownOptionTool(LLMTool):
@@ -497,107 +534,113 @@ class BrowserSelectDropdownOptionTool(LLMTool):
         tool_input: dict[str, Any],
         message_history: Optional[MessageHistory] = None,
     ) -> ToolImplOutput:
-        index = int(tool_input["index"])
-        option = tool_input["option"]
+        async def _run():
+            index = int(tool_input["index"])
+            option = tool_input["option"]
 
-        # Get the interactive element
-        page = self.browser.get_current_page()
-        interactive_elements = self.browser.get_state().interactive_elements
+            # Get the interactive element
+            page = await self.browser.get_current_page()
+            interactive_elements = self.browser.get_state().interactive_elements
 
-        # Verify the element exists and is a select
-        if index not in interactive_elements:
-            return ToolImplOutput(
-                tool_output=f"No element found with index {index}",
-                tool_result_message=f"No element found with index {index}",
-            )
+            # Verify the element exists and is a select
+            if index not in interactive_elements:
+                return ToolImplOutput(
+                    tool_output=f"No element found with index {index}",
+                    tool_result_message=f"No element found with index {index}",
+                )
 
-        element = interactive_elements[index]
+            element = interactive_elements[index]
 
-        # Check if it's a select element
-        if element.tag_name.lower() != "select":
-            return ToolImplOutput(
-                tool_output=f"Element {index} is not a select element, it's a {element.tag_name}",
-                tool_result_message=f"Element {index} is not a select element, it's a {element.tag_name}",
-            )
+            # Check if it's a select element
+            if element.tag_name.lower() != "select":
+                return ToolImplOutput(
+                    tool_output=f"Element {index} is not a select element, it's a {element.tag_name}",
+                    tool_result_message=f"Element {index} is not a select element, it's a {element.tag_name}",
+                )
 
-        # Use JavaScript to select the option using the unique ID
-        result = page.evaluate(
-            """
-        (args) => {
-            const uniqueId = args.uniqueId;
-            const optionText = args.optionText;
-            
-            try {
-                // Find the select element by unique ID - works across frames too
-                function findElementByUniqueId(root, id) {
-                    // Check in main document first
-                    let element = document.querySelector(`[data-browser-agent-id="${id}"]`);
-                    if (element) return element;
-                }
+            # Use JavaScript to select the option using the unique ID
+            result = await page.evaluate(
+                """
+            (args) => {
+                const uniqueId = args.uniqueId;
+                const optionText = args.optionText;
                 
-                const select = findElementByUniqueId(window, uniqueId);
-                if (!select) {
-                    return { 
-                        success: false, 
-                        error: "Select element not found with ID: " + uniqueId 
-                    };
-                }
-                
-                // Find the option with matching text
-                let found = false;
-                let selectedValue = null;
-                let selectedIndex = -1;
-                
-                for (let i = 0; i < select.options.length; i++) {
-                    const opt = select.options[i];
-                    if (opt.text === optionText) {
-                        // Select this option
-                        opt.selected = true;
-                        found = true;
-                        selectedValue = opt.value;
-                        selectedIndex = i;
-                        
-                        // Trigger change event
-                        const event = new Event('change', { bubbles: true });
-                        select.dispatchEvent(event);
-                        break;
+                try {
+                    // Find the select element by unique ID - works across frames too
+                    function findElementByUniqueId(root, id) {
+                        // Check in main document first
+                        let element = document.querySelector(`[data-browser-agent-id="${id}"]`);
+                        if (element) return element;
                     }
-                }
-                
-                if (found) {
-                    return { 
-                        success: true, 
-                        value: selectedValue, 
-                        index: selectedIndex 
-                    };
-                } else {
+                    
+                    const select = findElementByUniqueId(window, uniqueId);
+                    if (!select) {
+                        return { 
+                            success: false, 
+                            error: "Select element not found with ID: " + uniqueId 
+                        };
+                    }
+                    
+                    // Find the option with matching text
+                    let found = false;
+                    let selectedValue = null;
+                    let selectedIndex = -1;
+                    
+                    for (let i = 0; i < select.options.length; i++) {
+                        const opt = select.options[i];
+                        if (opt.text === optionText) {
+                            // Select this option
+                            opt.selected = true;
+                            found = true;
+                            selectedValue = opt.value;
+                            selectedIndex = i;
+                            
+                            // Trigger change event
+                            const event = new Event('change', { bubbles: true });
+                            select.dispatchEvent(event);
+                            break;
+                        }
+                    }
+                    
+                    if (found) {
+                        return { 
+                            success: true, 
+                            value: selectedValue, 
+                            index: selectedIndex 
+                        };
+                    } else {
+                        return { 
+                            success: false, 
+                            error: "Option not found: " + optionText,
+                            availableOptions: Array.from(select.options).map(o => o.text)
+                        };
+                    }
+                } catch (e) {
                     return { 
                         success: false, 
-                        error: "Option not found: " + optionText,
-                        availableOptions: Array.from(select.options).map(o => o.text)
+                        error: e.toString() 
                     };
                 }
-            } catch (e) {
-                return { 
-                    success: false, 
-                    error: e.toString() 
-                };
             }
-        }
-        """,
-            {"uniqueId": element.browser_agent_id, "optionText": option},
-        )
+            """,
+                {"uniqueId": element.browser_agent_id, "optionText": option},
+            )
 
-        if result.get("success"):
-            msg = f"Selected option '{option}' with value '{result.get('value')}' at index {result.get('index')}"
-            return ToolImplOutput(tool_output=msg, tool_result_message=msg)
-        else:
-            error_msg = result.get("error", "Unknown error")
-            if "availableOptions" in result:
-                available = result.get("availableOptions", [])
-                error_msg += f". Available options: {', '.join(available)}"
+            if result.get("success"):
+                msg = f"Selected option '{option}' with value '{result.get('value')}' at index {result.get('index')}"
+                return ToolImplOutput(tool_output=msg, tool_result_message=msg)
+            else:
+                error_msg = result.get("error", "Unknown error")
+                if "availableOptions" in result:
+                    available = result.get("availableOptions", [])
+                    error_msg += f". Available options: {', '.join(available)}"
 
-            return ToolImplOutput(tool_output=error_msg, tool_result_message=error_msg)
+                return ToolImplOutput(
+                    tool_output=error_msg, tool_result_message=error_msg
+                )
+
+        loop = get_event_loop()
+        return loop.run_until_complete(_run())
 
 
 class BrowserSwitchTabTool(LLMTool):
@@ -622,11 +665,15 @@ class BrowserSwitchTabTool(LLMTool):
         tool_input: dict[str, Any],
         message_history: Optional[MessageHistory] = None,
     ) -> ToolImplOutput:
-        index = int(tool_input["index"])
-        self.browser.switch_to_tab(index)
-        time.sleep(0.5)
-        msg = f"Switched to tab {index}"
-        return ToolImplOutput(tool_output=msg, tool_result_message=msg)
+        async def _run():
+            index = int(tool_input["index"])
+            await self.browser.switch_to_tab(index)
+            await asyncio.sleep(0.5)
+            msg = f"Switched to tab {index}"
+            return ToolImplOutput(tool_output=msg, tool_result_message=msg)
+
+        loop = get_event_loop()
+        return loop.run_until_complete(_run())
 
 
 class BrowserOpenNewTabTool(LLMTool):
@@ -642,7 +689,11 @@ class BrowserOpenNewTabTool(LLMTool):
         tool_input: dict[str, Any],
         message_history: Optional[MessageHistory] = None,
     ) -> ToolImplOutput:
-        self.browser.create_new_tab()
-        time.sleep(0.5)
-        msg = "Opened a new tab"
-        return ToolImplOutput(tool_output=msg, tool_result_message=msg)
+        async def _run():
+            await self.browser.create_new_tab()
+            await asyncio.sleep(0.5)
+            msg = "Opened a new tab"
+            return ToolImplOutput(tool_output=msg, tool_result_message=msg)
+
+        loop = get_event_loop()
+        return loop.run_until_complete(_run())
