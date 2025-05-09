@@ -16,8 +16,8 @@ from ii_agent.tools import (
     create_docker_bash_tool,
     StrReplaceEditorTool,
     SequentialThinkingTool,
-    TavilySearchTool,
-    TavilyVisitWebpageTool,
+    WebSearchTool,
+    VisitWebpageTool,
     StaticDeployTool,
 )
 from ii_agent.tools.base import ToolImplOutput, LLMTool
@@ -36,6 +36,8 @@ from ii_agent.tools.browser_tool import (
     BrowserGetSelectOptionsTool,
     BrowserSelectDropdownOptionTool,
 )
+
+from ii_agent.tools.deep_research_tool import DeepResearchTool
 
 from ii_agent.tools.advanced_tools.audio_tool import (
     AudioTranscribeTool,
@@ -138,8 +140,8 @@ try breaking down the task into smaller steps. After call this tool to update or
             bash_tool,
             StrReplaceEditorTool(workspace_manager=workspace_manager),
             SequentialThinkingTool(),
-            TavilySearchTool(),
-            TavilyVisitWebpageTool(),
+            WebSearchTool(),
+            VisitWebpageTool(),
             self.complete_tool,
             StaticDeployTool(workspace_manager=workspace_manager),
             # Browser tools
@@ -161,6 +163,8 @@ try breaking down the task into smaller steps. After call this tool to update or
             AudioGenerateTool(workspace_manager=workspace_manager),
             # pdf tools
             PdfTextExtractTool(workspace_manager=workspace_manager),
+            # deep research tool
+            DeepResearchTool(),
             # image tools
             ImageGenerateTool(workspace_manager=workspace_manager),
             VideoGenerateFromTextTool(workspace_manager=workspace_manager),
