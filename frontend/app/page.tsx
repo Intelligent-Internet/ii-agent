@@ -224,68 +224,119 @@ export default function Home() {
     if (!event.target.files || event.target.files.length === 0) return;
 
     const files = Array.from(event.target.files);
-    const filePromises = files.map((file) => {
-      return new Promise<{ name: string; content: string }>((resolve) => {
-        const reader = new FileReader();
 
-        reader.onload = (e) => {
-          const result = e.target?.result;
-          resolve({
-            name: file.name,
-            content: result as string,
-          });
-        };
+    // Create a map to track upload status for each file
+    const fileStatusMap: { [filename: string]: boolean } = {};
+    files.forEach((file) => {
+      fileStatusMap[file.name] = false; // false = not uploaded yet
+    });
 
-        // Read as data URL for all files
-        reader.readAsDataURL(file);
-      });
+    setIsUploading(true);
+
+    // Create a map of filename to content for message history
+    const fileContentMap: { [filename: string]: string } = {};
+
+    // Get the connection ID from the workspace path
+    const workspacePath = workspaceInfo || "";
+    const connectionId = workspacePath.split("/").pop();
+
+    // Add files to message history (initially without content)
+    const newUserMessage: Message = {
+      id: Date.now().toString(),
+      role: "user",
+      files: files.map((file) => file.name),
+      fileContents: fileContentMap,
+      timestamp: Date.now(),
+    };
+
+    setMessages((prev) => [...prev, newUserMessage]);
+
+    // Process each file in parallel
+    const uploadPromises = files.map(async (file) => {
+      return new Promise<{ name: string; success: boolean }>(
+        async (resolve) => {
+          try {
+            const reader = new FileReader();
+
+            reader.onload = async (e) => {
+              const content = e.target?.result as string;
+              fileContentMap[file.name] = content;
+
+              // Upload the file
+              const response = await fetch(
+                `${process.env.NEXT_PUBLIC_API_URL}/api/upload`,
+                {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({
+                    connection_id: connectionId,
+                    file: {
+                      path: file.name,
+                      content,
+                    },
+                  }),
+                }
+              );
+
+              const result = await response.json();
+
+              if (response.ok) {
+                // Update uploaded files state
+                setUploadedFiles((prev) => [...prev, result.file.path]);
+                resolve({ name: file.name, success: true });
+              } else {
+                console.error(`Error uploading ${file.name}:`, result.error);
+                resolve({ name: file.name, success: false });
+              }
+            };
+
+            reader.onerror = () => {
+              resolve({ name: file.name, success: false });
+            };
+
+            // Read as data URL
+            reader.readAsDataURL(file);
+          } catch (error) {
+            console.error(`Error processing ${file.name}:`, error);
+            resolve({ name: file.name, success: false });
+          }
+        }
+      );
     });
 
     try {
-      setIsUploading(true);
-      const fileContents = await Promise.all(filePromises);
+      // Wait for all uploads to complete
+      const results = await Promise.all(uploadPromises);
 
-      // Create a map of filename to content
-      const fileContentMap: { [filename: string]: string } = {};
-      fileContents.forEach(({ name, content }) => {
-        fileContentMap[name] = content;
-      });
-
-      // Add files to message history
-      const newUserMessage: Message = {
-        id: Date.now().toString(),
-        role: "user",
-        files: files.map((file) => file.name),
-        fileContents: fileContentMap,
-        timestamp: Date.now(),
-      };
-
-      setMessages((prev) => [...prev, newUserMessage]);
-
-      if (!socket || socket.readyState !== WebSocket.OPEN) {
-        toast.error("WebSocket connection is not open. Please try again.");
-        setIsUploading(false);
-        return;
+      // Check if any uploads failed
+      const failedUploads = results.filter((r) => !r.success);
+      if (failedUploads.length > 0) {
+        toast.error(`Failed to upload ${failedUploads.length} file(s)`);
       }
 
-      socket.send(
-        JSON.stringify({
-          type: "upload_file",
-          content: {
-            files: fileContents.map(({ name, content }) => ({
-              path: name,
-              content,
-            })),
-          },
-        })
-      );
-
-      // Clear the input
-      event.target.value = "";
+      // Update message with final content
+      setMessages((prev) => {
+        const updatedMessages = [...prev];
+        const messageIndex = updatedMessages.findIndex(
+          (m) => m.id === newUserMessage.id
+        );
+        if (messageIndex >= 0) {
+          updatedMessages[messageIndex] = {
+            ...updatedMessages[messageIndex],
+            fileContents: fileContentMap,
+          };
+        }
+        return updatedMessages;
+      });
     } catch (error) {
       console.error("Error uploading files:", error);
       toast.error("Error uploading files");
+    } finally {
       setIsUploading(false);
+      // Clear the input
+      event.target.value = "";
     }
   };
 

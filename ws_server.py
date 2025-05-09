@@ -16,9 +16,11 @@ from pathlib import Path
 from typing import Dict, Set
 
 import uvicorn
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, Form, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import anyio
+import base64
 
 from ii_agent.core.event import RealtimeEvent, EventType
 from utils import parse_common_args
@@ -49,17 +51,6 @@ app.add_middleware(
 )
 
 
-try:
-    app.mount(
-        "/workspace", StaticFiles(directory="workspace", html=True), name="workspace"
-    )
-except RuntimeError:
-    # Directory might not exist yet
-    os.makedirs("workspace", exist_ok=True)
-    app.mount(
-        "/workspace", StaticFiles(directory="workspace", html=True), name="workspace"
-    )
-
 # Create a logger
 logger = logging.getLogger("websocket_server")
 logger.setLevel(logging.INFO)
@@ -78,65 +69,6 @@ message_processors: Dict[WebSocket, asyncio.Task] = {}
 
 # Store global args for use in endpoint
 global_args = None
-
-
-async def save_uploaded_file(
-    websocket: WebSocket, file_path: str, file_content: str
-) -> str:
-    """Save an uploaded file to the workspace.
-
-    Args:
-        websocket: The WebSocket connection
-        file_path: The path where the file should be saved (relative to workspace)
-        file_content: The content of the file (base64 encoded if binary)
-
-    Returns:
-        The absolute path where the file was saved
-    """
-    agent = active_agents.get(websocket)
-
-    if not agent:
-        raise ValueError("Agent not initialized for this connection")
-
-    # Get the workspace path for this connection
-    workspace_root = agent.workspace_manager.root
-
-    # Ensure the file path is relative to the workspace
-    if Path(file_path).is_absolute():
-        file_path = Path(
-            file_path
-        ).name  # Just use the filename if absolute path provided
-
-    # Create the full path
-    full_path = workspace_root / file_path
-
-    # Ensure the directory exists
-    full_path.parent.mkdir(parents=True, exist_ok=True)
-
-    # Check if content is base64 encoded (for binary files)
-    if file_content.startswith("data:"):
-        # Handle data URLs (e.g., "data:application/pdf;base64,...")
-        import base64
-
-        # Split the header from the base64 content
-        header, encoded = file_content.split(",", 1)
-
-        # Decode the content
-        decoded = base64.b64decode(encoded)
-
-        # Write binary content
-        with open(full_path, "wb") as f:
-            f.write(decoded)
-    else:
-        # Write text content
-        with open(full_path, "w") as f:
-            f.write(file_content)
-
-    # Log the upload
-    logger.info(f"File uploaded to {full_path}")
-
-    # Return the path where the file was saved
-    return str(full_path)
 
 
 @app.websocket("/ws")
@@ -215,60 +147,6 @@ async def websocket_endpoint(websocket: WebSocket):
                             RealtimeEvent(
                                 type=EventType.ERROR,
                                 content={"message": "Workspace not initialized"},
-                            ).model_dump()
-                        )
-
-                elif msg_type == "upload_file":
-                    # Handle file upload (single or multiple)
-                    files = content.get("files", [])
-
-                    # For backward compatibility, also support single file upload
-                    if not files and content.get("path") and "content" in content:
-                        files = [
-                            {
-                                "path": content.get("path", ""),
-                                "content": content.get("content", ""),
-                            }
-                        ]
-
-                    if not files:
-                        await websocket.send_json(
-                            RealtimeEvent(
-                                type=EventType.ERROR,
-                                content={"message": "No files provided for upload"},
-                            ).model_dump()
-                        )
-                        continue
-
-                    try:
-                        results = []
-                        for file_info in files:
-                            file_path = file_info.get("path", "")
-                            file_content = file_info.get("content", "")
-
-                            if not file_path:
-                                continue
-
-                            result = await save_uploaded_file(
-                                websocket, file_path, file_content
-                            )
-                            results.append({"path": file_path, "saved_path": result})
-
-                        await websocket.send_json(
-                            RealtimeEvent(
-                                type=EventType.UPLOAD_SUCCESS,
-                                content={
-                                    "message": f"Successfully uploaded {len(results)} file(s)",
-                                    "files": results,
-                                },
-                            ).model_dump()
-                        )
-                    except Exception as e:
-                        logger.error(f"Error uploading files: {str(e)}")
-                        await websocket.send_json(
-                            RealtimeEvent(
-                                type=EventType.ERROR,
-                                content={"message": f"Error uploading files: {str(e)}"},
                             ).model_dump()
                         )
 
@@ -461,6 +339,18 @@ def create_agent_for_connection(websocket: WebSocket):
 
     return agent
 
+def setup_workspace(app, workspace_path):
+    try:
+        app.mount(
+            "/workspace", StaticFiles(directory=workspace_path, html=True), name="workspace"
+        )
+    except RuntimeError:
+        # Directory might not exist yet
+        os.makedirs(workspace_path, exist_ok=True)
+        app.mount(
+            "/workspace", StaticFiles(directory=workspace_path, html=True), name="workspace"
+        )
+
 
 def main():
     """Main entry point for the WebSocket server."""
@@ -485,10 +375,121 @@ def main():
     )
     args = parser.parse_args()
     global_args = args
-
+    
+    setup_workspace(app, args.workspace)
+    
     # Start the FastAPI server
     logger.info(f"Starting WebSocket server on {args.host}:{args.port}")
     uvicorn.run(app, host=args.host, port=args.port)
+    
+
+
+@app.post("/api/upload")
+async def upload_file_endpoint(request: Request):
+    """API endpoint for uploading a single file to the workspace.
+    
+    Expects a JSON payload with:
+    - connection_id: UUID of the connection/workspace
+    - file: Object with path and content properties
+    """
+    try:
+        data = await request.json()
+        connection_id = data.get("connection_id")
+        file_info = data.get("file")
+        
+        if not connection_id:
+            return JSONResponse(
+                status_code=400,
+                content={"error": "connection_id is required"}
+            )
+            
+        if not file_info:
+            return JSONResponse(
+                status_code=400,
+                content={"error": "No file provided for upload"}
+            )
+        
+        # Find the workspace path for this connection
+        workspace_path = Path(global_args.workspace).resolve() / connection_id
+        if not workspace_path.exists():
+            return JSONResponse(
+                status_code=404,
+                content={"error": f"Workspace not found for connection: {connection_id}"}
+            )
+        
+        # Create the uploaded_files directory if it doesn't exist
+        upload_dir = workspace_path / "uploaded_files"
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        
+        file_path = file_info.get("path", "")
+        file_content = file_info.get("content", "")
+        
+        if not file_path:
+            return JSONResponse(
+                status_code=400,
+                content={"error": "File path is required"}
+            )
+            
+        # Ensure the file path is relative to the workspace
+        if Path(file_path).is_absolute():
+            file_path = Path(file_path).name
+        
+        # Create the full path within the uploaded_files directory
+        original_path = upload_dir / file_path
+        full_path = original_path
+        
+        # Handle filename collision by adding a suffix
+        if full_path.exists():
+            base_name = full_path.stem
+            extension = full_path.suffix
+            counter = 1
+            
+            # Keep incrementing counter until we find a unique filename
+            while full_path.exists():
+                new_filename = f"{base_name}_{counter}{extension}"
+                full_path = upload_dir / new_filename
+                counter += 1
+                
+            # Update the file_path to reflect the new name
+            file_path = f"{full_path.relative_to(upload_dir)}"
+        
+        # Ensure any subdirectories exist
+        full_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Check if content is base64 encoded (for binary files)
+        if file_content.startswith("data:"):
+            # Handle data URLs (e.g., "data:application/pdf;base64,...")
+            # Split the header from the base64 content
+            header, encoded = file_content.split(",", 1)
+            
+            # Decode the content
+            decoded = base64.b64decode(encoded)
+            
+            # Write binary content
+            with open(full_path, "wb") as f:
+                f.write(decoded)
+        else:
+            # Write text content
+            with open(full_path, "w") as f:
+                f.write(file_content)
+                
+        # Log the upload
+        logger.info(f"File uploaded to {full_path}")
+        
+        # Return the path relative to the workspace for client use
+        relative_path = f"uploaded_files/{file_path}"
+        
+        return {
+            "message": "File uploaded successfully",
+            "file": {"path": relative_path, "saved_path": str(full_path)}
+        }
+        
+    except Exception as e:
+        logger.error(f"Error uploading file: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Error uploading file: {str(e)}"}
+        )
 
 
 if __name__ == "__main__":
