@@ -3,6 +3,18 @@ from argparse import ArgumentParser
 
 def parse_common_args(parser: ArgumentParser):
     parser.add_argument(
+        "--task",
+        type=str,
+        default=None,
+        help="Task to run",
+    )
+    parser.add_argument(
+        "--task_id",
+        type=str,
+        default=None,
+        help="Task ID to run",
+    )
+    parser.add_argument(
         "--workspace",
         type=str,
         default="./workspace",

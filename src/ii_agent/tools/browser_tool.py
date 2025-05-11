@@ -329,7 +329,7 @@ class BrowserClickTool(LLMTool):
             page = await self.browser.get_current_page()
             await page.mouse.click(element.center.x, element.center.y)
 
-            msg = f"Clicked element with index {index}: <{element.tag_name}></{element.tag_name}>"
+            msg = f"Clicked element with index {index}: <{element.tag_name}>{element.text}</{element.tag_name}>"
 
             if self.browser.context and len(self.browser.context.pages) > initial_pages:
                 new_tab_msg = "New tab opened - switching to it"

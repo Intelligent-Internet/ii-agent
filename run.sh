@@ -1,0 +1,3 @@
+python cli_bench.py --project-id backend-alpha-97077 --region us-east5 \
+    --task_id 0 \
+    --task "A paper about AI regulation that was originally submitted to arXiv.org in June 2022 shows a figure with three axes, where each axis has a label word at both ends. Which of these words is used to describe a type of society in a Physics and Society article submitted to arXiv.org on August 11, 2016?"

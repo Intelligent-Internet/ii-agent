@@ -10,9 +10,9 @@ from .utils import encode_image
 from ii_agent.utils import WorkspaceManager
 
 
-class VisualizerTool(LLMTool):
-    name = "visualizer"
-    description = "A tool that loads and displays images."
+class DisplayLocalImageTool(LLMTool):
+    name = "display_local_image"
+    description = "A tool that loads and displays images from local file system."
     input_schema = {
         "type": "object",
         "properties": {

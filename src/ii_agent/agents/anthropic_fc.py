@@ -45,7 +45,8 @@ from ii_agent.tools.advanced_tools.audio_tool import (
 )
 from ii_agent.tools.advanced_tools.pdf_tool import PdfTextExtractTool
 from ii_agent.tools.text_inspector_tool import TextInspectorTool
-from ii_agent.tools.visualizer import VisualizerTool
+from ii_agent.tools.visualizer import DisplayLocalImageTool
+from ii_agent.tools.utils import save_base64_image_png
 from ii_agent.utils import WorkspaceManager
 from ii_agent.browser.browser import Browser
 
@@ -166,7 +167,7 @@ try breaking down the task into smaller steps. After call this tool to update or
             # text inspector tool
             TextInspectorTool(workspace_manager=workspace_manager),
             # visualizer tool
-            VisualizerTool(workspace_manager=workspace_manager),
+            DisplayLocalImageTool(workspace_manager=workspace_manager),
         ]
         self.websocket = websocket
 
@@ -220,6 +221,7 @@ try breaking down the task into smaller steps. After call this tool to update or
             os.makedirs(step_log_dir, exist_ok=True)
 
             remaining_turns -= 1
+            step += 1
 
             delimiter = "-" * 45 + " NEW TURN " + "-" * 45
             self.logger_for_agent_logs.info(f"\n{delimiter}\n")
@@ -237,8 +239,11 @@ try breaking down the task into smaller steps. After call this tool to update or
             try:
                 current_messages = self.history.get_messages_for_llm()
                 current_messages_json = convert_message_history_to_json(current_messages)
+                current_messages_json_hide_img = convert_message_history_to_json(current_messages, hide_base64_image=True)
                 with open(f"{step_log_dir}/current_messages.json", "w") as f:
                     json.dump(current_messages_json, f, indent=4)
+                with open(f"{step_log_dir}/current_messages_hide_img.json", "w") as f:
+                    json.dump(current_messages_json_hide_img, f, indent=4)
 
                 current_tok_count = self.context_manager.count_tokens(current_messages)
                 self.logger_for_agent_logs.info(
@@ -249,8 +254,11 @@ try breaking down the task into smaller steps. After call this tool to update or
                     self.context_manager.apply_truncation_if_needed(current_messages)
                 )
                 truncated_messages_for_llm_json = convert_message_history_to_json(truncated_messages_for_llm)
+                truncated_messages_for_llm_json_hide_img = convert_message_history_to_json(truncated_messages_for_llm, hide_base64_image=True)
                 with open(f"{step_log_dir}/truncated_messages_for_llm.json", "w") as f:
                     json.dump(truncated_messages_for_llm_json, f, indent=4)
+                with open(f"{step_log_dir}/truncated_messages_for_llm_hide_img.json", "w") as f:
+                    json.dump(truncated_messages_for_llm_json_hide_img, f, indent=4)
 
                 # NOTE:
                 # If truncation happened, the `history` object itself was modified.
@@ -264,7 +272,7 @@ try breaking down the task into smaller steps. After call this tool to update or
                     system_prompt=self._get_system_prompt(),
                 )
 
-                model_response_json = [msg for msg in convert_message_to_json(model_response)]
+                model_response_json = [convert_message_to_json(msg) for msg in model_response]
                 with open(f"{step_log_dir}/model_response.json", "w") as f:
                     json.dump(model_response_json, f, indent=4)
 
@@ -352,6 +360,7 @@ try breaking down the task into smaller steps. After call this tool to update or
                             log_message += f"\nTool output: \n{output_str}\n\n"
                         else:
                             log_message += f"\nTool output: \n{result[0]}\n\n"
+                    self.logger_for_agent_logs.info(log_message)
 
                     tool_result_json = {
                         "type": "tool_result",
@@ -361,7 +370,14 @@ try breaking down the task into smaller steps. After call this tool to update or
                     }
                     with open(f"{step_log_dir}/tool_result.json", "w") as f:
                         json.dump(tool_result_json, f, indent=4)
-                    self.logger_for_agent_logs.info(log_message)
+                    if isinstance(result, list):
+                        for item in result:
+                            if isinstance(item, dict) and item.get("type") == "image":
+                                img_base64 = item.get("source").get("data")
+                                if tool_call.tool_name == "browser_view":
+                                    save_base64_image_png(img_base64, f"{step_log_dir}/browser_view.png")
+                                elif tool_call.tool_name == "display_local_image":
+                                    save_base64_image_png(img_base64, f"{step_log_dir}/display_local_image.png")
 
                     # Handle both ToolResult objects and tuples
                     if isinstance(result, tuple):
