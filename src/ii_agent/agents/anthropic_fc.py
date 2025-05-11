@@ -1,7 +1,8 @@
 import asyncio
 from copy import deepcopy
-
+import json
 import logging
+import os
 from typing import Any, Optional
 from fastapi import WebSocket
 from ii_agent.agents.base import BaseAgent
@@ -9,6 +10,7 @@ from ii_agent.core.event import EventType, RealtimeEvent
 from ii_agent.llm.base import LLMClient, TextResult
 from ii_agent.llm.context_manager.base import ContextManager
 from ii_agent.llm.message_history import MessageHistory
+from ii_agent.llm.utils import convert_message_history_to_json, convert_message_to_json
 from ii_agent.prompts.system_prompt import SYSTEM_PROMPT
 from ii_agent.tools import (
     CompleteTool,
@@ -199,6 +201,7 @@ try breaking down the task into smaller steps. After call this tool to update or
         self,
         tool_input: dict[str, Any],
         message_history: Optional[MessageHistory] = None,
+        log_dir: Optional[str] = None,
     ) -> ToolImplOutput:
         instruction = tool_input["instruction"]
 
@@ -209,8 +212,13 @@ try breaking down the task into smaller steps. After call this tool to update or
         self.history.add_user_prompt(instruction)
         self.interrupted = False
 
+        step = 0
+
         remaining_turns = self.max_turns
         while remaining_turns > 0:
+            step_log_dir = f"{log_dir}/step_{step}"
+            os.makedirs(step_log_dir, exist_ok=True)
+
             remaining_turns -= 1
 
             delimiter = "-" * 45 + " NEW TURN " + "-" * 45
@@ -228,6 +236,10 @@ try breaking down the task into smaller steps. After call this tool to update or
 
             try:
                 current_messages = self.history.get_messages_for_llm()
+                current_messages_json = convert_message_history_to_json(current_messages)
+                with open(f"{step_log_dir}/current_messages.json", "w") as f:
+                    json.dump(current_messages_json, f, indent=4)
+
                 current_tok_count = self.context_manager.count_tokens(current_messages)
                 self.logger_for_agent_logs.info(
                     f"(Current token count: {current_tok_count})\n"
@@ -236,6 +248,9 @@ try breaking down the task into smaller steps. After call this tool to update or
                 truncated_messages_for_llm = (
                     self.context_manager.apply_truncation_if_needed(current_messages)
                 )
+                truncated_messages_for_llm_json = convert_message_history_to_json(truncated_messages_for_llm)
+                with open(f"{step_log_dir}/truncated_messages_for_llm.json", "w") as f:
+                    json.dump(truncated_messages_for_llm_json, f, indent=4)
 
                 # NOTE:
                 # If truncation happened, the `history` object itself was modified.
@@ -248,6 +263,10 @@ try breaking down the task into smaller steps. After call this tool to update or
                     tools=tool_params,
                     system_prompt=self._get_system_prompt(),
                 )
+
+                model_response_json = [msg for msg in convert_message_to_json(model_response)]
+                with open(f"{step_log_dir}/model_response.json", "w") as f:
+                    json.dump(model_response_json, f, indent=4)
 
                 # Add the raw response to the canonical history
                 self.history.add_assistant_turn(model_response)
@@ -302,6 +321,15 @@ try breaking down the task into smaller steps. After call this tool to update or
                 try:
                     result = tool.run(tool_call.tool_input, deepcopy(self.history))
 
+                    tool_call_json = {
+                        "type": "tool_call",
+                        "tool_call_id": tool_call.tool_call_id,
+                        "tool_name": tool_call.tool_name,
+                        "tool_input": tool_call.tool_input,
+                    }
+                    with open(f"{step_log_dir}/tool_call.json", "w") as f:
+                        json.dump(tool_call_json, f, indent=4)
+
                     tool_input_str = "\n".join(
                         [f" - {k}: {v}" for k, v in tool_call.tool_input.items()]
                     )
@@ -325,6 +353,14 @@ try breaking down the task into smaller steps. After call this tool to update or
                         else:
                             log_message += f"\nTool output: \n{result[0]}\n\n"
 
+                    tool_result_json = {
+                        "type": "tool_result",
+                        "tool_call_id": tool_call.tool_call_id,
+                        "tool_name": tool_call.tool_name,
+                        "tool_output": result,
+                    }
+                    with open(f"{step_log_dir}/tool_result.json", "w") as f:
+                        json.dump(tool_result_json, f, indent=4)
                     self.logger_for_agent_logs.info(log_message)
 
                     # Handle both ToolResult objects and tuples
@@ -400,6 +436,7 @@ try breaking down the task into smaller steps. After call this tool to update or
         instruction: str,
         resume: bool = False,
         orientation_instruction: str | None = None,
+        log_dir: str | None = None,
     ) -> str:
         """Start a new agent run.
 
@@ -423,7 +460,7 @@ try breaking down the task into smaller steps. After call this tool to update or
         }
         if orientation_instruction:
             tool_input["orientation_instruction"] = orientation_instruction
-        return self.run(tool_input, self.history)
+        return self.run(tool_input, self.history, log_dir)
 
     def clear(self):
         """Clear the dialog and reset interruption state.
