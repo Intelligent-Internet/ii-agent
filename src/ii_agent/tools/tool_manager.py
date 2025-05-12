@@ -4,8 +4,8 @@ from copy import deepcopy
 from typing import Optional, List
 from ii_agent.tools.base import LLMTool
 from ii_agent.llm.message_history import ToolCallParameters
-from ii_agent.tools.tavily_web_search import TavilySearchTool
-from ii_agent.tools.tavily_visit_webpage import TavilyVisitWebpageTool
+from ii_agent.tools.web_search_tool import WebSearchTool
+from ii_agent.tools.visit_webpage_tool import VisitWebpageTool
 from ii_agent.tools.str_replace_tool import StrReplaceEditorTool
 from ii_agent.tools.static_deploy_tool import StaticDeployTool
 from ii_agent.tools.sequential_thinking_tool import SequentialThinkingTool
@@ -63,8 +63,8 @@ def get_system_tools(
 
     tools = [
         SequentialThinkingTool(),
-        TavilySearchTool(),
-        TavilyVisitWebpageTool(),
+        WebSearchTool(),
+        VisitWebpageTool(),
         StaticDeployTool(workspace_manager=workspace_manager),
         StrReplaceEditorTool(),
         bash_tool,
