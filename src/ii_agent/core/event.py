@@ -5,6 +5,7 @@ import enum
 
 class EventType(str, enum.Enum):
     CONNECTION_ESTABLISHED = "connection_established"
+    AGENT_INITIALIZED = "agent_initialized"
     WORKSPACE_INFO = "workspace_info"
     PROCESSING = "processing"
     AGENT_THINKING = "agent_thinking"

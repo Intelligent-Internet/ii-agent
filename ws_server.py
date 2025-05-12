@@ -79,6 +79,7 @@ async def websocket_endpoint(websocket: WebSocket):
     active_connections.add(websocket)
 
     workspace_manager = create_workspace_manager_for_connection()
+    print(f"Workspace manager created: {workspace_manager}")
 
     try:
         # Initial connection message
@@ -109,6 +110,12 @@ async def websocket_endpoint(websocket: WebSocket):
                     # Start message processor for this connection
                     message_processor = agent.start_message_processing()
                     message_processors[websocket] = message_processor
+                    await websocket.send_json(
+                        RealtimeEvent(
+                            type=EventType.AGENT_INITIALIZED,
+                            content={"message": "Agent initialized"},
+                        ).model_dump()
+                    )
 
                 elif msg_type == "query":
                     # Check if there's an active task for this connection
