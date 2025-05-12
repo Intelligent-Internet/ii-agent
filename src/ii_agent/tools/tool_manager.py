@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from copy import deepcopy
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from ii_agent.tools.base import LLMTool
 from ii_agent.llm.message_history import ToolCallParameters
 from ii_agent.tools.web_search_tool import WebSearchTool
@@ -37,6 +37,7 @@ from ii_agent.tools.advanced_tools.audio_tool import (
 from ii_agent.tools.advanced_tools.video_gen_tool import VideoGenerateFromTextTool
 from ii_agent.tools.advanced_tools.image_gen_tool import ImageGenerateTool
 from ii_agent.tools.advanced_tools.pdf_tool import PdfTextExtractTool
+from ii_agent.tools.deep_research_tool import DeepResearchTool
 
 
 def get_system_tools(
@@ -44,6 +45,7 @@ def get_system_tools(
     message_queue: asyncio.Queue,
     container_id: Optional[str] = None,
     ask_user_permission: bool = False,
+    tool_args: Dict[str, Any] = None,
 ) -> list[LLMTool]:
     """
     Retrieves a list of all system tools.
@@ -51,7 +53,6 @@ def get_system_tools(
     Returns:
         list[LLMTool]: A list of all system tools.
     """
-    browser = Browser()
     if container_id is not None:
         bash_tool = create_docker_bash_tool(
             container=container_id, ask_user_permission=ask_user_permission
@@ -68,29 +69,49 @@ def get_system_tools(
         StaticDeployTool(workspace_manager=workspace_manager),
         StrReplaceEditorTool(),
         bash_tool,
-        # Browser tools
-        BrowserNavigationTool(browser=browser),
-        BrowserRestartTool(browser=browser),
-        BrowserScrollDownTool(browser=browser),
-        BrowserScrollUpTool(browser=browser),
-        BrowserViewTool(browser=browser, message_queue=message_queue),
-        BrowserWaitTool(browser=browser),
-        BrowserSwitchTabTool(browser=browser),
-        BrowserOpenNewTabTool(browser=browser),
-        BrowserClickTool(browser=browser),
-        BrowserEnterTextTool(browser=browser),
-        BrowserPressKeyTool(browser=browser),
-        BrowserGetSelectOptionsTool(browser=browser),
-        BrowserSelectDropdownOptionTool(browser=browser),
-        # audio tools
-        AudioTranscribeTool(workspace_manager=workspace_manager),
-        AudioGenerateTool(workspace_manager=workspace_manager),
-        # pdf tools
-        PdfTextExtractTool(workspace_manager=workspace_manager),
-        # image tools
-        ImageGenerateTool(workspace_manager=workspace_manager),
-        VideoGenerateFromTextTool(workspace_manager=workspace_manager),
     ]
+
+    # Conditionally add tools based on tool_args
+    if tool_args:
+        if tool_args.get("deep_research", False):
+            tools.append(DeepResearchTool())
+        if tool_args.get("pdf", False):
+            tools.append(PdfTextExtractTool(workspace_manager=workspace_manager))
+        if tool_args.get("media_generation", False):
+            tools.extend(
+                [
+                    ImageGenerateTool(workspace_manager=workspace_manager),
+                    VideoGenerateFromTextTool(workspace_manager=workspace_manager),
+                ]
+            )
+        if tool_args.get("audio_generation", False):
+            tools.extend(
+                [
+                    AudioTranscribeTool(workspace_manager=workspace_manager),
+                    AudioGenerateTool(workspace_manager=workspace_manager),
+                ]
+            )
+        if tool_args.get("browser", False):
+            browser = Browser()
+            tools.extend(
+                [
+                    BrowserNavigationTool(browser=browser),
+                    BrowserRestartTool(browser=browser),
+                    BrowserScrollDownTool(browser=browser),
+                    BrowserScrollUpTool(browser=browser),
+                    BrowserViewTool(browser=browser, message_queue=message_queue),
+                    BrowserWaitTool(browser=browser),
+                    BrowserSwitchTabTool(browser=browser),
+                    BrowserOpenNewTabTool(browser=browser),
+                    BrowserClickTool(browser=browser),
+                    BrowserEnterTextTool(browser=browser),
+                    BrowserPressKeyTool(browser=browser),
+                    BrowserGetSelectOptionsTool(browser=browser),
+                    BrowserSelectDropdownOptionTool(browser=browser),
+                ]
+            )
+        # Browser tools
+
     return tools
 
 

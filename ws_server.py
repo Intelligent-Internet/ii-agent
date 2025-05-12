@@ -13,7 +13,7 @@ import json
 import logging
 import uuid
 from pathlib import Path
-from typing import Dict, Set, List
+from typing import Dict, Set, Any
 
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
@@ -100,7 +100,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 if msg_type == "init_agent":
                     # Create a new agent for this connection
-                    tool_args = content.get("tool_args", [])
+                    tool_args = content.get("tool_args", {})
                     agent = create_agent_for_connection(
                         workspace_manager, websocket, tool_args
                     )
@@ -295,7 +295,7 @@ def cleanup_connection(websocket: WebSocket):
 
 
 def create_agent_for_connection(
-    workspace_manager: WorkspaceManager, websocket: WebSocket, tool_args: List[str]
+    workspace_manager: WorkspaceManager, websocket: WebSocket, tool_args: Dict[str, Any]
 ):
     """Create a new agent instance for a websocket connection."""
     global global_args
@@ -349,6 +349,7 @@ def create_agent_for_connection(
         message_queue=queue,
         container_id=global_args.docker_container_id,
         ask_user_permission=global_args.needs_permission,
+        tool_args=tool_args,
     )
     agent = AnthropicFC(
         system_prompt=system_prompt,

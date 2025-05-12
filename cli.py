@@ -110,6 +110,13 @@ def main():
         message_queue=queue,
         container_id=args.docker_container_id,
         ask_user_permission=args.needs_permission,
+        tool_args={
+            "deep_research": True,
+            "pdf": True,
+            "media_generation": True,
+            "audio_generation": True,
+            "browser": True,
+        },
     )
     agent = AnthropicFC(
         workspace_manager=workspace_manager,
