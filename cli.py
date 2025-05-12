@@ -119,7 +119,6 @@ def main():
         },
     )
     agent = AnthropicFC(
-        workspace_manager=workspace_manager,
         system_prompt=system_prompt,
         client=client,
         tools=tools,

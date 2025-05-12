@@ -67,7 +67,7 @@ def get_system_tools(
         WebSearchTool(),
         VisitWebpageTool(),
         StaticDeployTool(workspace_manager=workspace_manager),
-        StrReplaceEditorTool(),
+        StrReplaceEditorTool(workspace_manager=workspace_manager),
         bash_tool,
     ]
 
