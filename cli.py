@@ -10,11 +10,13 @@ import os
 import argparse
 from pathlib import Path
 import logging
-
+import asyncio
 from utils import parse_common_args
 from rich.console import Console
 from rich.panel import Panel
 
+from ii_agent.tools import get_system_tools
+from ii_agent.prompts.system_prompt import SYSTEM_PROMPT
 from ii_agent.agents.anthropic_fc import AnthropicFC
 from ii_agent.utils import WorkspaceManager
 from ii_agent.llm import get_client
@@ -99,16 +101,26 @@ def main():
             token_budget=120_000,
         )
 
-    # Initialize agent
-    agent = AnthropicFC(
-        client=client,
+    system_prompt = SYSTEM_PROMPT.format(
+        workspace_root=workspace_manager.root,
+    )
+    queue = asyncio.Queue()
+    tools = get_system_tools(
         workspace_manager=workspace_manager,
+        message_queue=queue,
+        container_id=args.docker_container_id,
+        ask_user_permission=args.needs_permission,
+    )
+    agent = AnthropicFC(
+        workspace_manager=workspace_manager,
+        system_prompt=system_prompt,
+        client=client,
+        tools=tools,
+        message_queue=queue,
         logger_for_agent_logs=logger_for_agent_logs,
         context_manager=context_manager,
         max_output_tokens_per_turn=MAX_OUTPUT_TOKENS_PER_TURN,
         max_turns=MAX_TURNS,
-        ask_user_permission=args.needs_permission,
-        docker_container_id=args.docker_container_id,
     )
 
     # Main interaction loop

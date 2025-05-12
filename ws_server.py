@@ -13,10 +13,10 @@ import json
 import logging
 import uuid
 from pathlib import Path
-from typing import Dict, Set
+from typing import Dict, Set, List
 
 import uvicorn
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, Form, Request
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import anyio
@@ -35,6 +35,8 @@ from fastapi.staticfiles import StaticFiles
 from ii_agent.llm.context_manager.file_based import FileBasedContextManager
 from ii_agent.llm.context_manager.standard import StandardContextManager
 from ii_agent.llm.token_counter import TokenCounter
+from ii_agent.tools import get_system_tools
+from ii_agent.prompts.system_prompt import SYSTEM_PROMPT
 
 load_dotenv()
 MAX_OUTPUT_TOKENS_PER_TURN = 32768
@@ -76,13 +78,7 @@ async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     active_connections.add(websocket)
 
-    # Create a new agent for this connection
-    agent = create_agent_for_connection(websocket)
-    active_agents[websocket] = agent
-
-    # Start message processor for this connection
-    message_processor = agent.start_message_processing()
-    message_processors[websocket] = message_processor
+    workspace_manager = create_workspace_manager_for_connection()
 
     try:
         # Initial connection message
@@ -102,7 +98,19 @@ async def websocket_endpoint(websocket: WebSocket):
                 msg_type = message.get("type")
                 content = message.get("content", {})
 
-                if msg_type == "query":
+                if msg_type == "init_agent":
+                    # Create a new agent for this connection
+                    tool_args = content.get("tool_args", [])
+                    agent = create_agent_for_connection(
+                        workspace_manager, websocket, tool_args
+                    )
+                    active_agents[websocket] = agent
+
+                    # Start message processor for this connection
+                    message_processor = agent.start_message_processing()
+                    message_processors[websocket] = message_processor
+
+                elif msg_type == "query":
                     # Check if there's an active task for this connection
                     if websocket in active_tasks and not active_tasks[websocket].done():
                         await websocket.send_json(
@@ -248,6 +256,23 @@ async def run_agent_async(websocket: WebSocket, user_input: str, resume: bool = 
             del active_tasks[websocket]
 
 
+def create_workspace_manager_for_connection():
+    """Create a new workspace manager instance for a websocket connection."""
+    # Create unique subdirectory for this connection
+    connection_id = str(uuid.uuid4())
+    workspace_path = Path(global_args.workspace).resolve()
+    connection_workspace = workspace_path / connection_id
+    connection_workspace.mkdir(parents=True, exist_ok=True)
+
+    # Initialize workspace manager with connection-specific subdirectory
+    workspace_manager = WorkspaceManager(
+        root=connection_workspace,
+        container_workspace=global_args.use_container_workspace,
+    )
+
+    return workspace_manager
+
+
 def cleanup_connection(websocket: WebSocket):
     """Clean up resources associated with a websocket connection."""
     # Remove from active connections
@@ -269,7 +294,9 @@ def cleanup_connection(websocket: WebSocket):
         del active_agents[websocket]
 
 
-def create_agent_for_connection(websocket: WebSocket):
+def create_agent_for_connection(
+    workspace_manager: WorkspaceManager, websocket: WebSocket, tool_args: List[str]
+):
     """Create a new agent instance for a websocket connection."""
     global global_args
 
@@ -294,25 +321,13 @@ def create_agent_for_connection(websocket: WebSocket):
         region=global_args.region,
     )
 
-    # Create unique subdirectory for this connection
-    connection_id = str(uuid.uuid4())
-    workspace_path = Path(global_args.workspace).resolve()
-    connection_workspace = workspace_path / connection_id
-    connection_workspace.mkdir(parents=True, exist_ok=True)
-
-    # Initialize workspace manager with connection-specific subdirectory
-    workspace_manager = WorkspaceManager(
-        root=connection_workspace,
-        container_workspace=global_args.use_container_workspace,
-    )
-
     # Initialize token counter
     token_counter = TokenCounter()
 
     # Create context manager based on argument
     if global_args.context_manager == "file-based":
         context_manager = FileBasedContextManager(
-            workspace_dir=connection_workspace,
+            workspace_dir=workspace_manager.root,
             token_counter=token_counter,
             logger=logger_for_agent_logs,
             token_budget=120_000,
@@ -325,30 +340,45 @@ def create_agent_for_connection(websocket: WebSocket):
         )
 
     # Initialize agent with websocket
-    agent = AnthropicFC(
-        client=client,
+    system_prompt = SYSTEM_PROMPT.format(
+        workspace_root=workspace_manager.root,
+    )
+    queue = asyncio.Queue()
+    tools = get_system_tools(
         workspace_manager=workspace_manager,
+        message_queue=queue,
+        container_id=global_args.docker_container_id,
+        ask_user_permission=global_args.needs_permission,
+    )
+    agent = AnthropicFC(
+        system_prompt=system_prompt,
+        client=client,
+        tools=tools,
+        message_queue=queue,
         logger_for_agent_logs=logger_for_agent_logs,
         context_manager=context_manager,
         max_output_tokens_per_turn=MAX_OUTPUT_TOKENS_PER_TURN,
         max_turns=MAX_TURNS,
-        ask_user_permission=global_args.needs_permission,
-        docker_container_id=global_args.docker_container_id,
         websocket=websocket,
     )
 
     return agent
 
+
 def setup_workspace(app, workspace_path):
     try:
         app.mount(
-            "/workspace", StaticFiles(directory=workspace_path, html=True), name="workspace"
+            "/workspace",
+            StaticFiles(directory=workspace_path, html=True),
+            name="workspace",
         )
     except RuntimeError:
         # Directory might not exist yet
         os.makedirs(workspace_path, exist_ok=True)
         app.mount(
-            "/workspace", StaticFiles(directory=workspace_path, html=True), name="workspace"
+            "/workspace",
+            StaticFiles(directory=workspace_path, html=True),
+            name="workspace",
         )
 
 
@@ -375,19 +405,18 @@ def main():
     )
     args = parser.parse_args()
     global_args = args
-    
+
     setup_workspace(app, args.workspace)
-    
+
     # Start the FastAPI server
     logger.info(f"Starting WebSocket server on {args.host}:{args.port}")
     uvicorn.run(app, host=args.host, port=args.port)
-    
 
 
 @app.post("/api/upload")
 async def upload_file_endpoint(request: Request):
     """API endpoint for uploading a single file to the workspace.
-    
+
     Expects a JSON payload with:
     - connection_id: UUID of the connection/workspace
     - file: Object with path and content properties
@@ -396,75 +425,74 @@ async def upload_file_endpoint(request: Request):
         data = await request.json()
         connection_id = data.get("connection_id")
         file_info = data.get("file")
-        
+
         if not connection_id:
             return JSONResponse(
-                status_code=400,
-                content={"error": "connection_id is required"}
+                status_code=400, content={"error": "connection_id is required"}
             )
-            
+
         if not file_info:
             return JSONResponse(
-                status_code=400,
-                content={"error": "No file provided for upload"}
+                status_code=400, content={"error": "No file provided for upload"}
             )
-        
+
         # Find the workspace path for this connection
         workspace_path = Path(global_args.workspace).resolve() / connection_id
         if not workspace_path.exists():
             return JSONResponse(
                 status_code=404,
-                content={"error": f"Workspace not found for connection: {connection_id}"}
+                content={
+                    "error": f"Workspace not found for connection: {connection_id}"
+                },
             )
-        
+
         # Create the uploaded_files directory if it doesn't exist
         upload_dir = workspace_path / "uploaded_files"
         upload_dir.mkdir(parents=True, exist_ok=True)
-        
+
         file_path = file_info.get("path", "")
         file_content = file_info.get("content", "")
-        
+
         if not file_path:
             return JSONResponse(
-                status_code=400,
-                content={"error": "File path is required"}
+                status_code=400, content={"error": "File path is required"}
             )
-            
+
         # Ensure the file path is relative to the workspace
         if Path(file_path).is_absolute():
             file_path = Path(file_path).name
-        
+
         # Create the full path within the uploaded_files directory
         original_path = upload_dir / file_path
         full_path = original_path
-        
+
         # Handle filename collision by adding a suffix
         if full_path.exists():
             base_name = full_path.stem
             extension = full_path.suffix
             counter = 1
-            
+
             # Keep incrementing counter until we find a unique filename
             while full_path.exists():
                 new_filename = f"{base_name}_{counter}{extension}"
                 full_path = upload_dir / new_filename
                 counter += 1
-                
+
             # Update the file_path to reflect the new name
             file_path = f"{full_path.relative_to(upload_dir)}"
-        
+
         # Ensure any subdirectories exist
         full_path.parent.mkdir(parents=True, exist_ok=True)
-        
+
         # Check if content is base64 encoded (for binary files)
         if file_content.startswith("data:"):
             # Handle data URLs (e.g., "data:application/pdf;base64,...")
             # Split the header from the base64 content
             header, encoded = file_content.split(",", 1)
-            
+
             # Decode the content
             decoded = base64.b64decode(encoded)
-            
+
             # Write binary content
             with open(full_path, "wb") as f:
                 f.write(decoded)
@@ -472,23 +500,22 @@ async def upload_file_endpoint(request: Request):
             # Write text content
             with open(full_path, "w") as f:
                 f.write(file_content)
-                
+
         # Log the upload
         logger.info(f"File uploaded to {full_path}")
-        
+
         # Return the path relative to the workspace for client use
         relative_path = f"uploaded_files/{file_path}"
-        
+
         return {
             "message": "File uploaded successfully",
-            "file": {"path": relative_path, "saved_path": str(full_path)}
+            "file": {"path": relative_path, "saved_path": str(full_path)},
         }
-        
+
     except Exception as e:
         logger.error(f"Error uploading file: {str(e)}")
         return JSONResponse(
-            status_code=500,
-            content={"error": f"Error uploading file: {str(e)}"}
+            status_code=500, content={"error": f"Error uploading file: {str(e)}"}
         )
 
 

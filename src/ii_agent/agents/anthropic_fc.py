@@ -1,51 +1,16 @@
 import asyncio
-from copy import deepcopy
 
 import logging
-from typing import Any, Optional
+from typing import Any, Optional, List
 from fastapi import WebSocket
 from ii_agent.agents.base import BaseAgent
 from ii_agent.core.event import EventType, RealtimeEvent
 from ii_agent.llm.base import LLMClient, TextResult
 from ii_agent.llm.context_manager.base import ContextManager
 from ii_agent.llm.message_history import MessageHistory
-from ii_agent.prompts.system_prompt import SYSTEM_PROMPT
-from ii_agent.tools import (
-    CompleteTool,
-    create_bash_tool,
-    create_docker_bash_tool,
-    StrReplaceEditorTool,
-    SequentialThinkingTool,
-    TavilySearchTool,
-    TavilyVisitWebpageTool,
-    StaticDeployTool,
-)
-from ii_agent.tools.base import ToolImplOutput, LLMTool
-from ii_agent.tools.browser_tool import (
-    BrowserNavigationTool,
-    BrowserRestartTool,
-    BrowserScrollDownTool,
-    BrowserScrollUpTool,
-    BrowserViewTool,
-    BrowserWaitTool,
-    BrowserSwitchTabTool,
-    BrowserOpenNewTabTool,
-    BrowserClickTool,
-    BrowserEnterTextTool,
-    BrowserPressKeyTool,
-    BrowserGetSelectOptionsTool,
-    BrowserSelectDropdownOptionTool,
-)
-
-from ii_agent.tools.advanced_tools.audio_tool import (
-    AudioTranscribeTool,
-    AudioGenerateTool,
-)
-from ii_agent.tools.advanced_tools.video_gen_tool import VideoGenerateFromTextTool
-from ii_agent.tools.advanced_tools.image_gen_tool import ImageGenerateTool
-from ii_agent.tools.advanced_tools.pdf_tool import PdfTextExtractTool
-from ii_agent.utils import WorkspaceManager
-from ii_agent.browser.browser import Browser
+from ii_agent.tools import AgentToolManager
+from ii_agent.tools.base import ToolImplOutput
+from ii_agent.tools.base import LLMTool
 
 
 class AnthropicFC(BaseAgent):
@@ -68,103 +33,47 @@ try breaking down the task into smaller steps. After call this tool to update or
     }
     websocket: Optional[WebSocket]
 
-    def _get_system_prompt(self):
-        """Get the system prompt, including any pending messages.
-
-        Returns:
-            The system prompt with messages prepended if any
-        """
-        return SYSTEM_PROMPT.format(
-            workspace_root=self.workspace_manager.root,
-        )
-
     def __init__(
         self,
+        system_prompt: str,
         client: LLMClient,
-        workspace_manager: WorkspaceManager,
+        tools: List[LLMTool],
+        message_queue: asyncio.Queue,
         logger_for_agent_logs: logging.Logger,
         context_manager: ContextManager,
         max_output_tokens_per_turn: int = 8192,
         max_turns: int = 10,
-        ask_user_permission: bool = False,
-        docker_container_id: Optional[str] = None,
         websocket: Optional[WebSocket] = None,
     ):
         """Initialize the agent.
 
         Args:
+            system_prompt: The system prompt to use
             client: The LLM client to use
-            workspace_manager: Workspace manager for taking snapshots
+            tools: List of tools to use
+            message_queue: Message queue for real-time communication
             logger_for_agent_logs: Logger for agent logs
             context_manager: Context manager for managing conversation context
             max_output_tokens_per_turn: Maximum tokens per turn
             max_turns: Maximum number of turns
-            ask_user_permission: Whether to ask for permission before executing commands
-            docker_container_id: Optional Docker container ID to run commands in
             websocket: Optional WebSocket for real-time communication
         """
         super().__init__()
+        self.system_prompt = system_prompt
         self.client = client
+        self.tool_manager = AgentToolManager(
+            tools=tools,
+            logger_for_agent_logs=logger_for_agent_logs,
+        )
+
         self.logger_for_agent_logs = logger_for_agent_logs
         self.max_output_tokens = max_output_tokens_per_turn
         self.max_turns = max_turns
-        self.workspace_manager = workspace_manager
+
         self.interrupted = False
         self.history = MessageHistory()
         self.context_manager = context_manager
-
-        # Create and store the complete tool
-        self.complete_tool = CompleteTool()
-
-        if docker_container_id is not None:
-            self.logger_for_agent_logs.info(
-                f"Enabling docker bash tool with container {docker_container_id}"
-            )
-            bash_tool = create_docker_bash_tool(
-                container=docker_container_id,
-                ask_user_permission=ask_user_permission,
-            )
-        else:
-            bash_tool = create_bash_tool(
-                ask_user_permission=ask_user_permission,
-                cwd=workspace_manager.root,
-            )
-
-        self.message_queue = asyncio.Queue()
-
-        self.browser = Browser()
-
-        self.tools = [
-            bash_tool,
-            StrReplaceEditorTool(workspace_manager=workspace_manager),
-            SequentialThinkingTool(),
-            TavilySearchTool(),
-            TavilyVisitWebpageTool(),
-            self.complete_tool,
-            StaticDeployTool(workspace_manager=workspace_manager),
-            # Browser tools
-            BrowserNavigationTool(browser=self.browser),
-            BrowserRestartTool(browser=self.browser),
-            BrowserScrollDownTool(browser=self.browser),
-            BrowserScrollUpTool(browser=self.browser),
-            BrowserViewTool(browser=self.browser, message_queue=self.message_queue),
-            BrowserWaitTool(browser=self.browser),
-            BrowserSwitchTabTool(browser=self.browser),
-            BrowserOpenNewTabTool(browser=self.browser),
-            BrowserClickTool(browser=self.browser),
-            BrowserEnterTextTool(browser=self.browser),
-            BrowserPressKeyTool(browser=self.browser),
-            BrowserGetSelectOptionsTool(browser=self.browser),
-            BrowserSelectDropdownOptionTool(browser=self.browser),
-            # audio tools
-            AudioTranscribeTool(workspace_manager=workspace_manager),
-            AudioGenerateTool(workspace_manager=workspace_manager),
-            # pdf tools
-            PdfTextExtractTool(workspace_manager=workspace_manager),
-            # image tools
-            ImageGenerateTool(workspace_manager=workspace_manager),
-            VideoGenerateFromTextTool(workspace_manager=workspace_manager),
-        ]
+        self.message_queue = message_queue
         self.websocket = websocket
 
     async def _process_messages(self):
@@ -189,6 +98,16 @@ try breaking down the task into smaller steps. After call this tool to update or
             self.logger_for_agent_logs.info("Message processor stopped")
         except Exception as e:
             self.logger_for_agent_logs.error(f"Error in message processor: {str(e)}")
+
+    def _validate_tool_parameters(self):
+        """Validate tool parameters and check for duplicates."""
+        tool_params = [tool.get_tool_param() for tool in self.tool_manager.get_tools()]
+        tool_names = [param.name for param in tool_params]
+        sorted_names = sorted(tool_names)
+        for i in range(len(sorted_names) - 1):
+            if sorted_names[i] == sorted_names[i + 1]:
+                raise ValueError(f"Tool {sorted_names[i]} is duplicated")
+        return tool_params
 
     def start_message_processing(self):
         """Start processing the message queue."""
@@ -216,14 +135,7 @@ try breaking down the task into smaller steps. After call this tool to update or
             self.logger_for_agent_logs.info(f"\n{delimiter}\n")
 
             # Get tool parameters for available tools
-            tool_params = [tool.get_tool_param() for tool in self.tools]
-
-            # Check for duplicate tool names
-            tool_names = [param.name for param in tool_params]
-            sorted_names = sorted(tool_names)
-            for i in range(len(sorted_names) - 1):
-                if sorted_names[i] == sorted_names[i + 1]:
-                    raise ValueError(f"Tool {sorted_names[i]} is duplicated")
+            all_tool_params = self._validate_tool_parameters()
 
             try:
                 current_messages = self.history.get_messages_for_llm()
@@ -244,8 +156,8 @@ try breaking down the task into smaller steps. After call this tool to update or
                 model_response, _ = self.client.generate(
                     messages=truncated_messages_for_llm,
                     max_tokens=self.max_output_tokens,
-                    tools=tool_params,
-                    system_prompt=self._get_system_prompt(),
+                    tools=all_tool_params,
+                    system_prompt=self.system_prompt,
                 )
 
                 # Add the raw response to the canonical history
@@ -289,36 +201,9 @@ try breaking down the task into smaller steps. After call this tool to update or
                         f"Top-level agent planning next step: {text_result.text}\n",
                     )
 
+                # Handle tool call by the agent
                 try:
-                    tool: LLMTool = next(
-                        t for t in self.tools if t.name == tool_call.tool_name
-                    )
-                except StopIteration as exc:
-                    raise ValueError(
-                        f"Tool with name {tool_call.tool_name} not found"
-                    ) from exc
-
-                try:
-                    result = tool.run(tool_call.tool_input, deepcopy(self.history))
-
-                    tool_input_str = "\n".join(
-                        [f" - {k}: {v}" for k, v in tool_call.tool_input.items()]
-                    )
-
-                    log_message = f"Calling tool {tool_call.tool_name} with input:\n{tool_input_str}"
-                    if isinstance(result, str):
-                        log_message += f"\nTool output: \n{result}\n\n"
-                    else:
-                        log_message += f"\nTool output: \n{result[0]}\n\n"
-
-                    self.logger_for_agent_logs.info(log_message)
-
-                    # Handle both ToolResult objects and tuples
-                    if isinstance(result, tuple):
-                        tool_result, _ = result
-                    else:
-                        tool_result = result
-
+                    tool_result = self.tool_manager.run_tool(tool_call, self.history)
                     self.history.add_tool_call_result(tool_call, tool_result)
 
                     self.message_queue.put_nowait(
@@ -331,14 +216,14 @@ try breaking down the task into smaller steps. After call this tool to update or
                             },
                         )
                     )
-                    if self.complete_tool.should_stop:
+                    if self.tool_manager.should_stop():
                         # Add a fake model response, so the next turn is the user's
                         # turn in case they want to resume
                         self.history.add_assistant_turn(
                             [TextResult(text="Completed the task.")]
                         )
                         return ToolImplOutput(
-                            tool_output=self.complete_tool.answer,
+                            tool_output=self.tool_manager.get_final_answer(),
                             tool_result_message="Task completed",
                         )
                 except KeyboardInterrupt:
@@ -397,7 +282,7 @@ try breaking down the task into smaller steps. After call this tool to update or
         Returns:
             A tuple of (result, message).
         """
-        self.complete_tool.reset()
+        self.tool_manager.reset()
         if resume:
             assert self.history.is_next_turn_user()
         else:

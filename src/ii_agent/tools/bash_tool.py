@@ -430,3 +430,61 @@ def create_docker_bash_tool(
         command_filters=[docker_filter],
         additional_banned_command_strs=additional_banned_command_strs,
     )
+
+
+DATA = """echo "# Ho Chi Minh Website Project - Todo List
+
+## Research Phase
+- [ ] Research Ho Chi Minh's early life and background
+- [ ] Research Ho Chi Minh's political career and revolutionary activities
+- [ ] Research Ho Chi Minh's leadership during Vietnam's independence
+- [ ] Research Ho Chi Minh's legacy and impact
+- [ ] Gather information about key historical events for timeline
+- [ ] Find appropriate images for the website
+
+## Content Creation
+- [ ] Write content for Home page
+- [ ] Write content for Biography page
+- [ ] Write content for Political Career page
+- [ ] Write content for Leadership page
+- [ ] Write content for Legacy page
+- [ ] Create timeline of key events
+- [ ] Prepare image captions and descriptions
+
+## Website Development
+- [ ] Create basic HTML structure for all pages
+- [ ] Design CSS styling for the website
+- [ ] Implement responsive design
+- [ ] Create navigation between pages
+- [ ] Add images and media
+- [ ] Implement timeline feature
+- [ ] Add references and sources
+
+## Testing and Deployment
+- [ ] Test website functionality
+- [ ] Test responsiveness on different screen sizes
+- [ ] Deploy the website
+- [ ] Provide access to the user
+" > todo.md
+"""
+
+
+def main():
+    """Test function for the BashTool implementation."""
+    import os
+    from pathlib import Path
+
+    print("Testing BashTool implementation...")
+
+    # Test 1: Basic bash tool with no filters
+    print("\n=== Test 1: Basic BashTool ===")
+    current_dir = Path(os.getcwd())
+    bash_tool = create_bash_tool(ask_user_permission=True, cwd=current_dir)
+
+    # Run a simple command
+    result = bash_tool.run_impl({"command": DATA})
+    print(result)
+
+
+if __name__ == "__main__":
+    main()
