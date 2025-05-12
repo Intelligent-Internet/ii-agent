@@ -150,11 +150,11 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 elif msg_type == "workspace_info":
                     # Send information about the current workspace
-                    if agent and agent.workspace_manager:
+                    if workspace_manager:
                         await websocket.send_json(
                             RealtimeEvent(
                                 type=EventType.WORKSPACE_INFO,
-                                content={"path": str(agent.workspace_manager.root)},
+                                content={"path": str(workspace_manager.root)},
                             ).model_dump()
                         )
                     else:
