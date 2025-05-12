@@ -136,7 +136,7 @@ try breaking down the task into smaller steps. After call this tool to update or
 
         self.tools = [
             bash_tool,
-            StrReplaceEditorTool(workspace_manager=workspace_manager),
+            StrReplaceEditorTool(workspace_manager=workspace_manager, message_queue=self.message_queue),
             SequentialThinkingTool(),
             TavilySearchTool(),
             TavilyVisitWebpageTool(),
