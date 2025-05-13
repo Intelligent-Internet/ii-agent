@@ -1,4 +1,7 @@
 from argparse import ArgumentParser
+import uuid
+from pathlib import Path
+from ii_agent.utils import WorkspaceManager
 
 
 def parse_common_args(parser: ArgumentParser):
@@ -59,3 +62,20 @@ def parse_common_args(parser: ArgumentParser):
         help="Type of context manager to use (file-based or standard)",
     )
     return parser
+
+
+def create_workspace_manager_for_connection(workspace_root: str, use_container_workspace: bool = False):
+    """Create a new workspace manager instance for a websocket connection."""
+    # Create unique subdirectory for this connection
+    connection_id = str(uuid.uuid4())
+    workspace_path = Path(workspace_root).resolve()
+    connection_workspace = workspace_path / connection_id
+    connection_workspace.mkdir(parents=True, exist_ok=True)
+
+    # Initialize workspace manager with connection-specific subdirectory
+    workspace_manager = WorkspaceManager(
+        root=connection_workspace,
+        container_workspace=use_container_workspace,
+    )
+
+    return workspace_manager, connection_id

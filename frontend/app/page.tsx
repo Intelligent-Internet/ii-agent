@@ -87,12 +87,13 @@ export default function Home() {
   // Fetch session events when session ID is available
   useEffect(() => {
     const fetchSessionEvents = async () => {
-      if (!sessionId) return;
+      const id = searchParams.get("id");
+      if (!id) return;
 
       setIsLoadingSession(true);
       try {
         const response = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/api/sessions/${sessionId}/events`
+          `${process.env.NEXT_PUBLIC_API_URL}/api/sessions/${id}/events`
         );
 
         if (!response.ok) {
@@ -107,9 +108,19 @@ export default function Home() {
           // Process events to reconstruct the conversation
           const reconstructedMessages: Message[] = [];
 
-          data.events.forEach((event: IEvent) => {
-            handleEvent(event.event_payload);
-          });
+          // Function to process events with delay
+          const processEventsWithDelay = async () => {
+            setIsLoading(true);
+            for (let i = 0; i < data.events.length; i++) {
+              const event = data.events[i];
+              // Process each event with a 2-second delay
+              await new Promise((resolve) => setTimeout(resolve, 1000));
+              handleEvent({ ...event.event_payload, id: event.id });
+            }
+          };
+
+          // Start processing events with delay
+          processEventsWithDelay();
 
           // Set the reconstructed messages
           if (reconstructedMessages.length > 0) {
@@ -134,7 +145,7 @@ export default function Home() {
     };
 
     fetchSessionEvents();
-  }, [sessionId]);
+  }, [searchParams]);
 
   // Initialize device ID on page load
   useEffect(() => {
@@ -465,6 +476,7 @@ export default function Home() {
   };
 
   const handleEvent = (data: {
+    id: string;
     type: AgentEvent;
     content: Record<string, unknown>;
   }) => {
@@ -473,7 +485,7 @@ export default function Home() {
         setMessages((prev) => [
           ...prev,
           {
-            id: Date.now().toString(),
+            id: data.id,
             role: "user",
             content: data.content.text as string,
             timestamp: Date.now(),
@@ -491,7 +503,7 @@ export default function Home() {
         setMessages((prev) => [
           ...prev,
           {
-            id: Date.now().toString(),
+            id: data.id,
             role: "assistant",
             content: data.content.text as string,
             timestamp: Date.now(),
@@ -504,7 +516,7 @@ export default function Home() {
           setMessages((prev) => [
             ...prev,
             {
-              id: Date.now().toString(),
+              id: data.id,
               role: "assistant",
               content: (data.content.tool_input as { thought: string })
                 .thought as string,
@@ -513,7 +525,7 @@ export default function Home() {
           ]);
         } else {
           const message: Message = {
-            id: Date.now().toString(),
+            id: data.id,
             role: "assistant",
             action: {
               type: data.content.tool_name as TOOL,
@@ -546,7 +558,7 @@ export default function Home() {
 
       case AgentEvent.BROWSER_USE:
         const message: Message = {
-          id: Date.now().toString(),
+          id: data.id,
           role: "assistant",
           action: {
             type: data.type as unknown as TOOL,
@@ -587,7 +599,7 @@ export default function Home() {
           setMessages((prev) => [
             ...prev,
             {
-              id: Date.now().toString(),
+              id: data.id,
               role: "assistant",
               content: data.content.result as string,
               timestamp: Date.now(),
@@ -598,7 +610,7 @@ export default function Home() {
             setMessages((prev) => {
               const lastMessage = cloneDeep(prev[prev.length - 1]);
               if (
-                lastMessage.action &&
+                lastMessage?.action &&
                 lastMessage.action?.type === data.content.tool_name
               ) {
                 lastMessage.id = Date.now().toString();
@@ -695,7 +707,7 @@ export default function Home() {
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          handleEvent(data);
+          handleEvent({ ...data, id: Date.now().toString() });
         } catch (error) {
           console.error("Error parsing WebSocket data:", error);
         }
@@ -714,8 +726,9 @@ export default function Home() {
       setSocket(ws);
     };
 
-    // Only connect if we have a device ID
-    if (deviceId) {
+    const id = searchParams.get("id");
+    // Only connect if we have a device ID AND we're not viewing a session history
+    if (deviceId && !id) {
       connectWebSocket();
     }
 
@@ -725,7 +738,7 @@ export default function Home() {
         socket.close();
       }
     };
-  }, [deviceId]); // Add deviceId as a dependency
+  }, [deviceId, searchParams]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });

@@ -82,6 +82,7 @@ export interface ISession {
   workspace_dir: string;
   created_at: string;
   device_id: string;
+  first_message: string;
 }
 
 export interface IEvent {

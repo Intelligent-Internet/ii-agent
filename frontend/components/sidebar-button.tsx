@@ -7,6 +7,7 @@ import Image from "next/image";
 import { ISession } from "@/typings/agent";
 import Cookies from "js-cookie";
 import dayjs from "dayjs";
+import { useSearchParams } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -26,8 +27,18 @@ const SidebarButton = ({ className, workspaceInfo }: SidebarButtonProps) => {
   const [sessions, setSessions] = useState<ISession[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
 
+  const searchParams = useSearchParams();
   const deviceId = Cookies.get("device_id") || "";
+
+  // Get the current session ID from URL parameters
+  useEffect(() => {
+    const id = searchParams.get("id");
+    if (id) {
+      setActiveSessionId(id);
+    }
+  }, [searchParams]);
 
   const toggleSidebar = () => {
     setIsOpen(!isOpen);
@@ -150,13 +161,14 @@ const SidebarButton = ({ className, workspaceInfo }: SidebarButtonProps) => {
                         onClick={() => handleSessionClick(session.id)}
                         className={cn(
                           "p-2 rounded-md cursor-pointer hover:bg-[#2a2b30] transition-colors",
-                          workspaceInfo?.includes(session.id)
+                          activeSessionId === session.id ||
+                            workspaceInfo?.includes(session.id)
                             ? "bg-[#2a2b30] border border-[#3A3B3F]"
                             : ""
                         )}
                       >
                         <div className="text-white text-sm font-medium truncate">
-                          Session {session.id.substring(0, 8)}
+                          {session.first_message}
                         </div>
                         <div className="text-gray-400 text-xs flex items-center gap-1 mt-1">
                           <Clock className="h-3 w-3" />

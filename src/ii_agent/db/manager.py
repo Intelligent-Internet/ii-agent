@@ -46,10 +46,12 @@ class DatabaseManager:
         finally:
             session.close()
 
-    def create_session(self, device_id: Optional[str] = None) -> Tuple[uuid.UUID, Path]:
+    def create_session(self,session_uuid: uuid.UUID, workspace_path: Path, device_id: Optional[str] = None) -> None:
         """Create a new session with a UUID-based workspace directory.
 
         Args:
+            session_uuid: The UUID for the session
+            workspace_path: The path to the workspace directory
             device_id: Optional device identifier for the session
 
         Returns:
@@ -58,12 +60,7 @@ class DatabaseManager:
         if not self.base_workspace_dir:
             raise ValueError("base_workspace_dir must be set to create sessions")
 
-        # Generate a new UUID for the session
-        session_uuid = uuid.uuid4()
 
-        # Create workspace directory with UUID name
-        workspace_path = self.base_workspace_dir / str(session_uuid)
-        workspace_path.mkdir(parents=True, exist_ok=True)
 
         # Create session in database
         with self.get_session() as session:

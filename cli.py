@@ -12,7 +12,7 @@ import logging
 import asyncio
 
 from ii_agent.core.event import RealtimeEvent, EventType
-from utils import parse_common_args
+from utils import parse_common_args, create_workspace_manager_for_connection
 from rich.console import Console
 from rich.panel import Panel
 
@@ -55,11 +55,17 @@ async def async_main():
 
     # Initialize database manager
     db_manager = DatabaseManager(base_workspace_dir=args.workspace)
+    
+    # Create a new workspace manager for the CLI session
+    workspace_manager, session_id = (
+        create_workspace_manager_for_connection(args.workspace, args.use_container_workspace)
+    ) 
+    workspace_path = workspace_manager.root
 
     # Create a new session and get its workspace directory
-    session_id, workspace_path = db_manager.create_session()
+    db_manager.create_session(session_uuid=session_id, workspace_path=workspace_manager.root)
     logger_for_agent_logs.info(
-        f"Created new session {session_id} with workspace at {workspace_path}"
+        f"Created new session {session_id} with workspace at {workspace_manager.root}"
     )
 
     # Print welcome message

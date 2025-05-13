@@ -28,11 +28,11 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import anyio
 import base64
-from sqlalchemy import desc, asc
+from sqlalchemy import desc, asc, text
 
 from ii_agent.core.event import RealtimeEvent, EventType
 from ii_agent.db.models import Event, Session
-from utils import parse_common_args
+from utils import parse_common_args, create_workspace_manager_for_connection
 from ii_agent.agents.anthropic_fc import AnthropicFC
 from ii_agent.agents.base import BaseAgent
 from ii_agent.utils import WorkspaceManager
@@ -88,8 +88,8 @@ async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     active_connections.add(websocket)
 
-    workspace_manager = (
-        create_workspace_manager_for_connection()
+    workspace_manager, session_uuid = (
+        create_workspace_manager_for_connection(global_args.workspace, global_args.use_container_workspace)
     ) 
     print(f"Workspace manager created: {workspace_manager}")
 
@@ -118,7 +118,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     # Create a new agent for this connection
                     tool_args = content.get("tool_args", {})
                     agent = create_agent_for_connection(
-                        workspace_manager, websocket, tool_args
+                       session_uuid, workspace_manager, websocket, tool_args
                     )
                     active_agents[websocket] = agent
 
@@ -278,22 +278,6 @@ async def run_agent_async(websocket: WebSocket, user_input: str, resume: bool = 
             del active_tasks[websocket]
 
 
-def create_workspace_manager_for_connection():
-    """Create a new workspace manager instance for a websocket connection."""
-    # Create unique subdirectory for this connection
-    connection_id = str(uuid.uuid4())
-    workspace_path = Path(global_args.workspace).resolve()
-    connection_workspace = workspace_path / connection_id
-    connection_workspace.mkdir(parents=True, exist_ok=True)
-
-    # Initialize workspace manager with connection-specific subdirectory
-    workspace_manager = WorkspaceManager(
-        root=connection_workspace,
-        container_workspace=global_args.use_container_workspace,
-    )
-
-    return workspace_manager
-
 
 def cleanup_connection(websocket: WebSocket):
     """Clean up resources associated with a websocket connection."""
@@ -317,6 +301,7 @@ def cleanup_connection(websocket: WebSocket):
 
 
 def create_agent_for_connection(
+    session_id: uuid.UUID,
     workspace_manager: WorkspaceManager, websocket: WebSocket, tool_args: Dict[str, Any]
 ):
     """Create a new agent instance for a websocket connection."""
@@ -338,9 +323,9 @@ def create_agent_for_connection(
     db_manager = DatabaseManager(base_workspace_dir=global_args.workspace)
 
     # Create a new session and get its workspace directory
-    session_id, workspace_path = db_manager.create_session(device_id=device_id)
+    db_manager.create_session(device_id=device_id, session_uuid=session_id, workspace_path=workspace_manager.root)
     logger_for_agent_logs.info(
-        f"Created new session {session_id} with workspace at {workspace_path}"
+        f"Created new session {session_id} with workspace at {workspace_manager.root}"
     )
 
     # Initialize LLM client
@@ -571,54 +556,47 @@ async def get_sessions_by_device_id(device_id: str):
 
         # Get all sessions for this device, sorted by created_at descending
         with db_manager.get_session() as session:
-            # Subquery to get the first user_message event for each session
-            first_user_message = (
-                session.query(
-                    Event.session_id,
-                    Event.event_payload,
-                    Event.timestamp
+            # Use raw SQL query to get sessions with their first user message
+            query = text("""
+            SELECT 
+                session.id AS session_id,
+                session.*, 
+                event.id AS first_event_id,
+                event.event_payload AS first_message,
+                event.timestamp AS first_event_time
+            FROM session
+            LEFT JOIN event ON session.id = event.session_id
+            WHERE event.id IN (
+                SELECT e.id
+                FROM event e
+                WHERE e.event_type = "user_message" 
+                AND e.timestamp = (
+                    SELECT MIN(e2.timestamp)
+                    FROM event e2
+                    WHERE e2.session_id = e.session_id
+                    AND e2.event_type = "user_message"
                 )
-                .filter(Event.event_type == "user_message")
-                .distinct(Event.session_id)
-                .order_by(Event.session_id, Event.timestamp)
-                .subquery()
             )
-
-            # Main query joining sessions with first user message
-            sessions = (
-                session.query(Session, first_user_message.c.event_payload)
-                .outerjoin(
-                    first_user_message,
-                    Session.id == first_user_message.c.session_id
-                )
-                .filter(Session.device_id == device_id)
-                .order_by(desc(Session.created_at))
-                .all()
-            )
-
-            # Convert sessions to a list of dictionaries
-            session_list = []
-            for s, first_message in sessions:
+            AND session.device_id = :device_id
+            ORDER BY session.created_at DESC
+            """)
+            
+            # Execute the raw query with parameters
+            result = session.execute(query, {"device_id": device_id})
+            
+            # Convert result to a list of dictionaries
+            sessions = []
+            for row in result:
                 session_data = {
-                    "id": s.id,
-                    "workspace_dir": s.workspace_dir,
-                    "created_at": s.created_at.isoformat(),
-                    "device_id": s.device_id,
+                    "id": row.id,
+                    "workspace_dir": row.workspace_dir,
+                    "created_at": row.created_at,
+                    "device_id": row.device_id,
+                    "first_message": json.loads(row.first_message).get("content", {}).get("text", "") if row.first_message else ""
                 }
-                
-                # Add first message if available
-                if first_message:
-                    try:
-                        message_data = json.loads(first_message)
-                        session_data["first_message"] = message_data.get("text", "")
-                    except json.JSONDecodeError:
-                        session_data["first_message"] = ""
-                else:
-                    session_data["first_message"] = ""
-
-                session_list.append(session_data)
-
-            return {"sessions": session_list}
+                sessions.append(session_data)
+            
+            return {"sessions": sessions}
 
     except Exception as e:
         logger.error(f"Error retrieving sessions: {str(e)}")
