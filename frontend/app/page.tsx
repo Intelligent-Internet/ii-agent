@@ -183,7 +183,7 @@ export default function Home() {
           type: "init_agent",
           content: {
             tool_args: {
-              deep_research: false,
+              deep_research: isUseDeepResearch,
               pdf: true,
               media_generation: true,
               audio_generation: true,
