@@ -16,6 +16,7 @@ import {
   Rocket,
   RotateCcw,
   Search,
+  Sparkle,
   Terminal,
   Video,
 } from "lucide-react";
@@ -55,6 +56,8 @@ const Action = ({ workspaceInfo, type, value, onClick }: ActionProps) => {
         return <Video className={className} />;
       case TOOL.IMAGE_GENERATE:
         return <ImageIcon className={className} />;
+      case TOOL.DEEP_RESEARCH:
+        return <Sparkle className={className} />;
 
       case TOOL.BROWSER_WAIT:
         return <LoaderCircle className={className} />;
@@ -117,6 +120,8 @@ const Action = ({ workspaceInfo, type, value, onClick }: ActionProps) => {
         return "Generating Video";
       case TOOL.IMAGE_GENERATE:
         return "Generating Image";
+      case TOOL.DEEP_RESEARCH:
+        return "Deep Researching";
 
       case TOOL.BROWSER_WAIT:
         return "Waiting for Page to Load";
@@ -191,6 +196,8 @@ const Action = ({ workspaceInfo, type, value, onClick }: ActionProps) => {
         return value.tool_input?.output_filename === workspaceInfo
           ? workspaceInfo
           : value.tool_input?.output_filename?.replace(workspaceInfo, "");
+      case TOOL.DEEP_RESEARCH:
+        return value.tool_input?.query;
 
       case TOOL.BROWSER_WAIT:
         return value.tool_input?.url;

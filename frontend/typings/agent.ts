@@ -34,7 +34,7 @@ export enum TOOL {
   GENERATE_AUDIO_RESPONSE = "generate_audio_response",
   VIDEO_GENERATE = "generate_video_from_text",
   IMAGE_GENERATE = "generate_image_from_text",
-
+  DEEP_RESEARCH = "deep_research",
   // browser tools
   BROWSER_VIEW = "browser_view",
   BROWSER_NAVIGATION = "browser_navigation",
