@@ -9,6 +9,7 @@ import {
   FileAudio,
   FileText,
   Globe,
+  ImageIcon,
   Lightbulb,
   LoaderCircle,
   MousePointerClick,
@@ -16,6 +17,7 @@ import {
   RotateCcw,
   Search,
   Terminal,
+  Video,
 } from "lucide-react";
 import { useMemo } from "react";
 
@@ -49,6 +51,10 @@ const Action = ({ workspaceInfo, type, value, onClick }: ActionProps) => {
         return <FileAudio className={className} />;
       case TOOL.GENERATE_AUDIO_RESPONSE:
         return <AudioLines className={className} />;
+      case TOOL.VIDEO_GENERATE:
+        return <Video className={className} />;
+      case TOOL.IMAGE_GENERATE:
+        return <ImageIcon className={className} />;
 
       case TOOL.BROWSER_WAIT:
         return <LoaderCircle className={className} />;
@@ -107,6 +113,10 @@ const Action = ({ workspaceInfo, type, value, onClick }: ActionProps) => {
         return "Transcribing Audio";
       case TOOL.GENERATE_AUDIO_RESPONSE:
         return "Generating Audio";
+      case TOOL.VIDEO_GENERATE:
+        return "Generating Video";
+      case TOOL.IMAGE_GENERATE:
+        return "Generating Image";
 
       case TOOL.BROWSER_WAIT:
         return "Waiting for Page to Load";
@@ -173,6 +183,15 @@ const Action = ({ workspaceInfo, type, value, onClick }: ActionProps) => {
           ? workspaceInfo
           : value.tool_input?.output_filename?.replace(workspaceInfo, "");
 
+      case TOOL.VIDEO_GENERATE:
+        return value.tool_input?.output_filename === workspaceInfo
+          ? workspaceInfo
+          : value.tool_input?.output_filename?.replace(workspaceInfo, "");
+      case TOOL.IMAGE_GENERATE:
+        return value.tool_input?.output_filename === workspaceInfo
+          ? workspaceInfo
+          : value.tool_input?.output_filename?.replace(workspaceInfo, "");
+
       case TOOL.BROWSER_WAIT:
         return value.tool_input?.url;
       case TOOL.BROWSER_VIEW:
@@ -190,7 +209,7 @@ const Action = ({ workspaceInfo, type, value, onClick }: ActionProps) => {
       case TOOL.BROWSER_ENTER_TEXT:
         return value.tool_input?.url;
       case TOOL.BROWSER_PRESS_KEY:
-        return value.tool_input?.url;
+        return value.tool_input?.key;
       case TOOL.BROWSER_GET_SELECT_OPTIONS:
         return value.tool_input?.url;
       case TOOL.BROWSER_SELECT_DROPDOWN_OPTION:

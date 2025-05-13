@@ -59,6 +59,8 @@ export default function Home() {
   const [workspaceInfo, setWorkspaceInfo] = useState("");
   const [isUploading, setIsUploading] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<string[]>([]);
+  const [codeEditorKey, setCodeEditorKey] = useState("code-editor");
+  const [isUseDeepResearch, setIsUseDeepResearch] = useState(false);
 
   const handleClickAction = debounce(
     (data: ActionStep | undefined, showTabOnly = false) => {
@@ -358,6 +360,12 @@ export default function Home() {
   };
 
   useEffect(() => {
+    if (currentActionData) {
+      setCodeEditorKey(JSON.stringify(currentActionData));
+    }
+  }, [currentActionData]);
+
+  useEffect(() => {
     // Connect to WebSocket when the component mounts
     const connectWebSocket = () => {
       const ws = new WebSocket(`${process.env.NEXT_PUBLIC_API_URL}/ws`);
@@ -634,6 +642,8 @@ export default function Home() {
               handleSubmit={handleQuestionSubmit}
               handleFileUpload={handleFileUpload}
               isUploading={isUploading}
+              isUseDeepResearch={isUseDeepResearch}
+              setIsUseDeepResearch={setIsUseDeepResearch}
             />
           ) : (
             <motion.div
@@ -826,6 +836,8 @@ export default function Home() {
                     handleSubmit={handleQuestionSubmit}
                     handleFileUpload={handleFileUpload}
                     isUploading={isUploading}
+                    isUseDeepResearch={isUseDeepResearch}
+                    setIsUseDeepResearch={setIsUseDeepResearch}
                   />
                 </motion.div>
               </div>
@@ -918,7 +930,7 @@ export default function Home() {
                   }
                 />
                 <CodeEditor
-                  key={JSON.stringify(currentActionData)}
+                  key={codeEditorKey}
                   className={activeTab === TAB.CODE ? "" : "hidden"}
                   workspaceInfo={workspaceInfo}
                   activeFile={activeFileCodeEditor}

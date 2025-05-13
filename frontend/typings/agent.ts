@@ -32,6 +32,8 @@ export enum TOOL {
   PDF_TEXT_EXTRACT = "pdf_text_extract",
   AUDIO_TRANSCRIBE = "audio_transcribe",
   GENERATE_AUDIO_RESPONSE = "generate_audio_response",
+  VIDEO_GENERATE = "generate_video_from_text",
+  IMAGE_GENERATE = "generate_image_from_text",
 
   // browser tools
   BROWSER_VIEW = "browser_view",
@@ -65,6 +67,7 @@ export type ActionStep = {
       file?: string;
       instruction?: string;
       output_filename?: string;
+      key?: string;
     };
     result?: string | Record<string, unknown>;
     query?: string;
