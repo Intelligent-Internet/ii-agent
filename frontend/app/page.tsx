@@ -59,6 +59,8 @@ export default function Home() {
   const [workspaceInfo, setWorkspaceInfo] = useState("");
   const [isUploading, setIsUploading] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<string[]>([]);
+  const [codeEditorKey, setCodeEditorKey] = useState("code-editor");
+  const [isUseDeepResearch, setIsUseDeepResearch] = useState(false);
 
   const handleClickAction = debounce(
     (data: ActionStep | undefined, showTabOnly = false) => {
@@ -116,7 +118,6 @@ export default function Home() {
           }
           break;
 
-        case TOOL.FILE_WRITE:
         case TOOL.STR_REPLACE_EDITOR:
           setActiveTab(TAB.CODE);
           setCurrentActionData(data);
@@ -173,6 +174,24 @@ export default function Home() {
       finalQuestion = `${newQuestion}\n\nNote: I've already uploaded the following files that you can use:\n${uploadedFiles
         .map((file) => `- ${file}`)
         .join("\n")}`;
+    }
+    // send init agent event when first query
+    if (messages.length <= 1) {
+      console.log("send init agent event");
+      socket.send(
+        JSON.stringify({
+          type: "init_agent",
+          content: {
+            tool_args: {
+              deep_research: isUseDeepResearch,
+              pdf: true,
+              media_generation: true,
+              audio_generation: true,
+              browser: true,
+            },
+          },
+        })
+      );
     }
 
     // Send the query using the existing socket connection
@@ -341,6 +360,12 @@ export default function Home() {
   };
 
   useEffect(() => {
+    if (currentActionData) {
+      setCodeEditorKey(JSON.stringify(currentActionData));
+    }
+  }, [currentActionData]);
+
+  useEffect(() => {
     // Connect to WebSocket when the component mounts
     const connectWebSocket = () => {
       const ws = new WebSocket(`${process.env.NEXT_PUBLIC_API_URL}/ws`);
@@ -403,6 +428,24 @@ export default function Home() {
                 setMessages((prev) => [...prev, message]);
                 handleClickAction(message.action);
               }
+              break;
+
+            case AgentEvent.FILE_EDIT:
+              setMessages((prev) => {
+                const lastMessage = cloneDeep(prev[prev.length - 1]);
+                lastMessage.id = Date.now().toString();
+                if (
+                  lastMessage.action &&
+                  lastMessage.action.type === TOOL.STR_REPLACE_EDITOR
+                ) {
+                  lastMessage.action.data.content = data.content.content;
+                  lastMessage.action.data.path = data.content.path;
+                }
+                setTimeout(() => {
+                  handleClickAction(lastMessage.action);
+                }, 500);
+                return [...prev.slice(0, -1), lastMessage];
+              });
               break;
 
             case AgentEvent.BROWSER_USE:
@@ -599,6 +642,8 @@ export default function Home() {
               handleSubmit={handleQuestionSubmit}
               handleFileUpload={handleFileUpload}
               isUploading={isUploading}
+              isUseDeepResearch={isUseDeepResearch}
+              setIsUseDeepResearch={setIsUseDeepResearch}
             />
           ) : (
             <motion.div
@@ -791,6 +836,8 @@ export default function Home() {
                     handleSubmit={handleQuestionSubmit}
                     handleFileUpload={handleFileUpload}
                     isUploading={isUploading}
+                    isUseDeepResearch={isUseDeepResearch}
+                    setIsUseDeepResearch={setIsUseDeepResearch}
                   />
                 </motion.div>
               </div>
@@ -883,7 +930,7 @@ export default function Home() {
                   }
                 />
                 <CodeEditor
-                  key={JSON.stringify(currentActionData)}
+                  key={codeEditorKey}
                   className={activeTab === TAB.CODE ? "" : "hidden"}
                   workspaceInfo={workspaceInfo}
                   activeFile={activeFileCodeEditor}

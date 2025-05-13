@@ -8,16 +8,16 @@ It instantiates an Agent and prompts the user for input, which is then passed to
 
 import os
 import argparse
-from pathlib import Path
 import logging
 import asyncio
-import sys
 
 from ii_agent.core.event import RealtimeEvent, EventType
 from utils import parse_common_args
 from rich.console import Console
 from rich.panel import Panel
 
+from ii_agent.tools import get_system_tools
+from ii_agent.prompts.system_prompt import SYSTEM_PROMPT
 from ii_agent.agents.anthropic_fc import AnthropicFC
 from ii_agent.utils import WorkspaceManager
 from ii_agent.llm import get_client
@@ -55,16 +55,18 @@ async def async_main():
 
     # Initialize database manager
     db_manager = DatabaseManager(base_workspace_dir=args.workspace)
-    
+
     # Create a new session and get its workspace directory
     session_id, workspace_path = db_manager.create_session()
-    logger_for_agent_logs.info(f"Created new session {session_id} with workspace at {workspace_path}")
+    logger_for_agent_logs.info(
+        f"Created new session {session_id} with workspace at {workspace_path}"
+    )
 
     # Print welcome message
     if not args.minimize_stdout_logs:
         console.print(
             Panel(
-                f"[bold]Agent CLI[/bold]\n\n"
+                "[bold]Agent CLI[/bold]\n\n"
                 + f"Session ID: {session_id}\n"
                 + f"Workspace: {workspace_path}\n\n"
                 + "Type your instructions to the agent. Press Ctrl+C to exit.\n"
@@ -90,8 +92,7 @@ async def async_main():
 
     # Initialize workspace manager with the session-specific workspace
     workspace_manager = WorkspaceManager(
-        root=workspace_path,
-        container_workspace=args.use_container_workspace
+        root=workspace_path, container_workspace=args.use_container_workspace
     )
 
     # Initialize token counter
@@ -111,16 +112,33 @@ async def async_main():
             logger=logger_for_agent_logs,
             token_budget=120_000,
         )
-    # Initialize agent
-    agent = AnthropicFC(
-        client=client,
+
+    system_prompt = SYSTEM_PROMPT.format(
+        workspace_root=workspace_manager.root,
+    )
+    queue = asyncio.Queue()
+    tools = get_system_tools(
         workspace_manager=workspace_manager,
+        message_queue=queue,
+        container_id=args.docker_container_id,
+        ask_user_permission=args.needs_permission,
+        tool_args={
+            "deep_research": True,
+            "pdf": True,
+            "media_generation": True,
+            "audio_generation": True,
+            "browser": True,
+        },
+    )
+    agent = AnthropicFC(
+        system_prompt=system_prompt,
+        client=client,
+        tools=tools,
+        message_queue=queue,
         logger_for_agent_logs=logger_for_agent_logs,
         context_manager=context_manager,
         max_output_tokens_per_turn=MAX_OUTPUT_TOKENS_PER_TURN,
         max_turns=MAX_TURNS,
-        ask_user_permission=args.needs_permission,
-        docker_container_id=args.docker_container_id,
         db_path="events.db",  # Use the same database file
         session_id=session_id,  # Pass the session_id from database manager
     )
@@ -133,16 +151,10 @@ async def async_main():
         loop = asyncio.get_running_loop()
         while True:
             # Use async input
-            user_input = await loop.run_in_executor(
-                None, 
-                lambda: input("User input: ")
-            )
+            user_input = await loop.run_in_executor(None, lambda: input("User input: "))
 
             agent.message_queue.put_nowait(
-                RealtimeEvent(
-                    type=EventType.USER_MESSAGE,
-                    content={"text": user_input}
-                )
+                RealtimeEvent(type=EventType.USER_MESSAGE, content={"text": user_input})
             )
 
             if user_input.lower() in ["exit", "quit"]:
@@ -155,7 +167,7 @@ async def async_main():
                 # Run synchronous method in executor
                 result = await loop.run_in_executor(
                     None,  # Uses default ThreadPoolExecutor
-                    lambda: agent.run_agent(user_input, resume=True)
+                    lambda: agent.run_agent(user_input, resume=True),
                 )
                 logger_for_agent_logs.info(f"Agent: {result}")
             except Exception as e:
@@ -169,7 +181,7 @@ async def async_main():
         loop.stop()
     finally:
         # Cleanup tasks
-        message_task.cancel() 
+        message_task.cancel()
 
     console.print("[bold]Goodbye![/bold]")
 

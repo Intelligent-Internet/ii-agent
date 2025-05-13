@@ -5,6 +5,7 @@ import enum
 
 class EventType(str, enum.Enum):
     CONNECTION_ESTABLISHED = "connection_established"
+    AGENT_INITIALIZED = "agent_initialized"
     WORKSPACE_INFO = "workspace_info"
     PROCESSING = "processing"
     AGENT_THINKING = "agent_thinking"
@@ -19,6 +20,7 @@ class EventType(str, enum.Enum):
     BROWSER_USE = "browser_use"
     FILE_EDIT = "file_edit"
     USER_MESSAGE = "user_message"
+
 
 class RealtimeEvent(BaseModel):
     type: EventType

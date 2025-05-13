@@ -17,6 +17,7 @@ export enum AgentEvent {
   PONG = "pong",
   UPLOAD_SUCCESS = "upload_success",
   BROWSER_USE = "browser_use",
+  FILE_EDIT = "file_edit",
 }
 
 export enum TOOL {
@@ -26,11 +27,15 @@ export enum TOOL {
   TAVILY_SEARCH = "tavily_web_search",
   TAVILY_VISIT = "tavily_visit_webpage",
   BASH = "bash",
-  FILE_WRITE = "file_write",
   COMPLETE = "complete",
   STATIC_DEPLOY = "static_deploy",
   PDF_TEXT_EXTRACT = "pdf_text_extract",
-
+  AUDIO_TRANSCRIBE = "audio_transcribe",
+  GENERATE_AUDIO_RESPONSE = "generate_audio_response",
+  VIDEO_GENERATE = "generate_video_from_text",
+  IMAGE_GENERATE = "generate_image_from_text",
+  DEEP_RESEARCH = "deep_research",
+  // browser tools
   BROWSER_VIEW = "browser_view",
   BROWSER_NAVIGATION = "browser_navigation",
   BROWSER_RESTART = "browser_restart",
@@ -44,8 +49,6 @@ export enum TOOL {
   BROWSER_SELECT_DROPDOWN_OPTION = "browser_select_dropdown_option",
   BROWSER_SWITCH_TAB = "browser_switch_tab",
   BROWSER_OPEN_NEW_TAB = "browser_open_new_tab",
-  AUDIO_TRANSCRIBE = "audio_transcribe",
-  GENERATE_AUDIO_RESPONSE = "generate_audio_response",
 }
 
 export type ActionStep = {
@@ -64,8 +67,11 @@ export type ActionStep = {
       file?: string;
       instruction?: string;
       output_filename?: string;
+      key?: string;
     };
     result?: string | Record<string, unknown>;
     query?: string;
+    content?: string;
+    path?: string;
   };
 };

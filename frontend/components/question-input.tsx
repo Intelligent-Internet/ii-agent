@@ -23,6 +23,8 @@ interface QuestionInputProps {
   handleSubmit: (question: string) => void;
   handleFileUpload?: (e: React.ChangeEvent<HTMLInputElement>) => void;
   isUploading?: boolean;
+  isUseDeepResearch?: boolean;
+  setIsUseDeepResearch?: (value: boolean) => void;
 }
 
 const QuestionInput = ({
@@ -35,6 +37,8 @@ const QuestionInput = ({
   handleSubmit,
   handleFileUpload,
   isUploading = false,
+  isUseDeepResearch = false,
+  setIsUseDeepResearch,
 }: QuestionInputProps) => {
   const [files, setFiles] = useState<FileUploadStatus[]>([]);
 
@@ -192,31 +196,47 @@ const QuestionInput = ({
           onKeyDown={handleKeyDown}
         />
         <div className="flex w-full justify-between items-center absolute bottom-4 px-4">
-          {handleFileUpload && (
-            <label htmlFor="file-upload" className="cursor-pointer">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="hover:bg-gray-700/50 size-10 rounded-full cursor-pointer border border-[#ffffff0f] shadow-sm"
-                onClick={() => document.getElementById("file-upload")?.click()}
-                disabled={isUploading}
-              >
-                {isUploading ? (
-                  <Loader2 className="size-5 text-gray-400 animate-spin" />
-                ) : (
-                  <Paperclip className="size-5 text-gray-400" />
-                )}
-              </Button>
-              <input
-                id="file-upload"
-                type="file"
-                multiple
-                className="hidden"
-                onChange={handleFileChange}
-                disabled={isUploading}
-              />
-            </label>
-          )}
+          <div className="flex items-center gap-x-3">
+            {handleFileUpload && (
+              <label htmlFor="file-upload" className="cursor-pointer">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="hover:bg-gray-700/50 size-10 rounded-full cursor-pointer border border-[#ffffff0f] shadow-sm"
+                  onClick={() =>
+                    document.getElementById("file-upload")?.click()
+                  }
+                  disabled={isUploading}
+                >
+                  {isUploading ? (
+                    <Loader2 className="size-5 text-gray-400 animate-spin" />
+                  ) : (
+                    <Paperclip className="size-5 text-gray-400" />
+                  )}
+                </Button>
+                <input
+                  id="file-upload"
+                  type="file"
+                  multiple
+                  className="hidden"
+                  onChange={handleFileChange}
+                  disabled={isUploading}
+                />
+              </label>
+            )}
+            <Button
+              variant="outline"
+              className={`h-10 cursor-pointer shadow-sm ${
+                isUseDeepResearch
+                  ? "bg-gradient-skyblue-lavender !text-black"
+                  : "border !border-[#ffffff0f] bg-transparent"
+              }`}
+              onClick={() => setIsUseDeepResearch?.(!isUseDeepResearch)}
+            >
+              Deep Research
+            </Button>
+          </div>
+
           <Button
             disabled={!value.trim()}
             onClick={() => handleSubmit(value)}
