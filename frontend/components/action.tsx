@@ -35,9 +35,9 @@ const Action = ({ workspaceInfo, type, value, onClick }: ActionProps) => {
     switch (type) {
       case TOOL.SEQUENTIAL_THINKING:
         return <Lightbulb className={className} />;
-      case TOOL.TAVILY_SEARCH:
+      case TOOL.WEB_SEARCH:
         return <Search className={className} />;
-      case TOOL.TAVILY_VISIT:
+      case TOOL.VISIT:
       case TOOL.BROWSER_USE:
         return <Globe className={className} />;
       case TOOL.BASH:
@@ -95,9 +95,9 @@ const Action = ({ workspaceInfo, type, value, onClick }: ActionProps) => {
     switch (type) {
       case TOOL.SEQUENTIAL_THINKING:
         return "Thinking";
-      case TOOL.TAVILY_SEARCH:
+      case TOOL.WEB_SEARCH:
         return "Searching";
-      case TOOL.TAVILY_VISIT:
+      case TOOL.VISIT:
       case TOOL.BROWSER_USE:
         return "Browsing";
       case TOOL.BASH:
@@ -151,7 +151,7 @@ const Action = ({ workspaceInfo, type, value, onClick }: ActionProps) => {
         return "Opening New Tab";
 
       default:
-        break;
+        return type;
     }
   }, [type, value?.tool_input?.command]);
 
@@ -159,9 +159,9 @@ const Action = ({ workspaceInfo, type, value, onClick }: ActionProps) => {
     switch (type) {
       case TOOL.SEQUENTIAL_THINKING:
         return value.tool_input?.thought;
-      case TOOL.TAVILY_SEARCH:
+      case TOOL.WEB_SEARCH:
         return value.tool_input?.query;
-      case TOOL.TAVILY_VISIT:
+      case TOOL.VISIT:
         return value.tool_input?.url;
       case TOOL.BROWSER_USE:
         return value.tool_input?.url;

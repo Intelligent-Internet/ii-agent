@@ -2,13 +2,25 @@
 
 import { Terminal as XTerm } from "@xterm/xterm";
 import { AnimatePresence, LayoutGroup, motion } from "framer-motion";
-import { Check, Code, Globe, Terminal as TerminalIcon, X } from "lucide-react";
+import {
+  Check,
+  Code,
+  Globe,
+  Terminal as TerminalIcon,
+  X,
+  Loader2,
+  Share,
+} from "lucide-react";
 import Image from "next/image";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { cloneDeep, debounce } from "lodash";
 import dynamic from "next/dynamic";
 import { Orbitron } from "next/font/google";
+import Cookies from "js-cookie";
+import { v4 as uuidv4 } from "uuid";
+import { useRouter, useSearchParams } from "next/navigation";
+import SidebarButton from "@/components/sidebar-button";
 
 const orbitron = Orbitron({
   subsets: ["latin"],
@@ -22,7 +34,7 @@ const Terminal = dynamic(() => import("@/components/terminal"), {
   ssr: false,
 });
 import { Button } from "@/components/ui/button";
-import { ActionStep, AgentEvent, TOOL } from "@/typings/agent";
+import { ActionStep, AgentEvent, IEvent, TOOL } from "@/typings/agent";
 import Action from "@/components/action";
 import Markdown from "@/components/markdown";
 import { getFileIconAndColor } from "@/utils/file-utils";
@@ -46,10 +58,11 @@ interface Message {
 export default function Home() {
   const xtermRef = useRef<XTerm | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const searchParams = useSearchParams();
+  const router = useRouter();
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [isInChatView, setIsInChatView] = useState(false);
   const [socket, setSocket] = useState<WebSocket | null>(null);
   const [activeTab, setActiveTab] = useState(TAB.BROWSER);
   const [currentActionData, setCurrentActionData] = useState<ActionStep>();
@@ -61,6 +74,92 @@ export default function Home() {
   const [uploadedFiles, setUploadedFiles] = useState<string[]>([]);
   const [codeEditorKey, setCodeEditorKey] = useState("code-editor");
   const [isUseDeepResearch, setIsUseDeepResearch] = useState(false);
+  const [deviceId, setDeviceId] = useState<string>("");
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [isLoadingSession, setIsLoadingSession] = useState(false);
+
+  // Get session ID from URL params
+  useEffect(() => {
+    const id = searchParams.get("id");
+    setSessionId(id);
+  }, [searchParams]);
+
+  // Fetch session events when session ID is available
+  useEffect(() => {
+    const fetchSessionEvents = async () => {
+      if (!sessionId) return;
+
+      setIsLoadingSession(true);
+      try {
+        const response = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL}/api/sessions/${sessionId}/events`
+        );
+
+        if (!response.ok) {
+          throw new Error(
+            `Error fetching session events: ${response.statusText}`
+          );
+        }
+
+        const data = await response.json();
+
+        if (data.events && Array.isArray(data.events)) {
+          // Process events to reconstruct the conversation
+          const reconstructedMessages: Message[] = [];
+
+          data.events.forEach((event: IEvent) => {
+            handleEvent(event.event_payload);
+          });
+
+          // Set the reconstructed messages
+          if (reconstructedMessages.length > 0) {
+            setMessages(reconstructedMessages);
+            setIsCompleted(true);
+          }
+
+          // Extract workspace info if available
+          const workspaceEvent = data.events.find(
+            (e: IEvent) => e.event_type === AgentEvent.WORKSPACE_INFO
+          );
+          if (workspaceEvent && workspaceEvent.event_payload.path) {
+            setWorkspaceInfo(workspaceEvent.event_payload.path);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to fetch session events:", error);
+        toast.error("Failed to load session history");
+      } finally {
+        setIsLoadingSession(false);
+      }
+    };
+
+    fetchSessionEvents();
+  }, [sessionId]);
+
+  // Initialize device ID on page load
+  useEffect(() => {
+    // Check if device ID exists in cookies
+    let existingDeviceId = Cookies.get("device_id");
+
+    // If no device ID exists, generate a new one and save it
+    if (!existingDeviceId) {
+      existingDeviceId = uuidv4();
+
+      // Set cookie with a long expiration (1 year)
+      Cookies.set("device_id", existingDeviceId, {
+        expires: 365,
+        sameSite: "strict",
+        secure: window.location.protocol === "https:",
+      });
+
+      console.log("Generated new device ID:", existingDeviceId);
+    } else {
+      console.log("Using existing device ID:", existingDeviceId);
+    }
+
+    // Set the device ID in state
+    setDeviceId(existingDeviceId);
+  }, []);
 
   const handleClickAction = debounce(
     (data: ActionStep | undefined, showTabOnly = false) => {
@@ -69,13 +168,13 @@ export default function Home() {
       setActiveFileCodeEditor("");
 
       switch (data.type) {
-        case TOOL.TAVILY_SEARCH:
+        case TOOL.WEB_SEARCH:
           setActiveTab(TAB.BROWSER);
           setCurrentActionData(data);
           break;
 
         case TOOL.BROWSER_USE:
-        case TOOL.TAVILY_VISIT:
+        case TOOL.VISIT:
           setActiveTab(TAB.BROWSER);
           setCurrentActionData(data);
           break;
@@ -140,9 +239,15 @@ export default function Home() {
     if (!newQuestion.trim() || isLoading) return;
 
     setIsLoading(true);
-    setIsInChatView(true);
     setCurrentQuestion("");
     setIsCompleted(false);
+
+    if (!sessionId) {
+      const id = `${workspaceInfo}`.split("/").pop();
+      if (id) {
+        setSessionId(id);
+      }
+    }
 
     const newUserMessage: Message = {
       id: Date.now().toString(),
@@ -217,7 +322,7 @@ export default function Home() {
     if (socket) {
       socket.close();
     }
-    setIsInChatView(false);
+    router.push("/");
     setMessages([]);
     setIsLoading(false);
     setIsCompleted(false);
@@ -359,6 +464,209 @@ export default function Home() {
     }
   };
 
+  const handleEvent = (data: {
+    type: AgentEvent;
+    content: Record<string, unknown>;
+  }) => {
+    switch (data.type) {
+      case AgentEvent.USER_MESSAGE:
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: Date.now().toString(),
+            role: "user",
+            content: data.content.text as string,
+            timestamp: Date.now(),
+          },
+        ]);
+
+        break;
+      case AgentEvent.PROCESSING:
+        setIsLoading(true);
+        break;
+      case AgentEvent.WORKSPACE_INFO:
+        setWorkspaceInfo(data.content.path as string);
+        break;
+      case AgentEvent.AGENT_THINKING:
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: Date.now().toString(),
+            role: "assistant",
+            content: data.content.text as string,
+            timestamp: Date.now(),
+          },
+        ]);
+        break;
+
+      case AgentEvent.TOOL_CALL:
+        if (data.content.tool_name === TOOL.SEQUENTIAL_THINKING) {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: Date.now().toString(),
+              role: "assistant",
+              content: (data.content.tool_input as { thought: string })
+                .thought as string,
+              timestamp: Date.now(),
+            },
+          ]);
+        } else {
+          const message: Message = {
+            id: Date.now().toString(),
+            role: "assistant",
+            action: {
+              type: data.content.tool_name as TOOL,
+              data: data.content,
+            },
+            timestamp: Date.now(),
+          };
+          setMessages((prev) => [...prev, message]);
+          handleClickAction(message.action);
+        }
+        break;
+
+      case AgentEvent.FILE_EDIT:
+        setMessages((prev) => {
+          const lastMessage = cloneDeep(prev[prev.length - 1]);
+          lastMessage.id = Date.now().toString();
+          if (
+            lastMessage.action &&
+            lastMessage.action.type === TOOL.STR_REPLACE_EDITOR
+          ) {
+            lastMessage.action.data.content = data.content.content as string;
+            lastMessage.action.data.path = data.content.path as string;
+          }
+          setTimeout(() => {
+            handleClickAction(lastMessage.action);
+          }, 500);
+          return [...prev.slice(0, -1), lastMessage];
+        });
+        break;
+
+      case AgentEvent.BROWSER_USE:
+        const message: Message = {
+          id: Date.now().toString(),
+          role: "assistant",
+          action: {
+            type: data.type as unknown as TOOL,
+            data: {
+              result: data.content.screenshot as string,
+              tool_input: {
+                url: data.content.url as string,
+              },
+            },
+          },
+          timestamp: Date.now(),
+        };
+        setMessages((prev) => [...prev, message]);
+        handleClickAction(message.action);
+        break;
+
+      case AgentEvent.TOOL_RESULT:
+        if (
+          [
+            TOOL.BROWSER_VIEW,
+            TOOL.BROWSER_CLICK,
+            TOOL.BROWSER_ENTER_TEXT,
+            TOOL.BROWSER_PRESS_KEY,
+            TOOL.BROWSER_GET_SELECT_OPTIONS,
+            TOOL.BROWSER_SELECT_DROPDOWN_OPTION,
+            TOOL.BROWSER_SWITCH_TAB,
+            TOOL.BROWSER_OPEN_NEW_TAB,
+            TOOL.BROWSER_WAIT,
+            TOOL.BROWSER_SCROLL_DOWN,
+            TOOL.BROWSER_SCROLL_UP,
+            TOOL.BROWSER_NAVIGATION,
+            TOOL.BROWSER_RESTART,
+          ].includes(data.content.tool_name as TOOL)
+        ) {
+          break;
+        }
+        if (data.content.tool_name === TOOL.BROWSER_USE) {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: Date.now().toString(),
+              role: "assistant",
+              content: data.content.result as string,
+              timestamp: Date.now(),
+            },
+          ]);
+        } else {
+          if (data.content.tool_name !== TOOL.SEQUENTIAL_THINKING) {
+            setMessages((prev) => {
+              const lastMessage = cloneDeep(prev[prev.length - 1]);
+              if (
+                lastMessage.action &&
+                lastMessage.action?.type === data.content.tool_name
+              ) {
+                lastMessage.id = Date.now().toString();
+                lastMessage.action.data.result = data.content.result as string;
+                lastMessage.action.data.isResult = true;
+                setTimeout(() => {
+                  handleClickAction(lastMessage.action);
+                }, 500);
+                return [...prev.slice(0, -1), lastMessage];
+              } else {
+                return [
+                  ...prev,
+                  { ...lastMessage, action: data.content as ActionStep },
+                ];
+              }
+            });
+          }
+        }
+
+        break;
+
+      case AgentEvent.AGENT_RESPONSE:
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: Date.now().toString(),
+            role: "assistant",
+            content: data.content.text as string,
+            timestamp: Date.now(),
+          },
+        ]);
+        setIsCompleted(true);
+        setIsLoading(false);
+        break;
+
+      case AgentEvent.UPLOAD_SUCCESS:
+        setIsUploading(false);
+
+        // Update the uploaded files state
+        const newFiles = data.content.files as {
+          path: string;
+          saved_path: string;
+        }[];
+        const paths = newFiles.map((f) => f.path);
+        setUploadedFiles((prev) => [...prev, ...paths]);
+
+        break;
+
+      case "error":
+        toast.error(data.content.message as string);
+        setIsUploading(false);
+        setIsLoading(false);
+        break;
+    }
+  };
+
+  const isInChatView = useMemo(
+    () => !!sessionId && !isLoadingSession,
+    [isLoadingSession, sessionId]
+  );
+
+  const handleShare = () => {
+    if (!sessionId) return;
+    const url = `${window.location.origin}/?id=${sessionId}`;
+    navigator.clipboard.writeText(url);
+    toast.success("Copied to clipboard");
+  };
+
   useEffect(() => {
     if (currentActionData) {
       setCodeEditorKey(JSON.stringify(currentActionData));
@@ -368,7 +676,10 @@ export default function Home() {
   useEffect(() => {
     // Connect to WebSocket when the component mounts
     const connectWebSocket = () => {
-      const ws = new WebSocket(`${process.env.NEXT_PUBLIC_API_URL}/ws`);
+      const params = new URLSearchParams({ device_id: deviceId });
+      const ws = new WebSocket(
+        `${process.env.NEXT_PUBLIC_API_URL}/ws?${params.toString()}`
+      );
 
       ws.onopen = () => {
         console.log("WebSocket connection established");
@@ -384,177 +695,7 @@ export default function Home() {
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-
-          switch (data.type) {
-            case AgentEvent.PROCESSING:
-              setIsLoading(true);
-              break;
-            case AgentEvent.WORKSPACE_INFO:
-              setWorkspaceInfo(data.content.path);
-              break;
-            case AgentEvent.AGENT_THINKING:
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: Date.now().toString(),
-                  role: "assistant",
-                  content: data.content.text,
-                  timestamp: Date.now(),
-                },
-              ]);
-              break;
-
-            case AgentEvent.TOOL_CALL:
-              if (data.content.tool_name === TOOL.SEQUENTIAL_THINKING) {
-                setMessages((prev) => [
-                  ...prev,
-                  {
-                    id: Date.now().toString(),
-                    role: "assistant",
-                    content: data.content.tool_input.thought,
-                    timestamp: Date.now(),
-                  },
-                ]);
-              } else {
-                const message: Message = {
-                  id: Date.now().toString(),
-                  role: "assistant",
-                  action: {
-                    type: data.content.tool_name,
-                    data: data.content,
-                  },
-                  timestamp: Date.now(),
-                };
-                setMessages((prev) => [...prev, message]);
-                handleClickAction(message.action);
-              }
-              break;
-
-            case AgentEvent.FILE_EDIT:
-              setMessages((prev) => {
-                const lastMessage = cloneDeep(prev[prev.length - 1]);
-                lastMessage.id = Date.now().toString();
-                if (
-                  lastMessage.action &&
-                  lastMessage.action.type === TOOL.STR_REPLACE_EDITOR
-                ) {
-                  lastMessage.action.data.content = data.content.content;
-                  lastMessage.action.data.path = data.content.path;
-                }
-                setTimeout(() => {
-                  handleClickAction(lastMessage.action);
-                }, 500);
-                return [...prev.slice(0, -1), lastMessage];
-              });
-              break;
-
-            case AgentEvent.BROWSER_USE:
-              const message: Message = {
-                id: Date.now().toString(),
-                role: "assistant",
-                action: {
-                  type: data.type,
-                  data: {
-                    result: data.content.screenshot,
-                    tool_input: {
-                      url: data.content.url,
-                    },
-                  },
-                },
-                timestamp: Date.now(),
-              };
-              setMessages((prev) => [...prev, message]);
-              handleClickAction(message.action);
-              break;
-
-            case AgentEvent.TOOL_RESULT:
-              if (
-                [
-                  TOOL.BROWSER_VIEW,
-                  TOOL.BROWSER_CLICK,
-                  TOOL.BROWSER_ENTER_TEXT,
-                  TOOL.BROWSER_PRESS_KEY,
-                  TOOL.BROWSER_GET_SELECT_OPTIONS,
-                  TOOL.BROWSER_SELECT_DROPDOWN_OPTION,
-                  TOOL.BROWSER_SWITCH_TAB,
-                  TOOL.BROWSER_OPEN_NEW_TAB,
-                  TOOL.BROWSER_WAIT,
-                  TOOL.BROWSER_SCROLL_DOWN,
-                  TOOL.BROWSER_SCROLL_UP,
-                  TOOL.BROWSER_NAVIGATION,
-                  TOOL.BROWSER_RESTART,
-                ].includes(data.content.tool_name)
-              ) {
-                break;
-              }
-              if (data.content.tool_name === TOOL.BROWSER_USE) {
-                setMessages((prev) => [
-                  ...prev,
-                  {
-                    id: Date.now().toString(),
-                    role: "assistant",
-                    content: data.content.result,
-                    timestamp: Date.now(),
-                  },
-                ]);
-              } else {
-                if (data.content.tool_name !== TOOL.SEQUENTIAL_THINKING) {
-                  setMessages((prev) => {
-                    const lastMessage = cloneDeep(prev[prev.length - 1]);
-                    if (
-                      lastMessage.action &&
-                      lastMessage.action?.type === data.content.tool_name
-                    ) {
-                      lastMessage.id = Date.now().toString();
-                      lastMessage.action.data.result = data.content.result;
-                      lastMessage.action.data.isResult = true;
-                      setTimeout(() => {
-                        handleClickAction(lastMessage.action);
-                      }, 500);
-                      return [...prev.slice(0, -1), lastMessage];
-                    } else {
-                      return [
-                        ...prev,
-                        { ...lastMessage, action: data.content },
-                      ];
-                    }
-                  });
-                }
-              }
-
-              break;
-
-            case AgentEvent.AGENT_RESPONSE:
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: Date.now().toString(),
-                  role: "assistant",
-                  content: data.content.text,
-                  timestamp: Date.now(),
-                },
-              ]);
-              setIsCompleted(true);
-              setIsLoading(false);
-              break;
-
-            case AgentEvent.UPLOAD_SUCCESS:
-              setIsUploading(false);
-
-              // Update the uploaded files state
-              const newFiles = data.content.files.map(
-                (f: { path: string; saved_path: string }) => f.path
-              );
-              setUploadedFiles((prev) => [...prev, ...newFiles]);
-
-              break;
-
-            case "error":
-              toast.error(data.content.message);
-              setIsUploading(false);
-              setIsLoading(false);
-              break;
-          }
+          handleEvent(data);
         } catch (error) {
           console.error("Error parsing WebSocket data:", error);
         }
@@ -573,7 +714,10 @@ export default function Home() {
       setSocket(ws);
     };
 
-    connectWebSocket();
+    // Only connect if we have a device ID
+    if (deviceId) {
+      connectWebSocket();
+    }
 
     // Clean up the WebSocket connection when the component unmounts
     return () => {
@@ -581,7 +725,7 @@ export default function Home() {
         socket.close();
       }
     };
-  }, []); // Empty dependency array means this effect runs once on mount
+  }, [deviceId]); // Add deviceId as a dependency
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -589,6 +733,7 @@ export default function Home() {
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-[#191E1B]">
+      <SidebarButton />
       {!isInChatView && (
         <Image
           src="/logo-only.png"
@@ -623,328 +768,342 @@ export default function Home() {
           {`II-Agent`}
         </motion.h1>
         {isInChatView ? (
-          <Button className="cursor-pointer" onClick={resetChat}>
-            <X className="size-5" />
-          </Button>
+          <div className="flex gap-x-2">
+            <Button
+              className="cursor-pointer h-10"
+              variant="outline"
+              onClick={handleShare}
+            >
+              <Share /> Share
+            </Button>
+            <Button className="cursor-pointer" onClick={resetChat}>
+              <X className="size-5" />
+            </Button>
+          </div>
         ) : (
           <div />
         )}
       </div>
+      {isLoadingSession ? (
+        <div className="flex flex-col items-center justify-center p-8">
+          <Loader2 className="h-8 w-8 text-white animate-spin mb-4" />
+          <p className="text-white text-lg">Loading session history...</p>
+        </div>
+      ) : (
+        <LayoutGroup>
+          <AnimatePresence mode="wait">
+            {!isInChatView ? (
+              <QuestionInput
+                placeholder="Give II-Agent a task to work on..."
+                value={currentQuestion}
+                setValue={setCurrentQuestion}
+                handleKeyDown={handleKeyDown}
+                handleSubmit={handleQuestionSubmit}
+                handleFileUpload={handleFileUpload}
+                isUploading={isUploading}
+                isUseDeepResearch={isUseDeepResearch}
+                setIsUseDeepResearch={setIsUseDeepResearch}
+              />
+            ) : (
+              <motion.div
+                key="chat-view"
+                initial={{ opacity: 0, y: 30, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -20, scale: 0.95 }}
+                transition={{
+                  type: "spring",
+                  stiffness: 300,
+                  damping: 30,
+                  mass: 1,
+                }}
+                className="w-full grid grid-cols-10 write-report overflow-hidden flex-1 pr-4 pb-4 "
+              >
+                <div className="col-span-4">
+                  <motion.div
+                    className="p-4 pt-0 w-full h-full max-h-[calc(100vh-230px)] overflow-y-auto relative"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: 0.2, duration: 0.3 }}
+                  >
+                    {messages.map((message, index) => (
+                      <motion.div
+                        key={message.id}
+                        className={`mb-4 ${
+                          message.role === "user" ? "text-right" : "text-left"
+                        }`}
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.1 * index, duration: 0.3 }}
+                      >
+                        {message.files && message.files.length > 0 && (
+                          <div className="flex flex-col gap-2 mb-2">
+                            {message.files.map((fileName, fileIndex) => {
+                              // Check if the file is an image
+                              const isImage =
+                                fileName.match(
+                                  /\.(jpeg|jpg|gif|png|webp|svg|heic|bmp)$/i
+                                ) !== null;
 
-      <LayoutGroup>
-        <AnimatePresence mode="wait">
-          {!isInChatView ? (
-            <QuestionInput
-              placeholder="Give II-Agent a task to work on..."
-              value={currentQuestion}
-              setValue={setCurrentQuestion}
-              handleKeyDown={handleKeyDown}
-              handleSubmit={handleQuestionSubmit}
-              handleFileUpload={handleFileUpload}
-              isUploading={isUploading}
-              isUseDeepResearch={isUseDeepResearch}
-              setIsUseDeepResearch={setIsUseDeepResearch}
-            />
-          ) : (
-            <motion.div
-              key="chat-view"
-              initial={{ opacity: 0, y: 30, scale: 0.95 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -20, scale: 0.95 }}
-              transition={{
-                type: "spring",
-                stiffness: 300,
-                damping: 30,
-                mass: 1,
-              }}
-              className="w-full grid grid-cols-10 write-report overflow-hidden flex-1 pr-4 pb-4 "
-            >
-              <div className="col-span-4">
-                <motion.div
-                  className="p-4 pt-0 w-full h-full max-h-[calc(100vh-230px)] overflow-y-auto relative"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ delay: 0.2, duration: 0.3 }}
-                >
-                  {messages.map((message, index) => (
-                    <motion.div
-                      key={message.id}
-                      className={`mb-4 ${
-                        message.role === "user" ? "text-right" : "text-left"
-                      }`}
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.1 * index, duration: 0.3 }}
-                    >
-                      {message.files && message.files.length > 0 && (
-                        <div className="flex flex-col gap-2 mb-2">
-                          {message.files.map((fileName, fileIndex) => {
-                            // Check if the file is an image
-                            const isImage =
-                              fileName.match(
-                                /\.(jpeg|jpg|gif|png|webp|svg|heic|bmp)$/i
-                              ) !== null;
+                              if (
+                                isImage &&
+                                message.fileContents &&
+                                message.fileContents[fileName]
+                              ) {
+                                return (
+                                  <div
+                                    key={`${message.id}-file-${fileIndex}`}
+                                    className="inline-block ml-auto rounded-3xl overflow-hidden max-w-[320px]"
+                                  >
+                                    <div className="w-40 h-40 rounded-xl overflow-hidden">
+                                      <img
+                                        src={message.fileContents[fileName]}
+                                        alt={fileName}
+                                        className="w-full h-full object-cover"
+                                      />
+                                    </div>
+                                  </div>
+                                );
+                              }
 
-                            if (
-                              isImage &&
-                              message.fileContents &&
-                              message.fileContents[fileName]
-                            ) {
+                              // For non-image files, use the existing code
+                              const { IconComponent, bgColor, label } =
+                                getFileIconAndColor(fileName);
+
                               return (
                                 <div
                                   key={`${message.id}-file-${fileIndex}`}
-                                  className="inline-block ml-auto rounded-3xl overflow-hidden max-w-[320px]"
+                                  className="inline-block ml-auto bg-[#35363a] text-white rounded-2xl px-4 py-3 border border-gray-700 shadow-sm"
                                 >
-                                  <div className="w-40 h-40 rounded-xl overflow-hidden">
-                                    <img
-                                      src={message.fileContents[fileName]}
-                                      alt={fileName}
-                                      className="w-full h-full object-cover"
-                                    />
+                                  <div className="flex items-center gap-3">
+                                    <div
+                                      className={`flex items-center justify-center w-12 h-12 ${bgColor} rounded-xl`}
+                                    >
+                                      <IconComponent className="size-6 text-white" />
+                                    </div>
+                                    <div className="flex flex-col">
+                                      <span className="text-base font-medium">
+                                        {fileName}
+                                      </span>
+                                      <span className="text-left text-sm text-gray-500">
+                                        {label}
+                                      </span>
+                                    </div>
                                   </div>
                                 </div>
                               );
-                            }
+                            })}
+                          </div>
+                        )}
 
-                            // For non-image files, use the existing code
-                            const { IconComponent, bgColor, label } =
-                              getFileIconAndColor(fileName);
+                        {message.content && (
+                          <motion.div
+                            className={`inline-block text-left rounded-lg ${
+                              message.role === "user"
+                                ? "bg-[#35363a] p-3 text-white max-w-[80%] border border-[#3A3B3F] shadow-sm"
+                                : "text-white"
+                            }`}
+                            initial={{ scale: 0.9 }}
+                            animate={{ scale: 1 }}
+                            transition={{
+                              type: "spring",
+                              stiffness: 500,
+                              damping: 30,
+                            }}
+                          >
+                            {message.role === "user" ? (
+                              message.content
+                            ) : (
+                              <Markdown>{message.content}</Markdown>
+                            )}
+                          </motion.div>
+                        )}
 
-                            return (
-                              <div
-                                key={`${message.id}-file-${fileIndex}`}
-                                className="inline-block ml-auto bg-[#35363a] text-white rounded-2xl px-4 py-3 border border-gray-700 shadow-sm"
-                              >
-                                <div className="flex items-center gap-3">
-                                  <div
-                                    className={`flex items-center justify-center w-12 h-12 ${bgColor} rounded-xl`}
-                                  >
-                                    <IconComponent className="size-6 text-white" />
-                                  </div>
-                                  <div className="flex flex-col">
-                                    <span className="text-base font-medium">
-                                      {fileName}
-                                    </span>
-                                    <span className="text-left text-sm text-gray-500">
-                                      {label}
-                                    </span>
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
+                        {message.action && (
+                          <motion.div
+                            className="mt-2"
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: 0.1 * index, duration: 0.3 }}
+                          >
+                            <Action
+                              workspaceInfo={workspaceInfo}
+                              type={message.action.type}
+                              value={message.action.data}
+                              onClick={() =>
+                                handleClickAction(message.action, true)
+                              }
+                            />
+                          </motion.div>
+                        )}
+                      </motion.div>
+                    ))}
 
-                      {message.content && (
+                    {isLoading && (
+                      <motion.div
+                        className="mb-4 text-left"
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{
+                          type: "spring",
+                          stiffness: 300,
+                          damping: 30,
+                        }}
+                      >
                         <motion.div
-                          className={`inline-block text-left rounded-lg ${
-                            message.role === "user"
-                              ? "bg-[#35363a] p-3 text-white max-w-[80%] border border-[#3A3B3F] shadow-sm"
-                              : "text-white"
-                          }`}
-                          initial={{ scale: 0.9 }}
+                          className="inline-block p-3 text-left rounded-lg bg-neutral-800/90 text-white backdrop-blur-sm"
+                          initial={{ scale: 0.95 }}
                           animate={{ scale: 1 }}
                           transition={{
                             type: "spring",
-                            stiffness: 500,
-                            damping: 30,
+                            stiffness: 400,
+                            damping: 25,
                           }}
                         >
-                          {message.role === "user" ? (
-                            message.content
-                          ) : (
-                            <Markdown>{message.content}</Markdown>
-                          )}
-                        </motion.div>
-                      )}
-
-                      {message.action && (
-                        <motion.div
-                          className="mt-2"
-                          initial={{ opacity: 0, y: 20 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          transition={{ delay: 0.1 * index, duration: 0.3 }}
-                        >
-                          <Action
-                            workspaceInfo={workspaceInfo}
-                            type={message.action.type}
-                            value={message.action.data}
-                            onClick={() =>
-                              handleClickAction(message.action, true)
-                            }
-                          />
-                        </motion.div>
-                      )}
-                    </motion.div>
-                  ))}
-
-                  {isLoading && (
-                    <motion.div
-                      className="mb-4 text-left"
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{
-                        type: "spring",
-                        stiffness: 300,
-                        damping: 30,
-                      }}
-                    >
-                      <motion.div
-                        className="inline-block p-3 text-left rounded-lg bg-neutral-800/90 text-white backdrop-blur-sm"
-                        initial={{ scale: 0.95 }}
-                        animate={{ scale: 1 }}
-                        transition={{
-                          type: "spring",
-                          stiffness: 400,
-                          damping: 25,
-                        }}
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="flex space-x-2">
-                            <div className="w-2 h-2 bg-white rounded-full animate-[dot-bounce_1.2s_ease-in-out_infinite_0ms]" />
-                            <div className="w-2 h-2 bg-white rounded-full animate-[dot-bounce_1.2s_ease-in-out_infinite_200ms]" />
-                            <div className="w-2 h-2 bg-white rounded-full animate-[dot-bounce_1.2s_ease-in-out_infinite_400ms]" />
+                          <div className="flex items-center gap-3">
+                            <div className="flex space-x-2">
+                              <div className="w-2 h-2 bg-white rounded-full animate-[dot-bounce_1.2s_ease-in-out_infinite_0ms]" />
+                              <div className="w-2 h-2 bg-white rounded-full animate-[dot-bounce_1.2s_ease-in-out_infinite_200ms]" />
+                              <div className="w-2 h-2 bg-white rounded-full animate-[dot-bounce_1.2s_ease-in-out_infinite_400ms]" />
+                            </div>
                           </div>
-                        </div>
+                        </motion.div>
                       </motion.div>
-                    </motion.div>
-                  )}
+                    )}
 
-                  {isCompleted && (
-                    <div className="flex gap-x-2 items-center bg-[#25BA3B1E] text-green-600 text-sm p-2 rounded-full">
-                      <Check className="size-4" />
-                      <span>II-Agent has completed the current task.</span>
+                    {isCompleted && (
+                      <div className="flex gap-x-2 items-center bg-[#25BA3B1E] text-green-600 text-sm p-2 rounded-full">
+                        <Check className="size-4" />
+                        <span>II-Agent has completed the current task.</span>
+                      </div>
+                    )}
+
+                    <div ref={messagesEndRef} />
+                  </motion.div>
+                  <motion.div
+                    className="sticky bottom-0 left-0 w-full"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: 0.2, duration: 0.3 }}
+                  >
+                    <QuestionInput
+                      className="p-4 pb-0 w-full max-w-none"
+                      textareaClassName="h-30 w-full"
+                      placeholder="Ask me anything..."
+                      value={currentQuestion}
+                      setValue={setCurrentQuestion}
+                      handleKeyDown={handleKeyDown}
+                      handleSubmit={handleQuestionSubmit}
+                      handleFileUpload={handleFileUpload}
+                      isUploading={isUploading}
+                      isUseDeepResearch={isUseDeepResearch}
+                    />
+                  </motion.div>
+                </div>
+
+                <motion.div className="col-span-6 bg-[#1e1f23] border border-[#3A3B3F] p-4 rounded-2xl">
+                  <div className="pb-4 bg-neutral-850 flex items-center justify-between">
+                    <div className="flex gap-x-4">
+                      <Button
+                        className={`cursor-pointer hover:!bg-black ${
+                          activeTab === TAB.BROWSER
+                            ? "bg-gradient-skyblue-lavender !text-black"
+                            : ""
+                        }`}
+                        variant="outline"
+                        onClick={() => setActiveTab(TAB.BROWSER)}
+                      >
+                        <Globe className="size-4" /> Browser
+                      </Button>
+                      <Button
+                        className={`cursor-pointer hover:!bg-black ${
+                          activeTab === TAB.CODE
+                            ? "bg-gradient-skyblue-lavender !text-black"
+                            : ""
+                        }`}
+                        variant="outline"
+                        onClick={() => setActiveTab(TAB.CODE)}
+                      >
+                        <Code className="size-4" /> Code
+                      </Button>
+                      <Button
+                        className={`cursor-pointer hover:!bg-black ${
+                          activeTab === TAB.TERMINAL
+                            ? "bg-gradient-skyblue-lavender !text-black"
+                            : ""
+                        }`}
+                        variant="outline"
+                        onClick={() => setActiveTab(TAB.TERMINAL)}
+                      >
+                        <TerminalIcon className="size-4" /> Terminal
+                      </Button>
                     </div>
-                  )}
-
-                  <div ref={messagesEndRef} />
-                </motion.div>
-                <motion.div
-                  className="sticky bottom-0 left-0 w-full"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ delay: 0.2, duration: 0.3 }}
-                >
-                  <QuestionInput
-                    className="p-4 pb-0 w-full max-w-none"
-                    textareaClassName="h-30 w-full"
-                    placeholder="Ask me anything..."
-                    value={currentQuestion}
-                    setValue={setCurrentQuestion}
-                    handleKeyDown={handleKeyDown}
-                    handleSubmit={handleQuestionSubmit}
-                    handleFileUpload={handleFileUpload}
-                    isUploading={isUploading}
-                    isUseDeepResearch={isUseDeepResearch}
-                    setIsUseDeepResearch={setIsUseDeepResearch}
-                  />
-                </motion.div>
-              </div>
-
-              <motion.div className="col-span-6 bg-[#1e1f23] border border-[#3A3B3F] p-4 rounded-2xl">
-                <div className="pb-4 bg-neutral-850 flex items-center justify-between">
-                  <div className="flex gap-x-4">
                     <Button
-                      className={`cursor-pointer hover:!bg-black ${
-                        activeTab === TAB.BROWSER
-                          ? "bg-gradient-skyblue-lavender !text-black"
-                          : ""
-                      }`}
+                      className="cursor-pointer"
                       variant="outline"
-                      onClick={() => setActiveTab(TAB.BROWSER)}
+                      onClick={handleOpenVSCode}
                     >
-                      <Globe className="size-4" /> Browser
-                    </Button>
-                    <Button
-                      className={`cursor-pointer hover:!bg-black ${
-                        activeTab === TAB.CODE
-                          ? "bg-gradient-skyblue-lavender !text-black"
-                          : ""
-                      }`}
-                      variant="outline"
-                      onClick={() => setActiveTab(TAB.CODE)}
-                    >
-                      <Code className="size-4" /> Code
-                    </Button>
-                    <Button
-                      className={`cursor-pointer hover:!bg-black ${
-                        activeTab === TAB.TERMINAL
-                          ? "bg-gradient-skyblue-lavender !text-black"
-                          : ""
-                      }`}
-                      variant="outline"
-                      onClick={() => setActiveTab(TAB.TERMINAL)}
-                    >
-                      <TerminalIcon className="size-4" /> Terminal
+                      <Image
+                        src={"/vscode.png"}
+                        alt="VS Code"
+                        width={20}
+                        height={20}
+                      />{" "}
+                      Open with VS Code
                     </Button>
                   </div>
-                  <Button
-                    className="cursor-pointer"
-                    variant="outline"
-                    onClick={handleOpenVSCode}
-                  >
-                    <Image
-                      src={"/vscode.png"}
-                      alt="VS Code"
-                      width={20}
-                      height={20}
-                    />{" "}
-                    Open with VS Code
-                  </Button>
-                </div>
-                <Browser
-                  className={
-                    activeTab === TAB.BROWSER &&
-                    (currentActionData?.type === TOOL.TAVILY_VISIT ||
-                      currentActionData?.type === TOOL.BROWSER_USE)
-                      ? ""
-                      : "hidden"
-                  }
-                  url={currentActionData?.data?.tool_input?.url}
-                  screenshot={
-                    currentActionData?.type === TOOL.BROWSER_USE
-                      ? (currentActionData?.data.result as string)
-                      : undefined
-                  }
-                  raw={
-                    currentActionData?.type === TOOL.TAVILY_VISIT
-                      ? parseJson(currentActionData?.data?.result as string)
-                          ?.raw_content
-                      : undefined
-                  }
-                />
-                <SearchBrowser
-                  className={
-                    activeTab === TAB.BROWSER &&
-                    currentActionData?.type === TOOL.TAVILY_SEARCH
-                      ? ""
-                      : "hidden"
-                  }
-                  keyword={currentActionData?.data.tool_input?.query}
-                  search_results={
-                    currentActionData?.type === TOOL.TAVILY_SEARCH &&
-                    currentActionData?.data?.result
-                      ? parseJson(currentActionData?.data?.result as string)
-                      : undefined
-                  }
-                />
-                <CodeEditor
-                  key={codeEditorKey}
-                  className={activeTab === TAB.CODE ? "" : "hidden"}
-                  workspaceInfo={workspaceInfo}
-                  activeFile={activeFileCodeEditor}
-                  setActiveFile={setActiveFileCodeEditor}
-                />
-                <Terminal
-                  ref={xtermRef}
-                  className={activeTab === TAB.TERMINAL ? "" : "hidden"}
-                />
+                  <Browser
+                    className={
+                      activeTab === TAB.BROWSER &&
+                      (currentActionData?.type === TOOL.VISIT ||
+                        currentActionData?.type === TOOL.BROWSER_USE)
+                        ? ""
+                        : "hidden"
+                    }
+                    url={currentActionData?.data?.tool_input?.url}
+                    screenshot={
+                      currentActionData?.type === TOOL.BROWSER_USE
+                        ? (currentActionData?.data.result as string)
+                        : undefined
+                    }
+                    raw={
+                      currentActionData?.type === TOOL.VISIT
+                        ? parseJson(currentActionData?.data?.result as string)
+                            ?.raw_content
+                        : undefined
+                    }
+                  />
+                  <SearchBrowser
+                    className={
+                      activeTab === TAB.BROWSER &&
+                      currentActionData?.type === TOOL.WEB_SEARCH
+                        ? ""
+                        : "hidden"
+                    }
+                    keyword={currentActionData?.data.tool_input?.query}
+                    search_results={
+                      currentActionData?.type === TOOL.WEB_SEARCH &&
+                      currentActionData?.data?.result
+                        ? parseJson(currentActionData?.data?.result as string)
+                        : undefined
+                    }
+                  />
+                  <CodeEditor
+                    key={codeEditorKey}
+                    className={activeTab === TAB.CODE ? "" : "hidden"}
+                    workspaceInfo={workspaceInfo}
+                    activeFile={activeFileCodeEditor}
+                    setActiveFile={setActiveFileCodeEditor}
+                  />
+                  <Terminal
+                    ref={xtermRef}
+                    className={activeTab === TAB.TERMINAL ? "" : "hidden"}
+                  />
+                </motion.div>
               </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </LayoutGroup>
+            )}
+          </AnimatePresence>
+        </LayoutGroup>
+      )}
     </div>
   );
 }

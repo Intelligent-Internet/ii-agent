@@ -171,7 +171,6 @@ async def websocket_endpoint(websocket: WebSocket):
                                 type=EventType.WORKSPACE_INFO,
                                 content={
                                     "path": str(workspace_manager.root),
-                                    "session_id": str(agent.session_id),
                                 },
                             ).model_dump()
                         )
@@ -597,12 +596,6 @@ async def get_sessions_by_device_id(device_id: str):
                 .all()
             )
 
-            if not sessions:
-                return JSONResponse(
-                    status_code=404,
-                    content={"error": f"No sessions found for device_id: {device_id}"},
-                )
-
             # Convert sessions to a list of dictionaries
             session_list = []
             for s, first_message in sessions:
@@ -656,12 +649,6 @@ async def get_session_events(session_id: str):
                 .order_by(asc(Event.timestamp))
                 .all()
             )
-
-            if not events:
-                return JSONResponse(
-                    status_code=404,
-                    content={"error": f"No events found for session_id: {session_id}"},
-                )
 
             # Convert events to a list of dictionaries
             event_list = []

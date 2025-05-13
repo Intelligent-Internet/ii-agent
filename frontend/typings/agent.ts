@@ -4,6 +4,7 @@ export type Source = {
 };
 
 export enum AgentEvent {
+  USER_MESSAGE = "user_message",
   CONNECTION_ESTABLISHED = "connection_established",
   WORKSPACE_INFO = "workspace_info",
   PROCESSING = "processing",
@@ -24,8 +25,8 @@ export enum TOOL {
   SEQUENTIAL_THINKING = "sequential_thinking",
   STR_REPLACE_EDITOR = "str_replace_editor",
   BROWSER_USE = "browser_use",
-  TAVILY_SEARCH = "tavily_web_search",
-  TAVILY_VISIT = "tavily_visit_webpage",
+  WEB_SEARCH = "web_search",
+  VISIT = "visit_webpage",
   BASH = "bash",
   COMPLETE = "complete",
   STATIC_DEPLOY = "static_deploy",
@@ -75,3 +76,20 @@ export type ActionStep = {
     path?: string;
   };
 };
+
+export interface ISession {
+  id: string;
+  workspace_dir: string;
+  created_at: string;
+  device_id: string;
+}
+
+export interface IEvent {
+  id: string;
+  event_type: AgentEvent;
+  event_payload: {
+    type: AgentEvent;
+    content: Record<string, unknown>;
+  };
+  timestamp: string;
+}

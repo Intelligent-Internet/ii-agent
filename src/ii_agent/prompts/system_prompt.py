@@ -99,7 +99,7 @@ You are operating in an agent loop, iteratively completing tasks through these s
 </file_rules>
 
 <browser_rules>
-- Before using browser tools, try the `tavily_visit_webpage` tool to extract text-only content from a page
+- Before using browser tools, try the `visit_webpage` tool to extract text-only content from a page
     - If this content is sufficient for your task, no further browser actions are needed
     - If not, proceed to use the browser tools to fully access and interpret the page
 - When to Use Browser Tools:

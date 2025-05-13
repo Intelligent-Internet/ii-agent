@@ -224,17 +224,19 @@ const QuestionInput = ({
                 />
               </label>
             )}
-            <Button
-              variant="outline"
-              className={`h-10 cursor-pointer shadow-sm ${
-                isUseDeepResearch
-                  ? "bg-gradient-skyblue-lavender !text-black"
-                  : "border !border-[#ffffff0f] bg-transparent"
-              }`}
-              onClick={() => setIsUseDeepResearch?.(!isUseDeepResearch)}
-            >
-              Deep Research
-            </Button>
+            {setIsUseDeepResearch && (
+              <Button
+                variant="outline"
+                className={`h-10 cursor-pointer shadow-sm ${
+                  isUseDeepResearch
+                    ? "bg-gradient-skyblue-lavender !text-black"
+                    : "border !border-[#ffffff0f] bg-transparent"
+                }`}
+                onClick={() => setIsUseDeepResearch?.(!isUseDeepResearch)}
+              >
+                Deep Research
+              </Button>
+            )}
           </div>
 
           <Button

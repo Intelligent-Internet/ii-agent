@@ -22,7 +22,9 @@
     "@xterm/xterm": "^5.5.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "dayjs": "^1.11.13",
     "framer-motion": "^12.4.7",
+    "js-cookie": "^3.0.5",
     "katex": "^0.16.21",
     "lodash": "^4.17.21",
     "lucide-react": "^0.477.0",
@@ -42,11 +44,13 @@
     "remark-math": "^6.0.0",
     "sonner": "^2.0.1",
     "tailwind-merge": "^3.0.2",
-    "tailwindcss-animate": "^1.0.7"
+    "tailwindcss-animate": "^1.0.7",
+    "uuid": "^11.1.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
     "@tailwindcss/postcss": "^4",
+    "@types/js-cookie": "^3.0.6",
     "@types/lodash": "^4.17.16",
     "@types/node": "^20",
     "@types/react": "^19",

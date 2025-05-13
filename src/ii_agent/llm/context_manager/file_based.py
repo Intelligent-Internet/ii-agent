@@ -105,7 +105,7 @@ class FileBasedContextManager(ContextManager):
                         if message.tool_name in TOOLS_NEED_OUTPUT_FILE_SAVE:
                             # For tools in the list, save to file
                             content_hash = self._get_content_hash(message.tool_output)
-                            if message.tool_name == "tavily_visit_webpage":
+                            if message.tool_name == "visit_webpage":
                                 # NOTE: assume that the previous message is a tool call
                                 url = truncated_message_lists[turn_idx - 1][
                                     0
