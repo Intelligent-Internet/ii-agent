@@ -310,14 +310,14 @@ def create_agent_for_connection(
     # Setup logging
     logger_for_agent_logs = logging.getLogger(f"agent_logs_{id(websocket)}")
     logger_for_agent_logs.setLevel(logging.DEBUG)
+    # Prevent propagation to root logger to avoid duplicate logs
+    logger_for_agent_logs.propagate = False
 
     # Ensure we don't duplicate handlers
     if not logger_for_agent_logs.handlers:
         logger_for_agent_logs.addHandler(logging.FileHandler(global_args.logs_path))
         if not global_args.minimize_stdout_logs:
             logger_for_agent_logs.addHandler(logging.StreamHandler())
-        else:
-            logger_for_agent_logs.propagate = False
 
     # Initialize database manager
     db_manager = DatabaseManager(base_workspace_dir=global_args.workspace)

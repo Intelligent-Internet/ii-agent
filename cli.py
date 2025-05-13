@@ -44,11 +44,11 @@ async def async_main():
         os.remove(args.logs_path)
     logger_for_agent_logs = logging.getLogger("agent_logs")
     logger_for_agent_logs.setLevel(logging.DEBUG)
+    # Prevent propagation to root logger to avoid duplicate logs
+    logger_for_agent_logs.propagate = False
     logger_for_agent_logs.addHandler(logging.FileHandler(args.logs_path))
     if not args.minimize_stdout_logs:
         logger_for_agent_logs.addHandler(logging.StreamHandler())
-    else:
-        logger_for_agent_logs.propagate = False
 
     # Initialize console
     console = Console()
