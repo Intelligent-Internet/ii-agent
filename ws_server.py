@@ -558,12 +558,13 @@ async def upload_file_endpoint(request: Request):
 @app.get("/api/sessions/{device_id}")
 async def get_sessions_by_device_id(device_id: str):
     """Get all sessions for a specific device ID, sorted by creation time descending.
+    For each session, also includes the first user message if available.
 
     Args:
         device_id: The device identifier to look up sessions for
 
     Returns:
-        A list of sessions with their details, sorted by creation time descending
+        A list of sessions with their details and first user message, sorted by creation time descending
     """
     try:
         # Initialize database manager
@@ -571,8 +572,26 @@ async def get_sessions_by_device_id(device_id: str):
 
         # Get all sessions for this device, sorted by created_at descending
         with db_manager.get_session() as session:
+            # Subquery to get the first user_message event for each session
+            first_user_message = (
+                session.query(
+                    Event.session_id,
+                    Event.event_payload,
+                    Event.timestamp
+                )
+                .filter(Event.event_type == "user_message")
+                .distinct(Event.session_id)
+                .order_by(Event.session_id, Event.timestamp)
+                .subquery()
+            )
+
+            # Main query joining sessions with first user message
             sessions = (
-                session.query(Session)
+                session.query(Session, first_user_message.c.event_payload)
+                .outerjoin(
+                    first_user_message,
+                    Session.id == first_user_message.c.session_id
+                )
                 .filter(Session.device_id == device_id)
                 .order_by(desc(Session.created_at))
                 .all()
@@ -586,15 +605,25 @@ async def get_sessions_by_device_id(device_id: str):
 
             # Convert sessions to a list of dictionaries
             session_list = []
-            for s in sessions:
-                session_list.append(
-                    {
-                        "id": s.id,
-                        "workspace_dir": s.workspace_dir,
-                        "created_at": s.created_at.isoformat(),
-                        "device_id": s.device_id,
-                    }
-                )
+            for s, first_message in sessions:
+                session_data = {
+                    "id": s.id,
+                    "workspace_dir": s.workspace_dir,
+                    "created_at": s.created_at.isoformat(),
+                    "device_id": s.device_id,
+                }
+                
+                # Add first message if available
+                if first_message:
+                    try:
+                        message_data = json.loads(first_message)
+                        session_data["first_message"] = message_data.get("text", "")
+                    except json.JSONDecodeError:
+                        session_data["first_message"] = ""
+                else:
+                    session_data["first_message"] = ""
+
+                session_list.append(session_data)
 
             return {"sessions": session_list}
 
