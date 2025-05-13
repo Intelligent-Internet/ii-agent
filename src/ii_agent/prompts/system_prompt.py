@@ -140,6 +140,7 @@ You are operating in an agent loop, iteratively completing tasks through these s
 - Write Python code for complex mathematical calculations and analysis
 - Use search tools to find solutions when encountering unfamiliar problems
 - For index.html referencing local resources, use deployment tools directly, or package everything into a zip file and provide it as a message attachment
+- Must use tailwindcss for styling
 </coding_rules>
 
 <deploy_rules>
