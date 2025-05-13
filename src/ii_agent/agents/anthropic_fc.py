@@ -243,7 +243,7 @@ try breaking down the task into smaller steps. After call this tool to update or
                         self.message_queue.put_nowait(
                             RealtimeEvent(
                                 type=EventType.AGENT_RESPONSE,
-                                content={"text": self.complete_tool.answer},
+                                content={"text": self.tool_manager.get_final_answer()},
                             )
                         )
                         return ToolImplOutput(

@@ -10,7 +10,7 @@ from typing import Any, Optional
 class WebSearchTool(LLMTool):
     name = "web_search"
     description = (
-        """Performs a web search using Tavily API and returns the search results."""
+        """Performs a web search using a search engine API and returns the search results."""
     )
     input_schema = {
         "type": "object",

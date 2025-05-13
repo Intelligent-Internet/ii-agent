@@ -30,7 +30,10 @@ class StaticDeployTool(LLMTool):
     def __init__(self, workspace_manager: WorkspaceManager):
         super().__init__()
         self.workspace_manager = workspace_manager
-        self.base_url = os.getenv("STATIC_FILE_BASE_URL", "http://localhost:8888")
+        # TODO: this is a hack to get the base URL for the static files
+        # TODO: we should use a proper URL for the static files
+        default_base_url = f"file://{workspace_manager.root.parent.parent.absolute()}"
+        self.base_url = os.getenv("STATIC_FILE_BASE_URL", default_base_url)
 
     def run_impl(
         self,
