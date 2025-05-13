@@ -9,6 +9,11 @@ wheels/
 # Virtual environments
 .venv
 
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
 # MacOS X gitignore
 # General
 .DS_Store

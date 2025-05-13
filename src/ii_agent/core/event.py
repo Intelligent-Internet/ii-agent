@@ -18,7 +18,7 @@ class EventType(str, enum.Enum):
     UPLOAD_SUCCESS = "upload_success"
     BROWSER_USE = "browser_use"
     FILE_EDIT = "file_edit"
-
+    USER_MESSAGE = "user_message"
 
 class RealtimeEvent(BaseModel):
     type: EventType
