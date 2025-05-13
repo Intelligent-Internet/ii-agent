@@ -9,6 +9,8 @@ import os
 from termcolor import colored
 import copy
 from ii_agent.tools import TOOLS_NEED_INPUT_TRUNCATION, TOOLS_NEED_OUTPUT_FILE_SAVE
+from ii_agent.tools.deep_research_tool import DeepResearchTool
+from ii_agent.tools.visit_webpage_tool import VisitWebpageTool
 
 HASH_LENGTH = 10
 
@@ -105,7 +107,7 @@ class FileBasedContextManager(ContextManager):
                         if message.tool_name in TOOLS_NEED_OUTPUT_FILE_SAVE:
                             # For tools in the list, save to file
                             content_hash = self._get_content_hash(message.tool_output)
-                            if message.tool_name == "visit_webpage":
+                            if message.tool_name == VisitWebpageTool.name:
                                 # NOTE: assume that the previous message is a tool call
                                 url = truncated_message_lists[turn_idx - 1][
                                     0
@@ -113,6 +115,13 @@ class FileBasedContextManager(ContextManager):
                                 filename = self._generate_filename_from_url(
                                     url, content_hash
                                 )
+                            elif message.tool_name == DeepResearchTool.name:
+                                # NOTE: assume that the previous message is a tool call
+                                query = truncated_message_lists[turn_idx - 1][
+                                    0
+                                ].tool_input.get("query", "unknown_query")
+                                sanitized_query = self._sanitize_for_filename(query)
+                                filename = f"{sanitized_query}_{content_hash}.txt"
                             else:
                                 filename = f"{message.tool_name}_{content_hash}.txt"
                             filepath = os.path.join(self.agent_memory_dir, filename)
@@ -132,6 +141,7 @@ class FileBasedContextManager(ContextManager):
                                 filename=filename,
                                 agent_memory_dir=self.agent_memory_dir,
                             )
+                            self.logger.info(f"Saved {filename} to {filepath}")
                         else:
                             # For other tools, use simple truncation if content is long enough
                             if (
