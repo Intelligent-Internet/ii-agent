@@ -285,10 +285,13 @@ def cleanup_connection(websocket: WebSocket):
     if websocket in active_connections:
         active_connections.remove(websocket)
 
-    # Cancel message processor
-    if websocket in message_processors:
-        message_processors[websocket].cancel()
-        del message_processors[websocket]
+    # Set websocket to None in the agent but keep the message processor running
+    if websocket in active_agents:
+        agent = active_agents[websocket]
+        agent.websocket = None  # This will prevent sending to websocket but keep processing
+        # Don't cancel the message processor - it will continue saving to database
+        if websocket in message_processors:
+            del message_processors[websocket]  # Just remove the reference
 
     # Cancel any running tasks
     if websocket in active_tasks and not active_tasks[websocket].done():

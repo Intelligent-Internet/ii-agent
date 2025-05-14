@@ -101,9 +101,17 @@ try breaking down the task into smaller steps. After call this tool to update or
                             f"No session ID, skipping event: {message}"
                         )
 
-                    # Only send to websocket if this is not an event from the client
-                    if message.type != EventType.USER_MESSAGE and self.websocket:
-                        await self.websocket.send_json(message.model_dump())
+                    # Only send to websocket if this is not an event from the client and websocket exists
+                    if message.type != EventType.USER_MESSAGE and self.websocket is not None:
+                        try:
+                            await self.websocket.send_json(message.model_dump())
+                        except Exception as e:
+                            # If websocket send fails, just log it and continue processing
+                            self.logger_for_agent_logs.warning(
+                                f"Failed to send message to websocket: {str(e)}"
+                            )
+                            # Set websocket to None to prevent further attempts
+                            self.websocket = None
 
                     self.message_queue.task_done()
                 except asyncio.CancelledError:
