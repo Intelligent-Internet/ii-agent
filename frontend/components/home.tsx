@@ -284,6 +284,7 @@ export default function Home() {
         .map((file) => `- ${file}`)
         .join("\n")}`;
     }
+
     // send init agent event when first query
     if (messages.length <= 1) {
       console.log("send init agent event");
@@ -310,6 +311,7 @@ export default function Home() {
         content: {
           text: finalQuestion,
           resume: messages.length > 0,
+          // files: uploadedFiles,
         },
       })
     );
@@ -326,6 +328,7 @@ export default function Home() {
     if (socket) {
       socket.close();
     }
+    setSessionId(null);
     router.push("/");
     setMessages([]);
     setIsLoading(false);
@@ -617,7 +620,7 @@ export default function Home() {
                 lastMessage?.action &&
                 lastMessage.action?.type === data.content.tool_name
               ) {
-                lastMessage.action.data.result = data.content.result as string;
+                lastMessage.action.data.result = `${data.content.result}`;
                 lastMessage.action.data.isResult = true;
                 setTimeout(() => {
                   handleClickAction(lastMessage.action);
@@ -911,8 +914,7 @@ export default function Home() {
                     }
                     raw={
                       currentActionData?.type === TOOL.VISIT
-                        ? parseJson(currentActionData?.data?.result as string)
-                            ?.raw_content
+                        ? (currentActionData?.data?.result as string)
                         : undefined
                     }
                   />
