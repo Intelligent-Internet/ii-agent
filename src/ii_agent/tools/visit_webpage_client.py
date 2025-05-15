@@ -74,20 +74,29 @@ class TavilyVisitClient(BaseVisitClient):
             tavily_client = TavilyClient(api_key=self.api_key)
 
             # Extract webpage content
-            response = tavily_client.extract(url)
+            response = tavily_client.extract(
+                url, include_images=True, extract_depth="advanced"
+            )
 
             # Check if response contains results
             if not response or "results" not in response or not response["results"]:
                 return f"No content could be extracted from {url}"
 
             # Format the content from the first result
-            content = response["results"][0]
-            if not content:
+            data = response["results"][0]
+            if not data:
                 return f"No textual content could be extracted from {url}"
 
-            return truncate_content(
-                json.dumps(content, indent=4), self.max_output_length
-            )
+            content = data["raw_content"]
+            # Format images as markdown
+            images = response["results"][0].get("images", [])
+            if images:
+                image_markdown = "\n\n### Images:\n"
+                for i, img_url in enumerate(images):
+                    image_markdown += f"![Image {i + 1}]({img_url})\n"
+                content += image_markdown
+
+            return truncate_content(content, self.max_output_length)
 
         except Exception as e:
             return f"Error extracting the webpage content using Tavily: {str(e)}"
@@ -122,10 +131,10 @@ class FireCrawlVisitClient(BaseVisitClient):
         )
         if response.status_code == 200:
             data = response.json().get("data")
-            content = json.dumps(data, indent=4)
-            if not content:
+            if not data:
                 return f"No content could be extracted from {url}"
 
+            content = data["markdown"]
             return truncate_content(content, self.max_output_length)
         else:
             return f"Error scraping the webpage: {response.status_code}"
@@ -157,6 +166,7 @@ class JinaVisitClient(BaseVisitClient):
             "Authorization": f"Bearer {self.api_key}",
             "X-Engine": "browser",
             "X-Return-Format": "markdown",
+            "X-With-Images-Summary": "true",
         }
 
         try:
@@ -164,10 +174,10 @@ class JinaVisitClient(BaseVisitClient):
 
             if response.status_code == 200:
                 json_response = response.json()
-                content = json.dumps(json_response["data"], indent=4)
-                if not content:
+                data = json_response["data"]
+                if not data:
                     return f"No content could be extracted from {url}"
-
+                content = data["title"] + "\n\n" + data["content"]
                 return truncate_content(content, self.max_output_length)
             else:
                 return f"Error scraping the webpage: {response.status_code}"
