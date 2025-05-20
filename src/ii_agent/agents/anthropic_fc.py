@@ -105,7 +105,10 @@ try breaking down the task into smaller steps. After call this tool to update or
                         )
 
                     # Only send to websocket if this is not an event from the client and websocket exists
-                    if message.type != EventType.USER_MESSAGE and self.websocket is not None:
+                    if (
+                        message.type != EventType.USER_MESSAGE
+                        and self.websocket is not None
+                    ):
                         try:
                             await self.websocket.send_json(message.model_dump())
                         except Exception as e:
@@ -169,7 +172,9 @@ try breaking down the task into smaller steps. After call this tool to update or
                 if ext == "jpg":
                     ext = "jpeg"
                 if ext in ["png", "gif", "jpeg", "webp"]:
-                    base64_image = encode_image(str(self.workspace_manager.workspace_path(file)))
+                    base64_image = encode_image(
+                        str(self.workspace_manager.workspace_path(file))
+                    )
                     image_blocks.append(
                         {
                             "source": {
@@ -215,7 +220,7 @@ try breaking down the task into smaller steps. After call this tool to update or
                     tools=all_tool_params,
                     system_prompt=self.system_prompt,
                 )
-                
+
                 if len(model_response) == 0:
                     model_response = [TextResult(text=COMPLETE_MESSAGE)]
 
@@ -226,7 +231,6 @@ try breaking down the task into smaller steps. After call this tool to update or
                 pending_tool_calls = self.history.get_pending_tool_calls()
 
                 if len(pending_tool_calls) == 0:
-                    
                     # No tools were called, so assume the task is complete
                     self.logger_for_agent_logs.info("[no tools were called]")
                     self.message_queue.put_nowait(

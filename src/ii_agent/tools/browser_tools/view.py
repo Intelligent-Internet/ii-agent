@@ -40,7 +40,6 @@ class BrowserViewTool(BrowserTool):
 Current viewport information:
 {highlighted_elements}"""
 
-        
         return utils.format_screenshot_tool_output(
             state.screenshot_with_highlights, msg
         )

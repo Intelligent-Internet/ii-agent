@@ -34,7 +34,7 @@ class BrowserSwitchTabTool(BrowserTool):
         await asyncio.sleep(0.5)
         msg = f"Switched to tab {index}"
         state = await self.browser.update_state()
-        
+
         return utils.format_screenshot_tool_output(state.screenshot, msg)
 
 
@@ -55,5 +55,5 @@ class BrowserOpenNewTabTool(BrowserTool):
         await asyncio.sleep(0.5)
         msg = "Opened a new tab"
         state = await self.browser.update_state()
-        
+
         return utils.format_screenshot_tool_output(state.screenshot, msg)

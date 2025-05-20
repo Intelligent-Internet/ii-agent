@@ -39,13 +39,13 @@ class BrowserNavigationTool(BrowserTool):
         except TimeoutError:
             msg = f"Timeout error navigating to {url}"
             return ToolImplOutput(msg, msg)
-        except Exception as e:
+        except Exception:
             msg = f"Something went wrong while navigating to {url}; double check the URL and try again."
             return ToolImplOutput(msg, msg)
 
         state = await self.browser.update_state()
         state = await self.browser.handle_pdf_url_navigation()
-        
+
         msg = f"Navigated to {url}"
 
         return utils.format_screenshot_tool_output(state.screenshot, msg)
@@ -83,13 +83,13 @@ class BrowserRestartTool(BrowserTool):
         except TimeoutError:
             msg = f"Timeout error navigating to {url}"
             return ToolImplOutput(msg, msg)
-        except Exception as e:
+        except Exception:
             msg = f"Something went wrong while navigating to {url}; double check the URL and try again."
             return ToolImplOutput(msg, msg)
 
         state = await self.browser.update_state()
         state = await self.browser.handle_pdf_url_navigation()
-        
+
         msg = f"Navigated to {url}"
 
         return utils.format_screenshot_tool_output(state.screenshot, msg)

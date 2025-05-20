@@ -34,7 +34,7 @@ class BrowserScrollDownTool(BrowserTool):
             await asyncio.sleep(0.1)
 
         state = await self.browser.update_state()
-        
+
         msg = "Scrolled page down"
         return utils.format_screenshot_tool_output(state.screenshot, msg)
 
@@ -65,6 +65,6 @@ class BrowserScrollUpTool(BrowserTool):
             await asyncio.sleep(0.1)
 
         state = await self.browser.update_state()
-        
+
         msg = "Scrolled page up"
         return utils.format_screenshot_tool_output(state.screenshot, msg)

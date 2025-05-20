@@ -10,6 +10,7 @@ from ii_agent.llm.token_counter import TokenCounter
 from ii_agent.tools.str_replace_tool_relative import StrReplaceEditorTool
 from ii_agent.utils.workspace_manager import WorkspaceManager
 
+
 @pytest.fixture
 def mock_file_writer():
     return Mock(spec=StrReplaceEditorTool)

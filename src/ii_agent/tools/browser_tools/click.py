@@ -57,5 +57,5 @@ class BrowserClickTool(BrowserTool):
 
         state = await self.browser.update_state()
         state = await self.browser.handle_pdf_url_navigation()
-        
+
         return utils.format_screenshot_tool_output(state.screenshot, msg)

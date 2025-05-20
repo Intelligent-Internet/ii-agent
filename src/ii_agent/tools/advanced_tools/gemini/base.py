@@ -2,10 +2,8 @@ import os
 
 from typing import Optional
 from google import genai
-from google.genai import types
 from ii_agent.tools.base import (
     LLMTool,
-    ToolImplOutput,
 )
 from ii_agent.utils import WorkspaceManager
 

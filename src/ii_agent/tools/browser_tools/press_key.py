@@ -36,5 +36,5 @@ class BrowserPressKeyTool(BrowserTool):
 
         msg = f'Pressed "{key}" on the keyboard.'
         state = await self.browser.update_state()
-        
+
         return utils.format_screenshot_tool_output(state.screenshot, msg)

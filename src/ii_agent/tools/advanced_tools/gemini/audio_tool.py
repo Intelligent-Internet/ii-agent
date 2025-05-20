@@ -63,7 +63,7 @@ class AudioUnderstandingTool(GeminiTool):
 - Describe, summarize, or answer questions about audio content
 - Analyze specific segments of the audio
 
-Provide one query at a time. Supported formats: {', '.join(SUPPORTED_FORMATS)}
+Provide one query at a time. Supported formats: {", ".join(SUPPORTED_FORMATS)}
 """
 
     input_schema = {

@@ -23,7 +23,9 @@ class FileBasedContextManager(ContextManager):
     TRUNCATED_TOOL_INPUT_MSG = (
         "[Truncated...re-run tool if you need to see input/output again.]"
     )
-    TRUNCATED_FILE_MSG = "[Truncated...content saved to {relative_path}. You can view it if needed.]"
+    TRUNCATED_FILE_MSG = (
+        "[Truncated...content saved to {relative_path}. You can view it if needed.]"
+    )
 
     def __init__(
         self,
@@ -111,12 +113,18 @@ class FileBasedContextManager(ContextManager):
                             content_hash = self._get_content_hash(message.tool_output)
                             if message.tool_name == VisitWebpageTool.name:
                                 # NOTE: assume that the previous message is a tool call
-                                previous_message = truncated_message_lists[turn_idx - 1][0]
+                                previous_message = truncated_message_lists[
+                                    turn_idx - 1
+                                ][0]
                                 if isinstance(previous_message, ToolCall):
-                                    url = previous_message.tool_input.get("url", "unknown_url")
+                                    url = previous_message.tool_input.get(
+                                        "url", "unknown_url"
+                                    )
                                 else:
                                     url = "unknown_url"
-                                    print(f"Previous message is not a tool call: {previous_message}")
+                                    print(
+                                        f"Previous message is not a tool call: {previous_message}"
+                                    )
                                 filename = self._generate_filename_from_url(
                                     url, content_hash
                                 )
@@ -143,7 +151,9 @@ class FileBasedContextManager(ContextManager):
 
                             # Update message with reference to file
                             message.tool_output = self.TRUNCATED_FILE_MSG.format(
-                                relative_path=self.workspace_manager.relative_path(filepath),
+                                relative_path=self.workspace_manager.relative_path(
+                                    filepath
+                                ),
                             )
                             self.logger.info(f"Saved {filename} to {filepath}")
                         else:

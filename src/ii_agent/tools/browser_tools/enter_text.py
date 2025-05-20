@@ -48,5 +48,5 @@ class BrowserEnterTextTool(BrowserTool):
 
         msg = f'Entered "{text}" on the keyboard. Make sure to double check that the text was entered to where you intended.'
         state = await self.browser.update_state()
-        
+
         return utils.format_screenshot_tool_output(state.screenshot, msg)

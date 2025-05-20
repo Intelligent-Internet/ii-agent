@@ -654,7 +654,9 @@ Notes for using the `str_replace` command:\n
             self._send_file_update(path, file)  # Send update after write
         except Exception as e:
             rel_path = self.workspace_manager.relative_path(path)
-            raise ToolError(f"Ran into {e} while trying to write to {rel_path}") from None
+            raise ToolError(
+                f"Ran into {e} while trying to write to {rel_path}"
+            ) from None
 
     def _make_output(
         self,

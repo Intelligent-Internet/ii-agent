@@ -111,41 +111,44 @@ def test_directory_change_persistence():
     """Test that directory changes persist between commands and affect subsequent operations."""
     # Create a temporary directory for testing
     import tempfile
-    import os
     from pathlib import Path
-    
+
     with tempfile.TemporaryDirectory() as temp_dir:
         # Create a subdirectory and some test files
         test_dir = Path(temp_dir) / "test_dir"
         test_dir.mkdir()
         (test_dir / "test.txt").write_text("test content")
-        
+
         # Initialize bash tool in the temp directory
         bash_tool = BashTool(
             workspace_root=Path(temp_dir),
             require_confirmation=False,
         )
-        
+
         # First command: cd into the subdirectory
         result1 = bash_tool.run_impl({"command": f"cd {test_dir.name} && pwd"})
         assert "test_dir" in result1.tool_output
         assert result1.auxiliary_data["success"] is True
-        
+
         # Second command: try to list the directory from current location
         result2 = bash_tool.run_impl({"command": "ls -la"})
         assert "test.txt" in result2.tool_output
         assert result2.auxiliary_data["success"] is True
-        
+
         # Third command: try to access the directory from parent
         result3 = bash_tool.run_impl({"command": f"cd .. && ls -la {test_dir.name}"})
         assert "test.txt" in result3.tool_output
         assert result3.auxiliary_data["success"] is True
-        
+
         # Fourth command: verify we're in parent directory
         result4 = bash_tool.run_impl({"command": "pwd"})
         print("Output: ", result4.tool_output)
-        assert str(test_dir.parent) in result4.tool_output and "test_dir" not in result4.tool_output
+        assert (
+            str(test_dir.parent) in result4.tool_output
+            and "test_dir" not in result4.tool_output
+        )
         assert result4.auxiliary_data["success"] is True
+
 
 class MockCommandFilter(CommandFilter):
     """Mock command filter for testing."""

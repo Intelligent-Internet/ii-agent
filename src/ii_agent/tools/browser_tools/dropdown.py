@@ -83,7 +83,7 @@ class BrowserGetSelectOptionsTool(BrowserTool):
         msg = "\n".join(formatted_options)
         msg += "\nIf you decide to use this select element, use the exact option name in select_dropdown_option"
         state = await self.browser.update_state()
-        
+
         return utils.format_screenshot_tool_output(state.screenshot, msg)
 
 

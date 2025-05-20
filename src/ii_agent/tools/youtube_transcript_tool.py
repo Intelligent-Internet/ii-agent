@@ -1,4 +1,3 @@
-import os
 from ii_agent.tools.base import (
     LLMTool,
     ToolImplOutput,
@@ -69,10 +68,10 @@ class YoutubeTranscriptTool(LLMTool):
                 if "segs" in event:
                     for seg in event["segs"]:
                         subtitle_text += seg["utf8"]
-            return ToolImplOutput(tool_output=subtitle_text, tool_result_message=subtitle_text)
+            return ToolImplOutput(
+                tool_output=subtitle_text, tool_result_message=subtitle_text
+            )
 
         except Exception as e:
             print(f"Error fetching subtitles: {str(e)}")
             return ""
-
-

@@ -23,7 +23,7 @@ class BrowserWaitTool(BrowserTool):
         await asyncio.sleep(1)
         state = await self.browser.update_state()
         state = await self.browser.handle_pdf_url_navigation()
-        
+
         msg = "Waited for page"
 
         return utils.format_screenshot_tool_output(state.screenshot, msg)

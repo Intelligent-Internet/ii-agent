@@ -214,18 +214,24 @@ class Browser:
 
         self._cdp_session = await self.context.new_cdp_session(page)
 
-        # set viewport size 
-        await self._cdp_session.send("Emulation.setDeviceMetricsOverride", {
-            "width": self.config.viewport_size["width"],
-            "height": self.config.viewport_size["height"],
-            "deviceScaleFactor": 1,
-            "mobile": False,
-        })
+        # set viewport size
+        await self._cdp_session.send(
+            "Emulation.setDeviceMetricsOverride",
+            {
+                "width": self.config.viewport_size["width"],
+                "height": self.config.viewport_size["height"],
+                "deviceScaleFactor": 1,
+                "mobile": False,
+            },
+        )
         # Optional: adjust visible size (for headless rendering)
-        await self._cdp_session.send("Emulation.setVisibleSize", {
-            "width": self.config.viewport_size["width"],
-            "height": self.config.viewport_size["height"],
-        })
+        await self._cdp_session.send(
+            "Emulation.setVisibleSize",
+            {
+                "width": self.config.viewport_size["width"],
+                "height": self.config.viewport_size["height"],
+            },
+        )
 
         self.current_page = page
 
@@ -484,18 +490,24 @@ class Browser:
         ):
             self._cdp_session = await self.context.new_cdp_session(self.current_page)
 
-            # set viewport size 
-            await self._cdp_session.send("Emulation.setDeviceMetricsOverride", {
-                "width": self.config.viewport_size["width"],
-                "height": self.config.viewport_size["height"],
-                "deviceScaleFactor": 1,
-                "mobile": False,
-            })
+            # set viewport size
+            await self._cdp_session.send(
+                "Emulation.setDeviceMetricsOverride",
+                {
+                    "width": self.config.viewport_size["width"],
+                    "height": self.config.viewport_size["height"],
+                    "deviceScaleFactor": 1,
+                    "mobile": False,
+                },
+            )
             # Optional: adjust visible size (for headless rendering)
-            await self._cdp_session.send("Emulation.setVisibleSize", {
-                "width": self.config.viewport_size["width"],
-                "height": self.config.viewport_size["height"],
-            })
+            await self._cdp_session.send(
+                "Emulation.setVisibleSize",
+                {
+                    "width": self.config.viewport_size["width"],
+                    "height": self.config.viewport_size["height"],
+                },
+            )
 
             # Store reference to the page this session belongs to
             self._cdp_session._page = self.current_page
@@ -547,15 +559,15 @@ class Browser:
     async def handle_pdf_url_navigation(self):
         page = await self.get_current_page()
         if is_pdf_url(page.url):
-            await asyncio.sleep(5) # Long sleep to ensure PDF is loaded
+            await asyncio.sleep(5)  # Long sleep to ensure PDF is loaded
             await page.keyboard.press("Escape")
             await asyncio.sleep(0.1)
             await page.keyboard.press("Control+\\")
             await asyncio.sleep(0.1)
             await page.mouse.click(
                 self.config.viewport_size["width"] * 0.75,  # Right side of screen
-                self.config.viewport_size["height"] * 0.25   # Upper portion
+                self.config.viewport_size["height"] * 0.25,  # Upper portion
             )
-            
+
         state = await self.update_state()
         return state

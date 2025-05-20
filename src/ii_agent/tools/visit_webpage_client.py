@@ -115,6 +115,7 @@ class TavilyVisitClient(BaseVisitClient):
 
         return truncate_content(content, self.max_output_length)
 
+
 class FireCrawlVisitClient(BaseVisitClient):
     name = "FireCrawl"
 
