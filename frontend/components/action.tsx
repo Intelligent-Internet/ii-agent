@@ -43,6 +43,7 @@ const Action = ({ workspaceInfo, type, value, onClick }: ActionProps) => {
     const className = "h-4 w-4 text-neutral-100 flex-shrink-0 mt-[2px]";
     switch (type) {
       case TOOL.SEQUENTIAL_THINKING:
+      case TOOL.MESSAGE_USER:
         return <Lightbulb className={className} />;
       case TOOL.WEB_SEARCH:
         return <Search className={className} />;
@@ -107,6 +108,7 @@ const Action = ({ workspaceInfo, type, value, onClick }: ActionProps) => {
   const step_title = useMemo(() => {
     switch (type) {
       case TOOL.SEQUENTIAL_THINKING:
+      case TOOL.MESSAGE_USER:
         return "Thinking";
       case TOOL.WEB_SEARCH:
         return "Searching";
@@ -175,6 +177,7 @@ const Action = ({ workspaceInfo, type, value, onClick }: ActionProps) => {
   const step_value = useMemo(() => {
     switch (type) {
       case TOOL.SEQUENTIAL_THINKING:
+      case TOOL.MESSAGE_USER:
         return value.tool_input?.thought;
       case TOOL.WEB_SEARCH:
         return value.tool_input?.query;

@@ -105,6 +105,7 @@ async def websocket_endpoint(websocket: WebSocket):
             use_caching=False,
             project_id=global_args.project_id,
             region=global_args.region,
+            thinking_tokens=2048,
         )
         
         # Initial connection message with session info

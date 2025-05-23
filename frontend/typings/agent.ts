@@ -30,6 +30,7 @@ export enum AgentEvent {
 
 export enum TOOL {
   SEQUENTIAL_THINKING = "sequential_thinking",
+  MESSAGE_USER = "message_user",
   STR_REPLACE_EDITOR = "str_replace_editor",
   BROWSER_USE = "browser_use",
   PRESENTATION = "presentation",

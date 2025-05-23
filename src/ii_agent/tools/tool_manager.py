@@ -13,6 +13,7 @@ from ii_agent.tools.visit_webpage_tool import VisitWebpageTool
 from ii_agent.tools.str_replace_tool_relative import StrReplaceEditorTool
 from ii_agent.tools.static_deploy_tool import StaticDeployTool
 from ii_agent.tools.sequential_thinking_tool import SequentialThinkingTool
+from ii_agent.tools.message_tool import MessageTool
 from ii_agent.tools.complete_tool import CompleteTool
 from ii_agent.tools.bash_tool import create_bash_tool, create_docker_bash_tool
 from ii_agent.browser.browser import Browser
@@ -69,7 +70,7 @@ def get_system_tools(
         )
 
     tools = [
-        SequentialThinkingTool(),
+        MessageTool(),
         WebSearchTool(),
         VisitWebpageTool(),
         StaticDeployTool(workspace_manager=workspace_manager),
@@ -90,6 +91,8 @@ def get_system_tools(
 
     # Conditionally add tools based on tool_args
     if tool_args:
+        if tool_args.get("sequential_thinking", False):
+            tools.append(SequentialThinkingTool())
         if tool_args.get("deep_research", False):
             tools.append(DeepResearchTool())
         if tool_args.get("pdf", False):
