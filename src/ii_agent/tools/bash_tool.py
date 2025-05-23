@@ -10,27 +10,39 @@ It also supports command filters for transforming commands before execution.
 
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-
-import pexpect
+import platform
 import re
 from abc import ABC, abstractmethod
 
 from ii_agent.llm.message_history import MessageHistory
 from ii_agent.tools.base import LLMTool, ToolImplOutput
 
+# Import the appropriate expect module based on platform
+if platform.system() == "Windows":
+    import wexpect
+    import subprocess
+else:
+    import pexpect
+
 
 def start_persistent_shell(timeout: int):
-    # Start a new Bash shell
-    child = pexpect.spawn("/bin/bash", encoding="utf-8", echo=False, timeout=timeout)
-    # Set a known, unique prompt
-    # We use a random string that is unlikely to appear otherwise
-    # so we can detect the prompt reliably.
-    custom_prompt = "PEXPECT_PROMPT>> "
-    child.sendline("stty -onlcr")
-    child.sendline("unset PROMPT_COMMAND")
-    child.sendline(f"PS1='{custom_prompt}'")
-    # Force an initial read until the newly set prompt shows up
-    child.expect(custom_prompt)
+    # Start a new shell (bash on Unix, cmd on Windows)
+    if platform.system() == "Windows":
+        child = wexpect.spawn("cmd.exe", encoding="utf-8", timeout=timeout)
+        custom_prompt = "PEXPECT_PROMPT>> "
+        child.sendline(f"prompt {custom_prompt}")
+        child.expect(custom_prompt)
+    else:
+        child = pexpect.spawn("/bin/bash", encoding="utf-8", echo=False, timeout=timeout)
+        # Set a known, unique prompt
+        # We use a random string that is unlikely to appear otherwise
+        # so we can detect the prompt reliably.
+        custom_prompt = "PEXPECT_PROMPT>> "
+        child.sendline("stty -onlcr")
+        child.sendline("unset PROMPT_COMMAND")
+        child.sendline(f"PS1='{custom_prompt}'")
+        # Force an initial read until the newly set prompt shows up
+        child.expect(custom_prompt)
     return child, custom_prompt
 
 
@@ -164,7 +176,7 @@ class DockerCommandFilter(CommandFilter):
 
 
 class BashTool(LLMTool):
-    """A tool for executing bash commands.
+    """A tool for executing shell commands.
 
     This tool allows the agent to run shell commands and get their output.
     Commands are executed in a controlled environment with appropriate safeguards.
@@ -173,14 +185,14 @@ class BashTool(LLMTool):
 
     name = "bash"
     description = """\
-Run commands in a bash shell
+Run commands in a shell (bash on Unix/Linux, cmd on Windows)
 * When invoking this tool, the contents of the \"command\" parameter does NOT need to be XML-escaped.
 * You don't have access to the internet via this tool.
-* You do have access to a mirror of common linux and python packages via apt and pip.
 * State is persistent across command calls and discussions with the user.
-* To inspect a particular line range of a file, e.g. lines 10-25, try 'sed -n 10,25p /path/to/the/file'.
+* On Windows, use Windows commands (dir, type, etc.). On Unix/Linux, use standard commands (ls, cat, etc.).
+* To inspect a particular line range of a file on Unix, try 'sed -n 10,25p /path/to/the/file'. On Windows, use 'more +10 file.txt' or similar.
 * Please avoid commands that may produce a very large amount of output.
-* Please run long lived commands in the background, e.g. 'sleep 10 &' or start a server in the background."""
+* Please run long lived commands in the background when possible."""
 
     input_schema = {
         "type": "object",

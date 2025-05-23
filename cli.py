@@ -43,7 +43,11 @@ async def async_main():
     args = parser.parse_args()
 
     if os.path.exists(args.logs_path):
-        os.remove(args.logs_path)
+        try:
+            os.remove(args.logs_path)
+        except PermissionError:
+            # File is in use, just continue
+            pass
     logger_for_agent_logs = logging.getLogger("agent_logs")
     logger_for_agent_logs.setLevel(logging.DEBUG)
     # Prevent propagation to root logger to avoid duplicate logs
