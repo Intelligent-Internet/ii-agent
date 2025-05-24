@@ -236,31 +236,13 @@ try breaking down the task into smaller steps. After call this tool to update or
                     self.message_queue.put_nowait(
                         RealtimeEvent(
                             type=EventType.AGENT_RESPONSE,
-                            content={"text": "Task completed"},
+                            content={"text": self.history.get_last_assistant_text_response()},
                         )
                     )
                     return ToolImplOutput(
                         tool_output=self.history.get_last_assistant_text_response(),
                         tool_result_message="Task completed",
                     )
-
-                if len(pending_tool_calls) > 1:
-                    raise ValueError("Only one tool call per turn is supported")
-
-                assert len(pending_tool_calls) == 1
-
-                tool_call = pending_tool_calls[0]
-
-                self.message_queue.put_nowait(
-                    RealtimeEvent(
-                        type=EventType.TOOL_CALL,
-                        content={
-                            "tool_call_id": tool_call.tool_call_id,
-                            "tool_name": tool_call.tool_name,
-                            "tool_input": tool_call.tool_input,
-                        },
-                    )
-                )
 
                 text_results = [
                     item for item in model_response if isinstance(item, TextResult)
@@ -271,59 +253,88 @@ try breaking down the task into smaller steps. After call this tool to update or
                         f"Top-level agent planning next step: {text_result.text}\n",
                     )
 
-                # Handle tool call by the agent
-                try:
-                    tool_result = self.tool_manager.run_tool(tool_call, self.history)
-                    self.history.add_tool_call_result(tool_call, tool_result)
-
+                # Handle all tool calls to ensure Gemini API gets matching responses
+                tool_results = []
+                tool_calls_params = []
+                
+                for tool_call in pending_tool_calls:
                     self.message_queue.put_nowait(
                         RealtimeEvent(
-                            type=EventType.TOOL_RESULT,
+                            type=EventType.TOOL_CALL,
                             content={
                                 "tool_call_id": tool_call.tool_call_id,
                                 "tool_name": tool_call.tool_name,
-                                "result": tool_result,
+                                "tool_input": tool_call.tool_input,
                             },
                         )
                     )
-                    if self.tool_manager.should_stop():
-                        # Add a fake model response, so the next turn is the user's
-                        # turn in case they want to resume
+
+                    # Handle tool call by the agent
+                    try:
+                        tool_result = self.tool_manager.run_tool(tool_call, self.history)
+                        tool_results.append(tool_result)
+                        tool_calls_params.append(tool_call)
+
+                        self.message_queue.put_nowait(
+                            RealtimeEvent(
+                                type=EventType.TOOL_RESULT,
+                                content={
+                                    "tool_call_id": tool_call.tool_call_id,
+                                    "tool_name": tool_call.tool_name,
+                                    "result": tool_result,
+                                },
+                            )
+                        )
+                        
+                        if self.tool_manager.should_stop():
+                            # Add all tool results before returning
+                            if tool_results:
+                                self.history.add_tool_call_results(tool_calls_params, tool_results)
+                            # Add a fake model response, so the next turn is the user's
+                            # turn in case they want to resume
+                            self.history.add_assistant_turn(
+                                [TextResult(text=COMPLETE_MESSAGE)]
+                            )
+                            self.message_queue.put_nowait(
+                                RealtimeEvent(
+                                    type=EventType.AGENT_RESPONSE,
+                                    content={"text": self.tool_manager.get_final_answer()},
+                                )
+                            )
+                            return ToolImplOutput(
+                                tool_output=self.tool_manager.get_final_answer(),
+                                tool_result_message="Task completed",
+                            )
+                    except KeyboardInterrupt:
+                        # Handle interruption during tool execution
+                        self.interrupted = True
+                        interrupt_message = "Tool execution was interrupted by user."
+                        tool_results.append(interrupt_message)
+                        tool_calls_params.append(tool_call)
+                        # Add all tool results collected so far
+                        if tool_results:
+                            self.history.add_tool_call_results(tool_calls_params, tool_results)
                         self.history.add_assistant_turn(
-                            [TextResult(text=COMPLETE_MESSAGE)]
+                            [
+                                TextResult(
+                                    text="Tool execution interrupted by user. You can resume by providing a new instruction."
+                                )
+                            ]
                         )
                         self.message_queue.put_nowait(
                             RealtimeEvent(
                                 type=EventType.AGENT_RESPONSE,
-                                content={"text": self.tool_manager.get_final_answer()},
+                                content={"text": interrupt_message},
                             )
                         )
                         return ToolImplOutput(
-                            tool_output=self.tool_manager.get_final_answer(),
-                            tool_result_message="Task completed",
+                            tool_output=interrupt_message,
+                            tool_result_message=interrupt_message,
                         )
-                except KeyboardInterrupt:
-                    # Handle interruption during tool execution
-                    self.interrupted = True
-                    interrupt_message = "Tool execution was interrupted by user."
-                    self.history.add_tool_call_result(tool_call, interrupt_message)
-                    self.history.add_assistant_turn(
-                        [
-                            TextResult(
-                                text="Tool execution interrupted by user. You can resume by providing a new instruction."
-                            )
-                        ]
-                    )
-                    self.message_queue.put_nowait(
-                        RealtimeEvent(
-                            type=EventType.AGENT_RESPONSE,
-                            content={"text": interrupt_message},
-                        )
-                    )
-                    return ToolImplOutput(
-                        tool_output=interrupt_message,
-                        tool_result_message=interrupt_message,
-                    )
+                
+                # After processing all tool calls, add all results at once
+                if tool_results:
+                    self.history.add_tool_call_results(tool_calls_params, tool_results)
 
             except KeyboardInterrupt:
                 # Handle interruption during model generation or other operations

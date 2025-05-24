@@ -75,8 +75,15 @@ class BrowserConfig:
     """
 
     cdp_url: Optional[str] = None
+
+    # Claude viewport size
+    # viewport_size: ViewportSize = field(
+    #     default_factory=lambda: {"width": 1268, "height": 951}
+    # )
+
+    # Gemini viewport size
     viewport_size: ViewportSize = field(
-        default_factory=lambda: {"width": 1268, "height": 951}
+       default_factory=lambda: {"width": 1000, "height": 1000}
     )
     storage_state: Optional[StorageState] = None
     detector: Optional[Detector] = None

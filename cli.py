@@ -93,9 +93,8 @@ async def async_main():
 
     # Initialize LLM client
     client = get_client(
-        "anthropic-direct",
-        model_name=DEFAULT_MODEL,
-        use_caching=False,
+        "gemini-direct",
+        model_name="gemini-2.5-pro-preview-05-06",
         project_id=args.project_id,
         region=args.region,
     )

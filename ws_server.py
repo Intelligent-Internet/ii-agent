@@ -100,9 +100,8 @@ async def websocket_endpoint(websocket: WebSocket):
     try:
         # Initialize LLM client
         client = get_client(
-            "anthropic-direct",
-            model_name=DEFAULT_MODEL,
-            use_caching=False,
+            "gemini-direct",
+            model_name="gemini-2.5-pro-preview-05-06",
             project_id=global_args.project_id,
             region=global_args.region,
         )
