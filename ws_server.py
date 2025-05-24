@@ -92,7 +92,7 @@ async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     active_connections.add(websocket)
 
-    workspace_manager, session_uuid = create_workspace_manager_for_connection(
+    workspace_manager, session_uuid = await create_workspace_manager_for_connection(
         global_args.workspace, global_args.use_container_workspace
     )
     print(f"Workspace manager created: {workspace_manager}")
@@ -411,7 +411,7 @@ def create_agent_for_connection(
         client=client,
         workspace_manager=workspace_manager,
         message_queue=queue,
-        container_id=global_args.docker_container_id,
+        container_id=session_id if global_args.use_container_workspace else None,
         ask_user_permission=global_args.needs_permission,
         tool_args=tool_args,
     )

@@ -23,7 +23,6 @@ from rich.panel import Panel
 from ii_agent.tools import get_system_tools
 from ii_agent.prompts.system_prompt import SYSTEM_PROMPT
 from ii_agent.agents.anthropic_fc import AnthropicFC
-from ii_agent.utils import WorkspaceManager
 from ii_agent.llm import get_client
 from ii_agent.llm.context_manager.file_based import FileBasedContextManager
 from ii_agent.llm.context_manager.standard import StandardContextManager
@@ -59,9 +58,10 @@ async def async_main():
     db_manager = DatabaseManager()
 
     # Create a new workspace manager for the CLI session
-    workspace_manager, session_id = create_workspace_manager_for_connection(
+    workspace_manager, session_id = await create_workspace_manager_for_connection(
         args.workspace, args.use_container_workspace
     )
+    print(f"Workspace manager created: {workspace_manager}")
     workspace_path = workspace_manager.root
 
     # Create a new session and get its workspace directory
@@ -100,11 +100,6 @@ async def async_main():
         region=args.region,
     )
 
-    # Initialize workspace manager with the session-specific workspace
-    workspace_manager = WorkspaceManager(
-        root=workspace_path, container_workspace=args.use_container_workspace
-    )
-
     # Initialize token counter
     token_counter = TokenCounter()
 
@@ -128,7 +123,7 @@ async def async_main():
         client=client,
         workspace_manager=workspace_manager,
         message_queue=queue,
-        container_id=args.docker_container_id,
+        container_id=session_id if args.use_container_workspace else None,
         ask_user_permission=args.needs_permission,
         tool_args={
             "deep_research": False,

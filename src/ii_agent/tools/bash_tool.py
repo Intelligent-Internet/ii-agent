@@ -198,7 +198,7 @@ Run commands in a bash shell
         workspace_root: Optional[Path] = None,
         require_confirmation: bool = True,
         command_filters: Optional[List[CommandFilter]] = None,
-        timeout: int = 60,
+        timeout: int = 600,
         additional_banned_command_strs: Optional[List[str]] = None,
     ):
         """Initialize the BashTool.

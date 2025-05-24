@@ -1,5 +1,7 @@
 from pathlib import Path
 from typing import Optional
+from ii_agent.sandbox.config import SandboxSettings
+from ii_agent.sandbox.docker_sandbox import DockerSandbox
 
 
 class WorkspaceManager:
@@ -8,6 +10,14 @@ class WorkspaceManager:
     def __init__(self, root: Path, container_workspace: Optional[Path] = None):
         self.root = root.absolute()
         self.container_workspace = container_workspace
+
+    async def create_container_workspace(self):
+        settings = SandboxSettings()
+        await DockerSandbox(
+            container_name=self.container_workspace.name,
+            config=settings,
+            volume_bindings={self.root: settings.work_dir},
+        ).create()
 
     def workspace_path(self, path: Path | str) -> Path:
         """Given a path, possibly in a container workspace, return the absolute local path."""

@@ -8,10 +8,10 @@ from ii_agent.tools.advanced_tools.image_search_tool import ImageSearchTool
 from ii_agent.tools.base import LLMTool
 from ii_agent.llm.message_history import ToolCallParameters
 from ii_agent.tools.presentation_tool import PresentationTool
+from ii_agent.tools.register_deployment import RegisterDeploymentTool
 from ii_agent.tools.web_search_tool import WebSearchTool
 from ii_agent.tools.visit_webpage_tool import VisitWebpageTool
 from ii_agent.tools.str_replace_tool_relative import StrReplaceEditorTool
-from ii_agent.tools.static_deploy_tool import StaticDeployTool
 from ii_agent.tools.sequential_thinking_tool import SequentialThinkingTool
 from ii_agent.tools.complete_tool import CompleteTool
 from ii_agent.tools.bash_tool import create_bash_tool, create_docker_bash_tool
@@ -72,7 +72,7 @@ def get_system_tools(
         SequentialThinkingTool(),
         WebSearchTool(),
         VisitWebpageTool(),
-        StaticDeployTool(workspace_manager=workspace_manager),
+        RegisterDeploymentTool(workspace_manager=workspace_manager),
         StrReplaceEditorTool(
             workspace_manager=workspace_manager, message_queue=message_queue
         ),
