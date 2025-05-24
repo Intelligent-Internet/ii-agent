@@ -106,7 +106,7 @@ async def websocket_endpoint(websocket: WebSocket):
             project_id=global_args.project_id,
             region=global_args.region,
         )
-        
+
         # Initial connection message with session info
         await websocket.send_json(
             RealtimeEvent(
@@ -203,35 +203,132 @@ async def websocket_endpoint(websocket: WebSocket):
                     )
 
                 elif msg_type == "cancel":
-                    # Cancel the current agent task if one exists
-                    if websocket in active_tasks and not active_tasks[websocket].done():
-                        active_tasks[websocket].cancel()
+                    # Get the agent for this connection
+                    agent = active_agents.get(websocket)
+                    if not agent:
                         await websocket.send_json(
                             RealtimeEvent(
-                                type=EventType.SYSTEM,
-                                content={"message": "Query canceled"},
+                                type=EventType.ERROR,
+                                content={
+                                    "message": "No active agent for this connection"
+                                },
                             ).model_dump()
                         )
+                        continue
+
+                    agent.cancel()
+
+                    # Send acknowledgment that cancellation was received
+                    await websocket.send_json(
+                        RealtimeEvent(
+                            type=EventType.SYSTEM,
+                            content={"message": "Query cancelled"},
+                        ).model_dump()
+                    )
+
+                elif msg_type == "edit_query":
+                    # Get the agent for this connection
+                    agent = active_agents.get(websocket)
+                    if not agent:
+                        await websocket.send_json(
+                            RealtimeEvent(
+                                type=EventType.ERROR,
+                                content={
+                                    "message": "No active agent for this connection"
+                                },
+                            ).model_dump()
+                        )
+                        continue
+
+                    # Cancel the agent
+                    agent.cancel()
+
+                    # Clear the agent's history from last turn to last user message
+                    agent.history.clear_from_last_to_user_message()
+
+                    # Delete events from database up to last user message if we have a session ID
+                    if agent.session_id:
+                        try:
+                            agent.db_manager.delete_events_from_last_to_user_message(
+                                agent.session_id
+                            )
+                            await websocket.send_json(
+                                RealtimeEvent(
+                                    type=EventType.SYSTEM,
+                                    content={
+                                        "message": "Session history cleared from last event to last user message"
+                                    },
+                                ).model_dump()
+                            )
+                        except Exception as e:
+                            logger.error(f"Error deleting session events: {str(e)}")
+                            await websocket.send_json(
+                                RealtimeEvent(
+                                    type=EventType.ERROR,
+                                    content={
+                                        "message": f"Error clearing history: {str(e)}"
+                                    },
+                                ).model_dump()
+                            )
                     else:
                         await websocket.send_json(
                             RealtimeEvent(
                                 type=EventType.ERROR,
-                                content={"message": "No active query to cancel"},
+                                content={"message": "No active session to clear"},
                             ).model_dump()
                         )
+
+                    # Send acknowledgment that query editing was received
+                    await websocket.send_json(
+                        RealtimeEvent(
+                            type=EventType.SYSTEM,
+                            content={"message": "Query editing mode activated"},
+                        ).model_dump()
+                    )
+
+                    # Check if there's an active task for this connection
+                    if websocket in active_tasks and not active_tasks[websocket].done():
+                        await websocket.send_json(
+                            RealtimeEvent(
+                                type=EventType.ERROR,
+                                content={
+                                    "message": "A query is already being processed"
+                                },
+                            ).model_dump()
+                        )
+                        continue
+
+                    # Process a query to the agent
+                    user_input = content.get("text", "")
+                    resume = content.get("resume", False)
+                    files = content.get("files", [])
+
+                    # Send acknowledgment
+                    await websocket.send_json(
+                        RealtimeEvent(
+                            type=EventType.PROCESSING,
+                            content={"message": "Processing your request..."},
+                        ).model_dump()
+                    )
+
+                    # Run the agent with the query in a separate task
+                    task = asyncio.create_task(
+                        run_agent_async(websocket, user_input, resume, files)
+                    )
+                    active_tasks[websocket] = task
 
                 elif msg_type == "enhance_prompt":
                     # Process a request to enhance a prompt using an LLM
                     user_input = content.get("text", "")
                     files = content.get("files", [])
-                    
+
                     # Call the enhance_prompt function from the module
                     success, message, enhanced_prompt = await enhance_user_prompt(
                         client=client,
                         user_input=user_input,
                         files=files,
                     )
-                    
+
                     if success and enhanced_prompt:
                         # Send the enhanced prompt back to the client
                         await websocket.send_json(
@@ -307,7 +404,9 @@ async def run_agent_async(
             RealtimeEvent(type=EventType.USER_MESSAGE, content={"text": user_input})
         )
         # Run the agent with the query
-        await anyio.to_thread.run_sync(agent.run_agent, user_input, files, resume)
+        await anyio.to_thread.run_sync(
+            agent.run_agent, user_input, files, resume, abandon_on_cancel=True
+        )
 
     except Exception as e:
         logger.error(f"Error running agent: {str(e)}")

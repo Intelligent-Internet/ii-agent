@@ -58,6 +58,7 @@ export default function Home() {
   const [activeFileCodeEditor, setActiveFileCodeEditor] = useState("");
   const [currentQuestion, setCurrentQuestion] = useState("");
   const [isCompleted, setIsCompleted] = useState(false);
+  const [isStopped, setIsStopped] = useState(false);
   const [workspaceInfo, setWorkspaceInfo] = useState("");
   const [isUploading, setIsUploading] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<string[]>([]);
@@ -70,6 +71,7 @@ export default function Home() {
   );
   const [browserUrl, setBrowserUrl] = useState("");
   const [isGeneratingPrompt, setIsGeneratingPrompt] = useState(false);
+  const [editingMessage, setEditingMessage] = useState<Message>();
 
   const isReplayMode = useMemo(() => !!searchParams.get("id"), [searchParams]);
 
@@ -266,6 +268,7 @@ export default function Home() {
     setIsLoading(true);
     setCurrentQuestion("");
     setIsCompleted(false);
+    setIsStopped(false);
 
     if (!sessionId) {
       const id = `${workspaceInfo}`.split("/").pop();
@@ -336,6 +339,7 @@ export default function Home() {
     setMessages([]);
     setIsLoading(false);
     setIsCompleted(false);
+    setIsStopped(false);
   };
 
   const handleOpenVSCode = () => {
@@ -350,6 +354,46 @@ export default function Home() {
     } catch {
       return null;
     }
+  };
+
+  const handleEditMessage = (newQuestion: string) => {
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      toast.error("WebSocket connection is not open. Please try again.");
+      setIsLoading(false);
+      return;
+    }
+
+    socket.send(
+      JSON.stringify({
+        type: "edit_query",
+        content: {
+          text: newQuestion,
+          files: uploadedFiles?.map((file) => `.${file}`),
+        },
+      })
+    );
+
+    // Update the edited message and remove all subsequent messages
+    setMessages((prev) => {
+      // Find the index of the message being edited
+      const editIndex = prev.findIndex((m) => m.id === editingMessage?.id);
+      if (editIndex >= 0) {
+        // Create a new array with messages up to and including the edited one
+        const updatedMessages = prev.slice(0, editIndex + 1);
+        // Update the content of the edited message
+        updatedMessages[editIndex] = {
+          ...updatedMessages[editIndex],
+          content: newQuestion,
+        };
+        return updatedMessages;
+      }
+      return prev;
+    });
+
+    setIsCompleted(false);
+    setIsStopped(false);
+    setIsLoading(true);
+    setEditingMessage(undefined);
   };
 
   const handleFileUpload = async (
@@ -711,6 +755,23 @@ export default function Home() {
     toast.success("Copied to clipboard");
   };
 
+  const handleCancelQuery = () => {
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      toast.error("WebSocket connection is not open.");
+      return;
+    }
+
+    // Send cancel message to the server
+    socket.send(
+      JSON.stringify({
+        type: "cancel",
+        content: {},
+      })
+    );
+    setIsLoading(false);
+    setIsStopped(true);
+  };
+
   useEffect(() => {
     // Connect to WebSocket when the component mounts
     const connectWebSocket = () => {
@@ -883,6 +944,7 @@ export default function Home() {
                   messages={messages}
                   isLoading={isLoading}
                   isCompleted={isCompleted}
+                  isStopped={isStopped}
                   workspaceInfo={workspaceInfo}
                   handleClickAction={handleClickAction}
                   isUploading={isUploading}
@@ -896,6 +958,10 @@ export default function Home() {
                   handleFileUpload={handleFileUpload}
                   isGeneratingPrompt={isGeneratingPrompt}
                   handleEnhancePrompt={handleEnhancePrompt}
+                  handleCancel={handleCancelQuery}
+                  editingMessage={editingMessage}
+                  setEditingMessage={setEditingMessage}
+                  handleEditMessage={handleEditMessage}
                 />
 
                 <div className="col-span-6 bg-[#1e1f23] border border-[#3A3B3F] p-4 rounded-2xl">

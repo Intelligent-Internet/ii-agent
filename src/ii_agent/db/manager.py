@@ -5,7 +5,7 @@ from pathlib import Path
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session as DBSession
 from ii_agent.db.models import Base, Session, Event
-from ii_agent.core.event import RealtimeEvent
+from ii_agent.core.event import EventType, RealtimeEvent
 
 
 class DatabaseManager:
@@ -140,3 +140,42 @@ class DatabaseManager:
         """
         with self.get_session() as session:
             return session.query(Session).filter(Session.device_id == device_id).first()
+
+    def delete_session_events(self, session_id: uuid.UUID) -> None:
+        """Delete all events for a session.
+
+        Args:
+            session_id: The UUID of the session to delete events for
+        """
+        with self.get_session() as session:
+            session.query(Event).filter(Event.session_id == str(session_id)).delete()
+
+    def delete_events_from_last_to_user_message(self, session_id: uuid.UUID) -> None:
+        """Delete events from the most recent event backwards to the last user message (inclusive).
+        This preserves the conversation history before the last user message.
+        Args:
+            session_id: The UUID of the session to delete events for
+        """
+        with self.get_session() as session:
+            # Find the last user message event
+            last_user_event = (
+                session.query(Event)
+                .filter(
+                    Event.session_id == str(session_id),
+                    Event.event_type == EventType.USER_MESSAGE.value
+                )
+                .order_by(Event.timestamp.desc())
+                .first()
+            )
+
+            if last_user_event:
+                # Delete all events after the last user message (inclusive)
+                session.query(Event).filter(
+                    Event.session_id == str(session_id),
+                    Event.timestamp >= last_user_event.timestamp
+                ).delete()
+            else:
+                # If no user message found, delete all events
+                session.query(Event).filter(
+                    Event.session_id == str(session_id)
+                ).delete()

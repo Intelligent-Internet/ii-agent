@@ -7,7 +7,7 @@ from typing import List
 from fastapi import WebSocket
 from ii_agent.agents.base import BaseAgent
 from ii_agent.core.event import EventType, RealtimeEvent
-from ii_agent.llm.base import LLMClient, TextResult
+from ii_agent.llm.base import LLMClient, TextResult, ToolCallParameters
 from ii_agent.llm.context_manager.base import ContextManager
 from ii_agent.llm.message_history import MessageHistory
 from ii_agent.tools.base import ToolImplOutput, LLMTool
@@ -16,6 +16,15 @@ from ii_agent.db.manager import DatabaseManager
 from ii_agent.tools import AgentToolManager
 from ii_agent.utils.constants import COMPLETE_MESSAGE
 from ii_agent.utils.workspace_manager import WorkspaceManager
+
+TOOL_RESULT_INTERRUPT_MESSAGE = "Tool execution interrupted by user."
+AGENT_INTERRUPT_MESSAGE = "Agent interrupted by user."
+TOOL_CALL_INTERRUPT_FAKE_MODEL_RSP = (
+    "Tool execution interrupted by user. You can resume by providing a new instruction."
+)
+AGENT_INTERRUPT_FAKE_MODEL_RSP = (
+    "Agent interrupted by user. You can resume by providing a new instruction."
+)
 
 
 class AnthropicFC(BaseAgent):
@@ -198,152 +207,104 @@ try breaking down the task into smaller steps. After call this tool to update or
             # Get tool parameters for available tools
             all_tool_params = self._validate_tool_parameters()
 
-            try:
-                current_messages = self.history.get_messages_for_llm()
-                current_tok_count = self.context_manager.count_tokens(current_messages)
-                self.logger_for_agent_logs.info(
-                    f"(Current token count: {current_tok_count})\n"
-                )
-
-                truncated_messages_for_llm = (
-                    self.context_manager.apply_truncation_if_needed(current_messages)
-                )
-
-                # NOTE:
-                # If truncation happened, the `history` object itself was modified.
-                # We need to update the message list in the `history` object to use the truncated version.
-                self.history.set_message_list(truncated_messages_for_llm)
-
-                model_response, _ = self.client.generate(
-                    messages=truncated_messages_for_llm,
-                    max_tokens=self.max_output_tokens,
-                    tools=all_tool_params,
-                    system_prompt=self.system_prompt,
-                )
-
-                if len(model_response) == 0:
-                    model_response = [TextResult(text=COMPLETE_MESSAGE)]
-
-                # Add the raw response to the canonical history
-                self.history.add_assistant_turn(model_response)
-
-                # Handle tool calls
-                pending_tool_calls = self.history.get_pending_tool_calls()
-
-                if len(pending_tool_calls) == 0:
-                    # No tools were called, so assume the task is complete
-                    self.logger_for_agent_logs.info("[no tools were called]")
-                    self.message_queue.put_nowait(
-                        RealtimeEvent(
-                            type=EventType.AGENT_RESPONSE,
-                            content={"text": "Task completed"},
-                        )
-                    )
-                    return ToolImplOutput(
-                        tool_output=self.history.get_last_assistant_text_response(),
-                        tool_result_message="Task completed",
-                    )
-
-                if len(pending_tool_calls) > 1:
-                    raise ValueError("Only one tool call per turn is supported")
-
-                assert len(pending_tool_calls) == 1
-
-                tool_call = pending_tool_calls[0]
-
-                self.message_queue.put_nowait(
-                    RealtimeEvent(
-                        type=EventType.TOOL_CALL,
-                        content={
-                            "tool_call_id": tool_call.tool_call_id,
-                            "tool_name": tool_call.tool_name,
-                            "tool_input": tool_call.tool_input,
-                        },
-                    )
-                )
-
-                text_results = [
-                    item for item in model_response if isinstance(item, TextResult)
-                ]
-                if len(text_results) > 0:
-                    text_result = text_results[0]
-                    self.logger_for_agent_logs.info(
-                        f"Top-level agent planning next step: {text_result.text}\n",
-                    )
-
-                # Handle tool call by the agent
-                try:
-                    tool_result = self.tool_manager.run_tool(tool_call, self.history)
-                    self.history.add_tool_call_result(tool_call, tool_result)
-
-                    self.message_queue.put_nowait(
-                        RealtimeEvent(
-                            type=EventType.TOOL_RESULT,
-                            content={
-                                "tool_call_id": tool_call.tool_call_id,
-                                "tool_name": tool_call.tool_name,
-                                "result": tool_result,
-                            },
-                        )
-                    )
-                    if self.tool_manager.should_stop():
-                        # Add a fake model response, so the next turn is the user's
-                        # turn in case they want to resume
-                        self.history.add_assistant_turn(
-                            [TextResult(text=COMPLETE_MESSAGE)]
-                        )
-                        self.message_queue.put_nowait(
-                            RealtimeEvent(
-                                type=EventType.AGENT_RESPONSE,
-                                content={"text": self.tool_manager.get_final_answer()},
-                            )
-                        )
-                        return ToolImplOutput(
-                            tool_output=self.tool_manager.get_final_answer(),
-                            tool_result_message="Task completed",
-                        )
-                except KeyboardInterrupt:
-                    # Handle interruption during tool execution
-                    self.interrupted = True
-                    interrupt_message = "Tool execution was interrupted by user."
-                    self.history.add_tool_call_result(tool_call, interrupt_message)
-                    self.history.add_assistant_turn(
-                        [
-                            TextResult(
-                                text="Tool execution interrupted by user. You can resume by providing a new instruction."
-                            )
-                        ]
-                    )
-                    self.message_queue.put_nowait(
-                        RealtimeEvent(
-                            type=EventType.AGENT_RESPONSE,
-                            content={"text": interrupt_message},
-                        )
-                    )
-                    return ToolImplOutput(
-                        tool_output=interrupt_message,
-                        tool_result_message=interrupt_message,
-                    )
-
-            except KeyboardInterrupt:
+            if self.interrupted:
                 # Handle interruption during model generation or other operations
-                self.interrupted = True
-                self.history.add_assistant_turn(
-                    [
-                        TextResult(
-                            text="Agent interrupted by user. You can resume by providing a new instruction."
-                        )
-                    ]
+                self.add_fake_assistant_turn(AGENT_INTERRUPT_FAKE_MODEL_RSP)
+                return ToolImplOutput(
+                    tool_output=AGENT_INTERRUPT_MESSAGE,
+                    tool_result_message=AGENT_INTERRUPT_MESSAGE,
                 )
+            current_messages = self.history.get_messages_for_llm()
+            current_tok_count = self.context_manager.count_tokens(current_messages)
+            self.logger_for_agent_logs.info(
+                f"(Current token count: {current_tok_count})\n"
+            )
+
+            truncated_messages_for_llm = (
+                self.context_manager.apply_truncation_if_needed(current_messages)
+            )
+
+            # NOTE:
+            # If truncation happened, the `history` object itself was modified.
+            # We need to update the message list in the `history` object to use the truncated version.
+            self.history.set_message_list(truncated_messages_for_llm)
+
+            model_response, _ = self.client.generate(
+                messages=truncated_messages_for_llm,
+                max_tokens=self.max_output_tokens,
+                tools=all_tool_params,
+                system_prompt=self.system_prompt,
+            )
+
+            if len(model_response) == 0:
+                model_response = [TextResult(text=COMPLETE_MESSAGE)]
+
+            # Add the raw response to the canonical history
+            self.history.add_assistant_turn(model_response)
+
+            # Handle tool calls
+            pending_tool_calls = self.history.get_pending_tool_calls()
+
+            if len(pending_tool_calls) == 0:
+                # No tools were called, so assume the task is complete
+                self.logger_for_agent_logs.info("[no tools were called]")
                 self.message_queue.put_nowait(
                     RealtimeEvent(
                         type=EventType.AGENT_RESPONSE,
-                        content={"text": "Agent interrupted by user"},
+                        content={"text": "Task completed"},
                     )
                 )
                 return ToolImplOutput(
-                    tool_output="Agent interrupted by user",
-                    tool_result_message="Agent interrupted by user",
+                    tool_output=self.history.get_last_assistant_text_response(),
+                    tool_result_message="Task completed",
+                )
+
+            if len(pending_tool_calls) > 1:
+                raise ValueError("Only one tool call per turn is supported")
+
+            assert len(pending_tool_calls) == 1
+
+            tool_call = pending_tool_calls[0]
+
+            self.message_queue.put_nowait(
+                RealtimeEvent(
+                    type=EventType.TOOL_CALL,
+                    content={
+                        "tool_call_id": tool_call.tool_call_id,
+                        "tool_name": tool_call.tool_name,
+                        "tool_input": tool_call.tool_input,
+                    },
+                )
+            )
+
+            text_results = [
+                item for item in model_response if isinstance(item, TextResult)
+            ]
+            if len(text_results) > 0:
+                text_result = text_results[0]
+                self.logger_for_agent_logs.info(
+                    f"Top-level agent planning next step: {text_result.text}\n",
+                )
+
+            # Handle tool call by the agent
+            if self.interrupted:
+                # Handle interruption during tool execution
+                self.add_tool_call_result(tool_call, TOOL_RESULT_INTERRUPT_MESSAGE)
+                self.add_fake_assistant_turn(TOOL_CALL_INTERRUPT_FAKE_MODEL_RSP)
+                return ToolImplOutput(
+                    tool_output=TOOL_RESULT_INTERRUPT_MESSAGE,
+                    tool_result_message=TOOL_RESULT_INTERRUPT_MESSAGE,
+                )
+            tool_result = self.tool_manager.run_tool(tool_call, self.history)
+
+            self.add_tool_call_result(tool_call, tool_result)
+            if self.tool_manager.should_stop():
+                # Add a fake model response, so the next turn is the user's
+                # turn in case they want to resume
+                self.add_fake_assistant_turn(self.tool_manager.get_final_answer())
+                return ToolImplOutput(
+                    tool_output=self.tool_manager.get_final_answer(),
+                    tool_result_message="Task completed",
                 )
 
         agent_answer = "Agent did not complete after max turns"
@@ -396,3 +357,38 @@ try breaking down the task into smaller steps. After call this tool to update or
         """
         self.history.clear()
         self.interrupted = False
+
+    def cancel(self):
+        """Cancel the agent execution."""
+        self.interrupted = True
+        self.logger_for_agent_logs.info("Agent cancellation requested")
+
+    def add_tool_call_result(self, tool_call: ToolCallParameters, tool_result: str):
+        """Add a tool call result to the history and send it to the message queue."""
+        self.history.add_tool_call_result(tool_call, tool_result)
+
+        self.message_queue.put_nowait(
+            RealtimeEvent(
+                type=EventType.TOOL_RESULT,
+                content={
+                    "tool_call_id": tool_call.tool_call_id,
+                    "tool_name": tool_call.tool_name,
+                    "result": tool_result,
+                },
+            )
+        )
+
+    def add_fake_assistant_turn(self, text: str):
+        """Add a fake assistant turn to the history and send it to the message queue."""
+        self.history.add_assistant_turn([TextResult(text=text)])
+        if self.interrupted:
+            rsp_type = EventType.AGENT_RESPONSE_INTERRUPTED
+        else:
+            rsp_type = EventType.AGENT_RESPONSE
+
+        self.message_queue.put_nowait(
+            RealtimeEvent(
+                type=rsp_type,
+                content={"text": text},
+            )
+        )

@@ -12,6 +12,7 @@ class EventType(str, enum.Enum):
     TOOL_CALL = "tool_call"
     TOOL_RESULT = "tool_result"
     AGENT_RESPONSE = "agent_response"
+    AGENT_RESPONSE_INTERRUPTED = "agent_response_interrupted"
     STREAM_COMPLETE = "stream_complete"
     ERROR = "error"
     SYSTEM = "system"

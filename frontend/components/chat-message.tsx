@@ -1,18 +1,21 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Check } from "lucide-react";
+import { Check, CircleStop, Pencil } from "lucide-react";
 
 import Action from "@/components/action";
 import Markdown from "@/components/markdown";
 import QuestionInput from "@/components/question-input";
 import { ActionStep, Message } from "@/typings/agent";
 import { getFileIconAndColor } from "@/utils/file-utils";
+import { Button } from "./ui/button";
+import EditQuestion from "./edit-question";
 
 interface ChatMessageProps {
   messages: Message[];
   isLoading: boolean;
   isCompleted: boolean;
+  isStopped: boolean;
   workspaceInfo: string;
   isUploading: boolean;
   isUseDeepResearch: boolean;
@@ -29,17 +32,23 @@ interface ChatMessageProps {
   handleFileUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
   isGeneratingPrompt: boolean;
   handleEnhancePrompt: () => void;
+  handleCancel?: () => void;
+  editingMessage: Message | undefined;
+  setEditingMessage: (message: Message | undefined) => void;
+  handleEditMessage: (newContent: string) => void;
 }
 
 const ChatMessage = ({
   messages,
   isLoading,
   isCompleted,
+  isStopped,
   workspaceInfo,
   isUploading,
   isUseDeepResearch,
   currentQuestion,
   messagesEndRef,
+  isReplayMode,
   handleClickAction,
   setCurrentQuestion,
   handleKeyDown,
@@ -47,7 +56,23 @@ const ChatMessage = ({
   handleFileUpload,
   isGeneratingPrompt,
   handleEnhancePrompt,
+  handleCancel,
+  editingMessage,
+  setEditingMessage,
+  handleEditMessage,
 }: ChatMessageProps) => {
+  // Helper function to check if a message is the latest user message
+  const isLatestUserMessage = (
+    message: Message,
+    allMessages: Message[]
+  ): boolean => {
+    const userMessages = allMessages.filter((msg) => msg.role === "user");
+    return (
+      userMessages.length > 0 &&
+      userMessages[userMessages.length - 1].id === message.id
+    );
+  };
+
   return (
     <div className="col-span-4">
       <motion.div
@@ -60,7 +85,7 @@ const ChatMessage = ({
           <motion.div
             key={message.id}
             className={`mb-4 ${
-              message.role === "user" ? "text-right" : "text-left"
+              message.role === "user" ? "text-right mb-8" : "text-left"
             }`}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -130,8 +155,10 @@ const ChatMessage = ({
               <motion.div
                 className={`inline-block text-left rounded-lg ${
                   message.role === "user"
-                    ? "bg-[#35363a] p-3 text-white max-w-[80%] border border-[#3A3B3F] shadow-sm whitespace-pre-wrap"
+                    ? "bg-[#35363a] p-3 max-w-[80%] text-white border border-[#3A3B3F] shadow-sm whitespace-pre-wrap"
                     : "text-white"
+                } ${
+                  editingMessage?.id === message.id ? "w-full max-w-none" : ""
                 }`}
                 initial={{ scale: 0.9 }}
                 animate={{ scale: 1 }}
@@ -142,7 +169,34 @@ const ChatMessage = ({
                 }}
               >
                 {message.role === "user" ? (
-                  message.content
+                  <div>
+                    {editingMessage?.id === message.id ? (
+                      <EditQuestion
+                        editingMessage={message.content}
+                        handleCancel={() => setEditingMessage(undefined)}
+                        handleEditMessage={handleEditMessage}
+                      />
+                    ) : (
+                      <div className="relative group">
+                        <div className="text-left">{message.content}</div>
+                        {isLatestUserMessage(message, messages) &&
+                          !isReplayMode && (
+                            <div className="absolute -bottom-[45px] -right-[20px] opacity-0 group-hover:opacity-100 transition-opacity">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="text-xs cursor-pointer hover:!bg-transparent"
+                                onClick={() => {
+                                  setEditingMessage(message);
+                                }}
+                              >
+                                <Pencil className="size-3 mr-1" />
+                              </Button>
+                            </div>
+                          )}
+                      </div>
+                    )}
+                  </div>
                 ) : (
                   <Markdown>{message.content}</Markdown>
                 )}
@@ -206,6 +260,13 @@ const ChatMessage = ({
           </div>
         )}
 
+        {isStopped && (
+          <div className="flex gap-x-2 items-center bg-[#ffbf361f] text-yellow-300 text-sm p-2 rounded-full">
+            <CircleStop className="size-4" />
+            <span>II-Agent has stopped, send a new message to continue.</span>
+          </div>
+        )}
+
         <div ref={messagesEndRef} />
       </motion.div>
       <motion.div
@@ -227,6 +288,8 @@ const ChatMessage = ({
           isUseDeepResearch={isUseDeepResearch}
           isGeneratingPrompt={isGeneratingPrompt}
           handleEnhancePrompt={handleEnhancePrompt}
+          isLoading={isLoading}
+          handleCancel={handleCancel}
         />
       </motion.div>
     </div>

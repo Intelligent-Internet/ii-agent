@@ -30,6 +30,8 @@ interface QuestionInputProps {
   isDisabled?: boolean;
   isGeneratingPrompt?: boolean;
   handleEnhancePrompt?: () => void;
+  isLoading?: boolean;
+  handleCancel?: () => void;
 }
 
 const QuestionInput = ({
@@ -47,6 +49,8 @@ const QuestionInput = ({
   isDisabled,
   isGeneratingPrompt = false,
   handleEnhancePrompt,
+  isLoading = false,
+  handleCancel,
 }: QuestionInputProps) => {
   const [files, setFiles] = useState<FileUploadStatus[]>([]);
 
@@ -214,7 +218,7 @@ const QuestionInput = ({
                   onClick={() =>
                     document.getElementById("file-upload")?.click()
                   }
-                  disabled={isUploading}
+                  disabled={isUploading || isLoading}
                 >
                   {isUploading ? (
                     <Loader2 className="size-5 text-gray-400 animate-spin" />
@@ -228,7 +232,7 @@ const QuestionInput = ({
                   multiple
                   className="hidden"
                   onChange={handleFileChange}
-                  disabled={isUploading}
+                  disabled={isUploading || isLoading}
                 />
               </label>
             )}
@@ -241,6 +245,7 @@ const QuestionInput = ({
                     : "border !border-[#ffffff0f] bg-transparent"
                 }`}
                 onClick={() => setIsUseDeepResearch?.(!isUseDeepResearch)}
+                disabled={isLoading}
               >
                 Deep Research
               </Button>
@@ -249,7 +254,7 @@ const QuestionInput = ({
 
           <div className="flex items-center gap-x-2">
             <Tooltip>
-              <TooltipTrigger>
+              <TooltipTrigger asChild>
                 <Button
                   variant="ghost"
                   size="icon"
@@ -271,13 +276,22 @@ const QuestionInput = ({
               </TooltipTrigger>
               <TooltipContent>Enhance Prompt</TooltipContent>
             </Tooltip>
-            <Button
-              disabled={!value.trim() || isDisabled}
-              onClick={() => handleSubmit(value)}
-              className="cursor-pointer !border !border-red p-4 size-10 font-bold bg-gradient-skyblue-lavender rounded-full hover:scale-105 active:scale-95 transition-transform shadow-[0_4px_10px_rgba(0,0,0,0.2)]"
-            >
-              <ArrowUp className="size-5" />
-            </Button>
+            {isLoading && handleCancel ? (
+              <Button
+                onClick={handleCancel}
+                className="cursor-pointer size-10 font-bold p-0 !bg-black rounded-full hover:scale-105 active:scale-95 transition-transform shadow-[0_4px_10px_rgba(0,0,0,0.2)]"
+              >
+                <div className="size-3 rounded-xs bg-white" />
+              </Button>
+            ) : (
+              <Button
+                disabled={!value.trim() || isDisabled || isLoading}
+                onClick={() => handleSubmit(value)}
+                className="cursor-pointer !border !border-red p-4 size-10 font-bold bg-gradient-skyblue-lavender rounded-full hover:scale-105 active:scale-95 transition-transform shadow-[0_4px_10px_rgba(0,0,0,0.2)]"
+              >
+                <ArrowUp className="size-5" />
+              </Button>
+            )}
           </div>
         </div>
       </motion.div>

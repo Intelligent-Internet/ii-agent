@@ -18,6 +18,7 @@ class MessageHistory:
 
     def __init__(self):
         self._message_lists: list[list[GeneralContentBlock]] = []
+        self._last_user_prompt_index: int | None = None  # Track the last user prompt index
 
     def add_user_prompt(
         self, prompt: str, image_blocks: list[dict[str, Any]] | None = None
@@ -30,6 +31,8 @@ class MessageHistory:
 
         user_turn.append(TextPrompt(prompt))
         self.add_user_turn(user_turn)
+        # Mark this as the last user prompt position
+        self._last_user_prompt_index = len(self._message_lists) - 1
 
     def add_user_turn(self, messages: list[GeneralContentBlock]):
         """Adds a user turn (prompts and/or tool results)."""
@@ -106,6 +109,19 @@ class MessageHistory:
     def clear(self):
         """Removes all messages."""
         self._message_lists = []
+        self._last_user_prompt_index = None
+
+    def clear_from_last_to_user_message(self):
+        """Clears messages from the last turn backwards to the last user prompt (inclusive).
+        This preserves the conversation history before the last user prompt.
+        """
+        if not self._message_lists or self._last_user_prompt_index is None:
+            return
+
+        # Keep messages up to and excluding the last user prompt
+        self._message_lists = self._message_lists[:self._last_user_prompt_index]
+        # Reset the last user prompt index since we've cleared after it
+        self._last_user_prompt_index = None
 
     def is_next_turn_user(self) -> bool:
         """Checks if the next turn should be from the user."""
