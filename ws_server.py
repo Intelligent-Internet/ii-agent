@@ -705,9 +705,9 @@ async def get_sessions_by_device_id(device_id: str):
         with db_manager.get_session() as session:
             # Use raw SQL query to get sessions with their first user message
             query = text("""
-            SELECT 
+            SELECT
                 session.id AS session_id,
-                session.*, 
+                session.*,
                 event.id AS first_event_id,
                 event.event_payload AS first_message,
                 event.timestamp AS first_event_time
@@ -716,7 +716,7 @@ async def get_sessions_by_device_id(device_id: str):
             WHERE event.id IN (
                 SELECT e.id
                 FROM event e
-                WHERE e.event_type = "user_message" 
+                WHERE e.event_type = "user_message"
                 AND e.timestamp = (
                     SELECT MIN(e2.timestamp)
                     FROM event e2
