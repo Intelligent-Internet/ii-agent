@@ -70,7 +70,6 @@ export default function Home() {
   );
   const [browserUrl, setBrowserUrl] = useState("");
   const [isGeneratingPrompt, setIsGeneratingPrompt] = useState(false);
-  const [canCancel, setCanCancel] = useState(false);
 
   const isReplayMode = useMemo(() => !!searchParams.get("id"), [searchParams]);
 
@@ -187,24 +186,6 @@ export default function Home() {
     );
   };
 
-  const handleCancelGeneration = () => {
-    if (!socket || socket.readyState !== WebSocket.OPEN) {
-      toast.error("WebSocket connection is not open. Please try again.");
-      return;
-    }
-
-    socket.send(
-      JSON.stringify({
-        type: "cancel",
-        content: {},
-      })
-    );
-
-    setIsLoading(false);
-    setCanCancel(false);
-    toast.success("Generation canceled");
-  };
-
   const handleClickAction = debounce(
     (data: ActionStep | undefined, showTabOnly = false) => {
       if (!data) return;
@@ -283,7 +264,6 @@ export default function Home() {
     if (!newQuestion.trim() || isLoading) return;
 
     setIsLoading(true);
-    setCanCancel(true);
     setCurrentQuestion("");
     setIsCompleted(false);
 
@@ -696,7 +676,6 @@ export default function Home() {
         ]);
         setIsCompleted(true);
         setIsLoading(false);
-        setCanCancel(false);
         break;
 
       case AgentEvent.UPLOAD_SUCCESS:
@@ -716,15 +695,6 @@ export default function Home() {
         toast.error(data.content.message as string);
         setIsUploading(false);
         setIsLoading(false);
-        setCanCancel(false);
-        break;
-
-      case "system":
-        // Handle system messages like cancellation confirmations
-        if (data.content.message === "Query canceled") {
-          setIsLoading(false);
-          setCanCancel(false);
-        }
         break;
     }
   };
@@ -926,8 +896,6 @@ export default function Home() {
                   handleFileUpload={handleFileUpload}
                   isGeneratingPrompt={isGeneratingPrompt}
                   handleEnhancePrompt={handleEnhancePrompt}
-                  canCancel={canCancel}
-                  handleCancelGeneration={handleCancelGeneration}
                 />
 
                 <div className="col-span-6 bg-[#1e1f23] border border-[#3A3B3F] p-4 rounded-2xl">

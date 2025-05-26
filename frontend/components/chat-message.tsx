@@ -1,12 +1,11 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Check, Square } from "lucide-react";
+import { Check } from "lucide-react";
 
 import Action from "@/components/action";
 import Markdown from "@/components/markdown";
 import QuestionInput from "@/components/question-input";
-import { Button } from "@/components/ui/button";
 import { ActionStep, Message } from "@/typings/agent";
 import { getFileIconAndColor } from "@/utils/file-utils";
 
@@ -30,8 +29,6 @@ interface ChatMessageProps {
   handleFileUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
   isGeneratingPrompt: boolean;
   handleEnhancePrompt: () => void;
-  canCancel: boolean;
-  handleCancelGeneration: () => void;
 }
 
 const ChatMessage = ({
@@ -50,8 +47,6 @@ const ChatMessage = ({
   handleFileUpload,
   isGeneratingPrompt,
   handleEnhancePrompt,
-  canCancel,
-  handleCancelGeneration,
 }: ChatMessageProps) => {
   return (
     <div className="col-span-4">
@@ -199,18 +194,6 @@ const ChatMessage = ({
                   <div className="w-2 h-2 bg-white rounded-full animate-[dot-bounce_1.2s_ease-in-out_infinite_200ms]" />
                   <div className="w-2 h-2 bg-white rounded-full animate-[dot-bounce_1.2s_ease-in-out_infinite_400ms]" />
                 </div>
-                <span className="text-sm text-gray-300">AI is thinking...</span>
-                {canCancel && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleCancelGeneration}
-                    className="ml-2 h-6 px-2 text-xs hover:bg-red-600/20 hover:text-red-400 border border-red-600/30"
-                  >
-                    <Square className="w-3 h-3 mr-1" />
-                    Stop
-                  </Button>
-                )}
               </div>
             </motion.div>
           </motion.div>

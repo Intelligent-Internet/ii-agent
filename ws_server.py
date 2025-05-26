@@ -106,7 +106,7 @@ async def websocket_endpoint(websocket: WebSocket):
             project_id=global_args.project_id,
             region=global_args.region,
         )
-        
+
         # Initial connection message with session info
         await websocket.send_json(
             RealtimeEvent(
@@ -224,14 +224,14 @@ async def websocket_endpoint(websocket: WebSocket):
                     # Process a request to enhance a prompt using an LLM
                     user_input = content.get("text", "")
                     files = content.get("files", [])
-                    
+
                     # Call the enhance_prompt function from the module
                     success, message, enhanced_prompt = await enhance_user_prompt(
                         client=client,
                         user_input=user_input,
                         files=files,
                     )
-                    
+
                     if success and enhanced_prompt:
                         # Send the enhanced prompt back to the client
                         await websocket.send_json(
@@ -606,9 +606,9 @@ async def get_sessions_by_device_id(device_id: str):
         with db_manager.get_session() as session:
             # Use raw SQL query to get sessions with their first user message
             query = text("""
-            SELECT 
+            SELECT
                 session.id AS session_id,
-                session.*, 
+                session.*,
                 event.id AS first_event_id,
                 event.event_payload AS first_message,
                 event.timestamp AS first_event_time
@@ -617,7 +617,7 @@ async def get_sessions_by_device_id(device_id: str):
             WHERE event.id IN (
                 SELECT e.id
                 FROM event e
-                WHERE e.event_type = "user_message" 
+                WHERE e.event_type = "user_message"
                 AND e.timestamp = (
                     SELECT MIN(e2.timestamp)
                     FROM event e2
