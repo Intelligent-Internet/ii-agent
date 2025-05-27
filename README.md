@@ -134,7 +134,7 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 
 1. Clone the repository
 2. Set up Python environment:
-   ```bash
+   python -m venv .venv
    python -m venv .venv
    source .venv/bin/activate  # On Windows: .venv\Scripts\activate
    pip install -e .
