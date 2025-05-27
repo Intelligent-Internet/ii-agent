@@ -50,14 +50,105 @@ class OpenRouterClient(LLMClient):
         # self.thinking_tokens = thinking_tokens # Not applicable
 
     def _map_model_name(self, model_name: str) -> str:
-        """Map Anthropic model names to OpenRouter model names."""
+        """Map Anthropic model names to OpenRouter model names or pass through direct OpenRouter model IDs."""
+        # Check if the model name already follows the OpenRouter format (provider/model)
+        if "/" in model_name and ":" in model_name:
+            # This looks like a direct OpenRouter model ID (e.g., "qwen/qwen3-32b:free"), so return it as is
+            return model_name
+        elif "/" in model_name:
+            # This is already in OpenRouter format (provider/model), so return it as is
+            return model_name
+            
+        # Otherwise, map from Anthropic model names to OpenRouter format
         model_mapping = {
             "claude-3-opus-20240229": "anthropic/claude-3-opus",
             "claude-3-sonnet-20240229": "anthropic/claude-3-sonnet",
             "claude-3-haiku-20240307": "anthropic/claude-3-haiku",
+            "claude-3-5-sonnet-20240620": "anthropic/claude-3.5-sonnet",
+            "claude-3-7-sonnet-20250219": "anthropic/claude-3.7-sonnet",
             # Add more mappings as needed
         }
         return model_mapping.get(model_name, "anthropic/claude-3-sonnet")  # Default to claude-3-sonnet if no match
+
+    def _parse_messages(self, messages: LLMMessages) -> list[ChatCompletionMessageParam]:
+        """Parse LLMMessages into OpenAI messages format, ensuring proper tool use/result pairing."""
+        openai_messages: list[ChatCompletionMessageParam] = []
+        tool_results: list[dict] = []
+        
+        for idx, message_list in enumerate(messages):
+            role = "user" if idx % 2 == 0 else "assistant"
+            current_turn_content = []
+            tool_calls_for_assistant_message = []
+            
+            # Process each message block in the turn
+            for message_block in message_list:
+                if isinstance(message_block, TextPrompt) or isinstance(message_block, TextResult):
+                    current_turn_content.append({"type": "text", "text": message_block.text})
+                elif isinstance(message_block, ImageBlock):
+                    if message_block.source.type == "base64":
+                        current_turn_content.append({
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:{message_block.source.media_type};base64,{message_block.source.data}"
+                            }
+                        })
+                    else:
+                        print(f"Warning: ImageBlock source type {message_block.source.type} not directly supported for OpenAI image_url. Skipping image.")
+                
+                elif isinstance(message_block, ToolCall):
+                    # Keep track of tool calls to ensure every tool call gets a result
+                    tool_calls_for_assistant_message.append(
+                        ChatCompletionMessageToolCall(
+                            id=message_block.tool_call_id,
+                            function={
+                                "name": message_block.tool_name,
+                                "arguments": str(message_block.tool_input),
+                            },
+                            type="function",
+                        )
+                    )
+                elif isinstance(message_block, ToolFormattedResult):
+                    # Collect tool results to be added right after assistant message with tool calls
+                    tool_results.append({
+                        "role": "tool",
+                        "tool_call_id": message_block.tool_call_id,
+                        "content": str(message_block.tool_output),
+                    })
+                else:
+                    raise ValueError(f"Unsupported message block type: {type(message_block)}")
+            
+            # Add the user or assistant message
+            if role == "user":
+                if current_turn_content:
+                    if len(current_turn_content) == 1:
+                        openai_messages.append({"role": "user", "content": current_turn_content[0]["text"]})
+                    else:
+                        openai_messages.append({"role": "user", "content": current_turn_content})
+            elif role == "assistant":
+                assistant_message_parts = {"role": "assistant"}
+                if current_turn_content:
+                    if len(current_turn_content) == 1:
+                        assistant_message_parts["content"] = current_turn_content[0]["text"]
+                    else:
+                        assistant_message_parts["content"] = current_turn_content
+                
+                if tool_calls_for_assistant_message:
+                    assistant_message_parts["tool_calls"] = tool_calls_for_assistant_message
+                
+                if "content" in assistant_message_parts or "tool_calls" in assistant_message_parts:
+                    openai_messages.append(assistant_message_parts)
+                    
+                    # Immediately add tool results after the assistant message if any
+                    if tool_results:
+                        for result in tool_results:
+                            openai_messages.append(result)
+                        tool_results = []  # Clear the results after adding them
+        
+        # Add any remaining tool results
+        for result in tool_results:
+            openai_messages.append(result)
+            
+        return openai_messages
 
     def generate(
         self,
@@ -67,7 +158,6 @@ class OpenRouterClient(LLMClient):
         temperature: float = 0.0,
         tools: list[ToolParam] = [],
         tool_choice: dict[str, str] | None = None,
-        # thinking_tokens: int | None = None, # Not applicable
     ) -> Tuple[list[AssistantContentBlock], dict[str, Any]]:
         """Generate responses using OpenRouter.
 
@@ -86,91 +176,9 @@ class OpenRouterClient(LLMClient):
 
         if system_prompt:
             openai_messages.append({"role": "system", "content": system_prompt})
-
-        for idx, message_list in enumerate(messages):
-            # Determine role based on index, assuming alternating user/assistant messages
-            # For OpenRouter/OpenAI, the first message in `messages` (if no system prompt) will be 'user'
-            # Subsequent messages alternate.
-            # If system prompt is provided, messages[0] is user, messages[1] is assistant, etc.
-            # This needs careful mapping based on how LLMMessages is structured.
-            # Assuming LLMMessages is a list of turns, where each turn is a list of content blocks.
-            # And the first turn is user, second is assistant, etc.
-
-            role = "user" if idx % 2 == 0 else "assistant"
             
-            # For OpenAI, multiple content blocks (like text and image) per message are usually
-            # represented as a list in the 'content' field of a single message object.
-            # However, tool calls and tool results are distinct message types.
-
-            current_turn_content = []
-            tool_calls_for_assistant_message = []
-            tool_results_for_user_message = []
-
-            for message_block in message_list:
-                if isinstance(message_block, TextPrompt) or isinstance(message_block, TextResult):
-                    current_turn_content.append({"type": "text", "text": message_block.text})
-                elif isinstance(message_block, ImageBlock):
-                    # OpenAI format for image content:
-                    # {
-                    #   "type": "image_url",
-                    #   "image_url": { "url": "data:image/jpeg;base64,{base64_image}" }
-                    # }
-                    # This assumes message.source.data is base64 encoded image data
-                    # and message.source.media_type is e.g. 'image/jpeg'
-                    if message_block.source.type == "base64":
-                         current_turn_content.append({
-                             "type": "image_url",
-                             "image_url": {
-                                 "url": f"data:{message_block.source.media_type};base64,{message_block.source.data}"
-                             }
-                         })
-                    else:
-                        # Handle other image source types if necessary, or raise error
-                        print(f"Warning: ImageBlock source type {message_block.source.type} not directly supported for OpenAI image_url. Skipping image.")
-                
-                elif isinstance(message_block, ToolCall):
-                    # This block means the *assistant* previously made a tool call.
-                    # These are added as a list to the assistant's message.
-                    tool_calls_for_assistant_message.append(
-                        ChatCompletionMessageToolCall(
-                            id=message_block.tool_call_id,
-                            function={
-                                "name": message_block.tool_name,
-                                "arguments": str(message_block.tool_input), # OpenAI expects stringified JSON
-                            },
-                            type="function",
-                        )
-                    )
-                elif isinstance(message_block, ToolFormattedResult):
-                    # This block means the *user* is providing a tool result.
-                    # These are individual messages with role 'tool'.
-                     openai_messages.append({
-                         "role": "tool",
-                         "tool_call_id": message_block.tool_call_id,
-                         "content": str(message_block.tool_output), # Content of the tool result
-                     })
-                else:
-                    raise ValueError(f"Unsupported message block type: {type(message_block)}")
-
-            if role == "user":
-                if current_turn_content: # User messages will have content
-                    openai_messages.append({"role": "user", "content": current_turn_content})
-                # tool_results_for_user_message are handled above as separate 'tool' role messages
-            
-            elif role == "assistant":
-                assistant_message_parts: dict[str, Any] = {"role": "assistant"}
-                if current_turn_content: # Assistant text response
-                    # OpenAI expects a single string for content if no tool calls, or if text is the only part
-                    # If there are multiple text parts (not typical for assistant), it should be a list.
-                    # For simplicity, assuming assistant text response is a single string.
-                    assistant_message_parts["content"] = current_turn_content[0]["text"] if len(current_turn_content) == 1 else current_turn_content
-                
-                if tool_calls_for_assistant_message: # Assistant tool calls
-                    assistant_message_parts["tool_calls"] = tool_calls_for_assistant_message
-                
-                if "content" in assistant_message_parts or "tool_calls" in assistant_message_parts:
-                    openai_messages.append(assistant_message_parts)
-
+        # Parse messages with our new method that ensures proper tool use/result pairing
+        openai_messages.extend(self._parse_messages(messages))
 
         openai_tools: list[ChatCompletionToolParam] | None = None
         if tools:

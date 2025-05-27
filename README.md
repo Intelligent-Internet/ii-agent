@@ -123,6 +123,12 @@ ANTHROPIC_API_KEY=your_anthropic_key
 OPENROUTER_API_KEY=your_openrouter_key
 # Option 3: Google Vertex (recommended if you have permission for extra throughput)
 #GOOGLE_APPLICATION_CREDENTIALS=path_to_credentials_file
+
+# Model Configuration (optional)
+# Override the default model with any OpenRouter-compatible model name
+#LLM_MODEL="google/gemini-2.5-flash-preview-05-20"
+#LLM_MODEL="qwen/qwen3-32b:free"
+#LLM_MODEL="anthropic/claude-3.5-sonnet"
 ```
 
 ### Frontend Environment Variables
@@ -157,6 +163,14 @@ The system will automatically detect available API keys and use them in the foll
 1. Anthropic API key (if `ANTHROPIC_API_KEY` is set)
 2. OpenRouter API key (if `OPENROUTER_API_KEY` is set)
 3. Google Vertex (if `GOOGLE_APPLICATION_CREDENTIALS` is set)
+
+**Model Selection:**
+- By default, the system uses `claude-3-7-sonnet@20250219`
+- You can override this by setting the `LLM_MODEL` environment variable
+- When using OpenRouter, you can specify any model available on their platform:
+  - `LLM_MODEL="google/gemini-2.5-flash-preview-05-20"`
+  - `LLM_MODEL="anthropic/claude-3.5-sonnet"`
+  - See [OpenRouter Models](https://openrouter.ai/models) for the full list
 
 To use the CLI with Anthropic or OpenRouter:
 ```bash
