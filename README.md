@@ -116,10 +116,19 @@ TAVILY_API_KEY=your_tavily_key
 
 STATIC_FILE_BASE_URL=http://localhost:8000/
 
-#If you are using Anthropic client
-ANTHROPIC_API_KEY=
-#If you are using Goolge Vertex (recommended if you have permission extra throughput)
-#GOOGLE_APPLICATION_CREDENTIALS=
+# LLM API Keys (use either one of these options)
+# Option 1: Anthropic API Key
+ANTHROPIC_API_KEY=your_anthropic_key
+# Option 2: OpenRouter API Key (can be used as an alternative to Anthropic)
+OPENROUTER_API_KEY=your_openrouter_key
+# Option 3: Google Vertex (recommended if you have permission for extra throughput)
+#GOOGLE_APPLICATION_CREDENTIALS=path_to_credentials_file
+
+# Model Configuration (optional)
+# Override the default model with any OpenRouter-compatible model name
+#LLM_MODEL="google/gemini-2.5-flash-preview-05-20"
+#LLM_MODEL="qwen/qwen3-32b:free"
+#LLM_MODEL="anthropic/claude-3.5-sonnet"
 ```
 
 ### Frontend Environment Variables
@@ -150,12 +159,25 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 
 ### Command Line Interface
 
-If you want to use anthropic client, set `ANTHROPIC_API_KEY` in `.env` file and run:
+The system will automatically detect available API keys and use them in the following order of priority:
+1. Anthropic API key (if `ANTHROPIC_API_KEY` is set)
+2. OpenRouter API key (if `OPENROUTER_API_KEY` is set)
+3. Google Vertex (if `GOOGLE_APPLICATION_CREDENTIALS` is set)
+
+**Model Selection:**
+- By default, the system uses `claude-3-7-sonnet@20250219`
+- You can override this by setting the `LLM_MODEL` environment variable
+- When using OpenRouter, you can specify any model available on their platform:
+  - `LLM_MODEL="google/gemini-2.5-flash-preview-05-20"`
+  - `LLM_MODEL="anthropic/claude-3.5-sonnet"`
+  - See [OpenRouter Models](https://openrouter.ai/models) for the full list
+
+To use the CLI with Anthropic or OpenRouter:
 ```bash
 python cli.py 
 ```
 
-If you want to use vertex, set `GOOGLE_APPLICATION_CREDENTIALS` in `.env` file and run:
+To explicitly use Google Vertex:
 ```bash
 python cli.py --project-id YOUR_PROJECT_ID --region YOUR_REGION
 ```
@@ -171,13 +193,13 @@ Options:
 
 1. Start the WebSocket server:
 
-When using Anthropic client:
+When using Anthropic client or OpenRouter (the system will auto-detect available API keys):
 ```bash
 export STATIC_FILE_BASE_URL=http://localhost:8000
 python ws_server.py --port 8000
 ```
 
-When using Vertex:
+When explicitly using Vertex:
 ```bash
 export STATIC_FILE_BASE_URL=http://localhost:8000
 python ws_server.py --port 8000 --project-id YOUR_PROJECT_ID --region YOUR_REGION
