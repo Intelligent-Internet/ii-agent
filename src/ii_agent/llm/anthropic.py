@@ -66,7 +66,6 @@ class AnthropicDirectClient(LLMClient):
         thinking_tokens: int = 0,
         project_id: None | str = None,
         region: None | str = None,
-        base_url: None | str = None,
     ):
         """Initialize the Anthropic first party client."""
         # Disable retries since we are handling retries ourselves.
@@ -80,7 +79,7 @@ class AnthropicDirectClient(LLMClient):
         else:
             api_key = os.getenv("ANTHROPIC_API_KEY")
             self.client = anthropic.Anthropic(
-                api_key=api_key, max_retries=1, timeout=60 * 5, base_url=base_url
+                api_key=api_key, max_retries=1, timeout=60 * 5
             )
             model_name = model_name.replace(
                 "@", "-"

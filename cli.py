@@ -92,12 +92,11 @@ async def async_main():
         )
 
     # Initialize LLM client
+    # Client will be auto-detected based on ANTHROPIC_API_KEY or OPENROUTER_API_KEY
     client = get_client(
-        "anthropic-direct",
-        model_name=DEFAULT_MODEL,
-        use_caching=False,
-        project_id=args.project_id,
-        region=args.region,
+        model_name=os.getenv("LLM_MODEL", DEFAULT_MODEL), # Use LLM_MODEL env var or DEFAULT_MODEL
+        # Pass any other relevant kwargs like max_retries if needed by all clients
+        # For example: max_retries=args.max_retries if you add such an arg
     )
 
     # Initialize workspace manager with the session-specific workspace

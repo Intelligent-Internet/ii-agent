@@ -120,13 +120,17 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 if msg_type == "init_agent":
                     # Initialize LLM client
+                    # Client will be auto-detected based on ANTHROPIC_API_KEY or OPENROUTER_API_KEY
                     client = get_client(
-                        "anthropic-direct",
-                        model_name=DEFAULT_MODEL,
-                        use_caching=False,
-                        project_id=global_args.project_id,
-                        region=global_args.region,
-                        thinking_tokens=content.get("thinking_tokens", 2048),
+                        model_name=os.getenv("LLM_MODEL", DEFAULT_MODEL), # Use LLM_MODEL or DEFAULT_MODEL
+                        # Pass relevant kwargs. For instance, AnthropicDirectClient accepts project_id, region, thinking_tokens.
+                        # OpenRouterClient currently only takes model_name and max_retries.
+                        # The get_client function filters kwargs for OpenRouter.
+                        # For Anthropic, it passes all kwargs.
+                        project_id=global_args.project_id, # Will be used if Anthropic client is chosen
+                        region=global_args.region,         # Will be used if Anthropic client is chosen
+                        thinking_tokens=content.get("thinking_tokens", 0) # Will be used if Anthropic client is chosen, default 0
+                        # max_retries could be a global_arg or a fixed value if needed
                     )
 
                     # Create a new agent for this connection
@@ -322,18 +326,19 @@ async def websocket_endpoint(websocket: WebSocket):
                     # Process a request to enhance a prompt using an LLM
                     user_input = content.get("text", "")
                     files = content.get("files", [])
-                    # Initialize LLM client
-                    client = get_client(
-                        "anthropic-direct",
-                        model_name=DEFAULT_MODEL,
-                        use_caching=False,
-                        project_id=global_args.project_id,
+                    # Initialize LLM client for prompt enhancement
+                    # This specific use case in ws_server.py was hardcoded to "anthropic-direct"
+                    # We can keep it explicit if it always needs Anthropic for this, or use auto-detection.
+                    # For now, let's make it use auto-detection too, passing necessary Anthropic args if that path is taken.
+                    enhance_client = get_client(
+                        model_name=os.getenv("LLM_MODEL", DEFAULT_MODEL),
+                        project_id=global_args.project_id, 
                         region=global_args.region,
-                        thinking_tokens=0, # Don't need thinking tokens for this
+                        thinking_tokens=0, # Explicitly 0 for prompt enhancement
                     )
                     # Call the enhance_prompt function from the module
                     success, message, enhanced_prompt = await enhance_user_prompt(
-                        client=client,
+                        client=enhance_client,
                         user_input=user_input,
                         files=files,
                     )
