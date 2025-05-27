@@ -213,12 +213,13 @@ class OpenRouterClient(LLMClient):
                     messages=openai_messages,
                     max_tokens=max_tokens,
                     temperature=temperature,
-                    tools=openai_tools if openai_tools else None, # Pass None if no tools
-                    tool_choice=openai_tool_choice if openai_tool_choice else None, # Pass None if no specific choice
+                    tools=openai_tools if openai_tools else None,
+                    tool_choice=openai_tool_choice if openai_tool_choice else None,
                     extra_headers=extra_headers,
+                    extra_body={"transforms": ["middle-out"]},  # Pass custom OpenRouter parameters
                 )
                 response = api_response # Keep the full response for metadata
-                break 
+                break
             except (APIConnectionError, InternalServerError, RateLimitError) as e:
                 if attempt == self.max_retries:
                     print(f"Failed OpenRouter request after {attempt + 1} retries: {e}")
