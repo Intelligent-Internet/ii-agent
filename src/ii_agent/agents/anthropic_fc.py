@@ -261,54 +261,61 @@ try breaking down the task into smaller steps. After call this tool to update or
                     tool_result_message="Task completed",
                 )
 
-            if len(pending_tool_calls) > 1:
-                raise ValueError("Only one tool call per turn is supported")
+            all_tool_outputs = [] # Store outputs from all tool calls in this turn
 
-            assert len(pending_tool_calls) == 1
-
-            tool_call = pending_tool_calls[0]
-
-            self.message_queue.put_nowait(
-                RealtimeEvent(
-                    type=EventType.TOOL_CALL,
-                    content={
-                        "tool_call_id": tool_call.tool_call_id,
-                        "tool_name": tool_call.tool_name,
-                        "tool_input": tool_call.tool_input,
-                    },
-                )
-            )
-
-            text_results = [
-                item for item in model_response if isinstance(item, TextResult)
-            ]
-            if len(text_results) > 0:
-                text_result = text_results[0]
-                self.logger_for_agent_logs.info(
-                    f"Top-level agent planning next step: {text_result.text}\n",
+            for tool_call in pending_tool_calls: # Loop through all pending tool calls
+                self.message_queue.put_nowait(
+                    RealtimeEvent(
+                        type=EventType.TOOL_CALL,
+                        content={
+                            "tool_call_id": tool_call.tool_call_id,
+                            "tool_name": tool_call.tool_name,
+                            "tool_input": tool_call.tool_input,
+                        },
+                    )
                 )
 
-            # Handle tool call by the agent
-            if self.interrupted:
-                # Handle interruption during tool execution
-                self.add_tool_call_result(tool_call, TOOL_RESULT_INTERRUPT_MESSAGE)
-                self.add_fake_assistant_turn(TOOL_CALL_INTERRUPT_FAKE_MODEL_RSP)
-                return ToolImplOutput(
-                    tool_output=TOOL_RESULT_INTERRUPT_MESSAGE,
-                    tool_result_message=TOOL_RESULT_INTERRUPT_MESSAGE,
-                )
-            tool_result = self.tool_manager.run_tool(tool_call, self.history)
+                text_results = [
+                    item for item in model_response if isinstance(item, TextResult)
+                ]
+                if len(text_results) > 0:
+                    # Log the assistant's thinking or text response that led to this tool call
+                    # This might need refinement if multiple text blocks are associated with different tool calls
+                    text_result = text_results[0] 
+                    self.logger_for_agent_logs.info(
+                        f"Assistant planning for tool '{tool_call.tool_name}': {text_result.text}\n",
+                    )
 
-            self.add_tool_call_result(tool_call, tool_result)
-            if self.tool_manager.should_stop():
-                # Add a fake model response, so the next turn is the user's
-                # turn in case they want to resume
-                self.add_fake_assistant_turn(self.tool_manager.get_final_answer())
-                return ToolImplOutput(
-                    tool_output=self.tool_manager.get_final_answer(),
-                    tool_result_message="Task completed",
-                )
+                # Handle tool call by the agent
+                if self.interrupted:
+                    # Handle interruption during tool execution
+                    self.add_tool_call_result(tool_call, TOOL_RESULT_INTERRUPT_MESSAGE)
+                    all_tool_outputs.append(TOOL_RESULT_INTERRUPT_MESSAGE)
+                    # If interrupted, we might want to stop processing further tool calls in this turn
+                    self.add_fake_assistant_turn(TOOL_CALL_INTERRUPT_FAKE_MODEL_RSP)
+                    return ToolImplOutput(
+                        tool_output=TOOL_RESULT_INTERRUPT_MESSAGE, # Or a summary of processed calls
+                        tool_result_message=TOOL_RESULT_INTERRUPT_MESSAGE,
+                    )
+                
+                tool_result = self.tool_manager.run_tool(tool_call, self.history)
+                all_tool_outputs.append(tool_result)
+                self.add_tool_call_result(tool_call, tool_result)
 
+                if self.tool_manager.should_stop():
+                    # Add a fake model response, so the next turn is the user's
+                    # turn in case they want to resume
+                    self.add_fake_assistant_turn(self.tool_manager.get_final_answer())
+                    return ToolImplOutput(
+                        tool_output=self.tool_manager.get_final_answer(),
+                        tool_result_message="Task completed by tool stop.",
+                    )
+            
+            # After processing all tool calls for the current turn,
+            # the loop will continue for another LLM turn, unless max_turns is reached.
+            # The LLM will then decide if the task is complete based on the results of all tool calls.
+
+        # This part is reached if max_turns is exceeded
         agent_answer = "Agent did not complete after max turns"
         self.message_queue.put_nowait(
             RealtimeEvent(type=EventType.AGENT_RESPONSE, content={"text": agent_answer})
