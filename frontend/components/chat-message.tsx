@@ -17,24 +17,28 @@ interface ChatMessageProps {
   isCompleted: boolean;
   isStopped: boolean;
   workspaceInfo: string;
+  handleClickAction: (
+    data: ActionStep | undefined,
+    showTabOnly?: boolean
+  ) => void;
   isUploading: boolean;
   isReplayMode: boolean;
   currentQuestion: string;
   messagesEndRef: React.RefObject<HTMLDivElement | null>;
-  handleClickAction: (
-    action: ActionStep | undefined,
-    isReplay?: boolean
-  ) => void;
-  setCurrentQuestion: (question: string) => void;
+  setCurrentQuestion: (value: string) => void;
   handleKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
   handleQuestionSubmit: (question: string) => void;
   handleFileUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  handleGoogleDriveAuth: () => Promise<boolean>;
+  isGoogleDriveConnected?: boolean;
   isGeneratingPrompt: boolean;
   handleEnhancePrompt: () => void;
-  handleCancel?: () => void;
-  editingMessage: Message | undefined;
-  setEditingMessage: (message: Message | undefined) => void;
-  handleEditMessage: (newContent: string) => void;
+  handleCancel: () => void;
+  editingMessage?: Message;
+  setEditingMessage: (message?: Message) => void;
+  handleEditMessage: (newQuestion: string) => void;
+  googlePickerApiLoaded: boolean;
+  setIsGoogleDriveConnected: (value: boolean) => void;
 }
 
 const ChatMessage = ({
@@ -58,6 +62,10 @@ const ChatMessage = ({
   editingMessage,
   setEditingMessage,
   handleEditMessage,
+  handleGoogleDriveAuth,
+  isGoogleDriveConnected,
+  googlePickerApiLoaded,
+  setIsGoogleDriveConnected,
 }: ChatMessageProps) => {
   // Helper function to check if a message is the latest user message
   const isLatestUserMessage = (
@@ -282,11 +290,15 @@ const ChatMessage = ({
           handleKeyDown={handleKeyDown}
           handleSubmit={handleQuestionSubmit}
           handleFileUpload={handleFileUpload}
+          handleGoogleDriveAuth={handleGoogleDriveAuth}
+          isGoogleDriveConnected={isGoogleDriveConnected}
           isUploading={isUploading}
           isGeneratingPrompt={isGeneratingPrompt}
           handleEnhancePrompt={handleEnhancePrompt}
           isLoading={isLoading}
           handleCancel={handleCancel}
+          googlePickerApiLoaded={googlePickerApiLoaded}
+          setIsGoogleDriveConnected={setIsGoogleDriveConnected}
         />
       </motion.div>
     </div>

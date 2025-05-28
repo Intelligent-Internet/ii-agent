@@ -135,3 +135,14 @@ export interface ToolSettings {
   audio_generation: boolean;
   browser: boolean;
 }
+export interface GooglePickerResponse {
+  action: string;
+  docs?: Array<GoogleDocument>;
+}
+
+export interface GoogleDocument {
+  id: string;
+  name: string;
+  thumbnailUrl: string;
+  mimeType: string;
+}
