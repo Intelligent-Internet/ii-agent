@@ -40,6 +40,7 @@ dependencies = [
     "termcolor>=3.0.1",
     "uvicorn[standard]>=0.29.0,<0.30.0",
     "youtube-transcript-api>=1.0.3",
+    "docker>=7.1.0",
 ]
 
 [project.optional-dependencies]
@@ -56,3 +57,6 @@ gaia = [
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ii_agent"]

@@ -40,6 +40,7 @@ export enum TOOL {
   BASH = "bash",
   COMPLETE = "complete",
   STATIC_DEPLOY = "static_deploy",
+  REGISTER_DEPLOYMENT = "register_deployment",
   PDF_TEXT_EXTRACT = "pdf_text_extract",
   AUDIO_TRANSCRIBE = "audio_transcribe",
   GENERATE_AUDIO_RESPONSE = "generate_audio_response",

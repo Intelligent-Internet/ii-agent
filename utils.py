@@ -26,15 +26,9 @@ def parse_common_args(parser: ArgumentParser):
     )
     parser.add_argument(
         "--use-container-workspace",
-        type=str,
-        default=None,
-        help="(Optional) Path to the container workspace to run commands in.",
-    )
-    parser.add_argument(
-        "--docker-container-id",
-        type=str,
-        default=None,
-        help="(Optional) Docker container ID to run commands in.",
+        help="Use docker container to run commands in",
+        action="store_true",
+        default=False,
     )
     parser.add_argument(
         "--minimize-stdout-logs",
@@ -64,7 +58,7 @@ def parse_common_args(parser: ArgumentParser):
     return parser
 
 
-def create_workspace_manager_for_connection(
+async def create_workspace_manager_for_connection(
     workspace_root: str, use_container_workspace: bool = False
 ):
     """Create a new workspace manager instance for a websocket connection."""
@@ -73,11 +67,17 @@ def create_workspace_manager_for_connection(
     workspace_path = Path(workspace_root).resolve()
     connection_workspace = workspace_path / connection_id
     connection_workspace.mkdir(parents=True, exist_ok=True)
+    connection_workspace_path = (
+        connection_workspace if use_container_workspace else None
+    )
 
     # Initialize workspace manager with connection-specific subdirectory
     workspace_manager = WorkspaceManager(
         root=connection_workspace,
-        container_workspace=use_container_workspace,
+        container_workspace=connection_workspace_path,
     )
+
+    if use_container_workspace:
+        await workspace_manager.create_container_workspace()
 
     return workspace_manager, connection_id

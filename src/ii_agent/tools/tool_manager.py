@@ -8,10 +8,11 @@ from ii_agent.tools.advanced_tools.image_search_tool import ImageSearchTool
 from ii_agent.tools.base import LLMTool
 from ii_agent.llm.message_history import ToolCallParameters
 from ii_agent.tools.presentation_tool import PresentationTool
+from ii_agent.tools.register_deployment import RegisterDeploymentTool
+from ii_agent.tools.static_deploy_tool import StaticDeployTool
 from ii_agent.tools.web_search_tool import WebSearchTool
 from ii_agent.tools.visit_webpage_tool import VisitWebpageTool
 from ii_agent.tools.str_replace_tool_relative import StrReplaceEditorTool
-from ii_agent.tools.static_deploy_tool import StaticDeployTool
 from ii_agent.tools.sequential_thinking_tool import SequentialThinkingTool
 from ii_agent.tools.message_tool import MessageTool
 from ii_agent.tools.complete_tool import CompleteTool, ReturnControlToUserTool
@@ -73,7 +74,6 @@ def get_system_tools(
         MessageTool(),
         WebSearchTool(),
         VisitWebpageTool(),
-        StaticDeployTool(workspace_manager=workspace_manager),
         StrReplaceEditorTool(
             workspace_manager=workspace_manager, message_queue=message_queue
         ),
@@ -85,6 +85,11 @@ def get_system_tools(
             message_queue=message_queue,
         ),
     ]
+    if container_id is not None:
+        tools.append(RegisterDeploymentTool(workspace_manager=workspace_manager))
+    else:
+        tools.append(StaticDeployTool(workspace_manager=workspace_manager))
+
     image_search_tool = ImageSearchTool()
     if image_search_tool.is_available():
         tools.append(image_search_tool)
@@ -154,9 +159,16 @@ class AgentToolManager:
     search capabilities, and task completion functionality.
     """
 
-    def __init__(self, tools: List[LLMTool], logger_for_agent_logs: logging.Logger, interactive_mode: bool = True):
+    def __init__(
+        self,
+        tools: List[LLMTool],
+        logger_for_agent_logs: logging.Logger,
+        interactive_mode: bool = True,
+    ):
         self.logger_for_agent_logs = logger_for_agent_logs
-        self.complete_tool = ReturnControlToUserTool() if interactive_mode else CompleteTool()
+        self.complete_tool = (
+            ReturnControlToUserTool() if interactive_mode else CompleteTool()
+        )
         self.tools = tools
 
     def get_tool(self, tool_name: str) -> LLMTool:

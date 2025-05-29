@@ -1,0 +1,80 @@
+services:
+  proxy_server:
+    build:
+      context: ..
+      dockerfile: docker/proxy_server/Dockerfile
+    image: proxy_server
+    ports:
+      - "${PROXY_SERVER_PORT:-9000}:8000"
+    profiles:
+      - sandbox
+    networks:
+      - ii
+
+  frontend:
+    build:
+      context: ..
+      dockerfile: docker/frontend/Dockerfile
+    image: frontend
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    volumes:
+      - ${WORKSPACE_PATH:-../workspace}:/app/workspace
+    networks:
+      - ii
+
+  nginx:
+    build:
+      context: ..
+      dockerfile: docker/nginx/Dockerfile
+    image: nginx
+    environment:
+      - PUBLIC_DOMAIN=${PUBLIC_DOMAIN}
+    ports:
+      - "80:80"
+    profiles:
+      - sandbox
+    networks:
+      - ii
+
+  sandbox:
+    build:
+      context: ..
+      dockerfile: docker/sandbox/Dockerfile
+    image: sandbox
+    profiles:
+      - sandbox
+    deploy:
+      replicas: 0
+
+  backend:
+    build:
+      context: ..
+      dockerfile: docker/backend/Dockerfile
+    image: backend
+    init: true
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    env_file: 
+      - ../.env
+    environment:
+      - COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME}
+      - PROXY_SERVER_URL=http://proxy_server:8000
+      - PUBLIC_DOMAIN=${PUBLIC_DOMAIN}
+      #Path of mounted file
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/google-application-credentials.json
+      - PROJECT_ID=${PROJECT_ID}
+      - REGION=${REGION}
+      - WORKSPACE_PATH=${WORKSPACE_PATH}
+      - USE_DOCKER_SANDBOX=${USE_DOCKER_SANDBOX}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock #ONLY WORK FOR UNIX FOR NOW
+      - ${WORKSPACE_PATH:-../workspace}:/app/workspace
+      #If file doesn't exist, use a dummy file
+      - ${GOOGLE_APPLICATION_CREDENTIALS:-.dummy-credentials.json}:/app/google-application-credentials.json
+    networks:
+      - ii
+
+networks:
+  ii:
+    name: ii

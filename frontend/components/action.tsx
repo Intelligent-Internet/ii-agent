@@ -20,6 +20,7 @@ import {
   Terminal,
   Video,
   Presentation,
+  Unplug,
 } from "lucide-react";
 import { useEffect, useMemo, useRef } from "react";
 
@@ -58,6 +59,8 @@ const Action = ({ workspaceInfo, type, value, onClick }: ActionProps) => {
         return <Code className={className} />;
       case TOOL.STATIC_DEPLOY:
         return <Rocket className={className} />;
+      case TOOL.REGISTER_DEPLOYMENT:
+        return <Unplug className={className} />;
       case TOOL.PDF_TEXT_EXTRACT:
         return <FileText className={className} />;
       case TOOL.AUDIO_TRANSCRIBE:
@@ -127,6 +130,8 @@ const Action = ({ workspaceInfo, type, value, onClick }: ActionProps) => {
           : "Editing File";
       case TOOL.STATIC_DEPLOY:
         return "Deploying";
+      case TOOL.REGISTER_DEPLOYMENT:
+        return "Registering Deployment";
       case TOOL.PDF_TEXT_EXTRACT:
         return "Extracting Text";
       case TOOL.AUDIO_TRANSCRIBE:
