@@ -2,6 +2,7 @@ from argparse import ArgumentParser
 import uuid
 from pathlib import Path
 from ii_agent.utils import WorkspaceManager
+from ii_agent.utils.constants import DEFAULT_MODEL
 
 
 def parse_common_args(parser: ArgumentParser):
@@ -67,6 +68,19 @@ def parse_common_args(parser: ArgumentParser):
         default="compactify-memory",
         choices=["compactify-memory", "none", "simple"],
         help="Type of memory tool to use"
+    )
+    parser.add_argument(
+        "--llm-client",
+        type=str,
+        default="anthropic-direct",
+        choices=["anthropic-direct", "openai-direct"],
+        help="LLM client to use (anthropic-direct or openai-direct for LMStudio/local)",
+    )
+    parser.add_argument(
+        "--model-name",
+        type=str,
+        default=DEFAULT_MODEL,
+        help="Name of the LLM model to use (e.g., claude-3-opus-20240229 or local-model-identifier for LMStudio)",
     )
     return parser
 

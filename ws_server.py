@@ -86,13 +86,19 @@ active_tasks: Dict[WebSocket, asyncio.Task] = {}
 message_processors: Dict[WebSocket, asyncio.Task] = {}
 
 # Store global args for use in endpoint
-global_args = None
+global_args: argparse.Namespace | None = None # Define type for global_args
 
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     active_connections.add(websocket)
+
+    # Ensure global_args is available
+    if global_args is None:
+        logger.error("global_args not initialized. Ensure main() is called.")
+        await websocket.close(code=1011, reason="Server configuration error")
+        return
 
     workspace_manager, session_uuid = create_workspace_manager_for_connection(
         global_args.workspace, global_args.use_container_workspace
@@ -121,15 +127,31 @@ async def websocket_endpoint(websocket: WebSocket):
                 content = message.get("content", {})
 
                 if msg_type == "init_agent":
-                    model_name = content.get("model_name", DEFAULT_MODEL)
-                    # Initialize LLM client
+                    # Use model_name from message, or fallback to global_args.model_name
+                    model_name_from_msg = content.get("model_name")
+                    current_model_name = model_name_from_msg if model_name_from_msg else (global_args.model_name if global_args else None)
+                    if not current_model_name:
+                        logger.error("Model name could not be determined.")
+                        await websocket.send_json(
+                            RealtimeEvent(
+                                type=EventType.ERROR,
+                                content={"message": "Model name not configured."},
+                            ).model_dump()
+                        )
+                        continue
+                    
+                    client_init_kwargs = {
+                        "model_name": current_model_name,
+                    }
+                    if global_args.llm_client == "anthropic-direct":
+                        client_init_kwargs["use_caching"] = False
+                        client_init_kwargs["thinking_tokens"] = content.get("thinking_tokens", 2048)
+                        client_init_kwargs["project_id"] = global_args.project_id
+                        client_init_kwargs["region"] = global_args.region
+                    
                     client = get_client(
-                        "anthropic-direct",
-                        model_name=model_name,
-                        use_caching=False,
-                        project_id=global_args.project_id,
-                        region=global_args.region,
-                        thinking_tokens=content.get("thinking_tokens", 2048),
+                        global_args.llm_client, 
+                        **client_init_kwargs
                     )
 
                     # Create a new agent for this connection
@@ -323,21 +345,30 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 elif msg_type == "enhance_prompt":
                     # Process a request to enhance a prompt using an LLM
-                    model_name = content.get("model_name", DEFAULT_MODEL)
+                    # Use model_name from message, or fallback to global_args.model_name (if global_args is set)
+                    model_name_from_msg = content.get("model_name")
+                    current_model_name_for_enhance = model_name_from_msg if model_name_from_msg else (global_args.model_name if global_args else DEFAULT_MODEL)
+
                     user_input = content.get("text", "")
                     files = content.get("files", [])
-                    # Initialize LLM client
-                    client = get_client(
-                        "anthropic-direct",
-                        model_name=model_name,
-                        use_caching=False,
-                        project_id=global_args.project_id,
-                        region=global_args.region,
-                        thinking_tokens=0, # Don't need thinking tokens for this
+                    
+                    enhance_client_kwargs = {
+                        "model_name": current_model_name_for_enhance,
+                    }
+                    if global_args and global_args.llm_client == "anthropic-direct":
+                        enhance_client_kwargs["use_caching"] = False 
+                        enhance_client_kwargs["thinking_tokens"] = 0
+                        enhance_client_kwargs["project_id"] = global_args.project_id
+                        enhance_client_kwargs["region"] = global_args.region
+                    
+                    client_for_enhance = get_client(
+                        global_args.llm_client if global_args else "anthropic-direct", 
+                        **enhance_client_kwargs
                     )
+                    
                     # Call the enhance_prompt function from the module
                     success, message, enhanced_prompt = await enhance_user_prompt(
-                        client=client,
+                        client=client_for_enhance,
                         user_input=user_input,
                         files=files,
                     )
@@ -567,32 +598,54 @@ def setup_workspace(app, workspace_path):
 
 def main():
     """Main entry point for the WebSocket server."""
-    global global_args
+    global global_args # Make sure we're assigning to the global variable
 
-    # Parse command-line arguments
-    parser = argparse.ArgumentParser(
-        description="WebSocket Server for interacting with the Agent"
+    parser = argparse.ArgumentParser(description="Agent WebSocket Server")
+    parser.add_argument(
+        "--host", type=str, default="0.0.0.0", help="Host to bind the server to"
     )
+    parser.add_argument(
+        "--port", type=int, default=8000, help="Port to bind the server to"
+    )
+    # Add other server-specific args here if needed
+
+    # Use parse_common_args from utils.py to get shared arguments
     parser = parse_common_args(parser)
-    parser.add_argument(
-        "--host",
-        type=str,
-        default="0.0.0.0",
-        help="Host to run the server on",
-    )
-    parser.add_argument(
-        "--port",
-        type=int,
-        default=8000,
-        help="Port to run the server on",
-    )
     args = parser.parse_args()
-    global_args = args
+    global_args = args # Store parsed args globally
 
+    # Setup logging more robustly
+    log_level = logging.DEBUG if not args.minimize_stdout_logs else logging.INFO
+    # Clear existing handlers if any to prevent duplicate messages on re-runs/hot-reloads
+    for handler in logging.root.handlers[:]:
+        logging.root.removeHandler(handler)
+    # Configure root logger
+    logging.basicConfig(level=log_level, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', force=True)
+    
+    # Set level for the specific websocket_server logger if it was already obtained
+    logger.setLevel(log_level)
+    
+    if args.logs_path:
+        # Add file handler if logs_path is specified
+        fh = logging.FileHandler(args.logs_path)
+        fh.setLevel(log_level)
+        fh.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+        # Add handler to the root logger or specific loggers as needed
+        logging.getLogger().addHandler(fh)
+
+
+    logger.info(f"Starting server on {args.host}:{args.port}")
+    # Ensure llm_client and model_name are accessed from args (which is global_args)
+    logger.info(f"Using LLM Client: {args.llm_client}")
+    logger.info(f"Default Model Name: {args.model_name}")
+    logger.info(f"Workspace: {args.workspace}")
+    if args.project_id and args.region and args.llm_client == "anthropic-direct": # Log only if relevant
+        logger.info(f"Anthropic Project ID: {args.project_id}, Region: {args.region}")
+
+
+    # Setup workspace and static files serving
     setup_workspace(app, args.workspace)
 
-    # Start the FastAPI server
-    logger.info(f"Starting WebSocket server on {args.host}:{args.port}")
     uvicorn.run(app, host=args.host, port=args.port)
 
 
