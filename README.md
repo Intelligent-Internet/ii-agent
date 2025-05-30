@@ -12,6 +12,10 @@
 [![GAIA Benchmark](https://img.shields.io/badge/GAIA-Benchmark-green)](https://ii-agent-gaia.ii.inc/)
 </div>
 
+**Update (2025-05-30): II-Agent now supports using local LLMs via LMStudio!**
+*   For details on the changes, see [CHANGENOTES.md](./CHANGENOTES.md).
+*   For instructions on how to run with a local model, see [RUNNING_WITH_LOCAL_MODELS.md](./RUNNING_WITH_LOCAL_MODELS.md).
+
 II-Agent is an open-source intelligent assistant designed to streamline and enhance workflows across multiple domains. It represents a significant advancement in how we interact with technology—shifting from passive tools to intelligent systems capable of independently executing complex tasks.
 
 
@@ -27,6 +31,7 @@ II Agent is built around providing an agentic interface to Anthropic Claude mode
 - A CLI interface for direct command-line interaction
 - A WebSocket server that powers a modern React-based frontend
 - Integration with Google Cloud's Vertex AI for API access to Anthropic models
+- **NEW: Support for OpenAI-compatible APIs, enabling use of local models via LMStudio.**
 
 ## Core Capabilities
 
@@ -120,6 +125,14 @@ ANTHROPIC_API_KEY=
 TAVILY_API_KEY=your_tavily_key
 
 STATIC_FILE_BASE_URL=http://localhost:8000/
+
+# --- Optional: For LMStudio / Local OpenAI-Compatible Models ---
+# Base URL for your LMStudio or other OpenAI-compatible API
+# Example: OPENAI_BASE_URL=http://localhost:1234/v1
+OPENAI_BASE_URL=
+# API Key for the OpenAI-compatible API (can be a dummy key like "lmstudio" if not required)
+OPENAI_API_KEY=
+# --- End Optional: For LMStudio ---
 ```
 
 We also support other search and crawl provider such as FireCrawl and SerpAPI (Optional but yield better performance):
@@ -193,6 +206,15 @@ GOOGLE_APPLICATION_CREDENTIALS=path-to-your-credential
 python cli.py --project-id YOUR_PROJECT_ID --region YOUR_REGION
 ```
 
+**To use a local model via LMStudio (OpenAI-compatible):**
+1. Ensure `OPENAI_BASE_URL` (and `OPENAI_API_KEY` if needed) are set in your `.env` file or as environment variables.
+2. Run with the `--llm-client openai-direct` and `--model-name` arguments:
+```bash
+python cli.py --llm-client openai-direct --model-name <your-model-identifier-in-lmstudio> --prompt "Your prompt here"
+```
+(See [RUNNING_WITH_LOCAL_MODELS.md](./RUNNING_WITH_LOCAL_MODELS.md) for detailed setup.)
+
+
 Options:
 - `--project-id`: Google Cloud project ID
 - `--region`: Google Cloud region (e.g., us-east5)
@@ -214,6 +236,14 @@ When using Vertex:
 GOOGLE_APPLICATION_CREDENTIALS=path-to-your-credential \
 python ws_server.py --port 8000 --project-id YOUR_PROJECT_ID --region YOUR_REGION
 ```
+
+**To use a local model via LMStudio (OpenAI-compatible) with the Web Interface:**
+1. Ensure `OPENAI_BASE_URL` (and `OPENAI_API_KEY` if needed) are set in your `.env` file or as environment variables.
+2. Start the WebSocket server with the `--llm-client openai-direct` and `--model-name` arguments:
+```bash
+python ws_server.py --port 8000 --llm-client openai-direct --model-name <your-model-identifier-in-lmstudio>
+```
+(See [RUNNING_WITH_LOCAL_MODELS.md](./RUNNING_WITH_LOCAL_MODELS.md) for detailed setup.)
 
 2. Start the frontend (in a separate terminal):
 
