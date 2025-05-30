@@ -89,6 +89,39 @@ message_processors: Dict[WebSocket, asyncio.Task] = {}
 global_args = None
 
 
+def map_model_name_to_client(model_name: str, ws_content: Dict[str, Any]) -> LLMClient:
+    """Create an LLM client based on the model name and configuration.
+    
+    Args:
+        model_name: The name of the model to use
+        ws_content: Dictionary containing configuration options like thinking_tokens
+        
+    Returns:
+        LLMClient: Configured LLM client instance
+        
+    Raises:
+        ValueError: If the model name is not supported
+    """
+    if "claude" in model_name:
+        return get_client(
+            "anthropic-direct",
+            model_name=model_name,
+            use_caching=False,
+            project_id=global_args.project_id,
+            region=global_args.region,
+            thinking_tokens=ws_content.get("thinking_tokens", 2048),
+        )
+    elif "gemini" in model_name:
+        return get_client(
+            "gemini-direct",
+            model_name=model_name,
+            project_id=global_args.project_id,
+            region=global_args.region,
+        )
+    else:
+        raise ValueError(f"Unknown model name: {model_name}")
+
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
@@ -123,14 +156,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 if msg_type == "init_agent":
                     model_name = content.get("model_name", DEFAULT_MODEL)
                     # Initialize LLM client
-                    client = get_client(
-                        "anthropic-direct",
-                        model_name=model_name,
-                        use_caching=False,
-                        project_id=global_args.project_id,
-                        region=global_args.region,
-                        thinking_tokens=content.get("thinking_tokens", 2048),
-                    )
+                    client = map_model_name_to_client(model_name, content)
 
                     # Create a new agent for this connection
                     tool_args = content.get("tool_args", {})
@@ -327,14 +353,8 @@ async def websocket_endpoint(websocket: WebSocket):
                     user_input = content.get("text", "")
                     files = content.get("files", [])
                     # Initialize LLM client
-                    client = get_client(
-                        "anthropic-direct",
-                        model_name=model_name,
-                        use_caching=False,
-                        project_id=global_args.project_id,
-                        region=global_args.region,
-                        thinking_tokens=0, # Don't need thinking tokens for this
-                    )
+                    client = map_model_name_to_client(model_name, content)
+                    
                     # Call the enhance_prompt function from the module
                     success, message, enhanced_prompt = await enhance_user_prompt(
                         client=client,

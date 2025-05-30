@@ -122,9 +122,9 @@ The generated video will be saved to the specified local path in the workspace."
                 "description": "The aspect ratio for the generated video.",
             },
             "duration_seconds": {
-                "type": "integer",
-                "enum": [5, 6, 7, 8],
-                "default": 5,
+                "type": "string",
+                "enum": ["5", "6", "7", "8"],
+                "default": "5",
                 "description": "The duration of the video in seconds.",
             },
             "enhance_prompt": {
@@ -163,7 +163,7 @@ The generated video will be saved to the specified local path in the workspace."
         prompt = tool_input["prompt"]
         relative_output_filename = tool_input["output_filename"]
         aspect_ratio = tool_input.get("aspect_ratio", "16:9")
-        duration_seconds = tool_input.get("duration_seconds", 5)
+        duration_seconds = int(tool_input.get("duration_seconds", "5"))
         enhance_prompt = tool_input.get("enhance_prompt", True)
         allow_person = tool_input.get("allow_person_generation", False)
 
@@ -305,9 +305,9 @@ The generated video will be saved to the specified local path in the workspace."
                 "description": "The aspect ratio for the generated video. Should ideally match the input image.",
             },
             "duration_seconds": {
-                "type": "integer",
-                "enum": [5, 6, 7, 8],
-                "default": 5,
+                "type": "string",
+                "enum": ["5", "6", "7", "8"],
+                "default": "5",
                 "description": "The duration of the video in seconds.",
             },
             "allow_person_generation": {
@@ -338,7 +338,7 @@ The generated video will be saved to the specified local path in the workspace."
         relative_output_filename = tool_input["output_filename"]
         prompt = tool_input.get("prompt")
         aspect_ratio = tool_input.get("aspect_ratio", "16:9")
-        duration_seconds = tool_input.get("duration_seconds", 5)
+        duration_seconds = int(tool_input.get("duration_seconds", "5"))
         allow_person = tool_input.get("allow_person_generation", False)
 
         person_generation_setting = "allow_adult" if allow_person else "dont_allow"
