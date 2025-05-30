@@ -12,7 +12,7 @@
 [![GAIA Benchmark](https://img.shields.io/badge/GAIA-Benchmark-green)](https://ii-agent-gaia.ii.inc/)
 </div>
 
-**Update (2025-05-30): II-Agent now supports using local LLMs via LMStudio!**
+**Update (2025-05-30): II-Agent now supports using local LLMs via LMStudio! This is alpha support, and not fully tested but works inside the CLI**
 *   For details on the changes, see [CHANGENOTES.md](./CHANGENOTES.md).
 *   For instructions on how to run with a local model, see [RUNNING_WITH_LOCAL_MODELS.md](./RUNNING_WITH_LOCAL_MODELS.md).
 
