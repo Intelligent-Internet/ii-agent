@@ -51,6 +51,12 @@ export default function Home() {
   const searchParams = useSearchParams();
   const router = useRouter();
 
+  // Add Google Drive related state
+  const [isGoogleDriveConnected, setIsGoogleDriveConnected] = useState(false);
+  // Add state for Google Picker
+  const [googlePickerLoaded, setGooglePickerLoaded] = useState(false);
+  const [googlePickerApiLoaded, setGooglePickerApiLoaded] = useState(false);
+
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [socket, setSocket] = useState<WebSocket | null>(null);
@@ -108,7 +114,8 @@ export default function Home() {
         }
 
         const data = await response.json();
-        setWorkspaceInfo(data.events?.[0]?.workspace_dir);
+        const workspace = data.events?.[0]?.workspace_dir;
+        setWorkspaceInfo(workspace);
 
         if (data.events && Array.isArray(data.events)) {
           // Process events to reconstruct the conversation
@@ -119,9 +126,8 @@ export default function Home() {
             setIsLoading(true);
             for (let i = 0; i < data.events.length; i++) {
               const event = data.events[i];
-              // Process each event with a 2-second delay
-              await new Promise((resolve) => setTimeout(resolve, 50));
-              handleEvent({ ...event.event_payload, id: event.id });
+              await new Promise((resolve) => setTimeout(resolve, 1500));
+              handleEvent({ ...event.event_payload, id: event.id }, workspace);
             }
             setIsLoading(false);
           };
@@ -537,11 +543,14 @@ export default function Home() {
     return `${process.env.NEXT_PUBLIC_API_URL}/workspace/${workspaceId}/${path}`;
   };
 
-  const handleEvent = (data: {
-    id: string;
-    type: AgentEvent;
-    content: Record<string, unknown>;
-  }) => {
+  const handleEvent = (
+    data: {
+      id: string;
+      type: AgentEvent;
+      content: Record<string, unknown>;
+    },
+    workspacePath?: string
+  ) => {
     switch (data.type) {
       case AgentEvent.USER_MESSAGE:
         setMessages((prev) => [
@@ -629,11 +638,10 @@ export default function Home() {
           ) {
             lastMessage.action.data.content = data.content.content as string;
             lastMessage.action.data.path = data.content.path as string;
-            const filePath = (data.content.path as string)?.includes(
-              workspaceInfo
-            )
+            const workspace = workspacePath || workspaceInfo;
+            const filePath = (data.content.path as string)?.includes(workspace)
               ? (data.content.path as string)
-              : `${workspaceInfo}/${data.content.path}`;
+              : `${workspace}/${data.content.path}`;
 
             setFilesContent((prev) => {
               return {
@@ -876,6 +884,69 @@ export default function Home() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages?.length]);
 
+  useEffect(() => {
+    const checkGoogleAuthStatus = async () => {
+      try {
+        const response = await fetch("/api/google/status");
+        const data = await response.json();
+
+        if (!data.authenticated) {
+          const refreshResponse = await fetch("/api/google/refresh", {
+            method: "POST",
+          });
+
+          if (refreshResponse.ok) {
+            const retryResponse = await fetch("/api/google/status");
+            const retryData = await retryResponse.json();
+            setIsGoogleDriveConnected(retryData.authenticated);
+            return;
+          }
+        }
+        setIsGoogleDriveConnected(data.authenticated);
+      } catch (error) {
+        console.error("Error checking Google auth status:", error);
+        setIsGoogleDriveConnected(false);
+      }
+    };
+
+    checkGoogleAuthStatus();
+
+    // Check auth status when URL contains google_auth=success
+    const handleAuthSuccess = () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get("google_auth") === "success") {
+        const newUrl = window.location.pathname;
+        window.history.replaceState({}, document.title, newUrl);
+      }
+    };
+
+    handleAuthSuccess();
+  }, []);
+
+  const handleGoogleDriveAuth = async (): Promise<boolean> => {
+    try {
+      window.location.href = "/api/google/auth";
+      return false;
+    } catch {
+      toast.error("Failed to authenticate with Google Drive");
+      return false;
+    }
+  };
+
+  useEffect(() => {
+    if (!googlePickerLoaded) {
+      const script = document.createElement("script");
+      script.src = "https://apis.google.com/js/api.js";
+      script.onload = () => {
+        window.gapi.load("picker", () => {
+          setGooglePickerApiLoaded(true);
+        });
+      };
+      document.body.appendChild(script);
+      setGooglePickerLoaded(true);
+    }
+  }, [googlePickerLoaded]);
+
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-[#191E1B]">
       <SidebarButton />
@@ -945,6 +1016,8 @@ export default function Home() {
                 handleKeyDown={handleKeyDown}
                 handleSubmit={handleQuestionSubmit}
                 handleFileUpload={handleFileUpload}
+                handleGoogleDriveAuth={handleGoogleDriveAuth}
+                isGoogleDriveConnected={isGoogleDriveConnected}
                 isUploading={isUploading}
                 isDisabled={!socket || socket.readyState !== WebSocket.OPEN}
                 isGeneratingPrompt={isGeneratingPrompt}
@@ -953,6 +1026,8 @@ export default function Home() {
                 setToolSettings={setToolSettings}
                 selectedModel={selectedModel}
                 setSelectedModel={setSelectedModel}
+                googlePickerApiLoaded={googlePickerApiLoaded}
+                setIsGoogleDriveConnected={setIsGoogleDriveConnected}
               />
             ) : (
               <motion.div
@@ -983,12 +1058,16 @@ export default function Home() {
                   handleKeyDown={handleKeyDown}
                   handleQuestionSubmit={handleQuestionSubmit}
                   handleFileUpload={handleFileUpload}
+                  handleGoogleDriveAuth={handleGoogleDriveAuth}
+                  isGoogleDriveConnected={isGoogleDriveConnected}
                   isGeneratingPrompt={isGeneratingPrompt}
                   handleEnhancePrompt={handleEnhancePrompt}
                   handleCancel={handleCancelQuery}
                   editingMessage={editingMessage}
                   setEditingMessage={setEditingMessage}
                   handleEditMessage={handleEditMessage}
+                  googlePickerApiLoaded={googlePickerApiLoaded}
+                  setIsGoogleDriveConnected={setIsGoogleDriveConnected}
                 />
 
                 <div className="col-span-6 bg-[#1e1f23] border border-[#3A3B3F] p-4 rounded-2xl">

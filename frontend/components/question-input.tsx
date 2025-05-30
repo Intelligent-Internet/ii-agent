@@ -1,20 +1,22 @@
 import { motion } from "framer-motion";
-import { ArrowUp, Loader2, Paperclip, Settings2 } from "lucide-react";
+import { ArrowUp, Loader2, Paperclip, Settings2, Plus } from "lucide-react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import Image from "next/image";
+import { toast } from "sonner";
+import Cookies from "js-cookie";
+
+import SettingsDrawer from "./settings-drawer";
+import { getFileIconAndColor } from "@/utils/file-utils";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import { Button } from "./ui/button";
 import { Textarea } from "./ui/textarea";
-import { useState, useEffect, useRef } from "react";
-import { getFileIconAndColor } from "@/utils/file-utils";
-import Image from "next/image";
-import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
-import SettingsDrawer from "./settings-drawer";
-
-interface ToolSettings {
-  deep_research: boolean;
-  pdf: boolean;
-  media_generation: boolean;
-  audio_generation: boolean;
-  browser: boolean;
-}
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "./ui/dropdown-menu";
+import { GooglePickerResponse } from "@/typings/agent";
 
 interface FileUploadStatus {
   name: string;
@@ -22,6 +24,15 @@ interface FileUploadStatus {
   error?: string;
   preview?: string;
   isImage: boolean;
+  googleDriveId?: string;
+}
+
+interface ToolSettings {
+  deep_research: boolean;
+  pdf: boolean;
+  media_generation: boolean;
+  audio_generation: boolean;
+  browser: boolean;
 }
 
 interface QuestionInputProps {
@@ -33,6 +44,8 @@ interface QuestionInputProps {
   handleKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
   handleSubmit: (question: string) => void;
   handleFileUpload?: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  handleGoogleDriveAuth: () => Promise<boolean>;
+  isGoogleDriveConnected?: boolean;
   isUploading?: boolean;
   isDisabled?: boolean;
   isGeneratingPrompt?: boolean;
@@ -43,6 +56,8 @@ interface QuestionInputProps {
   setToolSettings?: (settings: ToolSettings) => void;
   selectedModel?: string;
   setSelectedModel?: (model: string) => void;
+  googlePickerApiLoaded: boolean;
+  setIsGoogleDriveConnected: (value: boolean) => void;
 }
 
 const QuestionInput = ({
@@ -54,6 +69,8 @@ const QuestionInput = ({
   handleKeyDown,
   handleSubmit,
   handleFileUpload,
+  handleGoogleDriveAuth,
+  isGoogleDriveConnected = false,
   isUploading = false,
   isDisabled,
   isGeneratingPrompt = false,
@@ -64,10 +81,15 @@ const QuestionInput = ({
   setToolSettings,
   selectedModel,
   setSelectedModel,
+  googlePickerApiLoaded,
+  setIsGoogleDriveConnected,
 }: QuestionInputProps) => {
   const [files, setFiles] = useState<FileUploadStatus[]>([]);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isGDriveAuthLoading, setIsGDriveAuthLoading] = useState(false);
+
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Initialize default tool settings if not provided
   const [localToolSettings, setLocalToolSettings] = useState<ToolSettings>({
@@ -160,6 +182,276 @@ const QuestionInput = ({
     }, 5000);
   };
 
+  const pickerCallback = useCallback(
+    async (data: GooglePickerResponse) => {
+      if (data.action === window.google.picker.Action.CANCEL) {
+        return;
+      }
+
+      if (data.action === window.google.picker.Action.PICKED) {
+        if (!data.docs || data.docs.length === 0) {
+          return;
+        }
+
+        // Process each selected item (file or folder)
+        for (const doc of data.docs) {
+          if (doc.mimeType === "application/vnd.google-apps.folder") {
+            // Handle folder selection
+            try {
+              // Fetch folder contents from our backend
+              const response = await fetch(`/api/google/folders/${doc.id}`);
+              if (!response.ok) {
+                throw new Error(
+                  `Failed to fetch folder contents: ${response.statusText}`
+                );
+              }
+              const folderContents = await response.json();
+
+              for (const file of folderContents.files) {
+                const isImage = isImageFile(file.name);
+                const newFile = {
+                  name: file.name,
+                  loading: true,
+                  isImage,
+                  googleDriveId: file.id,
+                };
+
+                setFiles((prev) => [...prev, newFile]);
+
+                // Download and process the file
+                try {
+                  const fileResponse = await fetch(
+                    `/api/google/files/${file.id}`
+                  );
+                  if (!fileResponse.ok) {
+                    throw new Error(
+                      `Failed to fetch file: ${fileResponse.statusText}`
+                    );
+                  }
+                  const fileData = await fileResponse.json();
+
+                  setFiles((prev) =>
+                    prev.map((f) =>
+                      f.googleDriveId === file.id
+                        ? { ...f, preview: fileData.content }
+                        : f
+                    )
+                  );
+
+                  // Convert base64 data to a Blob
+                  let blob;
+                  if (fileData.content.startsWith("data:")) {
+                    const base64Response = await fetch(fileData.content);
+                    blob = await base64Response.blob();
+                  } else {
+                    blob = new Blob([fileData.content], {
+                      type: fileData.mimeType || "text/plain",
+                    });
+                  }
+
+                  // Create a File object
+                  const fileObj = new File([blob], file.name, {
+                    type: fileData.mimeType,
+                  });
+
+                  // Create a synthetic file list with this file
+                  const fileList = {
+                    length: 1,
+                    item: () => fileObj,
+                    [Symbol.iterator]: function* () {
+                      yield fileObj;
+                    },
+                  } as FileList;
+
+                  // Create and dispatch synthetic event
+                  const syntheticEvent = {
+                    target: {
+                      files: fileList,
+                    },
+                  } as React.ChangeEvent<HTMLInputElement>;
+
+                  if (handleFileUpload) {
+                    handleFileUpload(syntheticEvent);
+                  }
+                } finally {
+                  setFiles((prev) =>
+                    prev.map((f) =>
+                      f.googleDriveId === file.id
+                        ? {
+                            ...f,
+                            loading: false,
+                          }
+                        : f
+                    )
+                  );
+                }
+              }
+            } catch {
+              toast.error(`Failed to process folder: ${doc.name}`);
+            }
+          } else {
+            // Handle single file selection (existing code)
+            const isImage = isImageFile(doc.name);
+            const newFile = {
+              name: doc.name,
+              loading: true,
+              isImage,
+              googleDriveId: doc.id,
+            };
+
+            setFiles((prev) => [...prev, newFile]);
+
+            try {
+              const response = await fetch(`/api/google/files/${doc.id}`);
+              if (!response.ok) {
+                throw new Error(`Failed to fetch file: ${response.statusText}`);
+              }
+              const fileData = await response.json();
+              setFiles((prev) =>
+                prev.map((file) =>
+                  file.googleDriveId === doc.id
+                    ? { ...file, preview: fileData.content }
+                    : file
+                )
+              );
+
+              let blob;
+              if (fileData.content.startsWith("data:")) {
+                const base64Response = await fetch(fileData.content);
+                blob = await base64Response.blob();
+              } else {
+                blob = new Blob([fileData.content], {
+                  type: fileData.mimeType || "text/plain",
+                });
+              }
+
+              const file = new File([blob], doc.name, {
+                type: fileData.mimeType,
+              });
+              const fileList = {
+                length: 1,
+                item: () => file,
+                [Symbol.iterator]: function* () {
+                  yield file;
+                },
+              } as FileList;
+
+              const syntheticEvent = {
+                target: {
+                  files: fileList,
+                },
+              } as React.ChangeEvent<HTMLInputElement>;
+
+              if (handleFileUpload) {
+                handleFileUpload(syntheticEvent);
+              }
+            } catch {
+              toast.error("Failed to process file from Google Drive");
+            } finally {
+              setFiles((prev) =>
+                prev.map((file) =>
+                  file.googleDriveId === doc.id
+                    ? {
+                        ...file,
+                        loading: false,
+                      }
+                    : file
+                )
+              );
+            }
+          }
+        }
+      }
+    },
+    [handleFileUpload]
+  );
+
+  const handleGoogleDriveSelect = useCallback(async () => {
+    Cookies.remove("open_google_picker");
+    if (!isGoogleDriveConnected) {
+      const success = await handleGoogleDriveAuth();
+      if (!success) return;
+    }
+
+    if (!googlePickerApiLoaded) {
+      toast.error(
+        "Google Picker API is still loading. Please try again in a moment."
+      );
+      return;
+    }
+
+    try {
+      // Get picker token from our backend
+      const response = await fetch("/api/google/picker-token");
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          setIsGoogleDriveConnected(false);
+          toast.error("Google Drive authentication expired. Please reconnect.");
+          return;
+        }
+        throw new Error("Failed to get Google Picker token");
+      }
+
+      const { accessToken, developerKey, appId } = await response.json();
+
+      // Create and render a Picker object
+      const picker = new window.google.picker.PickerBuilder()
+        .addView(
+          new window.google.picker.DocsView()
+            .setIncludeFolders(true)
+            .setSelectFolderEnabled(true)
+            .setMimeTypes(
+              "image/png,image/jpeg,application/pdf,text/plain,application/json"
+            )
+        )
+        .setOAuthToken(accessToken)
+        .setDeveloperKey(developerKey)
+        .setAppId(appId)
+        .setCallback(pickerCallback)
+        .enableFeature(window.google.picker.Feature.MULTISELECT_ENABLED)
+        .build();
+
+      picker.setVisible(true);
+    } catch (error) {
+      console.error("Error creating Google Picker:", error);
+      toast.error("Failed to open Google Drive picker");
+    }
+  }, [
+    googlePickerApiLoaded,
+    handleGoogleDriveAuth,
+    isGoogleDriveConnected,
+    pickerCallback,
+    setIsGoogleDriveConnected,
+  ]);
+
+  const handleGoogleDriveClick = async () => {
+    if (!handleGoogleDriveAuth || !handleGoogleDriveSelect) return;
+
+    setIsGDriveAuthLoading(true);
+    try {
+      if (!isGoogleDriveConnected) {
+        Cookies.set("open_google_picker", "true", { expires: 1 });
+        await handleGoogleDriveAuth();
+      } else {
+        handleGoogleDriveSelect();
+      }
+    } catch (error) {
+      console.error("Google Drive auth error:", error);
+    } finally {
+      setIsGDriveAuthLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const openPicker = Cookies.get("open_google_picker") === "true";
+    if (isGoogleDriveConnected && openPicker) {
+      setTimeout(() => {
+        handleGoogleDriveSelect();
+      }, 500);
+    }
+  }, [isGoogleDriveConnected]);
+
   // const removeFile = (fileName: string) => {
   //   setFiles((prev) => {
   //     // Find the file to remove
@@ -223,7 +515,7 @@ const QuestionInput = ({
                     >
                       <X className="size-4 text-white" />
                     </button> */}
-                    {file.loading && (
+                    {(isUploading || file.loading) && (
                       <div className="absolute inset-0 flex items-center justify-center bg-black/30 rounded-xl">
                         <Loader2 className="size-5 text-white animate-spin" />
                       </div>
@@ -244,7 +536,7 @@ const QuestionInput = ({
                   <div
                     className={`flex items-center justify-center w-10 h-10 ${bgColor} rounded-full`}
                   >
-                    {isUploading ? (
+                    {isUploading || file.loading ? (
                       <Loader2 className="size-5 text-white animate-spin" />
                     ) : (
                       <IconComponent className="size-5 text-white" />
@@ -280,34 +572,59 @@ const QuestionInput = ({
           onKeyDown={handleKeyDownWithAutoScroll}
           ref={textareaRef}
         />
-        <div className="flex justify-between items-center absolute bottom-0 py-4 m-px w-[calc(100%-4px)] rounded-b-xl bg-[#35363a]  px-4">
+        <div className="flex justify-between items-center absolute bottom-0 py-4 m-px w-[calc(100%-4px)] rounded-b-xl bg-[#35363a] px-4">
           <div className="flex items-center gap-x-3">
             {handleFileUpload && (
-              <label htmlFor="file-upload" className="cursor-pointer">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="hover:bg-gray-700/50 size-10 rounded-full cursor-pointer border border-[#ffffff0f] shadow-sm"
-                  onClick={() =>
-                    document.getElementById("file-upload")?.click()
-                  }
-                  disabled={isUploading || isLoading}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="hover:bg-gray-700/50 size-10 rounded-full cursor-pointer border border-[#ffffff0f] shadow-sm"
+                    disabled={isUploading || isLoading}
+                  >
+                    {isUploading ? (
+                      <Loader2 className="size-6 text-gray-400 animate-spin" />
+                    ) : (
+                      <Plus className="size-6 text-gray-400" />
+                    )}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  align="start"
+                  className="bg-neutral-900 border-gray-700 text-white"
                 >
-                  {isUploading ? (
-                    <Loader2 className="size-5 text-gray-400 animate-spin" />
-                  ) : (
-                    <Paperclip className="size-5 text-gray-400" />
-                  )}
-                </Button>
-                <input
-                  id="file-upload"
-                  type="file"
-                  multiple
-                  className="hidden"
-                  onChange={handleFileChange}
-                  disabled={isUploading || isLoading}
-                />
-              </label>
+                  <DropdownMenuItem
+                    className="flex p-2 items-center gap-2 cursor-pointer hover:bg-gray-800"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <Paperclip className="size-5" />
+                    <span>Add images and files</span>
+                  </DropdownMenuItem>
+
+                  <DropdownMenuItem
+                    className="flex p-2 items-center gap-2 cursor-pointer hover:bg-gray-800"
+                    onClick={handleGoogleDriveClick}
+                    disabled={isGDriveAuthLoading}
+                  >
+                    {isGDriveAuthLoading ? (
+                      <Loader2 className="size-5 text-gray-400 animate-spin" />
+                    ) : (
+                      <Image
+                        src="/icons/google-drive.svg"
+                        alt="Google Drive"
+                        width={20}
+                        height={20}
+                      />
+                    )}
+                    <span>
+                      {isGoogleDriveConnected
+                        ? "Add from Google Drive"
+                        : "Connect with Google Drive"}
+                    </span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
             {typeof setSelectedModel === "function" && (
               <Tooltip>
@@ -325,6 +642,15 @@ const QuestionInput = ({
                 <TooltipContent>Settings</TooltipContent>
               </Tooltip>
             )}
+            <input
+              ref={fileInputRef}
+              id="file-upload"
+              type="file"
+              multiple
+              className="hidden"
+              onChange={handleFileChange}
+              disabled={isUploading || isLoading}
+            />
           </div>
 
           <div className="flex items-center gap-x-2">
@@ -360,7 +686,9 @@ const QuestionInput = ({
               </Button>
             ) : (
               <Button
-                disabled={!value.trim() || isDisabled || isLoading}
+                disabled={
+                  !value.trim() || isDisabled || isLoading || isUploading
+                }
                 onClick={() => handleSubmit(value)}
                 className="cursor-pointer !border !border-red p-4 size-10 font-bold bg-gradient-skyblue-lavender rounded-full hover:scale-105 active:scale-95 transition-transform shadow-[0_4px_10px_rgba(0,0,0,0.2)]"
               >
