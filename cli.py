@@ -94,12 +94,17 @@ async def async_main():
         )
 
     # Initialize LLM client
+    client_kwargs = {
+        "model_name": args.model_name,
+    }
+    if args.llm_client == "anthropic-direct":
+        client_kwargs["use_caching"] = False # Or a configurable value if needed later
+        client_kwargs["project_id"] = args.project_id
+        client_kwargs["region"] = args.region
+    
     client = get_client(
-        "anthropic-direct",
-        model_name=DEFAULT_MODEL,
-        use_caching=False,
-        project_id=args.project_id,
-        region=args.region,
+        args.llm_client,
+        **client_kwargs
     )
 
     # Initialize workspace manager with the session-specific workspace

@@ -6,6 +6,9 @@ import random
 import time
 from typing import Any, Tuple, cast
 import openai
+import logging
+
+logger = logging.getLogger(__name__)
 
 from openai import (
     APIConnectionError as OpenAI_APIConnectionError,
@@ -73,39 +76,61 @@ class OpenAIDirectClient(LLMClient):
         """
         assert thinking_tokens is None, "Not implemented for OpenAI"
 
-        # Turn GeneralContentBlock into OpenAI message format
         openai_messages = []
+        system_prompt_applied = False
+
         if system_prompt is not None:
-            if self.cot_model:
-                raise NotImplementedError("System prompt not supported for cot model")
-            system_message = {"role": "system", "content": system_prompt}
-            openai_messages.append(system_message)
+            if not self.cot_model:
+                system_message = {"role": "system", "content": system_prompt}
+                openai_messages.append(system_message)
+                system_prompt_applied = True
+            # If self.cot_model is True, we will attempt to prepend it to the first user message.
+
         for idx, message_list in enumerate(messages):
             if len(message_list) > 1:
                 raise ValueError("Only one entry per message supported for openai")
             internal_message = message_list[0]
+            
+            current_message_text = ""
+            is_user_prompt = False
+
             if str(type(internal_message)) == str(TextPrompt):
                 internal_message = cast(TextPrompt, internal_message)
-                message_content = {"type": "text", "text": internal_message.text}
-                openai_message = {"role": "user", "content": [message_content]}
+                current_message_text = internal_message.text
+                is_user_prompt = True
+                role = "user"
             elif str(type(internal_message)) == str(TextResult):
                 internal_message = cast(TextResult, internal_message)
-                message_content = {"type": "text", "text": internal_message.text}
-                openai_message = {"role": "assistant", "content": [message_content]}
+                # For TextResult (assistant), content is handled differently by OpenAI API
+                message_content_obj = {"type": "text", "text": internal_message.text}
+                openai_message = {"role": "assistant", "content": [message_content_obj]}
+                openai_messages.append(openai_message)
+                continue # Move to next message in outer loop
             elif str(type(internal_message)) == str(ToolCall):
                 internal_message = cast(ToolCall, internal_message)
-                tool_call = {
+                # Ensure arguments are stringified JSON for the OpenAI API call
+                try:
+                    arguments_str = json.dumps(internal_message.tool_input)
+                except TypeError as e:
+                    logger.error(f"Failed to serialize tool_input to JSON string for tool '{internal_message.tool_name}': {internal_message.tool_input}. Error: {str(e)}")
+                    # Decide how to handle: skip this message, or raise, or send with potentially malformed args? For now, let's raise.
+                    raise ValueError(f"Cannot serialize tool arguments for {internal_message.tool_name}: {str(e)}") from e
+                
+                tool_call_payload = {
                     "type": "function",
                     "id": internal_message.tool_call_id,
                     "function": {
                         "name": internal_message.tool_name,
-                        "arguments": internal_message.tool_input,
+                        "arguments": arguments_str, # Use the JSON string
                     },
                 }
                 openai_message = {
                     "role": "assistant",
-                    "tool_calls": [tool_call],
+                    "tool_calls": [tool_call_payload],
+                    # Content is implicitly None or omitted by not setting it
                 }
+                openai_messages.append(openai_message)
+                continue # Move to next message in outer loop
             elif str(type(internal_message)) == str(ToolFormattedResult):
                 internal_message = cast(ToolFormattedResult, internal_message)
                 openai_message = {
@@ -113,12 +138,33 @@ class OpenAIDirectClient(LLMClient):
                     "tool_call_id": internal_message.tool_call_id,
                     "content": internal_message.tool_output,
                 }
+                openai_messages.append(openai_message)
+                continue # Move to next message in outer loop
             else:
                 print(
                     f"Unknown message type: {type(internal_message)}, expected one of {str(TextPrompt)}, {str(TextResult)}, {str(ToolCall)}, {str(ToolFormattedResult)}"
                 )
                 raise ValueError(f"Unknown message type: {type(internal_message)}")
-            openai_messages.append(openai_message)
+
+            # This part now only applies to TextPrompt (user messages)
+            if is_user_prompt:
+                final_text_for_user_message = current_message_text
+                # If cot_model is True, system_prompt is not None, and it hasn't been applied yet (i.e., this is the first user message opportunity)
+                if self.cot_model and system_prompt and not system_prompt_applied:
+                    final_text_for_user_message = f"{system_prompt}\n\n{current_message_text}"
+                    system_prompt_applied = True # Mark as applied
+                
+                message_content_obj = {"type": "text", "text": final_text_for_user_message}
+                openai_message = {"role": role, "content": [message_content_obj]}
+                openai_messages.append(openai_message)
+
+        # If cot_model is True and system_prompt was provided but not applied (e.g., no user messages found, though unlikely for an agent)
+        if self.cot_model and system_prompt and not system_prompt_applied:
+            # This is a fallback: if there were no user messages to prepend to, send it as a system message.
+            # Or, one might argue it's an error condition for COT if no user prompt exists.
+            # For now, let's log a warning and add it as a user message, as some COT models might expect user turn for instructions.
+            logger.warning("COT mode: System prompt provided but no initial user message to prepend to. Adding as a separate user message.")
+            openai_messages.insert(0, {"role": "user", "content": [{"type": "text", "text": system_prompt}]})
 
         # Turn tool_choice into OpenAI tool_choice format
         if tool_choice is None:
@@ -201,24 +247,49 @@ class OpenAIDirectClient(LLMClient):
             raise ValueError("Either tool_calls or content should be present")
 
         if tool_calls:
-            if len(tool_calls) > 1:
-                raise ValueError("Only one tool call supported for OpenAI")
-            tool_call = tool_calls[0]
-            try:
-                # Parse the JSON string into a dictionary
-                tool_input = json.loads(tool_call.function.arguments)
-            except json.JSONDecodeError as e:
-                print(f"Failed to parse tool arguments: {tool_call.function.arguments}")
-                print(f"JSON parse error: {str(e)}")
-                raise ValueError(f"Invalid JSON in tool arguments: {str(e)}") from e
+            available_tool_names = {t.name for t in tools} # Get set of known tool names
+            logger.info(f"Model returned {len(tool_calls)} tool_calls. Available tools: {available_tool_names}")
+            
+            processed_tool_call = False
+            for tool_call_data in tool_calls:
+                tool_name_from_model = tool_call_data.function.name
+                if tool_name_from_model and tool_name_from_model in available_tool_names:
+                    logger.info(f"Attempting to process tool call: {tool_name_from_model}")
+                    try:
+                        # Ensure arguments are a string before trying to load as JSON, 
+                        # as some models might already return a dict if the library handles it.
+                        args_data = tool_call_data.function.arguments
+                        if isinstance(args_data, dict):
+                            tool_input = args_data
+                        elif isinstance(args_data, str):
+                            tool_input = json.loads(args_data)
+                        else:
+                            logger.error(f"Tool arguments for '{tool_name_from_model}' are not a valid format (string or dict): {args_data}")
+                            continue # Skip this tool call
 
-            internal_messages.append(
-                ToolCall(
-                    tool_name=tool_call.function.name,
-                    tool_input=tool_input,
-                    tool_call_id=tool_call.id,
-                )
-            )
+                    except json.JSONDecodeError as e:
+                        logger.error(f"Failed to parse JSON arguments for tool '{tool_name_from_model}': {tool_call_data.function.arguments}. Error: {str(e)}")
+                        continue # Skip this malformed tool call
+                    except Exception as e:
+                        logger.error(f"Unexpected error parsing arguments for tool '{tool_name_from_model}': {str(e)}")
+                        continue # Skip this tool call
+
+                    internal_messages.append(
+                        ToolCall(
+                            tool_name=tool_name_from_model,
+                            tool_input=tool_input,
+                            tool_call_id=tool_call_data.id,
+                        )
+                    )
+                    processed_tool_call = True
+                    logger.info(f"Successfully processed and selected tool call: {tool_name_from_model}")
+                    break # Processed the first valid and available tool call
+                else:
+                    logger.warning(f"Skipping tool call with unknown or placeholder name: '{tool_name_from_model}'. Not in available tools: {available_tool_names}")
+            
+            if not processed_tool_call:
+                logger.warning("No valid and available tool calls found after filtering.")
+
         elif content:
             internal_messages.append(TextResult(text=content))
         else:
