@@ -14,7 +14,14 @@
 
 II-Agent is an open-source intelligent assistant designed to streamline and enhance workflows across multiple domains. It represents a significant advancement in how we interact with technology—shifting from passive tools to intelligent systems capable of independently executing complex tasks.
 
+## Documentation
 
+Find comprehensive documentation in the [`docs/`](docs/index.md) directory:
+
+- [Technical Overview](docs/technical_overview.md) - Components, architecture, and capabilities
+- [Architecture](docs/architecture.md) - Detailed system design and data flow
+- [Usage Guide](docs/usage.md) - Installation, configuration, and running instructions
+- [Examples Cookbook](docs/examples.md) - Step-by-step tutorials for common workflows
 
 ## Introduction
 https://github.com/user-attachments/assets/d0eb7440-a6e2-4276-865c-a1055181bb33
@@ -249,4 +256,3 @@ We would like to express our sincere gratitude to the following projects and ind
 - **Index Browser Use**: We have built upon and extended the functionality of the [Index Browser Use project](https://github.com/lmnr-ai/index/tree/main), particularly in our web interaction and browsing capabilities. Their foundational work has enabled us to create more sophisticated web-based agent behaviors.
 
 We are committed to open source collaboration and believe in acknowledging the work that has helped us build this project. If you feel your work has been used in this project but hasn't been properly acknowledged, please reach out to us.
-
