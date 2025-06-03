@@ -115,11 +115,7 @@ def get_system_tools(
             os.environ.get("GOOGLE_CLOUD_PROJECT")
             and os.environ.get("GOOGLE_CLOUD_REGION")
         ):
-            tools.extend(
-                [
-                    ImageGenerateTool(workspace_manager=workspace_manager),
-                ]
-            )
+            tools.append(ImageGenerateTool(workspace_manager=workspace_manager))
             if tool_args.get("video_generation", False):
                 tools.append(VideoGenerateFromTextTool(workspace_manager=workspace_manager))
         if tool_args.get("audio_generation", False) and (
