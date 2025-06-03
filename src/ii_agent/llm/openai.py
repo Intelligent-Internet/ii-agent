@@ -38,15 +38,22 @@ from ii_agent.llm.base import (
 class OpenAIDirectClient(LLMClient):
     """Use OpenAI models via first party API."""
 
-    def __init__(self, model_name: str, max_retries=2, cot_model: bool = True):
+    def __init__(self, model_name: str, max_retries=2, cot_model: bool = True, azure_model: bool = False):
         """Initialize the OpenAI first party client."""
         api_key = os.getenv("OPENAI_API_KEY", "EMPTY")
         base_url = os.getenv("OPENAI_BASE_URL", "http://0.0.0.0:2323")
-        self.client = openai.OpenAI(
-            api_key=api_key,
-            base_url=base_url,
-            max_retries=1,
-        )
+        if azure_model:
+            azure_endpoint = os.getenv("OPENAI_AZURE_ENDPOINT", "http://0.0.0.0:2323")
+            api_key = os.getenv("OPENAI_API_KEY", "EMPTY")
+            api_version = os.getenv("AZURE_API_VERSION", "2024-12-01-preview")
+            self.client = openai.AzureOpenAI(
+                api_key=api_key,
+                azure_endpoint=azure_endpoint,
+                api_version=api_version,
+                max_retries=max_retries,
+            )
+        else:
+            self.client = openai.OpenAI(api_key=api_key, base_url=base_url, max_retries=max_retries)
         self.model_name = model_name
         self.max_retries = max_retries
         self.cot_model = cot_model
@@ -74,7 +81,6 @@ class OpenAIDirectClient(LLMClient):
         Returns:
             A generated response.
         """
-        assert thinking_tokens is None, "Not implemented for OpenAI"
 
         openai_messages = []
         system_prompt_applied = False
@@ -84,7 +90,6 @@ class OpenAIDirectClient(LLMClient):
                 system_message = {"role": "system", "content": system_prompt}
                 openai_messages.append(system_message)
                 system_prompt_applied = True
-            # If self.cot_model is True, we will attempt to prepend it to the first user message.
 
         for idx, message_list in enumerate(messages):
             if len(message_list) > 1:
@@ -206,13 +211,11 @@ class OpenAIDirectClient(LLMClient):
                     extra_body["max_completion_tokens"] = max_tokens
                     openai_max_tokens = OpenAI_NOT_GIVEN
                     openai_temperature = OpenAI_NOT_GIVEN
-
-                response = self.client.chat.completions.create(  # type: ignore
+                response = self.client.chat.completions.create(
                     model=self.model_name,
                     messages=openai_messages,
-                    temperature=openai_temperature,
                     tools=openai_tools if len(openai_tools) > 0 else OpenAI_NOT_GIVEN,
-                    tool_choice=tool_choice_param,  # type: ignore
+                    tool_choice=tool_choice_param,
                     max_tokens=openai_max_tokens,
                     extra_body=extra_body,
                 )

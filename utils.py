@@ -82,6 +82,25 @@ def parse_common_args(parser: ArgumentParser):
         default=DEFAULT_MODEL,
         help="Name of the LLM model to use (e.g., claude-3-opus-20240229 or local-model-identifier for LMStudio)",
     )
+    parser.add_argument(
+        "--azure-model",
+        action="store_true",
+        default=False,
+        help="Use Azure OpenAI model",
+    )
+    parser.add_argument(
+        "--no-cot-model",
+        action="store_false",
+        dest="cot_model",
+        default=True,
+        help="Disable chain-of-thought model (enabled by default)",
+    )
+    parser.add_argument(
+        "--prompt",
+        type=str,
+        default=None,
+        help="Prompt to use for the LLM",
+    )
     return parser
 
 

@@ -9,6 +9,7 @@ export const AVAILABLE_MODELS = [
   "claude-sonnet-4@20250514",
   "claude-opus-4@20250514",
   "gemini-2.5-pro-preview-05-06",
+  "gpt-4.1",
 ];
 
 export type Source = {

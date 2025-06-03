@@ -118,9 +118,10 @@ def get_system_tools(
             tools.extend(
                 [
                     ImageGenerateTool(workspace_manager=workspace_manager),
-                    VideoGenerateFromTextTool(workspace_manager=workspace_manager),
                 ]
             )
+            if tool_args.get("video_generation", False):
+                tools.append(VideoGenerateFromTextTool(workspace_manager=workspace_manager))
         if tool_args.get("audio_generation", False) and (
             os.environ.get("OPEN_API_KEY") and os.environ.get("AZURE_OPENAI_ENDPOINT")
         ):

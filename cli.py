@@ -101,6 +101,9 @@ async def async_main():
         client_kwargs["use_caching"] = False # Or a configurable value if needed later
         client_kwargs["project_id"] = args.project_id
         client_kwargs["region"] = args.region
+    elif args.llm_client == "openai-direct":
+        client_kwargs["azure_model"] = args.azure_model
+        client_kwargs["cot_model"] = args.cot_model
     
     client = get_client(
         args.llm_client,
@@ -169,7 +172,10 @@ async def async_main():
     try:
         while True:
             # Use async input
-            user_input = await loop.run_in_executor(None, lambda: input("User input: "))
+            if args.prompt is None:
+                user_input = await loop.run_in_executor(None, lambda: input("User input: "))
+            else:
+                user_input = args.prompt
 
             agent.message_queue.put_nowait(
                 RealtimeEvent(type=EventType.USER_MESSAGE, content={"text": user_input})

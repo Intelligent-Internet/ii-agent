@@ -118,6 +118,13 @@ def map_model_name_to_client(model_name: str, ws_content: Dict[str, Any]) -> LLM
             project_id=global_args.project_id,
             region=global_args.region,
         )
+    elif model_name in ["o3", "o4-mini", "gpt-4.1", "gpt-4o"]:
+        return get_client(
+            "openai-direct",
+            model_name=model_name,
+            azure_model=ws_content.get("azure_model", True),
+            cot_model=ws_content.get("cot_model", False),
+        )
     else:
         raise ValueError(f"Unknown model name: {model_name}")
 
