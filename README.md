@@ -12,10 +12,6 @@
 [![GAIA Benchmark](https://img.shields.io/badge/GAIA-Benchmark-green)](https://ii-agent-gaia.ii.inc/)
 </div>
 
-**Update (2025-05-30): II-Agent now supports using local LLMs via LMStudio! This is alpha support, and not fully tested but works inside the CLI**
-*   For details on the changes, see [CHANGENOTES.md](./CHANGENOTES.md).
-*   For instructions on how to run with a local model, see [RUNNING_WITH_LOCAL_MODELS.md](./RUNNING_WITH_LOCAL_MODELS.md).
-
 II-Agent is an open-source intelligent assistant designed to streamline and enhance workflows across multiple domains. It represents a significant advancement in how we interact with technology—shifting from passive tools to intelligent systems capable of independently executing complex tasks.
 
 
@@ -26,12 +22,13 @@ https://github.com/user-attachments/assets/d0eb7440-a6e2-4276-865c-a1055181bb33
 
 ## Overview
 
-II Agent is built around providing an agentic interface to Anthropic Claude models. It offers:
+II Agent is built around providing an agentic interface to leading language models. It offers:
 
 - A CLI interface for direct command-line interaction
 - A WebSocket server that powers a modern React-based frontend
-- Integration with Google Cloud's Vertex AI for API access to Anthropic models
-- **NEW: Support for OpenAI-compatible APIs, enabling use of local models via LMStudio.**
+- Integration with multiple LLM providers:
+  - Anthropic Claude models (direct API or via Google Cloud Vertex AI)
+  - Google Gemini models (direct API or via Google Cloud Vertex AI)
 
 ## Core Capabilities
 
@@ -100,7 +97,10 @@ You can view the full traces of some samples here: [GAIA Benchmark Traces](https
 - Docker Compose
 - Python 3.10+
 - Node.js 18+ (for frontend)
-- Google Cloud project with Vertex AI API enabled or Anthropic API key
+- At least one of the following:
+  - Anthropic API key, or
+  - Google Gemini API key, or  
+  - Google Cloud project with Vertex AI API enabled
 
 ## Environment
 
@@ -119,20 +119,16 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 For the back end, create a `.env` file in the root directory with the following variables. Here are the required variables needed to run this project:
 
 ```bash
-# Anthropic Key for Claude
-ANTHROPIC_API_KEY=
+# Required API Keys - Choose one based on your LLM provider:
+# Option 1: For Claude models via Anthropic
+ANTHROPIC_API_KEY=your_anthropic_key
+
+# Option 2: For Gemini models via Google
+GEMINI_API_KEY=your_gemini_key
 # Search Provider API Key
 TAVILY_API_KEY=your_tavily_key
 
 STATIC_FILE_BASE_URL=http://localhost:8000/
-
-# --- Optional: For LMStudio / Local OpenAI-Compatible Models ---
-# Base URL for your LMStudio or other OpenAI-compatible API
-# Example: OPENAI_BASE_URL=http://localhost:1234/v1
-OPENAI_BASE_URL=
-# API Key for the OpenAI-compatible API (can be a dummy key like "lmstudio" if not required)
-OPENAI_API_KEY=
-# --- End Optional: For LMStudio ---
 ```
 
 We also support other search and crawl provider such as FireCrawl and SerpAPI (Optional but yield better performance):
@@ -206,15 +202,6 @@ GOOGLE_APPLICATION_CREDENTIALS=path-to-your-credential
 python cli.py --project-id YOUR_PROJECT_ID --region YOUR_REGION
 ```
 
-**To use a local model via LMStudio (OpenAI-compatible):**
-1. Ensure `OPENAI_BASE_URL` (and `OPENAI_API_KEY` if needed) are set in your `.env` file or as environment variables.
-2. Run with the `--llm-client openai-direct` and `--model-name` arguments:
-```bash
-python cli.py --llm-client openai-direct --model-name <your-model-identifier-in-lmstudio> --prompt "Your prompt here"
-```
-(See [RUNNING_WITH_LOCAL_MODELS.md](./RUNNING_WITH_LOCAL_MODELS.md) for detailed setup.)
-
-
 Options:
 - `--project-id`: Google Cloud project ID
 - `--region`: Google Cloud region (e.g., us-east5)
@@ -237,14 +224,6 @@ GOOGLE_APPLICATION_CREDENTIALS=path-to-your-credential \
 python ws_server.py --port 8000 --project-id YOUR_PROJECT_ID --region YOUR_REGION
 ```
 
-**To use a local model via LMStudio (OpenAI-compatible) with the Web Interface:**
-1. Ensure `OPENAI_BASE_URL` (and `OPENAI_API_KEY` if needed) are set in your `.env` file or as environment variables.
-2. Start the WebSocket server with the `--llm-client openai-direct` and `--model-name` arguments:
-```bash
-python ws_server.py --port 8000 --llm-client openai-direct --model-name <your-model-identifier-in-lmstudio>
-```
-(See [RUNNING_WITH_LOCAL_MODELS.md](./RUNNING_WITH_LOCAL_MODELS.md) for detailed setup.)
-
 2. Start the frontend (in a separate terminal):
 
 ```bash
@@ -266,7 +245,7 @@ npm run dev
 
 ## Conclusion
 
-The II-Agent framework, architected around the reasoning capabilities of large language models like Claude 3.7 Sonnet, presents a comprehensive and robust methodology for building versatile AI agents. Through its synergistic combination of a powerful LLM, a rich set of execution capabilities, an explicit mechanism for planning and reflection, and intelligent context management strategies, II-Agent is well-equipped to address a wide spectrum of complex, multi-step tasks. Its open-source nature and extensible design provide a strong foundation for continued research and development in the rapidly evolving field of agentic AI.
+The II-Agent framework, architected around the reasoning capabilities of large language models like Claude 4.0 Sonnet or Gemini 2.5 Pro, presents a comprehensive and robust methodology for building versatile AI agents. Through its synergistic combination of a powerful LLM, a rich set of execution capabilities, an explicit mechanism for planning and reflection, and intelligent context management strategies, II-Agent is well-equipped to address a wide spectrum of complex, multi-step tasks. Its open-source nature and extensible design provide a strong foundation for continued research and development in the rapidly evolving field of agentic AI.
 
 ## Acknowledgement
 

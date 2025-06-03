@@ -20,7 +20,7 @@ GCP_PROJECT_ID = os.environ.get("GOOGLE_CLOUD_PROJECT")
 GCP_LOCATION = os.environ.get("GOOGLE_CLOUD_REGION")
 
 SUPPORTED_ASPECT_RATIOS = ["1:1", "16:9", "9:16", "4:3", "3:4"]
-SAFETY_FILTER_LEVELS = ["block_some", "block_most", "block_few", "block_none"]
+SAFETY_FILTER_LEVELS = ["block_some", "block_most", "block_few"]
 PERSON_GENERATION_OPTIONS = ["allow_adult", "dont_allow", "allow_all"]
 
 
@@ -152,11 +152,13 @@ The generated image will be saved to the specified local path in the workspace a
                 print(
                     f"Warning: Requested {generate_params['number_of_images']} images, but tool currently saves only the first."
                 )
-
-            images[0].save(
-                location=str(local_output_path), include_generation_parameters=False
-            )  # include_generation_parameters=False as per snippet
-
+            try:
+                images[0].save(
+                    location=str(local_output_path), include_generation_parameters=False
+                )  # include_generation_parameters=False as per snippet
+            except Exception as e:
+                msg = "Image generation failed due to safety restrictions or API limitations. Please try modifying your prompt to be more appropriate or let me know if you'd like to try a different approach."
+                return ToolImplOutput(msg, msg, {"success": False, "error": str(e)})
             output_url = (
                 f"http://localhost:{self.workspace_manager.file_server_port}/workspace/{relative_output_filename}"
                 if hasattr(self.workspace_manager, "file_server_port")
