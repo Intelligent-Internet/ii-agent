@@ -102,9 +102,15 @@ You can view the full traces of some samples here: [GAIA Benchmark Traces](https
   - Google Gemini API key, or  
   - Google Cloud project with Vertex AI API enabled
 
+## Best Practices:
+- For best performance, we recommend using Claude 4.0 Sonnet or Claude Opus 4.0 models.
+- For fast and cheap, we recommend using GPT4.1 from OpenAI.
+- Gemini 2.5 Pro is a good balance between performance and cost.
+
 ## Environment
 
 You need to set up 2 `.env` files to run both frontend and backend
+**Shortcut:** Check file `.env.example` for example of `.env` file.
 
 ### Frontend Environment Variables
 
@@ -116,7 +122,8 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 
 ### Backend Environment Variables
 
-For the back end, create a `.env` file in the root directory with the following variables. Here are the required variables needed to run this project:
+For the backend, create a `.env` file in the root directory with the following variables. Here are the required variables needed to run this project:
+
 
 ```bash
 # Required API Keys - Choose one based on your LLM provider:
@@ -125,6 +132,10 @@ ANTHROPIC_API_KEY=your_anthropic_key
 
 # Option 2: For Gemini models via Google
 GEMINI_API_KEY=your_gemini_key
+
+# Option 3: For OpenAI models
+OPENAI_API_KEY=your_openai_key
+
 # Search Provider API Key
 TAVILY_API_KEY=your_tavily_key
 
@@ -138,10 +149,11 @@ FIRECRAWL_API_KEY=your_firecrawl_key
 SERPAPI_API_KEY=your_serpapi_key 
 ```
 
-Enabling Image and Video Generation Tool (Optional, good for more creative output)
+We are supporting image generation and video generation tool by Vertex AI (Optional, good for more creative output), to use this, you need to set up the following variables:
 ```bash
-OPENAI_API_KEY=your_openai_key
-OPENAI_AZURE_ENDPOINT=your_azure_endpoint
+MEDIA_GCS_OUTPUT_BUCKET=gs://your_bucket_here
+MEDIA_GCP_PROJECT_ID=your_vertex_project_id
+MEDIA_GCP_LOCATION=your_vertex_location
 ```
 
 Image Search Tool  (Optional, good for more beautiful output)
