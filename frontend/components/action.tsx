@@ -256,6 +256,7 @@ const Action = ({ workspaceInfo, type, value, onClick }: ActionProps) => {
   }, [type, value, workspaceInfo]);
 
   if (
+    !type ||
     type === TOOL.COMPLETE ||
     type === TOOL.BROWSER_VIEW ||
     type === TOOL.LIST_HTML_LINKS ||

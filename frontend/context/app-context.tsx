@@ -37,6 +37,7 @@ interface AppState {
 type AppAction =
   | { type: "SET_MESSAGES"; payload: Message[] }
   | { type: "ADD_MESSAGE"; payload: Message }
+  | { type: "UPDATE_MESSAGE"; payload: Message }
   | { type: "SET_LOADING"; payload: boolean }
   | { type: "SET_ACTIVE_TAB"; payload: TAB }
   | { type: "SET_CURRENT_ACTION_DATA"; payload: ActionStep | undefined }
@@ -86,7 +87,7 @@ const initialState: AppState = {
     media_generation: true,
     audio_generation: true,
     browser: true,
-    thinking_tokens: 0,
+    thinking_tokens: 10000,
   },
   wsConnectionState: WebSocketConnectionState.CONNECTING,
   selectedModel: AVAILABLE_MODELS[0],
@@ -108,6 +109,13 @@ function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, messages: action.payload };
     case "ADD_MESSAGE":
       return { ...state, messages: [...state.messages, action.payload] };
+    case "UPDATE_MESSAGE":
+      return {
+        ...state,
+        messages: state.messages.map((message) =>
+          message.id === action.payload.id ? action.payload : message
+        ),
+      };
     case "SET_LOADING":
       return { ...state, isLoading: action.payload };
     case "SET_ACTIVE_TAB":

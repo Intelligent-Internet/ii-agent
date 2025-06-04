@@ -115,7 +115,7 @@ export function useAppEvents({
         const lastMessage = cloneDeep(messages[messages.length - 1]);
 
         if (
-          lastMessage.action &&
+          lastMessage?.action &&
           lastMessage.action.type === TOOL.STR_REPLACE_EDITOR
         ) {
           lastMessage.action.data.content = data.content.content as string;
@@ -138,8 +138,8 @@ export function useAppEvents({
           }, 500);
 
           dispatch({
-            type: "SET_MESSAGES",
-            payload: [...messages.slice(0, -1), lastMessage],
+            type: "UPDATE_MESSAGE",
+            payload: lastMessage,
           });
         }
         break;
@@ -203,8 +203,8 @@ export function useAppEvents({
               }, 500);
 
               dispatch({
-                type: "SET_MESSAGES",
-                payload: [...messages.slice(0, -1), lastMessage],
+                type: "UPDATE_MESSAGE",
+                payload: lastMessage,
               });
             } else {
               dispatch({
@@ -246,6 +246,7 @@ export function useAppEvents({
         toast.error(data.content.message as string);
         dispatch({ type: "SET_IS_UPLOADING", payload: false });
         dispatch({ type: "SET_LOADING", payload: false });
+        dispatch({ type: "SET_GENERATING_PROMPT", payload: false });
         break;
     }
   };

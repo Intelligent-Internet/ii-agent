@@ -26,6 +26,7 @@ import {
 import { GoogleDocument, GooglePickerResponse } from "@/typings/agent";
 import { useGoogleDrive } from "@/hooks/use-google-drive";
 import { useAppContext } from "@/context/app-context";
+import { useUploadFiles } from "@/hooks/use-upload-files";
 
 interface FileUploadStatus {
   name: string;
@@ -47,10 +48,6 @@ interface QuestionInputProps {
   setValue: (value: string) => void;
   handleKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
   handleSubmit: (question: string) => void;
-  handleFileUpload?: (
-    e: React.ChangeEvent<HTMLInputElement>,
-    dontAddToUserMessage?: boolean
-  ) => void;
   isDisabled?: boolean;
   handleEnhancePrompt?: () => void;
   handleCancel?: () => void;
@@ -65,7 +62,6 @@ const QuestionInput = ({
   setValue,
   handleKeyDown,
   handleSubmit,
-  handleFileUpload,
   isDisabled,
   handleEnhancePrompt,
   handleCancel,
@@ -77,6 +73,8 @@ const QuestionInput = ({
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const { handleFileUpload } = useUploadFiles();
 
   const {
     isGoogleDriveConnected,
@@ -129,12 +127,12 @@ const QuestionInput = ({
     };
   }, [files]);
 
-  const isImageFile = (fileName: string): boolean => {
+  const isImageFile = useCallback((fileName: string): boolean => {
     const ext = fileName.split(".").pop()?.toLowerCase() || "";
     return ["jpg", "jpeg", "png", "gif", "webp", "bmp", "heic", "svg"].includes(
       ext
     );
-  };
+  }, []);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || !handleFileUpload) return;
@@ -531,7 +529,7 @@ const QuestionInput = ({
                     >
                       <X className="size-4 text-white" />
                     </button> */}
-                    {(state.isLoading || file.loading) && (
+                    {(state.isUploading || file.loading) && (
                       <div className="absolute inset-0 flex items-center justify-center bg-black/30 rounded-xl">
                         <Loader2 className="size-5 text-white animate-spin" />
                       </div>
@@ -547,7 +545,7 @@ const QuestionInput = ({
                     className="flex items-center gap-2 bg-neutral-900 text-white rounded-full px-3 py-2 border border-gray-700 shadow-sm"
                   >
                     <div className="flex items-center justify-center w-10 h-10 bg-blue-600 rounded-full">
-                      {state.isLoading || file.loading ? (
+                      {state.isUploading || file.loading ? (
                         <Loader2 className="size-5 text-white animate-spin" />
                       ) : (
                         <Folder className="size-5 text-white" />
@@ -581,7 +579,7 @@ const QuestionInput = ({
                   <div
                     className={`flex items-center justify-center w-10 h-10 ${bgColor} rounded-full`}
                   >
-                    {state.isLoading || file.loading ? (
+                    {state.isUploading || file.loading ? (
                       <Loader2 className="size-5 text-white animate-spin" />
                     ) : (
                       <IconComponent className="size-5 text-white" />
@@ -619,60 +617,57 @@ const QuestionInput = ({
         />
         <div className="flex justify-between items-center absolute bottom-0 py-4 m-px w-[calc(100%-4px)] rounded-b-xl bg-[#35363a] px-4">
           <div className="flex items-center gap-x-3">
-            {handleFileUpload && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="hover:bg-gray-700/50 size-10 rounded-full cursor-pointer border border-[#ffffff0f] shadow-sm"
-                    disabled={
-                      state.isUploading || state.isLoading || isDisabled
-                    }
-                  >
-                    {state.isUploading ? (
-                      <Loader2 className="size-6 text-gray-400 animate-spin" />
-                    ) : (
-                      <Plus className="size-6 text-gray-400" />
-                    )}
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent
-                  align="start"
-                  className="bg-neutral-900 border-gray-700 text-white"
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="hover:bg-gray-700/50 size-10 rounded-full cursor-pointer border border-[#ffffff0f] shadow-sm"
+                  disabled={
+                    state.isUploading ||
+                    state.isLoading ||
+                    isDisabled ||
+                    files.some((f) => f.loading)
+                  }
                 >
-                  <DropdownMenuItem
-                    className="flex p-2 items-center gap-2 cursor-pointer hover:bg-gray-800"
-                    onClick={() => fileInputRef.current?.click()}
-                  >
-                    <Paperclip className="size-5" />
-                    <span>Add images and files</span>
-                  </DropdownMenuItem>
+                  <Plus className="size-6 text-gray-400" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="start"
+                className="bg-neutral-900 border-gray-700 text-white"
+              >
+                <DropdownMenuItem
+                  className="flex p-2 items-center gap-2 cursor-pointer hover:bg-gray-800"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <Paperclip className="size-5" />
+                  <span>Add images and files</span>
+                </DropdownMenuItem>
 
-                  <DropdownMenuItem
-                    className="flex p-2 items-center gap-2 cursor-pointer hover:bg-gray-800"
-                    onClick={handleGoogleDriveClick}
-                    disabled={isGDriveAuthLoading}
-                  >
-                    {isGDriveAuthLoading ? (
-                      <Loader2 className="size-5 text-gray-400 animate-spin" />
-                    ) : (
-                      <Image
-                        src="/icons/google-drive.svg"
-                        alt="Google Drive"
-                        width={20}
-                        height={20}
-                      />
-                    )}
-                    <span>
-                      {isGoogleDriveConnected
-                        ? "Add from Google Drive"
-                        : "Connect with Google Drive"}
-                    </span>
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
+                <DropdownMenuItem
+                  className="flex p-2 items-center gap-2 cursor-pointer hover:bg-gray-800"
+                  onClick={handleGoogleDriveClick}
+                  disabled={isGDriveAuthLoading}
+                >
+                  {isGDriveAuthLoading ? (
+                    <Loader2 className="size-5 text-gray-400 animate-spin" />
+                  ) : (
+                    <Image
+                      src="/icons/google-drive.svg"
+                      alt="Google Drive"
+                      width={20}
+                      height={20}
+                    />
+                  )}
+                  <span>
+                    {isGoogleDriveConnected
+                      ? "Add from Google Drive"
+                      : "Connect with Google Drive"}
+                  </span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             {!hideSettings && (
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -708,7 +703,13 @@ const QuestionInput = ({
                   size="icon"
                   className="hover:bg-gray-700/50 size-10 rounded-full cursor-pointer border border-[#ffffff0f] shadow-sm"
                   onClick={handleEnhancePrompt}
-                  disabled={!state.isGeneratingPrompt}
+                  disabled={
+                    state.isGeneratingPrompt ||
+                    !value.trim() ||
+                    isDisabled ||
+                    state.isLoading ||
+                    state.isUploading
+                  }
                 >
                   {state.isGeneratingPrompt ? (
                     <Loader2 className="size-5 text-gray-400 animate-spin" />

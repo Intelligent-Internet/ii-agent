@@ -51,7 +51,7 @@ const SettingsDrawer = ({ isOpen, onClose }: SettingsDrawerProps) => {
         media_generation: true,
         audio_generation: true,
         browser: true,
-        thinking_tokens: 0,
+        thinking_tokens: 10000,
       },
     });
     dispatch({ type: "SET_SELECTED_MODEL", payload: AVAILABLE_MODELS[0] });

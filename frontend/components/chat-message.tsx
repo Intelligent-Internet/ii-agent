@@ -22,10 +22,6 @@ interface ChatMessageProps {
   setCurrentQuestion: (value: string) => void;
   handleKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
   handleQuestionSubmit: (question: string) => void;
-  handleFileUpload: (
-    e: React.ChangeEvent<HTMLInputElement>,
-    dontAddToUserMessage?: boolean
-  ) => void;
   handleEnhancePrompt: () => void;
   handleCancel: () => void;
   handleEditMessage: (newQuestion: string) => void;
@@ -38,7 +34,6 @@ const ChatMessage = ({
   setCurrentQuestion,
   handleKeyDown,
   handleQuestionSubmit,
-  handleFileUpload,
   handleEnhancePrompt,
   handleCancel,
   handleEditMessage,
@@ -74,7 +69,7 @@ const ChatMessage = ({
             key={message.id}
             className={`mb-4 ${
               message.role === "user" ? "text-right" : "text-left"
-            } ${message.role && !message.files && "mb-8"}`}
+            } ${message.role === "user" && !message.files && "mb-8"}`}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 * index, duration: 0.3 }}
@@ -340,7 +335,6 @@ const ChatMessage = ({
           setValue={setCurrentQuestion}
           handleKeyDown={handleKeyDown}
           handleSubmit={handleQuestionSubmit}
-          handleFileUpload={handleFileUpload}
           handleEnhancePrompt={handleEnhancePrompt}
           handleCancel={handleCancel}
         />

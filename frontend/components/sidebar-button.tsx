@@ -61,8 +61,7 @@ const SidebarButton = ({ className, workspaceInfo }: SidebarButtonProps) => {
 
       const data = await response.json();
       setSessions(data.sessions || []);
-    } catch (err) {
-      console.error("Failed to fetch sessions:", err);
+    } catch {
       setError("Failed to load sessions. Please try again.");
     } finally {
       setIsLoading(false);
