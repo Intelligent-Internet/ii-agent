@@ -10,66 +10,36 @@ import { ActionStep, Message } from "@/typings/agent";
 import { getFileIconAndColor } from "@/utils/file-utils";
 import { Button } from "./ui/button";
 import EditQuestion from "./edit-question";
+import { useAppContext } from "@/context/app-context";
 
 interface ChatMessageProps {
-  messages: Message[];
-  isLoading: boolean;
-  isCompleted: boolean;
-  isStopped: boolean;
-  workspaceInfo: string;
+  isReplayMode: boolean;
+  messagesEndRef: React.RefObject<HTMLDivElement | null>;
   handleClickAction: (
     data: ActionStep | undefined,
     showTabOnly?: boolean
   ) => void;
-  isUploading: boolean;
-  isReplayMode: boolean;
-  currentQuestion: string;
-  messagesEndRef: React.RefObject<HTMLDivElement | null>;
   setCurrentQuestion: (value: string) => void;
   handleKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
   handleQuestionSubmit: (question: string) => void;
-  handleFileUpload: (
-    e: React.ChangeEvent<HTMLInputElement>,
-    dontAddToUserMessage?: boolean
-  ) => void;
-  handleGoogleDriveAuth: () => Promise<boolean>;
-  isGoogleDriveConnected?: boolean;
-  isGeneratingPrompt: boolean;
   handleEnhancePrompt: () => void;
   handleCancel: () => void;
-  editingMessage?: Message;
-  setEditingMessage: (message?: Message) => void;
   handleEditMessage: (newQuestion: string) => void;
-  googlePickerApiLoaded: boolean;
-  setIsGoogleDriveConnected: (value: boolean) => void;
 }
 
 const ChatMessage = ({
-  messages,
-  isLoading,
-  isCompleted,
-  isStopped,
-  workspaceInfo,
-  isUploading,
-  currentQuestion,
   messagesEndRef,
   isReplayMode,
   handleClickAction,
   setCurrentQuestion,
   handleKeyDown,
   handleQuestionSubmit,
-  handleFileUpload,
-  isGeneratingPrompt,
   handleEnhancePrompt,
   handleCancel,
-  editingMessage,
-  setEditingMessage,
   handleEditMessage,
-  handleGoogleDriveAuth,
-  isGoogleDriveConnected,
-  googlePickerApiLoaded,
-  setIsGoogleDriveConnected,
 }: ChatMessageProps) => {
+  const { state, dispatch } = useAppContext();
+
   // Helper function to check if a message is the latest user message
   const isLatestUserMessage = (
     message: Message,
@@ -82,6 +52,10 @@ const ChatMessage = ({
     );
   };
 
+  const handleSetEditingMessage = (message?: Message) => {
+    dispatch({ type: "SET_EDITING_MESSAGE", payload: message });
+  };
+
   return (
     <div className="col-span-4">
       <motion.div
@@ -90,12 +64,12 @@ const ChatMessage = ({
         animate={{ opacity: 1 }}
         transition={{ delay: 0.2, duration: 0.3 }}
       >
-        {messages.map((message, index) => (
+        {state.messages.map((message, index) => (
           <motion.div
             key={message.id}
             className={`mb-4 ${
               message.role === "user" ? "text-right" : "text-left"
-            } ${message.role && !message.files && "mb-8"}`}
+            } ${message.role === "user" && !message.files && "mb-8"}`}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 * index, duration: 0.3 }}
@@ -233,7 +207,9 @@ const ChatMessage = ({
                     ? "bg-[#35363a] p-3 max-w-[80%] text-white border border-[#3A3B3F] shadow-sm whitespace-pre-wrap"
                     : "text-white"
                 } ${
-                  editingMessage?.id === message.id ? "w-full max-w-none" : ""
+                  state.editingMessage?.id === message.id
+                    ? "w-full max-w-none"
+                    : ""
                 }`}
                 initial={{ scale: 0.9 }}
                 animate={{ scale: 1 }}
@@ -245,16 +221,16 @@ const ChatMessage = ({
               >
                 {message.role === "user" ? (
                   <div>
-                    {editingMessage?.id === message.id ? (
+                    {state.editingMessage?.id === message.id ? (
                       <EditQuestion
                         editingMessage={message.content}
-                        handleCancel={() => setEditingMessage(undefined)}
+                        handleCancel={() => handleSetEditingMessage(undefined)}
                         handleEditMessage={handleEditMessage}
                       />
                     ) : (
                       <div className="relative group">
                         <div className="text-left">{message.content}</div>
-                        {isLatestUserMessage(message, messages) &&
+                        {isLatestUserMessage(message, state.messages) &&
                           !isReplayMode && (
                             <div className="absolute -bottom-[45px] -right-[20px] opacity-0 group-hover:opacity-100 transition-opacity">
                               <Button
@@ -262,7 +238,7 @@ const ChatMessage = ({
                                 size="icon"
                                 className="text-xs cursor-pointer hover:!bg-transparent"
                                 onClick={() => {
-                                  setEditingMessage(message);
+                                  handleSetEditingMessage(message);
                                 }}
                               >
                                 <Pencil className="size-3 mr-1" />
@@ -286,7 +262,7 @@ const ChatMessage = ({
                 transition={{ delay: 0.1 * index, duration: 0.3 }}
               >
                 <Action
-                  workspaceInfo={workspaceInfo}
+                  workspaceInfo={state.workspaceInfo}
                   type={message.action.type}
                   value={message.action.data}
                   onClick={() => handleClickAction(message.action, true)}
@@ -296,7 +272,7 @@ const ChatMessage = ({
           </motion.div>
         ))}
 
-        {isLoading && (
+        {state.isLoading && (
           <motion.div
             className="mb-4 text-left"
             initial={{ opacity: 0, y: 20 }}
@@ -328,14 +304,14 @@ const ChatMessage = ({
           </motion.div>
         )}
 
-        {isCompleted && (
+        {state.isCompleted && (
           <div className="flex gap-x-2 items-center bg-[#25BA3B1E] text-green-600 text-sm p-2 rounded-full">
             <Check className="size-4" />
             <span>II-Agent has completed the current task.</span>
           </div>
         )}
 
-        {isStopped && (
+        {state.isStopped && (
           <div className="flex gap-x-2 items-center bg-[#ffbf361f] text-yellow-300 text-sm p-2 rounded-full">
             <CircleStop className="size-4" />
             <span>II-Agent has stopped, send a new message to continue.</span>
@@ -351,23 +327,16 @@ const ChatMessage = ({
         transition={{ delay: 0.2, duration: 0.3 }}
       >
         <QuestionInput
+          hideSettings
           className="p-4 pb-0 w-full max-w-none"
           textareaClassName="h-30 w-full"
           placeholder="Ask me anything..."
-          value={currentQuestion}
+          value={state.currentQuestion}
           setValue={setCurrentQuestion}
           handleKeyDown={handleKeyDown}
           handleSubmit={handleQuestionSubmit}
-          handleFileUpload={handleFileUpload}
-          handleGoogleDriveAuth={handleGoogleDriveAuth}
-          isGoogleDriveConnected={isGoogleDriveConnected}
-          isUploading={isUploading}
-          isGeneratingPrompt={isGeneratingPrompt}
           handleEnhancePrompt={handleEnhancePrompt}
-          isLoading={isLoading}
           handleCancel={handleCancel}
-          googlePickerApiLoaded={googlePickerApiLoaded}
-          setIsGoogleDriveConnected={setIsGoogleDriveConnected}
         />
       </motion.div>
     </div>

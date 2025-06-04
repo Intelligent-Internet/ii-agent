@@ -1,6 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { X, ChevronDown, RotateCcw } from "lucide-react";
 import Cookies from "js-cookie";
+import { motion } from "framer-motion";
+
 import { Button } from "./ui/button";
 import { Switch } from "./ui/switch";
 import { Label } from "./ui/label";
@@ -11,57 +13,77 @@ import {
   SelectTrigger,
   SelectValue,
 } from "./ui/select";
-import { motion } from "framer-motion";
 import { Tooltip, TooltipTrigger, TooltipContent } from "./ui/tooltip";
 import { AVAILABLE_MODELS, ToolSettings } from "@/typings/agent";
+import { useAppContext } from "@/context/app-context";
 
 interface SettingsDrawerProps {
   isOpen: boolean;
   onClose: () => void;
-  toolSettings: ToolSettings;
-  setToolSettings: (settings: ToolSettings) => void;
-  selectedModel?: string;
-  setSelectedModel?: (model: string) => void;
 }
 
-const SettingsDrawer = ({
-  isOpen,
-  onClose,
-  toolSettings,
-  setToolSettings,
-  selectedModel,
-  setSelectedModel,
-}: SettingsDrawerProps) => {
+const SettingsDrawer = ({ isOpen, onClose }: SettingsDrawerProps) => {
+  const { state, dispatch } = useAppContext();
   const [toolsExpanded, setToolsExpanded] = useState(true);
+  const [reasoningExpanded, setReasoningExpanded] = useState(true);
 
-  // Save selected model to cookies whenever it changes
-  useEffect(() => {
-    if (selectedModel) {
-      Cookies.set("selected_model", selectedModel, {
-        expires: 365, // 1 year
-        sameSite: "strict",
-        secure: window.location.protocol === "https:",
-      });
-    }
-  }, [selectedModel]);
+  const isClaudeModel = useMemo(
+    () => state.selectedModel?.toLowerCase().includes("claude"),
+    [state.selectedModel]
+  );
 
   const handleToolToggle = (tool: keyof ToolSettings) => {
-    setToolSettings({
-      ...toolSettings,
-      [tool]: !toolSettings[tool],
+    dispatch({
+      type: "SET_TOOL_SETTINGS",
+      payload: {
+        ...state.toolSettings,
+        [tool]: !state.toolSettings[tool],
+      },
     });
   };
 
   const resetSettings = () => {
-    setToolSettings({
-      deep_research: false,
-      pdf: true,
-      media_generation: true,
-      audio_generation: true,
-      browser: true,
+    dispatch({
+      type: "SET_TOOL_SETTINGS",
+      payload: {
+        deep_research: false,
+        pdf: true,
+        media_generation: true,
+        audio_generation: true,
+        browser: true,
+        thinking_tokens: 10000,
+      },
     });
-    setSelectedModel?.(AVAILABLE_MODELS[0]);
+    dispatch({ type: "SET_SELECTED_MODEL", payload: AVAILABLE_MODELS[0] });
   };
+
+  const handleReasoningEffortChange = (effort: string) => {
+    dispatch({
+      type: "SET_TOOL_SETTINGS",
+      payload: {
+        ...state.toolSettings,
+        thinking_tokens: effort === "high" ? 10000 : 0,
+      },
+    });
+  };
+
+  useEffect(() => {
+    if (state.selectedModel) {
+      Cookies.set("selected_model", state.selectedModel, {
+        expires: 365, // 1 year
+        sameSite: "strict",
+        secure: window.location.protocol === "https:",
+      });
+
+      // Reset thinking_tokens to 0 for non-Claude models
+      if (!isClaudeModel && state.toolSettings.thinking_tokens > 0) {
+        dispatch({
+          type: "SET_TOOL_SETTINGS",
+          payload: { ...state.toolSettings, thinking_tokens: 0 },
+        });
+      }
+    }
+  }, [state.selectedModel, isClaudeModel, state.toolSettings, dispatch]);
 
   return (
     <>
@@ -107,7 +129,12 @@ const SettingsDrawer = ({
           <div className="space-y-6">
             {/* Model selector */}
             <div className="space-y-2">
-              <Select value={selectedModel} onValueChange={setSelectedModel}>
+              <Select
+                value={state.selectedModel}
+                onValueChange={(model) =>
+                  dispatch({ type: "SET_SELECTED_MODEL", payload: model })
+                }
+              >
                 <SelectTrigger className="w-full bg-[#35363a] border-[#ffffff0f]">
                   <SelectValue placeholder="Select model" />
                 </SelectTrigger>
@@ -120,6 +147,58 @@ const SettingsDrawer = ({
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Reasoning Effort section - only for Claude models */}
+            {isClaudeModel && (
+              <div className="space-y-4 pt-4 border-t border-gray-700">
+                <div
+                  className="flex justify-between items-center cursor-pointer"
+                  onClick={() => setReasoningExpanded(!reasoningExpanded)}
+                >
+                  <h3 className="text-lg font-medium text-white">
+                    Reasoning Effort
+                  </h3>
+                  <ChevronDown
+                    className={`size-5 transition-transform ${
+                      reasoningExpanded ? "rotate-180" : ""
+                    }`}
+                  />
+                </div>
+
+                {reasoningExpanded && (
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label
+                        htmlFor="reasoning-effort"
+                        className="text-gray-300"
+                      >
+                        Effort Level
+                      </Label>
+                      <p className="text-xs text-gray-400 mb-2">
+                        Controls how much effort the model spends on reasoning
+                        before responding
+                      </p>
+                      <Select
+                        value={
+                          state.toolSettings.thinking_tokens > 0
+                            ? "high"
+                            : "standard"
+                        }
+                        onValueChange={handleReasoningEffortChange}
+                      >
+                        <SelectTrigger className="w-full bg-[#35363a] border-[#ffffff0f]">
+                          <SelectValue placeholder="Select effort level" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-[#35363a] border-[#ffffff0f]">
+                          <SelectItem value="standard">Standard</SelectItem>
+                          <SelectItem value="high">High-effort</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Tools section */}
             <div className="space-y-4 pt-4 border-t border-gray-700">
@@ -148,7 +227,7 @@ const SettingsDrawer = ({
                     </div>
                     <Switch
                       id="deep-research"
-                      checked={toolSettings.deep_research}
+                      checked={state.toolSettings.deep_research}
                       onCheckedChange={() => handleToolToggle("deep_research")}
                     />
                   </div>
@@ -164,7 +243,7 @@ const SettingsDrawer = ({
                     </div>
                     <Switch
                       id="pdf"
-                      checked={toolSettings.pdf}
+                      checked={state.toolSettings.pdf}
                       onCheckedChange={() => handleToolToggle("pdf")}
                     />
                   </div>
@@ -183,7 +262,7 @@ const SettingsDrawer = ({
                     </div>
                     <Switch
                       id="media-generation"
-                      checked={toolSettings.media_generation}
+                      checked={state.toolSettings.media_generation}
                       onCheckedChange={() =>
                         handleToolToggle("media_generation")
                       }
@@ -204,7 +283,7 @@ const SettingsDrawer = ({
                     </div>
                     <Switch
                       id="audio-generation"
-                      checked={toolSettings.audio_generation}
+                      checked={state.toolSettings.audio_generation}
                       onCheckedChange={() =>
                         handleToolToggle("audio_generation")
                       }
@@ -222,7 +301,7 @@ const SettingsDrawer = ({
                     </div>
                     <Switch
                       id="browser"
-                      checked={toolSettings.browser}
+                      checked={state.toolSettings.browser}
                       onCheckedChange={() => handleToolToggle("browser")}
                     />
                   </div>

@@ -34,11 +34,13 @@ const ImageBrowser = ({ className, url, images = [] }: BrowserProps) => {
         <div className="flex flex-col gap-4 p-4">
           {images.map((imgSrc, index) => (
             <div key={index} className="flex flex-col gap-2">
-              <img
-                src={imgSrc}
-                alt={`Image ${index + 1}`}
-                className="w-full object-contain max-h-[500px]"
-              />
+              {imgSrc && (
+                <img
+                  src={imgSrc}
+                  alt={`Image ${index + 1}`}
+                  className="w-full object-contain max-h-[500px]"
+                />
+              )}
             </div>
           ))}
         </div>

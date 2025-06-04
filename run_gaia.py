@@ -54,7 +54,7 @@ from ii_agent.utils import WorkspaceManager
 from ii_agent.llm import get_client
 from ii_agent.llm.context_manager.llm_summarizing import LLMSummarizingContextManager
 from ii_agent.llm.token_counter import TokenCounter
-from ii_agent.utils.constants import DEFAULT_MODEL, UPLOAD_FOLDER_NAME
+from ii_agent.utils.constants import DEFAULT_MODEL, TOKEN_BUDGET, UPLOAD_FOLDER_NAME
 from utils import parse_common_args
 from ii_agent.db.manager import DatabaseManager
 from ii_agent.core.event import RealtimeEvent, EventType
@@ -425,7 +425,7 @@ def main():
         client=client,
         token_counter=token_counter,
         logger=logger,
-        token_budget=120_000,
+        token_budget=TOKEN_BUDGET,
     )
 
     # Load dataset and get tasks to run

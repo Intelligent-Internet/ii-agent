@@ -10,6 +10,7 @@ from ii_agent.tools.visit_webpage_client import (
     ContentExtractionError,
     NetworkError,
 )
+from ii_agent.utils.constants import VISIT_WEB_PAGE_MAX_OUTPUT_LENGTH
 
 
 class VisitWebpageTool(LLMTool):
@@ -27,7 +28,7 @@ class VisitWebpageTool(LLMTool):
     }
     output_type = "string"
 
-    def __init__(self, max_output_length: int = 40000):
+    def __init__(self, max_output_length: int = VISIT_WEB_PAGE_MAX_OUTPUT_LENGTH):
         self.max_output_length = max_output_length
         self.visit_client = create_visit_client(max_output_length=max_output_length)
 

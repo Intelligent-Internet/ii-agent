@@ -2,6 +2,8 @@ import requests
 from .utils import truncate_content
 import os
 import json
+from ii_agent.utils.constants import VISIT_WEB_PAGE_MAX_OUTPUT_LENGTH
+
 
 
 class WebpageVisitException(Exception):
@@ -33,7 +35,7 @@ class BaseVisitClient:
 class MarkdownifyVisitClient(BaseVisitClient):
     name = "Markdownify"
 
-    def __init__(self, max_output_length: int = 40000):
+    def __init__(self, max_output_length: int = VISIT_WEB_PAGE_MAX_OUTPUT_LENGTH):
         self.max_output_length = max_output_length
 
     def forward(self, url: str) -> str:
@@ -73,7 +75,7 @@ class MarkdownifyVisitClient(BaseVisitClient):
 class TavilyVisitClient(BaseVisitClient):
     name = "Tavily"
 
-    def __init__(self, max_output_length: int = 40000):
+    def __init__(self, max_output_length: int = VISIT_WEB_PAGE_MAX_OUTPUT_LENGTH):
         self.max_output_length = max_output_length
         self.api_key = os.environ.get("TAVILY_API_KEY", "")
         if not self.api_key:
@@ -119,7 +121,7 @@ class TavilyVisitClient(BaseVisitClient):
 class FireCrawlVisitClient(BaseVisitClient):
     name = "FireCrawl"
 
-    def __init__(self, max_output_length: int = 40000):
+    def __init__(self, max_output_length: int = VISIT_WEB_PAGE_MAX_OUTPUT_LENGTH):
         self.max_output_length = max_output_length
         self.api_key = os.environ.get("FIRECRAWL_API_KEY", "")
         if not self.api_key:
@@ -156,7 +158,7 @@ class FireCrawlVisitClient(BaseVisitClient):
 class JinaVisitClient(BaseVisitClient):
     name = "Jina"
 
-    def __init__(self, max_output_length: int = 40000):
+    def __init__(self, max_output_length: int = VISIT_WEB_PAGE_MAX_OUTPUT_LENGTH):
         self.max_output_length = max_output_length
         self.api_key = os.environ.get("JINA_API_KEY", "")
         if not self.api_key:
@@ -196,7 +198,7 @@ class JinaVisitClient(BaseVisitClient):
             raise NetworkError(f"Error making request: {str(e)}")
 
 
-def create_visit_client(max_output_length: int = 40000) -> BaseVisitClient:
+def create_visit_client(max_output_length: int = VISIT_WEB_PAGE_MAX_OUTPUT_LENGTH) -> BaseVisitClient:
     """
     Factory function that creates a visit client based on available API keys.
     Priority order: Tavily > Jina > FireCrawl > Markdown

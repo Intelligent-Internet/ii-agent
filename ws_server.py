@@ -35,7 +35,7 @@ from sqlalchemy import asc, text
 
 from ii_agent.core.event import RealtimeEvent, EventType
 from ii_agent.db.models import Event
-from ii_agent.utils.constants import DEFAULT_MODEL, UPLOAD_FOLDER_NAME
+from ii_agent.utils.constants import DEFAULT_MODEL, TOKEN_BUDGET, UPLOAD_FOLDER_NAME
 from utils import parse_common_args, create_workspace_manager_for_connection
 from ii_agent.agents.anthropic_fc import AnthropicFC
 from ii_agent.agents.base import BaseAgent
@@ -47,9 +47,6 @@ from ii_agent.utils.prompt_generator import enhance_user_prompt
 from fastapi.staticfiles import StaticFiles
 
 from ii_agent.llm.context_manager.llm_summarizing import LLMSummarizingContextManager
-from ii_agent.llm.context_manager.amortized_forgetting import (
-    AmortizedForgettingContextManager,
-)
 from ii_agent.llm.token_counter import TokenCounter
 from ii_agent.db.manager import DatabaseManager
 from ii_agent.tools import get_system_tools
@@ -109,7 +106,7 @@ def map_model_name_to_client(model_name: str, ws_content: Dict[str, Any]) -> LLM
             use_caching=False,
             project_id=global_args.project_id,
             region=global_args.region,
-            thinking_tokens=ws_content.get("thinking_tokens", 0),
+            thinking_tokens=ws_content['tool_args']['thinking_tokens'],
         )
     elif "gemini" in model_name:
         return get_client(
@@ -529,21 +526,12 @@ def create_agent_for_connection(
     # Initialize token counter
     token_counter = TokenCounter()
 
-    if global_args.context_manager == "llm-summarizing":
-        context_manager = LLMSummarizingContextManager(
-            client=client,
-            token_counter=token_counter,
-            logger=logger_for_agent_logs,
-            token_budget=120_000,
-        )
-    elif global_args.context_manager == "amortized-forgetting":
-        context_manager = AmortizedForgettingContextManager(
-            token_counter=token_counter,
-            logger=logger_for_agent_logs,
-            token_budget=120_000,
-        )
-    else:
-        raise ValueError(f"Unknown context manager type: {global_args.context_manager}")
+    context_manager = LLMSummarizingContextManager(
+        client=client,
+        token_counter=token_counter,
+        logger=logger_for_agent_logs,
+        token_budget=TOKEN_BUDGET,
+    )
 
     # Initialize agent with websocket
     queue = asyncio.Queue()

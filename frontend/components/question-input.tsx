@@ -24,6 +24,9 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 import { GoogleDocument, GooglePickerResponse } from "@/typings/agent";
+import { useGoogleDrive } from "@/hooks/use-google-drive";
+import { useAppContext } from "@/context/app-context";
+import { useUploadFiles } from "@/hooks/use-upload-files";
 
 interface FileUploadStatus {
   name: string;
@@ -36,15 +39,8 @@ interface FileUploadStatus {
   fileCount?: number;
 }
 
-interface ToolSettings {
-  deep_research: boolean;
-  pdf: boolean;
-  media_generation: boolean;
-  audio_generation: boolean;
-  browser: boolean;
-}
-
 interface QuestionInputProps {
+  hideSettings?: boolean;
   className?: string;
   textareaClassName?: string;
   placeholder?: string;
@@ -52,27 +48,13 @@ interface QuestionInputProps {
   setValue: (value: string) => void;
   handleKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
   handleSubmit: (question: string) => void;
-  handleFileUpload?: (
-    e: React.ChangeEvent<HTMLInputElement>,
-    dontAddToUserMessage?: boolean
-  ) => void;
-  handleGoogleDriveAuth: () => Promise<boolean>;
-  isGoogleDriveConnected?: boolean;
-  isUploading?: boolean;
   isDisabled?: boolean;
-  isGeneratingPrompt?: boolean;
   handleEnhancePrompt?: () => void;
-  isLoading?: boolean;
   handleCancel?: () => void;
-  toolSettings?: ToolSettings;
-  setToolSettings?: (settings: ToolSettings) => void;
-  selectedModel?: string;
-  setSelectedModel?: (model: string) => void;
-  googlePickerApiLoaded: boolean;
-  setIsGoogleDriveConnected: (value: boolean) => void;
 }
 
 const QuestionInput = ({
+  hideSettings,
   className,
   textareaClassName,
   placeholder,
@@ -80,22 +62,11 @@ const QuestionInput = ({
   setValue,
   handleKeyDown,
   handleSubmit,
-  handleFileUpload,
-  handleGoogleDriveAuth,
-  isGoogleDriveConnected = false,
-  isUploading = false,
   isDisabled,
-  isGeneratingPrompt = false,
   handleEnhancePrompt,
-  isLoading = false,
   handleCancel,
-  toolSettings,
-  setToolSettings,
-  selectedModel,
-  setSelectedModel,
-  googlePickerApiLoaded,
-  setIsGoogleDriveConnected,
 }: QuestionInputProps) => {
+  const { state } = useAppContext();
   const [files, setFiles] = useState<FileUploadStatus[]>([]);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isGDriveAuthLoading, setIsGDriveAuthLoading] = useState(false);
@@ -103,18 +74,14 @@ const QuestionInput = ({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Initialize default tool settings if not provided
-  const [localToolSettings, setLocalToolSettings] = useState<ToolSettings>({
-    deep_research: false,
-    pdf: true,
-    media_generation: true,
-    audio_generation: true,
-    browser: true,
-  });
+  const { handleFileUpload } = useUploadFiles();
 
-  // Use either provided tool settings or local state
-  const currentToolSettings = toolSettings || localToolSettings;
-  const updateToolSettings = setToolSettings || setLocalToolSettings;
+  const {
+    isGoogleDriveConnected,
+    googlePickerApiLoaded,
+    handleGoogleDriveAuth,
+    setIsGoogleDriveConnected,
+  } = useGoogleDrive();
 
   // Handle key down events with auto-scroll for Shift+Enter
   const handleKeyDownWithAutoScroll = (
@@ -160,12 +127,12 @@ const QuestionInput = ({
     };
   }, [files]);
 
-  const isImageFile = (fileName: string): boolean => {
+  const isImageFile = useCallback((fileName: string): boolean => {
     const ext = fileName.split(".").pop()?.toLowerCase() || "";
     return ["jpg", "jpeg", "png", "gif", "webp", "bmp", "heic", "svg"].includes(
       ext
     );
-  };
+  }, []);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || !handleFileUpload) return;
@@ -530,14 +497,12 @@ const QuestionInput = ({
       }}
       className={`w-full max-w-2xl z-50 ${className}`}
     >
-      <SettingsDrawer
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-        toolSettings={currentToolSettings}
-        setToolSettings={updateToolSettings}
-        selectedModel={selectedModel}
-        setSelectedModel={setSelectedModel}
-      />
+      {!hideSettings && (
+        <SettingsDrawer
+          isOpen={isSettingsOpen}
+          onClose={() => setIsSettingsOpen(false)}
+        />
+      )}
 
       <motion.div
         className="relative rounded-xl"
@@ -564,7 +529,7 @@ const QuestionInput = ({
                     >
                       <X className="size-4 text-white" />
                     </button> */}
-                    {(isUploading || file.loading) && (
+                    {(state.isUploading || file.loading) && (
                       <div className="absolute inset-0 flex items-center justify-center bg-black/30 rounded-xl">
                         <Loader2 className="size-5 text-white animate-spin" />
                       </div>
@@ -580,7 +545,7 @@ const QuestionInput = ({
                     className="flex items-center gap-2 bg-neutral-900 text-white rounded-full px-3 py-2 border border-gray-700 shadow-sm"
                   >
                     <div className="flex items-center justify-center w-10 h-10 bg-blue-600 rounded-full">
-                      {isUploading || file.loading ? (
+                      {state.isUploading || file.loading ? (
                         <Loader2 className="size-5 text-white animate-spin" />
                       ) : (
                         <Folder className="size-5 text-white" />
@@ -614,7 +579,7 @@ const QuestionInput = ({
                   <div
                     className={`flex items-center justify-center w-10 h-10 ${bgColor} rounded-full`}
                   >
-                    {isUploading || file.loading ? (
+                    {state.isUploading || file.loading ? (
                       <Loader2 className="size-5 text-white animate-spin" />
                     ) : (
                       <IconComponent className="size-5 text-white" />
@@ -652,59 +617,58 @@ const QuestionInput = ({
         />
         <div className="flex justify-between items-center absolute bottom-0 py-4 m-px w-[calc(100%-4px)] rounded-b-xl bg-[#35363a] px-4">
           <div className="flex items-center gap-x-3">
-            {handleFileUpload && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="hover:bg-gray-700/50 size-10 rounded-full cursor-pointer border border-[#ffffff0f] shadow-sm"
-                    disabled={isUploading || isLoading || isDisabled}
-                  >
-                    {isUploading ? (
-                      <Loader2 className="size-6 text-gray-400 animate-spin" />
-                    ) : (
-                      <Plus className="size-6 text-gray-400" />
-                    )}
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent
-                  align="start"
-                  className="bg-neutral-900 border-gray-700 text-white"
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="hover:bg-gray-700/50 size-10 rounded-full cursor-pointer border border-[#ffffff0f] shadow-sm"
+                  disabled={
+                    state.isUploading ||
+                    state.isLoading ||
+                    isDisabled ||
+                    files.some((f) => f.loading)
+                  }
                 >
-                  <DropdownMenuItem
-                    className="flex p-2 items-center gap-2 cursor-pointer hover:bg-gray-800"
-                    onClick={() => fileInputRef.current?.click()}
-                  >
-                    <Paperclip className="size-5" />
-                    <span>Add images and files</span>
-                  </DropdownMenuItem>
+                  <Plus className="size-6 text-gray-400" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="start"
+                className="bg-neutral-900 border-gray-700 text-white"
+              >
+                <DropdownMenuItem
+                  className="flex p-2 items-center gap-2 cursor-pointer hover:bg-gray-800"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <Paperclip className="size-5" />
+                  <span>Add images and files</span>
+                </DropdownMenuItem>
 
-                  <DropdownMenuItem
-                    className="flex p-2 items-center gap-2 cursor-pointer hover:bg-gray-800"
-                    onClick={handleGoogleDriveClick}
-                    disabled={isGDriveAuthLoading}
-                  >
-                    {isGDriveAuthLoading ? (
-                      <Loader2 className="size-5 text-gray-400 animate-spin" />
-                    ) : (
-                      <Image
-                        src="/icons/google-drive.svg"
-                        alt="Google Drive"
-                        width={20}
-                        height={20}
-                      />
-                    )}
-                    <span>
-                      {isGoogleDriveConnected
-                        ? "Add from Google Drive"
-                        : "Connect with Google Drive"}
-                    </span>
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
-            {typeof setSelectedModel === "function" && (
+                <DropdownMenuItem
+                  className="flex p-2 items-center gap-2 cursor-pointer hover:bg-gray-800"
+                  onClick={handleGoogleDriveClick}
+                  disabled={isGDriveAuthLoading}
+                >
+                  {isGDriveAuthLoading ? (
+                    <Loader2 className="size-5 text-gray-400 animate-spin" />
+                  ) : (
+                    <Image
+                      src="/icons/google-drive.svg"
+                      alt="Google Drive"
+                      width={20}
+                      height={20}
+                    />
+                  )}
+                  <span>
+                    {isGoogleDriveConnected
+                      ? "Add from Google Drive"
+                      : "Connect with Google Drive"}
+                  </span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            {!hideSettings && (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
@@ -712,7 +676,7 @@ const QuestionInput = ({
                     size="icon"
                     className="hover:bg-gray-700/50 size-10 rounded-full cursor-pointer border border-[#ffffff0f] shadow-sm"
                     onClick={() => setIsSettingsOpen(true)}
-                    disabled={isLoading}
+                    disabled={state.isLoading}
                   >
                     <Settings2 className="size-5 text-gray-400" />
                   </Button>
@@ -727,7 +691,7 @@ const QuestionInput = ({
               multiple
               className="hidden"
               onChange={handleFileChange}
-              disabled={isUploading || isLoading}
+              disabled={state.isUploading || state.isLoading}
             />
           </div>
 
@@ -739,9 +703,15 @@ const QuestionInput = ({
                   size="icon"
                   className="hover:bg-gray-700/50 size-10 rounded-full cursor-pointer border border-[#ffffff0f] shadow-sm"
                   onClick={handleEnhancePrompt}
-                  disabled={isGeneratingPrompt}
+                  disabled={
+                    state.isGeneratingPrompt ||
+                    !value.trim() ||
+                    isDisabled ||
+                    state.isLoading ||
+                    state.isUploading
+                  }
                 >
-                  {isGeneratingPrompt ? (
+                  {state.isGeneratingPrompt ? (
                     <Loader2 className="size-5 text-gray-400 animate-spin" />
                   ) : (
                     <Image
@@ -755,7 +725,7 @@ const QuestionInput = ({
               </TooltipTrigger>
               <TooltipContent>Enhance Prompt</TooltipContent>
             </Tooltip>
-            {isLoading && handleCancel ? (
+            {state.isLoading && handleCancel ? (
               <Button
                 onClick={handleCancel}
                 className="cursor-pointer size-10 font-bold p-0 !bg-black rounded-full hover:scale-105 active:scale-95 transition-transform shadow-[0_4px_10px_rgba(0,0,0,0.2)]"
@@ -765,7 +735,10 @@ const QuestionInput = ({
             ) : (
               <Button
                 disabled={
-                  !value.trim() || isDisabled || isLoading || isUploading
+                  !value.trim() ||
+                  isDisabled ||
+                  state.isLoading ||
+                  state.isUploading
                 }
                 onClick={() => handleSubmit(value)}
                 className="cursor-pointer !border !border-red p-4 size-10 font-bold bg-gradient-skyblue-lavender rounded-full hover:scale-105 active:scale-95 transition-transform shadow-[0_4px_10px_rgba(0,0,0,0.2)]"

@@ -56,13 +56,6 @@ def parse_common_args(parser: ArgumentParser):
         help="Region to use for Anthropic",
     )
     parser.add_argument(
-        "--context-manager",
-        type=str,
-        default="llm-summarizing",
-        choices=["llm-summarizing", "amortized-forgetting"],
-        help="Type of context manager to use (llm-summarizing, or amortized-forgetting)",
-    )
-    parser.add_argument(
         "--memory-tool",
         type=str,
         default="compactify-memory",

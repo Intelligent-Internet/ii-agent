@@ -1,8 +1,9 @@
 import logging
-from ii_agent.llm.base import GeneralContentBlock, TextPrompt, TextResult
+from ii_agent.llm.base import GeneralContentBlock, TextPrompt, TextResult, AnthropicThinkingBlock, AnthropicRedactedThinkingBlock
 from ii_agent.llm.context_manager.base import ContextManager
 from ii_agent.llm.token_counter import TokenCounter
 from ii_agent.llm.base import LLMClient
+from ii_agent.utils.constants import TOKEN_BUDGET, SUMMARY_MAX_TOKENS
 
 
 class LLMSummarizingContextManager(ContextManager):
@@ -18,24 +19,17 @@ class LLMSummarizingContextManager(ContextManager):
         client: LLMClient,
         token_counter: TokenCounter,
         logger: logging.Logger,
-        token_budget: int = 120_000,
+        token_budget: int = TOKEN_BUDGET,
         max_size: int = 100,
-        keep_first: int = 1,
         max_event_length: int = 10_000,
     ):
-        if keep_first >= max_size // 2:
-            raise ValueError(
-                f"keep_first ({keep_first}) must be less than half of max_size ({max_size})"
-            )
-        if keep_first < 0:
-            raise ValueError(f"keep_first ({keep_first}) cannot be negative")
         if max_size < 1:
             raise ValueError(f"max_size ({max_size}) cannot be non-positive")
 
         super().__init__(token_counter, logger, token_budget)
         self.client = client
         self.max_size = max_size
-        self.keep_first = keep_first
+        self.keep_first = 1
         self.max_event_length = max_event_length
 
     def _truncate_content(self, content: str) -> str:
@@ -52,6 +46,10 @@ class LLMSummarizingContextManager(ContextManager):
                 parts.append(f"USER: {message.text}")
             elif isinstance(message, TextResult):
                 parts.append(f"ASSISTANT: {message.text}")
+            elif isinstance(message, AnthropicThinkingBlock):
+                parts.append(f"ASSISTANT: {message.thinking}")
+            elif isinstance(message, AnthropicRedactedThinkingBlock):
+                continue
             else:
                 parts.append(f"{type(message).__name__}: {str(message)}")
         return "\n".join(parts)
@@ -62,11 +60,79 @@ class LLMSummarizingContextManager(ContextManager):
             message_lists
         )
 
+    def _has_thinking_blocks(self, message_lists: list[list[GeneralContentBlock]]) -> bool:
+        """Check if any message lists contain ThinkingBlock or RedactedThinkingBlock."""
+        for message_list in message_lists:
+            for message in message_list:
+                if isinstance(message, (AnthropicThinkingBlock, AnthropicRedactedThinkingBlock)):
+                    return True
+        return False
+
+    def _find_last_text_prompt_index(self, message_lists: list[list[GeneralContentBlock]]) -> int:
+        """Find the index of the last message list that contains a TextPrompt."""
+        for i in range(len(message_lists) - 1, -1, -1):
+            for message in message_lists[i]:
+                if isinstance(message, TextPrompt):
+                    return i
+        return len(message_lists) - 1  # Fallback to last index
+
     def apply_truncation(
         self, message_lists: list[list[GeneralContentBlock]]
     ) -> list[list[GeneralContentBlock]]:
         """Apply truncation with LLM summarization when needed."""
+        # Check if we have thinking blocks and route to appropriate method
+        has_thinking_blocks = self._has_thinking_blocks(message_lists)
+        
+        if has_thinking_blocks:
+            return self._apply_truncation_with_thinking_blocks(message_lists)
+        else:
+            return self._apply_truncation_without_thinking_blocks(message_lists)
 
+    def _apply_truncation_with_thinking_blocks(
+        self, message_lists: list[list[GeneralContentBlock]]
+    ) -> list[list[GeneralContentBlock]]:
+        """Apply truncation when thinking blocks are present - only truncate before last TextPrompt."""
+        # New logic: only truncate before the last user message (TextPrompt)
+        last_prompt_index = self._find_last_text_prompt_index(message_lists)
+        
+        # If we only have one or no TextPrompt, don't truncate
+        if last_prompt_index <= 0:
+            return message_lists
+            
+        # target size is half of the max size but we must keep from last text prompt onwards
+        target_size = min(self.max_size, len(message_lists)) // 2
+        last_summary_index = min(last_prompt_index, self.keep_first + target_size)
+        events_to_summarize = message_lists[self.keep_first:last_summary_index]
+        events_to_keep = message_lists[last_summary_index:]
+
+        
+        if len(events_to_summarize) <= 1: # If there is only one event to summarize, don't summarize
+            self.logger.info(
+                "No events to summarize, returning original message lists"
+            )
+            return message_lists
+            
+        # Generate summary for events before the last TextPrompt
+        summary = self._generate_summary(events_to_summarize)
+        
+        # Create condensed message list with summary + events from last TextPrompt
+        condensed_messages = []
+        condensed_messages.extend(message_lists[:self.keep_first])
+        summary_message = [TextResult(text=f"Conversation Summary: {summary}")]
+        condensed_messages.append(summary_message)
+        condensed_messages.extend(events_to_keep)
+        
+        self.logger.info(
+            f"Condensed {len(message_lists)} message lists to {len(condensed_messages)} "
+            f"(kept {self.keep_first} head + 1 summary + {len(events_to_keep)} from last TextPrompt onwards)"
+        )
+        
+        return condensed_messages
+
+    def _apply_truncation_without_thinking_blocks(
+        self, message_lists: list[list[GeneralContentBlock]]
+    ) -> list[list[GeneralContentBlock]]:
+        """Apply truncation when no thinking blocks are present - use original logic."""
         head = message_lists[: self.keep_first]
         target_size = min(self.max_size, len(message_lists)) // 2
         events_from_tail = target_size - len(head) - 1
@@ -96,6 +162,32 @@ class LLMSummarizingContextManager(ContextManager):
         if not forgotten_events:
             return message_lists
 
+        # Generate summary using existing logic
+        summary = self._generate_summary(forgotten_events, summary_content)
+
+        # Create new condensed message list
+        condensed_messages = []
+
+        # Add head messages
+        condensed_messages.extend(head)
+
+        # Add summary as a new message
+        summary_message = [TextResult(text=f"Conversation Summary: {summary}")]
+        condensed_messages.append(summary_message)
+
+        # Add tail messages
+        if events_from_tail > 0:
+            condensed_messages.extend(message_lists[-events_from_tail:])
+
+        self.logger.info(
+            f"Condensed {len(message_lists)} message lists to {len(condensed_messages)} "
+            f"(kept {len(head)} head + 1 summary + {events_from_tail} tail)"
+        )
+
+        return condensed_messages
+
+    def _generate_summary(self, forgotten_events: list[list[GeneralContentBlock]], previous_summary_content: str = "No events summarized") -> str:
+        """Generate a summary for the given forgotten events."""
         # Construct prompt for summarization
         prompt = """You are maintaining a context-aware state summary for an interactive agent. You will be given a list of events corresponding to actions taken by the agent, and the most recent previous summary if one exists. Track:
 
@@ -142,8 +234,8 @@ CURRENT_STATE: Last flip: Heads, Haiku count: 15/20
 
         # Add the previous summary if it exists
         previous_summary = (
-            summary_content.replace("Conversation Summary: ", "")
-            if summary_content != "No events summarized"
+            previous_summary_content.replace("Conversation Summary: ", "")
+            if previous_summary_content != "No events summarized"
             else ""
         )
         prompt += f"<PREVIOUS SUMMARY>\n{self._truncate_content(previous_summary)}\n</PREVIOUS SUMMARY>\n\n"
@@ -156,12 +248,13 @@ CURRENT_STATE: Last flip: Heads, Haiku count: 15/20
             prompt += f"<EVENT id={i}>\n{event_content}\n</EVENT>\n"
 
         prompt += "\nNow summarize the events using the rules above."
+        
         # Generate summary using LLM
         try:
             summary_messages = [[TextPrompt(text=prompt)]]
             model_response, _ = self.client.generate(
                 messages=summary_messages,
-                max_tokens=4000,
+                max_tokens=SUMMARY_MAX_TOKENS,
                 thinking_tokens=0,
             )
             summary = ""
@@ -177,23 +270,4 @@ CURRENT_STATE: Last flip: Heads, Haiku count: 15/20
             self.logger.error(f"Failed to generate summary: {e}")
             summary = f"Failed to summarize {len(forgotten_events)} events due to error: {str(e)}"
 
-        # Create new condensed message list
-        condensed_messages = []
-
-        # Add head messages
-        condensed_messages.extend(head)
-
-        # Add summary as a new message
-        summary_message = [TextPrompt(text=f"Conversation Summary: {summary}")]
-        condensed_messages.append(summary_message)
-
-        # Add tail messages
-        if events_from_tail > 0:
-            condensed_messages.extend(message_lists[-events_from_tail:])
-
-        self.logger.info(
-            f"Condensed {len(message_lists)} message lists to {len(condensed_messages)} "
-            f"(kept {len(head)} head + 1 summary + {events_from_tail} tail)"
-        )
-
-        return condensed_messages
+        return summary

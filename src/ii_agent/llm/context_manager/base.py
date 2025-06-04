@@ -15,6 +15,7 @@ from ii_agent.llm.base import (
     AnthropicRedactedThinkingBlock,
     AnthropicThinkingBlock,
 )
+from ii_agent.utils.constants import TOKEN_BUDGET
 
 
 class ContextManager(ABC):
@@ -24,7 +25,7 @@ class ContextManager(ABC):
         self,
         token_counter: TokenCounter,
         logger: logging.Logger,
-        token_budget: int = 120_000,
+        token_budget: int = TOKEN_BUDGET,
     ):
         self.token_counter = token_counter
         self.logger = logger

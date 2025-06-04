@@ -63,7 +63,6 @@ class AnthropicDirectClient(LLMClient):
         model_name=DEFAULT_MODEL,
         max_retries=2,
         use_caching=True,
-        use_low_qos_server: bool = False,
         thinking_tokens: int = 0,
         project_id: None | str = None,
         region: None | str = None,
@@ -88,7 +87,10 @@ class AnthropicDirectClient(LLMClient):
         self.model_name = model_name
         self.max_retries = max_retries
         self.use_caching = use_caching
-        self.prompt_caching_headers = {"anthropic-beta": "prompt-caching-2024-07-31"}
+        if "claude-opus-4" in model_name or "claude-sonnet-4" in model_name: #Use Interleaved Thinking for Sonnet 4 and Opus 4
+            self.headers = {"anthropic-beta": "interleaved-thinking-2025-05-14,prompt-caching-2024-07-31"}
+        else:
+            self.headers = {"anthropic-beta": "prompt-caching-2024-07-31"}
         self.thinking_tokens = thinking_tokens
 
     def generate(
@@ -187,7 +189,7 @@ class AnthropicDirectClient(LLMClient):
             )
 
         if self.use_caching:
-            extra_headers = self.prompt_caching_headers
+            extra_headers = self.headers
         else:
             extra_headers = None
 
@@ -226,9 +228,6 @@ class AnthropicDirectClient(LLMClient):
                 "thinking": {"type": "enabled", "budget_tokens": thinking_tokens}
             }
             temperature = 1
-            assert max_tokens >= 32_000 and thinking_tokens <= 8192, (
-                f"As a heuristic, max tokens {max_tokens} must be >= 32k and thinking tokens {thinking_tokens} must be < 8k"
-            )
         else:
             extra_body = None
 
