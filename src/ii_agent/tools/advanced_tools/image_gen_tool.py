@@ -16,8 +16,8 @@ from ii_agent.tools.base import (
 )
 from ii_agent.utils import WorkspaceManager
 
-GCP_PROJECT_ID = os.environ.get("GOOGLE_CLOUD_PROJECT")
-GCP_LOCATION = os.environ.get("GOOGLE_CLOUD_REGION")
+MEDIA_GCP_PROJECT_ID = os.environ.get("MEDIA_GCP_PROJECT_ID")
+MEDIA_GCP_LOCATION = os.environ.get("MEDIA_GCP_LOCATION")
 
 SUPPORTED_ASPECT_RATIOS = ["1:1", "16:9", "9:16", "4:3", "3:4"]
 SAFETY_FILTER_LEVELS = ["block_some", "block_most", "block_few"]
@@ -78,11 +78,11 @@ The generated image will be saved to the specified local path in the workspace a
     def __init__(self, workspace_manager: WorkspaceManager):
         super().__init__()
         self.workspace_manager = workspace_manager
-        if not GCP_PROJECT_ID:
-            raise ValueError("GOOGLE_CLOUD_PROJECT environment variable not set.")
+        if not MEDIA_GCP_PROJECT_ID or not MEDIA_GCP_LOCATION:
+            raise ValueError("MEDIA_GCP_PROJECT_ID and MEDIA_GCP_LOCATION environment variables not set.")
 
         try:
-            vertexai.init(project=GCP_PROJECT_ID, location=GCP_LOCATION)
+            vertexai.init(project=MEDIA_GCP_PROJECT_ID, location=MEDIA_GCP_LOCATION)
             self.model = ImageGenerationModel.from_pretrained(
                 "imagen-3.0-generate-002"
             )  # As per snippet

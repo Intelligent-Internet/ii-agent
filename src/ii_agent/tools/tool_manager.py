@@ -43,7 +43,12 @@ from ii_agent.tools.advanced_tools.audio_tool import (
     AudioTranscribeTool,
     AudioGenerateTool,
 )
-from ii_agent.tools.advanced_tools.video_gen_tool import VideoGenerateFromTextTool
+from ii_agent.tools.advanced_tools.video_gen_tool import (
+    VideoGenerateFromTextTool,
+    VideoGenerateFromImageTool,
+    LongVideoGenerateFromTextTool,
+    LongVideoGenerateFromImageTool,
+)
 from ii_agent.tools.advanced_tools.image_gen_tool import ImageGenerateTool
 from ii_agent.tools.advanced_tools.pdf_tool import PdfTextExtractTool
 from ii_agent.tools.deep_research_tool import DeepResearchTool
@@ -112,12 +117,17 @@ def get_system_tools(
         if tool_args.get("pdf", False):
             tools.append(PdfTextExtractTool(workspace_manager=workspace_manager))
         if tool_args.get("media_generation", False) and (
-            os.environ.get("GOOGLE_CLOUD_PROJECT")
-            and os.environ.get("GOOGLE_CLOUD_REGION")
+            os.environ.get("MEDIA_GCP_PROJECT_ID")
+            and os.environ.get("MEDIA_GCP_LOCATION")
         ):
             tools.append(ImageGenerateTool(workspace_manager=workspace_manager))
             if tool_args.get("video_generation", False):
-                tools.append(VideoGenerateFromTextTool(workspace_manager=workspace_manager))
+                tools.extend([
+                    VideoGenerateFromTextTool(workspace_manager=workspace_manager), 
+                    VideoGenerateFromImageTool(workspace_manager=workspace_manager),
+                    LongVideoGenerateFromTextTool(workspace_manager=workspace_manager),
+                    LongVideoGenerateFromImageTool(workspace_manager=workspace_manager)
+                ])
         if tool_args.get("audio_generation", False) and (
             os.environ.get("OPEN_API_KEY") and os.environ.get("AZURE_OPENAI_ENDPOINT")
         ):
