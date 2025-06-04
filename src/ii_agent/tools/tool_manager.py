@@ -9,17 +9,25 @@ from ii_agent.llm.token_counter import TokenCounter
 from ii_agent.tools.advanced_tools.image_search_tool import ImageSearchTool
 from ii_agent.tools.base import LLMTool
 from ii_agent.llm.message_history import ToolCallParameters
+from ii_agent.tools.register_deployment import RegisterDeploymentTool
+from ii_agent.tools.shell_tools import (
+    ShellExecTool,
+    ShellViewTool,
+    ShellWaitTool,
+    ShellKillProcessTool,
+    ShellWriteToProcessTool,
+)
+from ii_agent.tools.static_deploy_tool import StaticDeployTool
+from ii_agent.tools.terminal_manager import PexpectSessionManager
 from ii_agent.tools.memory.compactify_memory import CompactifyMemoryTool
 from ii_agent.tools.memory.simple_memory import SimpleMemoryTool
 from ii_agent.tools.slide_deck_tool import SlideDeckInitTool, SlideDeckCompleteTool
 from ii_agent.tools.web_search_tool import WebSearchTool
 from ii_agent.tools.visit_webpage_tool import VisitWebpageTool
 from ii_agent.tools.str_replace_tool_relative import StrReplaceEditorTool
-from ii_agent.tools.static_deploy_tool import StaticDeployTool
 from ii_agent.tools.sequential_thinking_tool import SequentialThinkingTool
 from ii_agent.tools.message_tool import MessageTool
 from ii_agent.tools.complete_tool import CompleteTool, ReturnControlToUserTool
-from ii_agent.tools.bash_tool import create_bash_tool, create_docker_bash_tool
 from ii_agent.browser.browser import Browser
 from ii_agent.utils import WorkspaceManager
 from ii_agent.llm.message_history import MessageHistory
@@ -64,14 +72,7 @@ def get_system_tools(
     Returns:
         list[LLMTool]: A list of all system tools.
     """
-    if container_id is not None:
-        bash_tool = create_docker_bash_tool(
-            container=container_id, ask_user_permission=ask_user_permission
-        )
-    else:
-        bash_tool = create_bash_tool(
-            ask_user_permission=ask_user_permission, cwd=workspace_manager.root
-        )
+    session_manager = PexpectSessionManager(container_id=container_id)
 
     logger = logging.getLogger("presentation_context_manager")
     context_manager = LLMSummarizingContextManager(
@@ -85,20 +86,29 @@ def get_system_tools(
         MessageTool(),
         WebSearchTool(),
         VisitWebpageTool(),
-        StaticDeployTool(workspace_manager=workspace_manager),
         StrReplaceEditorTool(
             workspace_manager=workspace_manager, message_queue=message_queue
         ),
-        bash_tool,
+        ShellExecTool(session_manager=session_manager),
+        ShellViewTool(session_manager=session_manager),
+        ShellWaitTool(session_manager=session_manager),
+        ShellWriteToProcessTool(session_manager=session_manager),
+        ShellKillProcessTool(session_manager=session_manager),
         ListHtmlLinksTool(workspace_manager=workspace_manager),
         SlideDeckInitTool(
             workspace_manager=workspace_manager,
+            session_manager=session_manager,
         ),
         SlideDeckCompleteTool(
             workspace_manager=workspace_manager,
         ),
         DisplayImageTool(workspace_manager=workspace_manager),
     ]
+    if container_id is not None:
+        tools.append(RegisterDeploymentTool(workspace_manager=workspace_manager))
+    else:
+        tools.append(StaticDeployTool(workspace_manager=workspace_manager))
+
     image_search_tool = ImageSearchTool()
     if image_search_tool.is_available():
         tools.append(image_search_tool)
@@ -117,7 +127,9 @@ def get_system_tools(
         ):
             tools.append(ImageGenerateTool(workspace_manager=workspace_manager))
             if tool_args.get("video_generation", False):
-                tools.append(VideoGenerateFromTextTool(workspace_manager=workspace_manager))
+                tools.append(
+                    VideoGenerateFromTextTool(workspace_manager=workspace_manager)
+                )
         if tool_args.get("audio_generation", False) and (
             os.environ.get("OPEN_API_KEY") and os.environ.get("AZURE_OPENAI_ENDPOINT")
         ):
@@ -127,7 +139,7 @@ def get_system_tools(
                     AudioGenerateTool(workspace_manager=workspace_manager),
                 ]
             )
-            
+
         # Browser tools
         if tool_args.get("browser", False):
             browser = Browser()
@@ -174,9 +186,16 @@ class AgentToolManager:
     search capabilities, and task completion functionality.
     """
 
-    def __init__(self, tools: List[LLMTool], logger_for_agent_logs: logging.Logger, interactive_mode: bool = True):
+    def __init__(
+        self,
+        tools: List[LLMTool],
+        logger_for_agent_logs: logging.Logger,
+        interactive_mode: bool = True,
+    ):
         self.logger_for_agent_logs = logger_for_agent_logs
-        self.complete_tool = ReturnControlToUserTool() if interactive_mode else CompleteTool()
+        self.complete_tool = (
+            ReturnControlToUserTool() if interactive_mode else CompleteTool()
+        )
         self.tools = tools
 
     def get_tool(self, tool_name: str) -> LLMTool:

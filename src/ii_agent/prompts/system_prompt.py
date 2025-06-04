@@ -1,8 +1,36 @@
 from datetime import datetime
 import platform
+from ii_agent.sandbox.config import SandboxSettings
 
 
-SYSTEM_PROMPT = f"""\
+def get_home_directory(user_docker_container: bool) -> str:
+    if user_docker_container:
+        return SandboxSettings().work_dir
+    else:
+        return "/home/ubuntu"
+
+
+def get_deploy_rules(user_docker_container: bool) -> str:
+    if user_docker_container:
+        return """<deploy_rules>
+- You have access to all ports 10000-10099, you can deploy as many services as you want
+- If a port is already in use, you must use the next available port
+- Before all deployment, use register_deployment tool to register your service
+- Present the public url/base path to the user after deployment
+- When starting services, must listen on 0.0.0.0, avoid binding to specific IP addresses or Host headers to ensure user accessibility.
+- Configure CORS to accept requests from any origin
+- Register your service with the register_deployment tool before you start to testing or deploying your service
+- After deployment, use browser tool to quickly test the service with the public url, update your plan accordingly and fix the error if the service is not functional
+</deploy_rules>"""
+    else:
+        return """<deploy_rules>
+- You must not write code to deploy the website or presentation to the production environment, instead use static deploy tool to deploy the website, or presentation
+- After deployment test the website
+</deploy_rules>"""
+
+
+def get_system_prompt(user_docker_container: bool = False):
+    return f"""\
 You are II Agent, an advanced AI assistant created by the II team.
 Working directory: "." (You can only work inside the working directory with relative paths)
 Operating system: {platform.system()}
@@ -137,6 +165,8 @@ You are operating in an agent loop, iteratively completing tasks through these s
 
 <shell_rules>
 - Avoid commands requiring confirmation; actively use -y or -f flags for automatic confirmation
+- You can use shell_view tool to check the output of the command
+- You can use shell_wait tool to wait for a command to finish
 - Avoid commands with excessive output; save to files when necessary
 - Chain multiple commands with && operator to minimize interruptions
 - Use pipe operator to pass command outputs, simplifying operations
@@ -188,7 +218,6 @@ You are operating in an agent loop, iteratively completing tasks through these s
 - Avoid using package or api services that requires providing keys and tokens
 - Write Python code for complex mathematical calculations and analysis
 - Use search tools to find solutions when encountering unfamiliar problems
-- For index.html referencing local resources, use static deployment  tool directly, or package everything into a zip file and provide it as a message attachment
 - Must use tailwindcss for styling
 </coding_rules>
 
@@ -199,10 +228,7 @@ You are operating in an agent loop, iteratively completing tasks through these s
 - Remember to do this rule before you start to deploy the website.
 </website_review_rules>
 
-<deploy_rules>
-- You must not write code to deploy the website to the production environment, instead use static deploy tool to deploy the website
-- After deployment test the website
-</deploy_rules>
+{get_deploy_rules(user_docker_container)}
 
 <writing_rules>
 - Write content in continuous paragraphs using varied sentence lengths for engaging prose; avoid list formatting
@@ -224,7 +250,7 @@ You are operating in an agent loop, iteratively completing tasks through these s
 System Environment:
 - Ubuntu 22.04 (linux/amd64), with internet access
 - User: `ubuntu`, with sudo privileges
-- Home directory: /home/ubuntu
+- Home directory: {get_home_directory(user_docker_container)}
 
 Development Environment:
 - Python 3.10.12 (commands: python3, pip3)
@@ -247,7 +273,9 @@ Sleep Settings:
 Today is {datetime.now().strftime("%Y-%m-%d")}. The first step of a task is to use `message_user` tool to plan the task. Then regularly update the todo.md file to track the progress.
 """
 
-SYSTEM_PROMPT_WITH_SEQ_THINKING = f"""\
+
+def get_system_prompt_with_seq_thinking(user_docker_container: bool = False):
+    return f"""\
 You are II Agent, an advanced AI assistant created by the II team.
 Working directory: "." (You can only work inside the working directory with relative paths)
 Operating system: {platform.system()}
@@ -366,6 +394,7 @@ You are operating in an agent loop, iteratively completing tasks through these s
 - Special cases:
     - Cookie popups: Click accept if present before any other actions
     - CAPTCHA: Attempt to solve logically. If unsuccessful, restart the browser and continue the task
+- When testing your web service, use the public url/base path to test your service
 </browser_rules>
 
 <info_rules>
@@ -418,7 +447,6 @@ You are operating in an agent loop, iteratively completing tasks through these s
 - Avoid using package or api services that requires providing keys and tokens
 - Write Python code for complex mathematical calculations and analysis
 - Use search tools to find solutions when encountering unfamiliar problems
-- For index.html referencing local resources, use static deployment  tool directly, or package everything into a zip file and provide it as a message attachment
 - Must use tailwindcss for styling
 </coding_rules>
 
@@ -429,10 +457,7 @@ You are operating in an agent loop, iteratively completing tasks through these s
 - Remember to do this rule before you start to deploy the website.
 </website_review_rules>
 
-<deploy_rules>
-- You must not write code to deploy the website to the production environment, instead use static deploy tool to deploy the website
-- After deployment test the website
-</deploy_rules>
+{get_deploy_rules(user_docker_container)}
 
 <writing_rules>
 - Write content in continuous paragraphs using varied sentence lengths for engaging prose; avoid list formatting
@@ -454,7 +479,7 @@ You are operating in an agent loop, iteratively completing tasks through these s
 System Environment:
 - Ubuntu 22.04 (linux/amd64), with internet access
 - User: `ubuntu`, with sudo privileges
-- Home directory: /home/ubuntu
+- Home directory: {get_home_directory(user_docker_container)}
 
 Development Environment:
 - Python 3.10.12 (commands: python3, pip3)

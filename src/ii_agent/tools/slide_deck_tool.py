@@ -1,8 +1,9 @@
 from typing import Any, Optional
-import subprocess
 import os
 from ii_agent.llm.message_history import MessageHistory
+from ii_agent.sandbox.config import SandboxSettings
 from ii_agent.tools.base import LLMTool, ToolImplOutput
+from ii_agent.tools.terminal_manager import PexpectSessionManager
 from ii_agent.utils.workspace_manager import WorkspaceManager
 
 
@@ -15,9 +16,15 @@ class SlideDeckInitTool(LLMTool):
         "required": [],
     }
 
-    def __init__(self, workspace_manager: WorkspaceManager) -> None:
+    def __init__(
+        self,
+        workspace_manager: WorkspaceManager,
+        session_manager: PexpectSessionManager,
+    ) -> None:
         super().__init__()
+        self.session_manager = session_manager
         self.workspace_manager = workspace_manager
+        self.sandbox_settings = SandboxSettings()
 
     def run_impl(
         self,
@@ -30,53 +37,51 @@ class SlideDeckInitTool(LLMTool):
             os.makedirs(presentation_dir, exist_ok=True)
 
             # Clone the reveal.js repository to the specified path
-            clone_command = f"git clone https://github.com/khoangothe/reveal.js.git {self.workspace_manager.root}/presentation/reveal.js"
-            
-            # Execute the clone command
-            clone_result = subprocess.run(
+            clone_command = "git clone https://github.com/khoangothe/reveal.js.git presentation/reveal.js"
+            clone_result = self.session_manager.shell_exec(
+                self.sandbox_settings.system_shell,
                 clone_command,
-                shell=True,
-                capture_output=True,
-                text=True,
-                cwd=self.workspace_manager.root
+                exec_dir=self.sandbox_settings.work_dir,
+                timeout=None,  # Do not timeout
             )
-            
-            if clone_result.returncode != 0:
+
+            if not clone_result.success:
                 return ToolImplOutput(
-                    f"Failed to clone reveal.js repository: {clone_result.stderr}",
-                    f"Failed to clone reveal.js repository",
-                    auxiliary_data={"success": False, "error": clone_result.stderr},
+                    f"Failed to clone reveal.js repository: {clone_result.output}",
+                    "Failed to clone reveal.js repository",
+                    auxiliary_data={"success": False, "error": clone_result.output},
                 )
 
             # Install dependencies
             install_command = "npm install"
-            
-            # Execute the install command in the reveal.js directory
-            install_result = subprocess.run(
+            install_result = self.session_manager.shell_exec(
+                self.sandbox_settings.system_shell,
                 install_command,
-                shell=True,
-                capture_output=True,
-                text=True,
-                cwd=f"{self.workspace_manager.root}/presentation/reveal.js"
+                exec_dir=f"{self.sandbox_settings.work_dir}/presentation/reveal.js",
+                timeout=None,  # Do not timeout
             )
-            
-            if install_result.returncode != 0:
+
+            if not install_result.success:
                 return ToolImplOutput(
-                    f"Failed to install dependencies: {install_result.stderr}",
-                    f"Failed to install dependencies",
-                    auxiliary_data={"success": False, "error": install_result.stderr},
+                    f"Failed to install dependencies: {install_result.output}",
+                    "Failed to install dependencies",
+                    auxiliary_data={"success": False, "error": install_result.output},
                 )
 
             return ToolImplOutput(
-                f"Successfully initialized slide deck. Repository cloned into `./presentation/reveal.js` and dependencies installed (npm install).",
-                f"Successfully initialized slide deck",
-                auxiliary_data={"success": True, "clone_output": clone_result.stdout, "install_output": install_result.stdout},
+                "Successfully initialized slide deck. Repository cloned into `./presentation/reveal.js` and dependencies installed (npm install).",
+                "Successfully initialized slide deck",
+                auxiliary_data={
+                    "success": True,
+                    "clone_output": clone_result.output,
+                    "install_output": install_result.output,
+                },
             )
-            
+
         except Exception as e:
             return ToolImplOutput(
                 f"Error initializing slide deck: {str(e)}",
-                f"Error initializing slide deck",
+                "Error initializing slide deck",
                 auxiliary_data={"success": False, "error": str(e)},
             )
 
@@ -85,6 +90,7 @@ SLIDE_IFRAME_TEMPLATE = """\
         <section>
             <iframe src="{slide_path}" scrolling="auto" style="width: 100%; height: 100%;"></iframe>
         </section>"""
+
 
 class SlideDeckCompleteTool(LLMTool):
     name = "slide_deck_complete"
@@ -118,23 +124,33 @@ class SlideDeckCompleteTool(LLMTool):
             if not normalized_path.startswith("slides/"):
                 return ToolImplOutput(
                     f"Error: Slide path '{slide_path}' must be in the slides/ subdirectory (e.g. `./slides/introduction.html`, `./slides/conclusion.html`)",
-                    f"Invalid slide path",
-                    auxiliary_data={"success": False, "error": "Invalid slide path format"},
+                    "Invalid slide path",
+                    auxiliary_data={
+                        "success": False,
+                        "error": "Invalid slide path format",
+                    },
                 )
-        slide_iframes = [SLIDE_IFRAME_TEMPLATE.format(slide_path=slide_path) for slide_path in slide_paths]
+        slide_iframes = [
+            SLIDE_IFRAME_TEMPLATE.format(slide_path=slide_path)
+            for slide_path in slide_paths
+        ]
         try:
-            index_path = f"{self.workspace_manager.root}/presentation/reveal.js/index.html"
+            index_path = (
+                f"{self.workspace_manager.root}/presentation/reveal.js/index.html"
+            )
             with open(index_path, "r") as file:
                 index_content = file.read()
         except Exception as e:
             return ToolImplOutput(
                 f"Error reading `index.html`: {str(e)}",
-                f"Error reading `index.html`",
+                "Error reading `index.html`",
                 auxiliary_data={"success": False, "error": str(e)},
             )
 
         slide_iframes_str = "\n".join(slide_iframes)
-        index_content = index_content.replace("<!--PLACEHOLDER SLIDES REPLACE THIS-->", slide_iframes_str)
+        index_content = index_content.replace(
+            "<!--PLACEHOLDER SLIDES REPLACE THIS-->", slide_iframes_str
+        )
         with open(index_path, "w") as file:
             file.write(index_content)
 

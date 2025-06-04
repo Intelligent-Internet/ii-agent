@@ -15,15 +15,13 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from ii_agent.core.event import RealtimeEvent, EventType
-from ii_agent.utils.constants import DEFAULT_MODEL
 from utils import parse_common_args, create_workspace_manager_for_connection
 from rich.console import Console
 from rich.panel import Panel
 
 from ii_agent.tools import get_system_tools
-from ii_agent.prompts.system_prompt import SYSTEM_PROMPT
+from ii_agent.prompts.system_prompt import get_system_prompt
 from ii_agent.agents.anthropic_fc import AnthropicFC
-from ii_agent.utils import WorkspaceManager
 from ii_agent.llm import get_client
 from ii_agent.llm.context_manager.llm_summarizing import LLMSummarizingContextManager
 from ii_agent.llm.context_manager.amortized_forgetting import (
@@ -61,9 +59,10 @@ async def async_main():
     db_manager = DatabaseManager()
 
     # Create a new workspace manager for the CLI session
-    workspace_manager, session_id = create_workspace_manager_for_connection(
+    workspace_manager, session_id = await create_workspace_manager_for_connection(
         args.workspace, args.use_container_workspace
     )
+    print(f"Workspace manager created: {workspace_manager}")
     workspace_path = workspace_manager.root
 
     # Create a new session and get its workspace directory
@@ -98,22 +97,14 @@ async def async_main():
         "model_name": args.model_name,
     }
     if args.llm_client == "anthropic-direct":
-        client_kwargs["use_caching"] = False # Or a configurable value if needed later
+        client_kwargs["use_caching"] = False  # Or a configurable value if needed later
         client_kwargs["project_id"] = args.project_id
         client_kwargs["region"] = args.region
     elif args.llm_client == "openai-direct":
         client_kwargs["azure_model"] = args.azure_model
         client_kwargs["cot_model"] = args.cot_model
-    
-    client = get_client(
-        args.llm_client,
-        **client_kwargs
-    )
 
-    # Initialize workspace manager with the session-specific workspace
-    workspace_manager = WorkspaceManager(
-        root=workspace_path, container_workspace=args.use_container_workspace
-    )
+    client = get_client(args.llm_client, **client_kwargs)
 
     # Initialize token counter
     token_counter = TokenCounter()
@@ -140,7 +131,7 @@ async def async_main():
         client=client,
         workspace_manager=workspace_manager,
         message_queue=queue,
-        container_id=args.docker_container_id,
+        container_id=session_id if args.use_container_workspace else None,
         ask_user_permission=args.needs_permission,
         tool_args={
             "deep_research": False,
@@ -151,8 +142,10 @@ async def async_main():
             "memory_tool": args.memory_tool,
         },
     )
+    system_prompt = get_system_prompt(args.use_container_workspace)
+
     agent = AnthropicFC(
-        system_prompt=SYSTEM_PROMPT,
+        system_prompt=system_prompt,
         client=client,
         workspace_manager=workspace_manager,
         tools=tools,
@@ -173,7 +166,9 @@ async def async_main():
         while True:
             # Use async input
             if args.prompt is None:
-                user_input = await loop.run_in_executor(None, lambda: input("User input: "))
+                user_input = await loop.run_in_executor(
+                    None, lambda: input("User input: ")
+                )
             else:
                 user_input = args.prompt
 

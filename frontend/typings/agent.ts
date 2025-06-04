@@ -45,9 +45,14 @@ export enum TOOL {
   WEB_SEARCH = "web_search",
   IMAGE_SEARCH = "image_search",
   VISIT = "visit_webpage",
+  SHELL_EXEC = "shell_exec",
+  SHELL_KILL_PROCESS = "shell_kill_process",
+  SHELL_VIEW = "shell_view",
+  SHELL_WAIT = "shell_wait",
   BASH = "bash",
   COMPLETE = "complete",
   STATIC_DEPLOY = "static_deploy",
+  REGISTER_DEPLOYMENT = "register_deployment",
   PDF_TEXT_EXTRACT = "pdf_text_extract",
   AUDIO_TRANSCRIBE = "audio_transcribe",
   GENERATE_AUDIO_RESPONSE = "generate_audio_response",
@@ -95,6 +100,8 @@ export type ActionStep = {
       instruction?: string;
       output_filename?: string;
       key?: string;
+      session_id?: string;
+      seconds?: number;
     };
     result?: string | Record<string, unknown>;
     query?: string;
