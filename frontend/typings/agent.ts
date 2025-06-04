@@ -12,6 +12,12 @@ export const AVAILABLE_MODELS = [
   "gpt-4.1",
 ];
 
+export enum WebSocketConnectionState {
+  CONNECTING = "connecting",
+  CONNECTED = "connected",
+  DISCONNECTED = "disconnected",
+}
+
 export type Source = {
   title: string;
   url: string;
