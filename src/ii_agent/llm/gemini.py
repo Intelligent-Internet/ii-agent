@@ -54,6 +54,7 @@ class GeminiDirectClient(LLMClient):
         temperature: float = 0.0,
         tools: list[ToolParam] = [],
         tool_choice: dict[str, str] | None = None,
+        thinking_tokens: int = 8192,
     ) -> Tuple[list[AssistantContentBlock], dict[str, Any]]:
         
         gemini_messages = []
@@ -121,7 +122,7 @@ class GeminiDirectClient(LLMClient):
             mode = 'AUTO'
         else:
             raise ValueError(f"Unknown tool_choice type for Gemini: {tool_choice['type']}")
-
+        print(f"====== Using Gemini with mode: {mode} ======")
         for retry in range(self.max_retries):
             try:
                 response = self.client.models.generate_content(
@@ -129,7 +130,7 @@ class GeminiDirectClient(LLMClient):
                     config=types.GenerateContentConfig(
                         tools=tool_params,
                         system_instruction=system_prompt,
-                        temperature=temperature,
+                        thinking_config=types.ThinkingConfig(thinking_budget=thinking_tokens),
                         max_output_tokens=max_tokens,
                         tool_config={'function_calling_config': {'mode': mode}}
                         ),
@@ -152,8 +153,18 @@ class GeminiDirectClient(LLMClient):
                     raise e
 
         internal_messages = []
-        if response.text:
-            internal_messages.append(TextResult(text=response.text))
+        # Extract text parts directly from response.candidates to avoid warning
+        text_parts = []
+        if response.candidates and len(response.candidates) > 0:
+            candidate = response.candidates[0]
+            if candidate.content and candidate.content.parts:
+                for part in candidate.content.parts:
+                    if hasattr(part, 'text') and part.text:
+                        text_parts.append(part.text)
+        
+        if text_parts:
+            combined_text = ''.join(text_parts)
+            internal_messages.append(TextResult(text=combined_text))
 
         if response.function_calls:
             for fn_call in response.function_calls:
