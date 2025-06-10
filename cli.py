@@ -23,6 +23,7 @@ from rich.panel import Panel
 from ii_agent.tools import get_system_tools
 from ii_agent.prompts.system_prompt import SYSTEM_PROMPT
 from ii_agent.agents.anthropic_fc import AnthropicFC
+from ii_agent.agents.gemini_suna import GeminiSuna
 from ii_agent.utils import WorkspaceManager
 from ii_agent.llm import get_client
 from ii_agent.llm.context_manager.llm_summarizing import LLMSummarizingContextManager
@@ -32,12 +33,27 @@ from ii_agent.db.manager import DatabaseManager
 MAX_OUTPUT_TOKENS_PER_TURN = 32768
 MAX_TURNS = 200
 
+def get_max_tokens_for_client(client_type: str, model_name: str) -> int:
+    """Get appropriate max tokens based on client and model."""
+    if client_type in ["gemini-direct", "gemini-xml"]:
+        # Gemini models have lower token limits
+        return 8192
+    else:
+        return MAX_OUTPUT_TOKENS_PER_TURN
+
 
 async def async_main():
     """Async main entry point"""
     # Parse command-line arguments
     parser = argparse.ArgumentParser(description="CLI for interacting with the Agent")
     parser = parse_common_args(parser)
+    parser.add_argument(
+        "--agent-type",
+        type=str,
+        default="anthropic",
+        choices=["anthropic", "gemini-suna"],
+        help="Type of agent to use (default: anthropic)"
+    )
 
     args = parser.parse_args()
 
@@ -76,6 +92,7 @@ async def async_main():
         console.print(
             Panel(
                 "[bold]Agent CLI[/bold]\n\n"
+                + f"Agent Type: {args.agent_type}\n"
                 + f"Session ID: {session_id}\n"
                 + f"Workspace: {workspace_path}\n\n"
                 + "Type your instructions to the agent. Press Ctrl+C to exit.\n"
@@ -101,6 +118,12 @@ async def async_main():
     elif args.llm_client == "openai-direct":
         client_kwargs["azure_model"] = args.azure_model
         client_kwargs["cot_model"] = args.cot_model
+    elif args.llm_client == "gemini-direct":
+        client_kwargs["project_id"] = args.project_id
+        client_kwargs["region"] = args.region
+    elif args.llm_client == "gemini-xml":
+        client_kwargs["project_id"] = args.project_id
+        client_kwargs["region"] = args.region
     
     client = get_client(
         args.llm_client,
@@ -139,18 +162,35 @@ async def async_main():
             "memory_tool": args.memory_tool,
         },
     )
-    agent = AnthropicFC(
-        system_prompt=SYSTEM_PROMPT,
-        client=client,
-        workspace_manager=workspace_manager,
-        tools=tools,
-        message_queue=queue,
-        logger_for_agent_logs=logger_for_agent_logs,
-        context_manager=context_manager,
-        max_output_tokens_per_turn=MAX_OUTPUT_TOKENS_PER_TURN,
-        max_turns=MAX_TURNS,
-        session_id=session_id,  # Pass the session_id from database manager
-    )
+    # Get appropriate max tokens for the selected client
+    max_tokens = get_max_tokens_for_client(args.llm_client, args.model_name)
+    
+    # Initialize agent based on type
+    if args.agent_type == "gemini-suna":
+        agent = GeminiSuna(
+            client=client,
+            tools=tools,
+            workspace_manager=workspace_manager,
+            message_queue=queue,
+            logger_for_agent_logs=logger_for_agent_logs,
+            context_manager=context_manager,
+            max_output_tokens_per_turn=max_tokens,
+            max_turns=MAX_TURNS,
+            session_id=session_id,
+        )
+    else:  # Default to anthropic
+        agent = AnthropicFC(
+            system_prompt=SYSTEM_PROMPT,
+            client=client,
+            workspace_manager=workspace_manager,
+            tools=tools,
+            message_queue=queue,
+            logger_for_agent_logs=logger_for_agent_logs,
+            context_manager=context_manager,
+            max_output_tokens_per_turn=max_tokens,
+            max_turns=MAX_TURNS,
+            session_id=session_id,  # Pass the session_id from database manager
+        )
 
     # Create background task for message processing
     message_task = agent.start_message_processing()
@@ -158,28 +198,21 @@ async def async_main():
     loop = asyncio.get_running_loop()
     # Main interaction loop
     try:
-        while True:
-            # Use async input
-            if args.prompt is None:
-                user_input = await loop.run_in_executor(None, lambda: input("User input: "))
-            else:
-                user_input = args.prompt
-
+        # Handle single prompt mode vs interactive mode
+        if args.prompt is not None:
+            # Single prompt mode - run once and exit
+            user_input = args.prompt
+            
             agent.message_queue.put_nowait(
                 RealtimeEvent(type=EventType.USER_MESSAGE, content={"text": user_input})
             )
-
-            if user_input.lower() in ["exit", "quit"]:
-                console.print("[bold]Exiting...[/bold]")
-                logger_for_agent_logs.info("Exiting...")
-                break
-
+            
             logger_for_agent_logs.info("\nAgent is thinking...")
             try:
                 # Run synchronous method in executor
                 result = await loop.run_in_executor(
                     None,  # Uses default ThreadPoolExecutor
-                    lambda: agent.run_agent(user_input, resume=True),
+                    lambda: agent.run_agent(user_input, resume=False),
                 )
                 logger_for_agent_logs.info(f"Agent: {result}")
             except (KeyboardInterrupt, asyncio.CancelledError):
@@ -188,8 +221,37 @@ async def async_main():
             except Exception as e:
                 logger_for_agent_logs.info(f"Error: {str(e)}")
                 logger_for_agent_logs.debug("Full error:", exc_info=True)
+        else:
+            # Interactive mode - continuous loop
+            while True:
+                # Use async input
+                user_input = await loop.run_in_executor(None, lambda: input("User input: "))
 
-            logger_for_agent_logs.info("\n" + "-" * 40 + "\n")
+                agent.message_queue.put_nowait(
+                    RealtimeEvent(type=EventType.USER_MESSAGE, content={"text": user_input})
+                )
+
+                if user_input.lower() in ["exit", "quit"]:
+                    console.print("[bold]Exiting...[/bold]")
+                    logger_for_agent_logs.info("Exiting...")
+                    break
+
+                logger_for_agent_logs.info("\nAgent is thinking...")
+                try:
+                    # Run synchronous method in executor
+                    result = await loop.run_in_executor(
+                        None,  # Uses default ThreadPoolExecutor
+                        lambda: agent.run_agent(user_input, resume=True),
+                    )
+                    logger_for_agent_logs.info(f"Agent: {result}")
+                except (KeyboardInterrupt, asyncio.CancelledError):
+                    agent.cancel()
+                    logger_for_agent_logs.info("Agent cancelled")
+                except Exception as e:
+                    logger_for_agent_logs.info(f"Error: {str(e)}")
+                    logger_for_agent_logs.debug("Full error:", exc_info=True)
+
+                logger_for_agent_logs.info("\n" + "-" * 40 + "\n")
 
     except KeyboardInterrupt:
         console.print("\n[bold]Session interrupted. Exiting...[/bold]")

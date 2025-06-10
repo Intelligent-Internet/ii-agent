@@ -9,7 +9,7 @@ from ii_agent.llm.message_history import MessageHistory
 
 class BrowserWaitTool(BrowserTool):
     name = "browser_wait"
-    description = "Wait for the page to load"
+    description = """Wait for the current page to finish loading completely.\n\nUse this tool when:\n- A page is still loading after navigation\n- Waiting for dynamic content to appear\n- Ensuring all page elements are ready before interaction\n- After actions that trigger page updates or redirects\n- When you see loading indicators or partial content\n\nThis tool waits for:\n- Page DOM to be fully loaded\n- Essential resources to finish loading\n- JavaScript to complete initial execution\n\nTip: Use this tool before browser_view if the page seems to be still loading or changing."""
     input_schema = {"type": "object", "properties": {}, "required": []}
 
     def __init__(self, browser: Browser):

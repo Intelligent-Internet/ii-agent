@@ -8,7 +8,28 @@ from ii_agent.utils.workspace_manager import WorkspaceManager
 
 class SlideDeckInitTool(LLMTool):
     name = "slide_deck_init"
-    description = "This tool initializes a presentation environment by cloning the reveal.js framework and setting up all necessary dependencies. It creates a presentation directory structure, downloads the reveal.js HTML presentation framework from GitHub, and installs all required npm packages to enable slide deck creation and presentation capabilities."
+    description = """Initialize a professional presentation environment using the reveal.js framework.
+
+This tool sets up everything needed to create interactive HTML presentations with reveal.js.
+
+Use this tool when you need to:
+- Create a new presentation from scratch
+- Set up the reveal.js framework for slide creation
+- Initialize the presentation directory structure
+- Prepare for creating multiple slides
+
+What this tool does:
+1. Creates a 'presentation' directory in your workspace
+2. Clones the reveal.js repository from GitHub
+3. Installs all necessary npm dependencies
+4. Sets up the framework for slide creation
+
+After initialization:
+- Create individual slide HTML files in a 'slides' subdirectory
+- Use the slide_deck_complete tool to combine them into a presentation
+- The presentation will be viewable at presentation/reveal.js/index.html
+
+Note: This tool requires git and npm to be available in the environment."""
     input_schema = {
         "type": "object",
         "properties": {},
@@ -89,7 +110,31 @@ SLIDE_IFRAME_TEMPLATE = """\
 class SlideDeckCompleteTool(LLMTool):
     name = "slide_deck_complete"
 
-    description = "This tool finalizes a presentation by combining multiple individual slide files into a complete reveal.js presentation. It takes an ordered list of slide file paths and embeds them as iframes into the main index.html file, creating a cohesive slideshow that can be viewed in a web browser. The slides will be displayed in the exact order specified in the slide_paths parameter."
+    description = """Combine individual slide files into a complete reveal.js presentation.
+
+This tool assembles your slides into a final presentation that can be viewed in a browser.
+
+Use this tool when you need to:
+- Finalize your presentation after creating all slides
+- Combine multiple HTML slide files into one presentation
+- Update the slide order in an existing presentation
+- Create the final viewable presentation file
+
+Requirements:
+- slide_deck_init must be run first
+- All slide files must be in the 'slides' subdirectory
+- Slide paths should be like: ./slides/intro.html, ./slides/content.html
+
+Features:
+- Embeds slides as iframes in the main presentation
+- Preserves the exact order specified in slide_paths
+- Can be run multiple times to update slide order
+- Creates a complete presentation at presentation/reveal.js/index.html
+
+Example slide_paths:
+["./slides/title.html", "./slides/intro.html", "./slides/main.html", "./slides/conclusion.html"]
+
+The final presentation supports all reveal.js features including navigation, themes, and transitions."""
     input_schema = {
         "type": "object",
         "properties": {

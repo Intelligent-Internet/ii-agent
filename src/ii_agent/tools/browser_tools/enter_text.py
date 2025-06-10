@@ -9,7 +9,7 @@ from ii_agent.llm.message_history import MessageHistory
 
 class BrowserEnterTextTool(BrowserTool):
     name = "browser_enter_text"
-    description = "Enter text with a keyboard. Use it AFTER you have clicked on an input element. This action will override the current text in the element."
+    description = """Type text into input fields, text areas, or other text-accepting elements.\n\nIMPORTANT WORKFLOW:\n1. First use browser_view_interactive_elements to find input fields\n2. Click on the input field using browser_click\n3. Then use this tool to enter text\n\nUse this tool for:\n- Filling out forms (name, email, password fields)\n- Entering search queries in search boxes\n- Typing content into text areas or comment boxes\n- Entering data into any text input field\n\nBehavior:\n- Completely replaces any existing text in the field\n- Does not append to existing text\n- Simulates keyboard typing\n- Works with various input types (text, email, password, search, etc.)\n\nTips:\n- Always click the input field first to focus it\n- Use \\n for line breaks in text areas\n- For sensitive data like passwords, the text will be masked in logs\n- Some fields may have validation that triggers after typing"""
     input_schema = {
         "type": "object",
         "properties": {

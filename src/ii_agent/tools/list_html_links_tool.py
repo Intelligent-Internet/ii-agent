@@ -11,11 +11,27 @@ from ii_agent.utils import WorkspaceManager
 
 class ListHtmlLinksTool(LLMTool):
     name = "list_html_links"
-    description = (
-        "Scans a specified HTML file (or all HTML files in a directory) "
-        "and lists all unique local HTML file names linked within them. "
-        "This helps verify which pages are being referenced."
-    )
+    description = """Extract and list all local HTML links from HTML files to verify site structure and navigation.
+
+This tool scans HTML files to find all internal links, helping you understand and verify website navigation.
+
+Use this tool when you need to:
+- Verify which HTML pages are linked from an index or navigation page
+- Check if all required pages in a website are properly linked
+- Identify missing pages that are referenced but don't exist yet
+- Audit the link structure of a static website
+- Ensure navigation consistency across multiple HTML files
+
+Features:
+- Scans single HTML files or entire directories recursively
+- Extracts only local HTML links (ignores external URLs, anchors, mailto, etc.)
+- Returns unique list of linked HTML filenames
+- Helps identify broken links or missing pages
+
+Output includes:
+- List of all unique local HTML filenames found in links
+- Suggestion to cross-reference with planned files
+- Useful for building complete static websites with proper navigation"""
     input_schema = {
         "type": "object",
         "properties": {

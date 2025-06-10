@@ -9,7 +9,7 @@ from ii_agent.llm.message_history import MessageHistory
 
 class BrowserPressKeyTool(BrowserTool):
     name = "browser_press_key"
-    description = "Simulate key press in the current browser page"
+    description = """Simulate keyboard key presses in the browser.\n\nUse this tool for:\n- Pressing special keys (Enter, Tab, Escape, Arrow keys)\n- Keyboard shortcuts (Ctrl+C, Ctrl+V, Ctrl+F)\n- Navigation keys (Page Up, Page Down, Home, End)\n- Function keys and other special key combinations\n\nCommon use cases:\n- Press Enter to submit forms or confirm actions\n- Use Tab to navigate between form fields\n- Press Escape to close modals or cancel operations\n- Use arrow keys for navigation in interactive elements\n- Ctrl+F to open browser search\n\nSupported keys:\n- Enter, Tab, Escape, Space\n- Arrow keys (ArrowUp, ArrowDown, ArrowLeft, ArrowRight)\n- Page navigation (PageUp, PageDown, Home, End)\n- Modifier combinations (Ctrl+key, Alt+key, Shift+key)\n\nNote: For typing regular text, use browser_enter_text instead."""
     input_schema = {
         "type": "object",
         "properties": {

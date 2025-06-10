@@ -9,7 +9,36 @@ from typing import Any, Optional
 
 class ImageSearchTool(LLMTool):
     name = "image_search"
-    description = """Performs an image search using a search engine API and returns a list of image URLs."""
+    description = """Search for images on the web and get a list of image URLs matching your query.
+
+This tool searches the internet for images and returns direct URLs to relevant images.
+
+Use this tool when you need to:
+- Find specific images, photos, or graphics on the web
+- Gather visual references for a project
+- Search for stock photos, illustrations, or diagrams
+- Find images of specific objects, people, or concepts
+- Collect visual resources for presentations or documents
+
+Features:
+- Returns direct URLs to images found on the web
+- Supports various search terms (objects, concepts, styles, etc.)
+- Provides multiple results per query (configurable limit)
+- Searches across public web sources
+
+Important notes:
+- Returns only URLs, not the actual image files
+- Use visit_webpage or other tools to download images if needed
+- Respect copyright and usage rights for any images you find
+- Results depend on availability of images matching your query
+
+Example queries:
+- "modern office interior design"
+- "data visualization charts"
+- "mountain landscape photography"
+- "abstract geometric patterns"
+
+The tool returns an array of image URLs that you can reference or download."""
     input_schema = {
         "type": "object",
         "properties": {

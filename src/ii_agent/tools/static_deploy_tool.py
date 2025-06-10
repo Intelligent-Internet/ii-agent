@@ -14,7 +14,27 @@ class StaticDeployTool(LLMTool):
     """Tool for managing static file deployments"""
 
     name = "static_deploy"
-    description = "Get the public URL for static files in the workspace"
+    description = """Generate a public URL to access static files (HTML, images, CSS, JS) from your workspace.
+
+This tool creates shareable URLs for files in your workspace, making them accessible via web browser.
+
+Use this tool when you need to:
+- Share HTML files, images, or other static content with the user
+- Create links to generated visualizations, reports, or web pages
+- Deploy static websites or single-page applications
+- Provide access to generated presentations or documentation
+- Make any workspace file accessible via a browser URL
+
+Important notes:
+- The file must exist in the workspace before generating a URL
+- URLs are session-specific and tied to the current workspace
+- Supports all static file types (HTML, CSS, JS, images, PDFs, etc.)
+- The generated URL can be opened directly in a web browser
+
+Example use cases:
+- After creating an HTML report, get its URL for viewing
+- Share generated charts or visualizations
+- Deploy a complete website with all its assets"""
 
     input_schema = {
         "type": "object",

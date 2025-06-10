@@ -10,7 +10,20 @@ from ii_agent.llm.message_history import MessageHistory
 
 class BrowserScrollDownTool(BrowserTool):
     name = "browser_scroll_down"
-    description = "Scroll down the current browser page"
+    description = """Scroll down the current webpage to see more content below.
+
+Use this tool when:
+- Content extends below the visible area
+- Looking for more elements or information
+- The browser_view tool shows there's more content to explore
+- Navigating through long pages or infinite scroll content
+
+After scrolling:
+- Use browser_view to see newly visible elements
+- Some websites load content dynamically as you scroll
+- Previously visible elements may scroll out of view
+
+Note: Each scroll moves the page down by approximately one screen height."""
     input_schema = {"type": "object", "properties": {}, "required": []}
 
     def __init__(self, browser: Browser):
@@ -41,7 +54,20 @@ class BrowserScrollDownTool(BrowserTool):
 
 class BrowserScrollUpTool(BrowserTool):
     name = "browser_scroll_up"
-    description = "Scroll up the current browser page"
+    description = """Scroll up the current webpage to see content above.
+
+Use this tool when:
+- You've scrolled down and need to go back up
+- Looking for content that's now above the visible area
+- Returning to the top of a page
+- Accessing navigation or header elements
+
+After scrolling:
+- Use browser_view to see newly visible elements
+- Previously visible elements may scroll out of view
+- Some websites may reload or change content when scrolling up
+
+Note: Each scroll moves the page up by approximately one screen height."""
     input_schema = {"type": "object", "properties": {}, "required": []}
 
     def __init__(self, browser: Browser):

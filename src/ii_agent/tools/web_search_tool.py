@@ -9,7 +9,22 @@ from typing import Any, Optional
 
 class WebSearchTool(LLMTool):
     name = "web_search"
-    description = """Performs a web search using a search engine API and returns the search results."""
+    description = """Search the web for current information, facts, news, or any topic not in your knowledge base.
+
+This tool performs web searches and returns relevant results including:
+- Web page titles and snippets
+- URLs for each result
+- Brief descriptions of the content
+
+Use this tool when you need to:
+- Find current information (news, events, updates)
+- Research topics beyond your training data
+- Verify facts or get latest information
+- Find official documentation or resources
+- Discover solutions to specific problems
+
+The tool returns the top search results formatted with titles, URLs, and content snippets. 
+You can then use the visit_webpage tool to read the full content of specific pages if needed."""
     input_schema = {
         "type": "object",
         "properties": {

@@ -15,7 +15,24 @@ from ii_agent.utils.constants import VISIT_WEB_PAGE_MAX_OUTPUT_LENGTH
 
 class VisitWebpageTool(LLMTool):
     name = "visit_webpage"
-    description = "You should call this tool when you need to visit a webpage and extract its content. Returns webpage content as text."
+    description = """Read and extract the full content from a specific webpage URL.
+
+This tool fetches and converts webpage content into readable text format, removing HTML markup and extracting the main content.
+
+Use this tool when you need to:
+- Read the full content of a webpage after finding it via web_search
+- Access documentation, articles, or blog posts
+- Extract information from a specific URL provided by the user
+- Analyze or summarize webpage content
+- Verify information found in search results
+
+Features:
+- Automatically converts HTML to clean, readable text
+- Handles various content types (articles, documentation, blogs)
+- Special handling for arxiv.org papers (converts to HTML version)
+- Returns extracted text content suitable for analysis
+
+Note: Some websites may block automated access. If extraction fails, the tool will suggest manual verification."""
     input_schema = {
         "type": "object",
         "properties": {

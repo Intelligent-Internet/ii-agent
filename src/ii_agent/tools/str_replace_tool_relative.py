@@ -133,19 +133,38 @@ def run_sync(*args, **kwargs):
 class StrReplaceEditorTool(LLMTool):
     name = "str_replace_editor"
 
-    description = """\
-Custom editing tool for viewing, creating and editing files\n
-* State is persistent across command calls and discussions with the user\n
-* If `path` is a file, `view` displays the result of applying `cat -n`. If `path` is a directory, `view` lists non-hidden files and directories up to 2 levels deep\n
-* The `create` command cannot be used if the specified `path` already exists as a file\n
-* If a `command` generates a long output, it will be truncated and marked with `<response clipped>` \n
-* The `undo_edit` command will revert the last edit made to the file at `path`\n
-\n
-Notes for using the `str_replace` command:\n
-* The `old_str` parameter should match EXACTLY one or more consecutive lines from the original file. Be mindful of whitespaces!\n
-* If the `old_str` parameter is not unique in the file, the replacement will not be performed. Make sure to include enough context in `old_str` to make it unique\n
-* The `new_str` parameter should contain the edited lines that should replace the `old_str`
-"""
+    description = """Powerful file management tool for viewing, creating, and editing files in the workspace.
+
+This is your primary tool for all file operations. It maintains state across commands and supports multiple operations.
+
+Commands available:
+1. **view** - Display file contents or directory structure
+   - For files: Shows numbered lines (like 'cat -n')
+   - For directories: Lists files/folders up to 2 levels deep
+   - Optional view_range parameter to show specific lines
+
+2. **create** - Create new files with content
+   - Cannot overwrite existing files
+   - Use file_text parameter for content
+
+3. **str_replace** - Replace exact string matches in files
+   - old_str must match EXACTLY (including whitespace/indentation)
+   - If multiple matches exist, replacement fails - add more context
+   - Preserves file structure and formatting
+
+4. **insert** - Insert new content after a specific line
+   - Specify insert_line number (content goes AFTER this line)
+   - Use new_str for content to insert
+
+5. **undo_edit** - Revert the last edit to a file
+   - Restores previous version
+
+Important usage notes:
+- Always use exact string matching for str_replace (copy-paste is recommended)
+- Include enough context in old_str to make it unique
+- Line numbers start at 1
+- Long outputs are truncated with <response clipped> marker
+- All paths are relative to the workspace root"""
     input_schema = {
         "type": "object",
         "properties": {

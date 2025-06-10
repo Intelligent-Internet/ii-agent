@@ -1,3 +1,8 @@
+"""
+Gemini XML Client for ii-agent
+A specialized Gemini client designed for XML-based tool calling (no native function calling)
+"""
+
 import os
 import time
 import random
@@ -17,19 +22,9 @@ from ii_agent.llm.base import (
     ImageBlock,
 )
 
-def generate_tool_call_id() -> str:
-    """Generate a unique ID for a tool call.
-    
-    Returns:
-        A unique string ID combining timestamp and random number.
-    """
-    timestamp = int(time.time() * 1000)  # Current time in milliseconds
-    random_num = random.randint(1000, 9999)  # Random 4-digit number
-    return f"call_{timestamp}_{random_num}"
 
-
-class GeminiDirectClient(LLMClient):
-    """Use Gemini models via first party API."""
+class GeminiXMLClient(LLMClient):
+    """Gemini client optimized for XML tool calling without native function calling."""
 
     def __init__(self, model_name: str, max_retries: int = 2, project_id: None | str = None, region: None | str = None):
         self.model_name = model_name
@@ -37,14 +32,14 @@ class GeminiDirectClient(LLMClient):
         if project_id and region:
             self.endpoint = "vertex"
             self.client = genai.Client(vertexai=True, project=project_id, location=region)
-            print(f"====== Using Gemini through Vertex AI API with project_id: {project_id} and region: {region} ======")
+            print(f"====== Using Gemini XML Client through Vertex AI API with project_id: {project_id} and region: {region} ======")
         else:
             self.endpoint = "studio"
             api_key = os.getenv("GEMINI_API_KEY")
             if not api_key:
                 raise ValueError("GEMINI_API_KEY is not set")
             self.client = genai.Client(api_key=api_key)
-            print(f"====== Using Gemini directly ======")
+            print(f"====== Using Gemini XML Client directly ======")
             
         self.max_retries = max_retries
 
@@ -58,6 +53,10 @@ class GeminiDirectClient(LLMClient):
         thinking_tokens: int = 8192,
         temperature: float = 0.0,
     ) -> Tuple[list[AssistantContentBlock], dict[str, Any]]:
+        """
+        Generate response using Gemini without native tool calling.
+        This client is designed for XML-based tool parsing only.
+        """
         
         gemini_messages = []
         for idx, message_list in enumerate(messages):
@@ -74,18 +73,17 @@ class GeminiDirectClient(LLMClient):
                 elif isinstance(message, TextResult):
                     message_content = types.Part(text=message.text)
                 elif isinstance(message, ToolCall):
-                    message_content = types.Part.from_function_call(
-                        name=message.tool_name,
-                        args=message.tool_input,
-                    )
+                    # For XML client, convert tool calls to text representation
+                    # This handles the case where we have tool calls in the conversation history
+                    tool_text = f"[Tool Call: {message.tool_name}({message.tool_input})]"
+                    message_content = types.Part(text=tool_text)
                 elif isinstance(message, ToolFormattedResult):
+                    # Convert tool results to text representation
                     if isinstance(message.tool_output, str):
-                        message_content = types.Part.from_function_response(
-                            name=message.tool_name,
-                            response={"result": message.tool_output}
-                        )
-                    # Handle tool return images. See: https://discuss.ai.google.dev/t/returning-images-from-function-calls/3166/6
+                        tool_result_text = f"[Tool Result from {message.tool_name}]: {message.tool_output}"
+                        message_content = types.Part(text=tool_result_text)
                     elif isinstance(message.tool_output, list):
+                        # Handle mixed content (text + images)
                         message_content = []
                         for item in message.tool_output:
                             if item['type'] == 'text':
@@ -105,40 +103,24 @@ class GeminiDirectClient(LLMClient):
             
             gemini_messages.append(types.Content(role=role, parts=message_content_list))
         
-        tool_declarations = [
-            {
-                "name": tool.name,
-                "description": tool.description,
-                "parameters": tool.input_schema,
-            }
-            for tool in tools
-        ]
-        tool_params = [types.Tool(function_declarations=tool_declarations)] if tool_declarations else None
-
-        mode = None
-        if not tool_choice:
-            mode = 'ANY' # This mode always requires a tool call
-        elif tool_choice['type'] == 'any':
-            mode = 'ANY'
-        elif tool_choice['type'] == 'auto':
-            mode = 'AUTO'
-        else:
-            raise ValueError(f"Unknown tool_choice type for Gemini: {tool_choice['type']}")
+        # For XML client, we don't use native tool declarations
+        # Tools are handled through XML parsing in the agent
+        
+        # Create configuration without tool parameters
         if self.endpoint == "vertex":
             config = types.GenerateContentConfig(
-                tools=tool_params,
                 system_instruction=system_prompt,
                 max_output_tokens=max_tokens,
-                tool_config={'function_calling_config': {'mode': mode}}
+                temperature=temperature,
             )
         else:
             config = types.GenerateContentConfig(
-                tools=tool_params,
                 system_instruction=system_prompt,
                 thinking_config=types.ThinkingConfig(thinking_budget=thinking_tokens),
                 max_output_tokens=max_tokens,
-                tool_config={'function_calling_config': {'mode': mode}}
+                temperature=temperature,
             )
+        
         for retry in range(self.max_retries):
             try:
                 response = self.client.models.generate_content(
@@ -152,18 +134,19 @@ class GeminiDirectClient(LLMClient):
                 # 429: The request was throttled.
                 if e.code in [503, 429]:
                     if retry == self.max_retries - 1:
-                        print(f"Failed Gemini request after {retry + 1} retries")
+                        print(f"Failed Gemini XML request after {retry + 1} retries")
                         raise e
                     else:
                         print(f"Error: {e}")
-                        print(f"Retrying Gemini request: {retry + 1}/{self.max_retries}")
+                        print(f"Retrying Gemini XML request: {retry + 1}/{self.max_retries}")
                         # Sleep 12-18 seconds with jitter to avoid thundering herd.
                         time.sleep(15 * random.uniform(0.8, 1.2))
                 else:
                     raise e
 
         internal_messages = []
-        # Extract text parts directly from response.candidates to avoid warning
+        
+        # Extract text parts directly from response.candidates
         text_parts = []
         if response.candidates and len(response.candidates) > 0:
             candidate = response.candidates[0]
@@ -176,19 +159,13 @@ class GeminiDirectClient(LLMClient):
             combined_text = ''.join(text_parts)
             internal_messages.append(TextResult(text=combined_text))
 
-        if response.function_calls:
-            for fn_call in response.function_calls:
-                response_message_content = ToolCall(
-                    tool_call_id=fn_call.id if fn_call.id else generate_tool_call_id(),
-                    tool_name=fn_call.name,
-                    tool_input=fn_call.args,
-                )
-                internal_messages.append(response_message_content)
-
+        # For XML client, we don't process native function calls
+        # All tool calling is handled through XML parsing in the agent
+        
         message_metadata = {
             "raw_response": response,
-            "input_tokens": response.usage_metadata.prompt_token_count,
-            "output_tokens": response.usage_metadata.candidates_token_count,
+            "input_tokens": response.usage_metadata.prompt_token_count if response.usage_metadata else 0,
+            "output_tokens": response.usage_metadata.candidates_token_count if response.usage_metadata else 0,
         }
         
         return internal_messages, message_metadata

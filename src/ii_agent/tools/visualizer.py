@@ -12,7 +12,31 @@ from ii_agent.utils import WorkspaceManager
 
 class DisplayImageTool(LLMTool):
     name = "display_image"
-    description = "A tool that loads and displays images."
+    description = """Display images from your workspace to the user in the conversation.
+
+This tool loads and shows images directly in the chat interface, making them visible to the user.
+
+Use this tool when you need to:
+- Show generated images, charts, or visualizations to the user
+- Display screenshots or diagrams you've created
+- Present visual results from image processing tasks
+- Show downloaded or created images for user review
+- Display any image file from the workspace
+
+Supported formats:
+- Common image formats: PNG, JPG, JPEG, GIF, BMP, WebP
+- SVG and other image types supported by browsers
+
+Important notes:
+- The image must exist in the workspace before displaying
+- Path should be relative to the workspace root
+- Images are displayed inline in the conversation
+- Large images may be resized for display
+
+Example usage:
+- After generating a chart: display_image("charts/results.png")
+- After downloading an image: display_image("downloads/example.jpg")
+- After creating a visualization: display_image("output/graph.png")"""
     input_schema = {
         "type": "object",
         "properties": {

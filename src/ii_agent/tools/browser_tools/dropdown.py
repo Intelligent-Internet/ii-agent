@@ -9,7 +9,24 @@ from ii_agent.llm.message_history import MessageHistory
 
 class BrowserGetSelectOptionsTool(BrowserTool):
     name = "browser_get_select_options"
-    description = "Get all options from a <select> element. Use this action when you need to get all options from a dropdown."
+    description = """Get all available options from a dropdown/select element.
+
+Use this tool when you need to:
+- See what choices are available in a dropdown menu
+- Find the exact text of options before selecting
+- Understand all possible values in a select field
+- Choose from a list of countries, states, categories, etc.
+
+Workflow:
+1. Use browser_view to find select elements
+2. Use this tool to get all options from a specific select element
+3. Use browser_select_dropdown_option to choose your desired option
+
+Returns:
+- List of all option values and their display text
+- Information needed to make a selection
+
+Note: Only works with HTML <select> elements, not custom dropdown implementations."""
     input_schema = {
         "type": "object",
         "properties": {
@@ -89,7 +106,27 @@ class BrowserGetSelectOptionsTool(BrowserTool):
 
 class BrowserSelectDropdownOptionTool(BrowserTool):
     name = "browser_select_dropdown_option"
-    description = "Select an option from a <select> element by the text (name) of the option. Use this after get_select_options and when you need to select an option from a dropdown."
+    description = """Select a specific option from a dropdown/select element by its text.
+
+Use this tool to choose an option from a dropdown menu after viewing available options.
+
+Workflow:
+1. Use browser_view to identify the select element
+2. Use browser_get_select_options to see available choices
+3. Use this tool to select your desired option by its exact text
+
+Use cases:
+- Selecting countries, states, or regions
+- Choosing categories or types from dropdown lists
+- Setting preferences or configuration options
+- Selecting dates, times, or other predefined values
+
+Important:
+- Use the exact option text as shown by browser_get_select_options
+- Text matching is case-sensitive
+- Only works with HTML <select> elements
+
+Note: After selection, the form may update dynamically, so consider using browser_view to see changes."""
     input_schema = {
         "type": "object",
         "properties": {

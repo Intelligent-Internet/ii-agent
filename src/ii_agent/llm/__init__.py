@@ -2,6 +2,7 @@ from ii_agent.llm.base import LLMClient
 from ii_agent.llm.openai import OpenAIDirectClient
 from ii_agent.llm.anthropic import AnthropicDirectClient
 from ii_agent.llm.gemini import GeminiDirectClient
+from ii_agent.llm.gemini_xml import GeminiXMLClient
 
 def get_client(client_name: str, **kwargs) -> LLMClient:
     """Get a client for a given client name."""
@@ -11,6 +12,8 @@ def get_client(client_name: str, **kwargs) -> LLMClient:
         return OpenAIDirectClient(**kwargs)
     elif client_name == "gemini-direct":
         return GeminiDirectClient(**kwargs)
+    elif client_name == "gemini-xml":
+        return GeminiXMLClient(**kwargs)
     else:
         raise ValueError(f"Unknown client name: {client_name}")
 
@@ -20,5 +23,6 @@ __all__ = [
     "OpenAIDirectClient",
     "AnthropicDirectClient",
     "GeminiDirectClient",
+    "GeminiXMLClient",
     "get_client",
 ]

@@ -9,7 +9,7 @@ from ii_agent.llm.message_history import MessageHistory
 
 class BrowserClickTool(BrowserTool):
     name = "browser_click"
-    description = "Click on an element on the current browser page"
+    description = """Click on any interactive element on the current webpage.\n\nUse this tool to interact with buttons, links, checkboxes, radio buttons, and other clickable elements.\n\nBefore clicking:\n1. Use browser_view_interactive_elements to see available elements\n2. Identify the element ID from the view results\n\nUse cases:\n- Click buttons to submit forms or trigger actions\n- Follow links to navigate to other pages\n- Select checkboxes or radio buttons\n- Activate dropdown menus or accordions\n- Click on images or other clickable content\n\nImportant:\n- Use the exact element_id from browser_view results\n- The element must be currently visible on the page\n- Some clicks may trigger page navigation or dynamic content loading\n- Wait for page changes to complete before taking further actions\n\nTip: After clicking, often use browser_view again to see the updated page state."""
     input_schema = {
         "type": "object",
         "properties": {

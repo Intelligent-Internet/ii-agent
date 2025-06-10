@@ -7,7 +7,7 @@ from ii_agent.llm.message_history import MessageHistory
 
 class BrowserViewTool(BrowserTool):
     name = "browser_view_interactive_elements"
-    description = "Return the visible interactive elements on the current page"
+    description = """Get all visible and interactive elements on the current webpage for analysis and interaction.\n\nThis is your primary tool for understanding what's available on a webpage. It provides a structured view of all elements you can interact with.\n\nUse this tool to:\n- See what's currently visible on the page\n- Identify buttons, links, form fields, and other interactive elements\n- Get element IDs needed for clicking, typing, or other interactions\n- Understand the page structure and layout\n- Find specific elements by their text content or labels\n\nReturns:\n- Screenshots of the current page state\n- Numbered list of all interactive elements\n- Element types (button, link, input, select, etc.)\n- Element text content and descriptions\n- Element coordinates and IDs for interaction\n\nAlways use this tool first when visiting a new page to understand what actions you can take.\n\nNote: Only returns elements that are currently visible on screen. Use scrolling tools to see more content."""
     input_schema = {"type": "object", "properties": {}, "required": []}
 
     def __init__(self, browser: Browser):
