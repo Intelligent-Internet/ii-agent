@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { toast } from "sonner";
 import { AgentEvent, Message, IEvent } from "@/typings/agent";
 import { useAppContext } from "@/context/app-context";
@@ -16,6 +16,10 @@ export function useSessionManager({
   const { dispatch } = useAppContext();
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [isLoadingSession, setIsLoadingSession] = useState(false);
+  const eventsDataRef = useRef<{ events: IEvent[]; workspace: string } | null>(
+    null
+  );
+  const processingRef = useRef<boolean>(false);
 
   const isReplayMode = !!searchParams.get("id");
 
@@ -24,6 +28,23 @@ export function useSessionManager({
     const id = searchParams.get("id");
     setSessionId(id);
   }, [searchParams]);
+
+  const processAllEventsImmediately = useCallback(() => {
+    if (!eventsDataRef.current) return;
+
+    // Cancel any ongoing processing
+    processingRef.current = false;
+
+    const { events, workspace } = eventsDataRef.current;
+
+    // Process all events immediately without delay
+    dispatch({ type: "SET_LOADING", payload: true });
+    for (let i = 0; i < events.length; i++) {
+      const event = events[i];
+      handleEvent({ ...event.event_payload, id: event.id }, workspace);
+    }
+    dispatch({ type: "SET_LOADING", payload: false });
+  }, [dispatch, handleEvent]);
 
   const fetchSessionEvents = useCallback(async () => {
     const id = searchParams.get("id");
@@ -46,18 +67,32 @@ export function useSessionManager({
       dispatch({ type: "SET_WORKSPACE_INFO", payload: workspace });
 
       if (data.events && Array.isArray(data.events)) {
+        // Store events data for potential immediate processing
+        eventsDataRef.current = { events: data.events, workspace };
+
         // Process events to reconstruct the conversation
         const reconstructedMessages: Message[] = [];
 
         // Function to process events with delay
         const processEventsWithDelay = async () => {
+          if (processingRef.current) return;
+          processingRef.current = true;
+
           dispatch({ type: "SET_LOADING", payload: true });
           for (let i = 0; i < data.events.length; i++) {
+            // Check if processing was cancelled
+            if (!processingRef.current) break;
+
             const event = data.events[i];
             await new Promise((resolve) => setTimeout(resolve, 1500));
+
+            // Check again after the delay
+            if (!processingRef.current) break;
+
             handleEvent({ ...event.event_payload, id: event.id }, workspace);
           }
           dispatch({ type: "SET_LOADING", payload: false });
+          processingRef.current = false;
         };
 
         // Start processing events with delay
@@ -95,5 +130,6 @@ export function useSessionManager({
     isReplayMode,
     setSessionId,
     fetchSessionEvents,
+    processAllEventsImmediately,
   };
 }

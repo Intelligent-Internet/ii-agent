@@ -52,11 +52,16 @@ export default function HomeContent() {
   const { deviceId } = useDeviceId();
 
   // Use the Session Manager hook
-  const { sessionId, isLoadingSession, isReplayMode, setSessionId } =
-    useSessionManager({
-      searchParams,
-      handleEvent,
-    });
+  const {
+    sessionId,
+    isLoadingSession,
+    isReplayMode,
+    setSessionId,
+    processAllEventsImmediately,
+  } = useSessionManager({
+    searchParams,
+    handleEvent,
+  });
 
   // Use the WebSocket hook
   const { socket, sendMessage } = useWebSocket(
@@ -300,7 +305,20 @@ export default function HomeContent() {
           )}
           {`II-Agent`}
         </motion.h1>
-        {isInChatView ? (
+        {isInChatView && isReplayMode ? (
+          <div className="flex gap-x-2">
+            <Button
+              className="cursor-pointer h-10"
+              variant="outline"
+              onClick={handleShare}
+            >
+              <Share /> Share
+            </Button>
+            <Button className="cursor-pointer" onClick={handleResetChat}>
+              <X className="size-5" />
+            </Button>
+          </div>
+        ) : isInChatView ? (
           <div className="flex gap-x-2">
             <Button
               className="cursor-pointer h-10"
@@ -363,6 +381,7 @@ export default function HomeContent() {
                   handleEnhancePrompt={handleEnhancePrompt}
                   handleCancel={handleCancelQuery}
                   handleEditMessage={handleEditMessage}
+                  processAllEventsImmediately={processAllEventsImmediately}
                 />
 
                 <div className="col-span-6 bg-[#1e1f23] border border-[#3A3B3F] p-4 rounded-2xl">

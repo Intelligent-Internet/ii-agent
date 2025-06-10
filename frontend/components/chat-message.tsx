@@ -1,7 +1,8 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Check, CircleStop, Pencil, Folder } from "lucide-react";
+import { Check, CircleStop, Pencil, Folder, SkipForward } from "lucide-react";
+import { useState, useEffect } from "react";
 
 import Action from "@/components/action";
 import Markdown from "@/components/markdown";
@@ -25,6 +26,7 @@ interface ChatMessageProps {
   handleEnhancePrompt: () => void;
   handleCancel: () => void;
   handleEditMessage: (newQuestion: string) => void;
+  processAllEventsImmediately?: () => void;
 }
 
 const ChatMessage = ({
@@ -37,8 +39,30 @@ const ChatMessage = ({
   handleEnhancePrompt,
   handleCancel,
   handleEditMessage,
+  processAllEventsImmediately,
 }: ChatMessageProps) => {
   const { state, dispatch } = useAppContext();
+  const [showQuestionInput, setShowQuestionInput] = useState(false);
+
+  // Add useEffect to detect when loading is complete
+  useEffect(() => {
+    if (isReplayMode && !state.isLoading && state.messages.length > 0) {
+      // If we're in replay mode, loading is complete, and we have messages,
+      // we can assume all events have been processed
+      setShowQuestionInput(true);
+    }
+  }, [isReplayMode, state.isLoading, state.messages.length]);
+
+  const handleJumpToResult = () => {
+    if (processAllEventsImmediately) {
+      processAllEventsImmediately();
+    }
+
+    setTimeout(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      setShowQuestionInput(true);
+    }, 100);
+  };
 
   // Helper function to check if a message is the latest user message
   const isLatestUserMessage = (
@@ -59,7 +83,11 @@ const ChatMessage = ({
   return (
     <div className="col-span-4">
       <motion.div
-        className="p-4 pt-0 w-full h-full max-h-[calc(100vh-230px)] overflow-y-auto relative"
+        className={`p-4 pt-0 w-full h-full ${
+          isReplayMode && !showQuestionInput
+            ? "max-h-[calc(100vh-167px)]"
+            : "max-h-[calc(100vh-230px)]"
+        } overflow-y-auto relative`}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 0.2, duration: 0.3 }}
@@ -320,25 +348,65 @@ const ChatMessage = ({
 
         <div ref={messagesEndRef} />
       </motion.div>
-      <motion.div
-        className="sticky bottom-0 left-0 w-full"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.2, duration: 0.3 }}
-      >
-        <QuestionInput
-          hideSettings
-          className="p-4 pb-0 w-full max-w-none"
-          textareaClassName="h-30 w-full"
-          placeholder="Ask me anything..."
-          value={state.currentQuestion}
-          setValue={setCurrentQuestion}
-          handleKeyDown={handleKeyDown}
-          handleSubmit={handleQuestionSubmit}
-          handleEnhancePrompt={handleEnhancePrompt}
-          handleCancel={handleCancel}
-        />
-      </motion.div>
+      {isReplayMode ? (
+        showQuestionInput ? (
+          <QuestionInput
+            hideSettings
+            className="p-4 pb-0 w-full max-w-none"
+            textareaClassName="h-30 w-full"
+            placeholder="Ask me anything..."
+            value={state.currentQuestion}
+            setValue={setCurrentQuestion}
+            handleKeyDown={handleKeyDown}
+            handleSubmit={handleQuestionSubmit}
+            handleEnhancePrompt={handleEnhancePrompt}
+            handleCancel={handleCancel}
+          />
+        ) : (
+          <motion.div
+            className="sticky bottom-0 left-0 w-full p-4 pb-0"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.2, duration: 0.3 }}
+          >
+            <div className="bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-3 flex items-center justify-between">
+              <div className="flex items-center gap-2 ml-2">
+                <div className="animate-pulse">
+                  <div className="h-2 w-2 bg-white rounded-full"></div>
+                </div>
+                <span className="text-white">
+                  II-Agent is replaying the task...
+                </span>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={handleJumpToResult}>
+                  <SkipForward /> Skip to results
+                </Button>
+              </div>
+            </div>
+          </motion.div>
+        )
+      ) : (
+        <motion.div
+          className="sticky bottom-0 left-0 w-full"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.2, duration: 0.3 }}
+        >
+          <QuestionInput
+            hideSettings
+            className="p-4 pb-0 w-full max-w-none"
+            textareaClassName="h-30 w-full"
+            placeholder="Ask me anything..."
+            value={state.currentQuestion}
+            setValue={setCurrentQuestion}
+            handleKeyDown={handleKeyDown}
+            handleSubmit={handleQuestionSubmit}
+            handleEnhancePrompt={handleEnhancePrompt}
+            handleCancel={handleCancel}
+          />
+        </motion.div>
+      )}
     </div>
   );
 };
