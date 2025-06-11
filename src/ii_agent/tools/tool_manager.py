@@ -167,9 +167,6 @@ def get_system_tools(
         elif memory_tool == "simple":
             tools.append(SimpleMemoryTool())
     
-    # Add completion tools to all agents
-    tools.append(CompleteTool())
-    tools.append(ReturnControlToUserTool())
     
     print("====== Tools: ", tools)
     return tools
