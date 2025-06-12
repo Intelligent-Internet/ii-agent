@@ -11,9 +11,9 @@ import { useSearchParams } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Orbitron } from "next/font/google";
+import { Kumbh_Sans } from "next/font/google";
 
-const orbitron = Orbitron({
+const kumbh_sans = Kumbh_Sans({
   subsets: ["latin"],
 });
 
@@ -134,7 +134,7 @@ const SidebarButton = ({ className, workspaceInfo }: SidebarButtonProps) => {
                     className="rounded-sm"
                   />
                   <span
-                    className={`text-white text-lg font-serif ${orbitron.className}`}
+                    className={`text-white text-lg font-semibold font-serif ${kumbh_sans.className}`}
                   >
                     II-Agent
                   </span>

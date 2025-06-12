@@ -14,7 +14,7 @@ import Image from "next/image";
 import { useEffect, useMemo, useRef } from "react";
 import { toast } from "sonner";
 import dynamic from "next/dynamic";
-import { Orbitron } from "next/font/google";
+import { Kumbh_Sans } from "next/font/google";
 import { useSearchParams } from "next/navigation";
 
 import { useDeviceId } from "@/hooks/use-device-id";
@@ -38,7 +38,7 @@ const Terminal = dynamic(() => import("@/components/terminal"), {
   ssr: false,
 });
 
-const orbitron = Orbitron({
+const kumbh_sans = Kumbh_Sans({
   subsets: ["latin"],
 });
 
@@ -304,7 +304,7 @@ export default function HomeContent() {
         <motion.h1
           className={`font-semibold text-center ${
             isInChatView ? "flex items-center gap-x-2 text-2xl" : "text-4xl"
-          } ${orbitron.className}`}
+          } ${kumbh_sans.className}`}
           layout
           layoutId="page-title"
         >
