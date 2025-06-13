@@ -29,19 +29,26 @@ class BrowserPressKeyTool(BrowserTool):
         tool_input: dict[str, Any],
         message_history: Optional[MessageHistory] = None,
     ) -> ToolImplOutput:
-        key = tool_input["key"]
-        page = await self.browser.get_current_page()
         try:
-            await page.keyboard.press(key)
-            await asyncio.sleep(0.5)
+            key = tool_input["key"]
+            page = await self.browser.get_current_page()
+            try:
+                await page.keyboard.press(key)
+                await asyncio.sleep(0.5)
+            except Exception as e:
+                return ToolImplOutput(
+                    f"Failed to press key '{key}': {type(e).__name__}: {str(e)}",
+                    f"Failed to press key '{key}': {type(e).__name__}: {str(e)}",
+                    auxiliary_data={"success": False, "error": str(e)},
+                )
+
+            msg = f'Pressed "{key}" on the keyboard.'
+            state = await self.browser.update_state()
+
+            return utils.format_screenshot_tool_output(state.screenshot, msg)
         except Exception as e:
             return ToolImplOutput(
-                f"Failed to press key: {e}",
+                f"Failed to press key: {type(e).__name__}: {str(e)}",
                 "Failed to press key",
                 auxiliary_data={"success": False, "error": str(e)},
             )
-
-        msg = f'Pressed "{key}" on the keyboard.'
-        state = await self.browser.update_state()
-
-        return utils.format_screenshot_tool_output(state.screenshot, msg)

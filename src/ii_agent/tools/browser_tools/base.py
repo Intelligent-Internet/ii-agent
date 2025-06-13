@@ -36,4 +36,13 @@ class BrowserTool(LLMTool):
         tool_input: dict[str, Any],
         message_history: Optional[MessageHistory] = None,
     ) -> ToolImplOutput:
-        return await self._run(tool_input, message_history)
+        try:
+            return await self._run(tool_input, message_history)
+        except Exception as e:
+            error_msg = f"Browser operation failed: {type(e).__name__}: {str(e)}"
+            if hasattr(self, 'name'):
+                error_msg = f"{self.name} failed: {type(e).__name__}: {str(e)}"
+            return ToolImplOutput(
+                tool_output=error_msg,
+                tool_result_message=error_msg
+            )

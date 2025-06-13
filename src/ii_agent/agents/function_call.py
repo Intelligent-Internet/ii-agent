@@ -57,7 +57,7 @@ try breaking down the task into smaller steps. After call this tool to update or
         message_queue: asyncio.Queue,
         logger_for_agent_logs: logging.Logger,
         max_output_tokens_per_turn: int = 8192,
-        max_turns: int = 10,
+        max_turns: int = 200,
         websocket: Optional[WebSocket] = None,
         session_id: Optional[uuid.UUID] = None,
         interactive_mode: bool = True,

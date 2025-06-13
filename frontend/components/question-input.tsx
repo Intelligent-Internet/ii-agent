@@ -1,10 +1,10 @@
 import { motion } from "framer-motion";
 import {
   ArrowUp,
-  Loader2,
   Paperclip,
-  Settings2,
   Plus,
+  Settings2,
+  Loader2,
   Folder,
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
@@ -468,21 +468,6 @@ const QuestionInput = ({
       }, 500);
     }
   }, [isGoogleDriveConnected]);
-
-  // const removeFile = (fileName: string) => {
-  //   setFiles((prev) => {
-  //     // Find the file to remove
-  //     const fileToRemove = prev.find((file) => file.name === fileName);
-
-  //     // Revoke object URL if it exists
-  //     if (fileToRemove?.preview) {
-  //       URL.revokeObjectURL(fileToRemove.preview);
-  //     }
-
-  //     // Filter out the file
-  //     return prev.filter((file) => file.name !== fileName);
-  //   });
-  // };
 
   useEffect(() => {
     if (onFilesChange) {

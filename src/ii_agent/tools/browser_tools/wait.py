@@ -20,10 +20,14 @@ class BrowserWaitTool(BrowserTool):
         tool_input: dict[str, Any],
         message_history: Optional[MessageHistory] = None,
     ) -> ToolImplOutput:
-        await asyncio.sleep(1)
-        state = await self.browser.update_state()
-        state = await self.browser.handle_pdf_url_navigation()
+        try:
+            await asyncio.sleep(1)
+            state = await self.browser.update_state()
+            state = await self.browser.handle_pdf_url_navigation()
 
-        msg = "Waited for page"
+            msg = "Waited for page"
 
-        return utils.format_screenshot_tool_output(state.screenshot, msg)
+            return utils.format_screenshot_tool_output(state.screenshot, msg)
+        except Exception as e:
+            error_msg = f"Wait operation failed: {type(e).__name__}: {str(e)}"
+            return ToolImplOutput(tool_output=error_msg, tool_result_message=error_msg)

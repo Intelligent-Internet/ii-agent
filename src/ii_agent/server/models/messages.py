@@ -86,3 +86,8 @@ class EditQueryContent(BaseModel):
     text: str = ""
     resume: bool = False
     files: List[str] = []
+
+class ReviewResultContent(BaseModel):
+    """Model for review result content."""
+
+    user_input: str = ""

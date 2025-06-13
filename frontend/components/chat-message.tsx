@@ -1,7 +1,14 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Check, CircleStop, Pencil, Folder, SkipForward } from "lucide-react";
+import {
+  Check,
+  CircleStop,
+  Pencil,
+  Folder,
+  SkipForward,
+  SearchCheck,
+} from "lucide-react";
 import { useState, useEffect } from "react";
 
 import Action from "@/components/action";
@@ -28,6 +35,7 @@ interface ChatMessageProps {
   handleEditMessage: (newQuestion: string) => void;
   processAllEventsImmediately?: () => void;
   connectWebSocket: () => void;
+  handleReviewSession: () => void;
 }
 
 const ChatMessage = ({
@@ -42,6 +50,7 @@ const ChatMessage = ({
   handleEditMessage,
   processAllEventsImmediately,
   connectWebSocket,
+  handleReviewSession,
 }: ChatMessageProps) => {
   const { state, dispatch } = useAppContext();
   const [showQuestionInput, setShowQuestionInput] = useState(false);
@@ -349,9 +358,40 @@ const ChatMessage = ({
         )}
 
         {state.isCompleted && (
-          <div className="flex gap-x-2 items-center bg-[#25BA3B1E] text-green-600 text-sm p-2 rounded-full">
-            <Check className="size-4" />
-            <span>II-Agent has completed the current task.</span>
+          <div className="flex flex-col gap-y-4">
+            <div className="flex gap-x-2 items-center bg-[#25BA3B1E] text-green-600 text-sm p-2 rounded-full">
+              <div className="flex gap-x-2 items-center">
+                <Check className="size-4" />
+                <span>II-Agent has completed the current task.</span>
+              </div>
+            </div>
+            {state.toolSettings?.enable_reviewer && (
+              <div
+                className={`group cursor-pointer flex items-start gap-2 px-3 py-2 bg-[#35363a] rounded-xl backdrop-blur-sm 
+      shadow-sm
+      transition-all duration-200 ease-out
+      hover:shadow-[0_2px_8px_rgba(0,0,0,0.24)]
+      active:scale-[0.98] overflow-hidden
+      animate-fadeIn`}
+              >
+                <div className="flex text-sm items-center justify-between flex-1">
+                  <div className="flex items-center gap-x-1.5 flex-1">
+                    <SearchCheck className="size-5 text-white" />
+                    <span className="text-neutral-100 flex-1 font-medium group-hover:text-white">
+                      Allow II-Agent to review the results
+                    </span>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="cursor-pointer text-neutral-900 bg-gradient-skyblue-lavender hover:text-neutral-950"
+                    onClick={handleReviewSession}
+                  >
+                    Review
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

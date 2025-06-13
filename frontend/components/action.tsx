@@ -13,6 +13,7 @@ import {
   Lightbulb,
   LoaderCircle,
   MousePointerClick,
+  SearchCheck,
   Rocket,
   RotateCcw,
   Search,
@@ -75,6 +76,8 @@ const Action = ({ workspaceInfo, type, value, onClick }: ActionProps) => {
         return <Sparkle className={className} />;
       case TOOL.PRESENTATION:
         return <Presentation className={className} />;
+      case TOOL.REVIEWER_AGENT:
+        return <SearchCheck className={className} />;
 
       case TOOL.BROWSER_WAIT:
         return <LoaderCircle className={className} />;
@@ -102,6 +105,8 @@ const Action = ({ workspaceInfo, type, value, onClick }: ActionProps) => {
         return <Globe className={className} />;
       case TOOL.BROWSER_OPEN_NEW_TAB:
         return <Globe className={className} />;
+      case TOOL.BROWSER_VIEW_INTERACTIVE_ELEMENTS:
+        return <MousePointerClick className={className} />;
 
       default:
         return <></>;
@@ -150,6 +155,8 @@ const Action = ({ workspaceInfo, type, value, onClick }: ActionProps) => {
         return "Deep Researching";
       case TOOL.PRESENTATION:
         return "Using presentation agent";
+      case TOOL.REVIEWER_AGENT:
+        return "Reviewer agent";
 
       case TOOL.BROWSER_WAIT:
         return "Waiting for Page to Load";
@@ -177,6 +184,8 @@ const Action = ({ workspaceInfo, type, value, onClick }: ActionProps) => {
         return "Switching Tab";
       case TOOL.BROWSER_OPEN_NEW_TAB:
         return "Opening New Tab";
+      case TOOL.BROWSER_VIEW_INTERACTIVE_ELEMENTS:
+        return "Viewing Interactive Elements";
 
       default:
         return type;
@@ -233,6 +242,8 @@ const Action = ({ workspaceInfo, type, value, onClick }: ActionProps) => {
         return value.tool_input?.query;
       case TOOL.PRESENTATION:
         return value.tool_input?.action + ": " + value.tool_input?.description;
+      case TOOL.REVIEWER_AGENT:
+        return value.content;
 
       case TOOL.BROWSER_WAIT:
         return value.tool_input?.url;
@@ -259,6 +270,8 @@ const Action = ({ workspaceInfo, type, value, onClick }: ActionProps) => {
       case TOOL.BROWSER_SWITCH_TAB:
         return value.tool_input?.url;
       case TOOL.BROWSER_OPEN_NEW_TAB:
+        return value.tool_input?.url;
+      case TOOL.BROWSER_VIEW_INTERACTIVE_ELEMENTS:
         return value.tool_input?.url;
 
       default:

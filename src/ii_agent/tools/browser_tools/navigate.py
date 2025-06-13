@@ -30,25 +30,29 @@ class BrowserNavigationTool(BrowserTool):
         tool_input: dict[str, Any],
         message_history: Optional[MessageHistory] = None,
     ) -> ToolImplOutput:
-        url = tool_input["url"]
-
-        page = await self.browser.get_current_page()
         try:
-            await page.goto(url, wait_until="domcontentloaded")
-            await asyncio.sleep(1.5)
-        except TimeoutError:
-            msg = f"Timeout error navigating to {url}"
-            return ToolImplOutput(msg, msg)
-        except Exception:
-            msg = f"Something went wrong while navigating to {url}; double check the URL and try again."
-            return ToolImplOutput(msg, msg)
+            url = tool_input["url"]
 
-        state = await self.browser.update_state()
-        state = await self.browser.handle_pdf_url_navigation()
+            page = await self.browser.get_current_page()
+            try:
+                await page.goto(url, wait_until="domcontentloaded")
+                await asyncio.sleep(1.5)
+            except TimeoutError:
+                msg = f"Timeout error navigating to {url}"
+                return ToolImplOutput(msg, msg)
+            except Exception as e:
+                msg = f"Navigation failed to {url}: {type(e).__name__}: {str(e)}"
+                return ToolImplOutput(msg, msg)
 
-        msg = f"Navigated to {url}"
+            state = await self.browser.update_state()
+            state = await self.browser.handle_pdf_url_navigation()
 
-        return utils.format_screenshot_tool_output(state.screenshot, msg)
+            msg = f"Navigated to {url}"
+
+            return utils.format_screenshot_tool_output(state.screenshot, msg)
+        except Exception as e:
+            error_msg = f"Navigation operation failed: {type(e).__name__}: {str(e)}"
+            return ToolImplOutput(tool_output=error_msg, tool_result_message=error_msg)
 
 
 class BrowserRestartTool(BrowserTool):
@@ -73,23 +77,27 @@ class BrowserRestartTool(BrowserTool):
         tool_input: dict[str, Any],
         message_history: Optional[MessageHistory] = None,
     ) -> ToolImplOutput:
-        url = tool_input["url"]
-        await self.browser.restart()
-
-        page = await self.browser.get_current_page()
         try:
-            await page.goto(url, wait_until="domcontentloaded")
-            await asyncio.sleep(1.5)
-        except TimeoutError:
-            msg = f"Timeout error navigating to {url}"
-            return ToolImplOutput(msg, msg)
-        except Exception:
-            msg = f"Something went wrong while navigating to {url}; double check the URL and try again."
-            return ToolImplOutput(msg, msg)
+            url = tool_input["url"]
+            await self.browser.restart()
 
-        state = await self.browser.update_state()
-        state = await self.browser.handle_pdf_url_navigation()
+            page = await self.browser.get_current_page()
+            try:
+                await page.goto(url, wait_until="domcontentloaded")
+                await asyncio.sleep(1.5)
+            except TimeoutError:
+                msg = f"Timeout error navigating to {url}"
+                return ToolImplOutput(msg, msg)
+            except Exception as e:
+                msg = f"Navigation failed to {url}: {type(e).__name__}: {str(e)}"
+                return ToolImplOutput(msg, msg)
 
-        msg = f"Navigated to {url}"
+            state = await self.browser.update_state()
+            state = await self.browser.handle_pdf_url_navigation()
 
-        return utils.format_screenshot_tool_output(state.screenshot, msg)
+            msg = f"Navigated to {url}"
+
+            return utils.format_screenshot_tool_output(state.screenshot, msg)
+        except Exception as e:
+            error_msg = f"Browser restart and navigation failed: {type(e).__name__}: {str(e)}"
+            return ToolImplOutput(tool_output=error_msg, tool_result_message=error_msg)

@@ -18,28 +18,32 @@ class BrowserViewTool(BrowserTool):
         tool_input: dict[str, Any],
         message_history: Optional[MessageHistory] = None,
     ) -> ToolImplOutput:
-        state = await self.browser.update_state()
+        try:
+            state = await self.browser.update_state()
 
-        highlighted_elements = "<highlighted_elements>\n"
-        if state.interactive_elements:
-            for element in state.interactive_elements.values():
-                start_tag = f"[{element.index}]<{element.tag_name}"
+            highlighted_elements = "<highlighted_elements>\n"
+            if state.interactive_elements:
+                for element in state.interactive_elements.values():
+                    start_tag = f"[{element.index}]<{element.tag_name}"
 
-                if element.input_type:
-                    start_tag += f' type="{element.input_type}"'
+                    if element.input_type:
+                        start_tag += f' type="{element.input_type}"'
 
-                start_tag += ">"
-                element_text = element.text.replace("\n", " ")
-                highlighted_elements += (
-                    f"{start_tag}{element_text}</{element.tag_name}>\n"
-                )
-        highlighted_elements += "</highlighted_elements>"
+                    start_tag += ">"
+                    element_text = element.text.replace("\n", " ")
+                    highlighted_elements += (
+                        f"{start_tag}{element_text}</{element.tag_name}>\n"
+                    )
+            highlighted_elements += "</highlighted_elements>"
 
-        msg = f"""Current URL: {state.url}
+            msg = f"""Current URL: {state.url}
 
 Current viewport information:
 {highlighted_elements}"""
 
-        return utils.format_screenshot_tool_output(
-            state.screenshot_with_highlights, msg
-        )
+            return utils.format_screenshot_tool_output(
+                state.screenshot_with_highlights, msg
+            )
+        except Exception as e:
+            error_msg = f"View interactive elements operation failed: {type(e).__name__}: {str(e)}"
+            return ToolImplOutput(tool_output=error_msg, tool_result_message=error_msg)

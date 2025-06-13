@@ -69,6 +69,7 @@ export enum TOOL {
   SLIDE_DECK_INIT = "slide_deck_init",
   SLIDE_DECK_COMPLETE = "slide_deck_complete",
   DISPLAY_IMAGE = "display_image",
+  REVIEWER_AGENT = "reviewer_agent",
 
   // browser tools
   BROWSER_VIEW = "browser_view",
@@ -84,6 +85,7 @@ export enum TOOL {
   BROWSER_SELECT_DROPDOWN_OPTION = "browser_select_dropdown_option",
   BROWSER_SWITCH_TAB = "browser_switch_tab",
   BROWSER_OPEN_NEW_TAB = "browser_open_new_tab",
+  BROWSER_VIEW_INTERACTIVE_ELEMENTS = "browser_view_interactive_elements",
 }
 
 export type ActionStep = {
@@ -151,6 +153,7 @@ export interface ToolSettings {
   audio_generation: boolean;
   browser: boolean;
   thinking_tokens: number;
+  enable_reviewer: boolean;
 }
 export interface GooglePickerResponse {
   action: string;

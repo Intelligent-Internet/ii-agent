@@ -29,13 +29,17 @@ class BrowserSwitchTabTool(BrowserTool):
         tool_input: dict[str, Any],
         message_history: Optional[MessageHistory] = None,
     ) -> ToolImplOutput:
-        index = int(tool_input["index"])
-        await self.browser.switch_to_tab(index)
-        await asyncio.sleep(0.5)
-        msg = f"Switched to tab {index}"
-        state = await self.browser.update_state()
+        try:
+            index = int(tool_input["index"])
+            await self.browser.switch_to_tab(index)
+            await asyncio.sleep(0.5)
+            msg = f"Switched to tab {index}"
+            state = await self.browser.update_state()
 
-        return utils.format_screenshot_tool_output(state.screenshot, msg)
+            return utils.format_screenshot_tool_output(state.screenshot, msg)
+        except Exception as e:
+            error_msg = f"Switch tab operation failed for tab {index}: {type(e).__name__}: {str(e)}"
+            return ToolImplOutput(tool_output=error_msg, tool_result_message=error_msg)
 
 
 class BrowserOpenNewTabTool(BrowserTool):
@@ -51,9 +55,13 @@ class BrowserOpenNewTabTool(BrowserTool):
         tool_input: dict[str, Any],
         message_history: Optional[MessageHistory] = None,
     ) -> ToolImplOutput:
-        await self.browser.create_new_tab()
-        await asyncio.sleep(0.5)
-        msg = "Opened a new tab"
-        state = await self.browser.update_state()
+        try:
+            await self.browser.create_new_tab()
+            await asyncio.sleep(0.5)
+            msg = "Opened a new tab"
+            state = await self.browser.update_state()
 
-        return utils.format_screenshot_tool_output(state.screenshot, msg)
+            return utils.format_screenshot_tool_output(state.screenshot, msg)
+        except Exception as e:
+            error_msg = f"Open new tab operation failed: {type(e).__name__}: {str(e)}"
+            return ToolImplOutput(tool_output=error_msg, tool_result_message=error_msg)

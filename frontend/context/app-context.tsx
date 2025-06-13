@@ -173,6 +173,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, isAgentInitialized: action.payload };
     case "SET_REQUIRE_CLEAR_FILES":
       return { ...state, requireClearFiles: action.payload };
+
     default:
       return state;
   }

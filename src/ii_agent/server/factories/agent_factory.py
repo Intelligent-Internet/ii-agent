@@ -9,6 +9,7 @@ from ii_agent.llm.base import LLMClient
 from ii_agent.llm.message_history import MessageHistory
 from ii_agent.utils import WorkspaceManager
 from ii_agent.agents.function_call import FunctionCallAgent
+from ii_agent.agents.reviewer import ReviewerAgent
 from ii_agent.llm.context_manager.llm_summarizing import LLMSummarizingContextManager
 from ii_agent.llm.token_counter import TokenCounter
 from ii_agent.db.manager import Sessions
@@ -17,6 +18,7 @@ from ii_agent.prompts.system_prompt import (
     SYSTEM_PROMPT,
     SYSTEM_PROMPT_WITH_SEQ_THINKING,
 )
+from ii_agent.prompts.reviewer_system_prompt import REVIEWER_SYSTEM_PROMPT
 from ii_agent.utils.constants import TOKEN_BUDGET
 
 # Constants
@@ -210,3 +212,58 @@ class AgentFactory:
         # Store the session ID in the agent for event tracking
         agent.session_id = session_id
         return agent
+
+    def create_reviewer_agent(
+        self,
+        client: LLMClient,
+        session_id: uuid.UUID,
+        workspace_manager: WorkspaceManager,
+        websocket: WebSocket,
+        tool_args: Dict[str, Any],
+        file_store: FileStore,
+    ):
+        """Create a new reviewer agent instance for a websocket connection.
+
+        Args:
+            client: LLM client instance
+            session_id: Session UUID
+            workspace_manager: Workspace manager
+            websocket: WebSocket connection
+            tool_args: Tool configuration arguments
+            file_store: File store instance
+
+        Returns:
+            Configured reviewer agent instance
+        """
+        # Setup logging
+        logger_for_agent_logs = self._setup_logger(websocket)
+
+        # Create context manager
+        context_manager = self._create_context_manager(client, logger_for_agent_logs)
+
+        # Initialize agent queue and tools
+        queue = asyncio.Queue()
+        tools = get_system_tools(
+            client=client,
+            workspace_manager=workspace_manager,
+            message_queue=queue,
+            container_id=self.config.docker_container_id,
+            ask_user_permission=self.config.needs_permission,
+            tool_args=tool_args,
+        )
+
+        reviewer_agent = ReviewerAgent(
+            system_prompt=REVIEWER_SYSTEM_PROMPT,
+            client=client,
+            tools=tools,
+            workspace_manager=workspace_manager,
+            message_queue=queue,
+            logger_for_agent_logs=logger_for_agent_logs,
+            context_manager=context_manager,
+            max_output_tokens_per_turn=self.config.max_output_tokens_per_turn,
+            max_turns=self.config.max_turns,
+            websocket=websocket,
+            session_id=session_id,
+        )
+
+        return reviewer_agent

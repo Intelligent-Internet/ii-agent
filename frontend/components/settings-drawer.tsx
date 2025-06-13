@@ -60,6 +60,7 @@ const SettingsDrawer = ({ isOpen, onClose }: SettingsDrawerProps) => {
         audio_generation: true,
         browser: true,
         thinking_tokens: 10000,
+        enable_reviewer: false,
       },
     });
     dispatch({ type: "SET_SELECTED_MODEL", payload: AVAILABLE_MODELS[0] });
@@ -311,6 +312,27 @@ const SettingsDrawer = ({ isOpen, onClose }: SettingsDrawerProps) => {
                       id="browser"
                       checked={state.toolSettings.browser}
                       onCheckedChange={() => handleToolToggle("browser")}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-1">
+                      <Label
+                        htmlFor="enable_reviewer"
+                        className="text-gray-300"
+                      >
+                        Review Agent
+                      </Label>
+                      <p className="text-xs text-gray-400">
+                        Enable reviewer agent to analyze and improve outputs
+                      </p>
+                    </div>
+                    <Switch
+                      id="audio-enable_reviewer"
+                      checked={state.toolSettings.enable_reviewer}
+                      onCheckedChange={() =>
+                        handleToolToggle("enable_reviewer")
+                      }
                     />
                   </div>
                 </div>
