@@ -1,9 +1,8 @@
 import asyncio
 import aiohttp
-from .utils import truncate_content
 import os
 from ii_agent.utils.constants import VISIT_WEB_PAGE_MAX_OUTPUT_LENGTH
-
+from ..utils import truncate_content
 
 
 class WebpageVisitException(Exception):
@@ -61,7 +60,9 @@ class MarkdownifyVisitClient(BaseVisitClient):
 
             # Convert the HTML content to Markdown (run in executor since markdownify is not async)
             loop = asyncio.get_event_loop()
-            markdown_content = await loop.run_in_executor(None, markdownify, html_content)
+            markdown_content = await loop.run_in_executor(
+                None, markdownify, html_content
+            )
             markdown_content = markdown_content.strip()
 
             # Remove multiple line breaks
@@ -97,7 +98,7 @@ class TavilyVisitClient(BaseVisitClient):
 
         try:
             tavily_client = AsyncTavilyClient(api_key=self.api_key)
-            
+
             # Extract webpage content
             response = await tavily_client.extract(
                 url, include_images=True, extract_depth="advanced"
@@ -210,7 +211,9 @@ class JinaVisitClient(BaseVisitClient):
             raise NetworkError(f"Error making request: {str(e)}")
 
 
-def create_visit_client(max_output_length: int = VISIT_WEB_PAGE_MAX_OUTPUT_LENGTH) -> BaseVisitClient:
+def create_visit_client(
+    max_output_length: int = VISIT_WEB_PAGE_MAX_OUTPUT_LENGTH,
+) -> BaseVisitClient:
     """
     Factory function that creates a visit client based on available API keys.
     Priority order: Tavily > Jina > FireCrawl > Markdown

@@ -1,7 +1,6 @@
 import asyncio
 import json
 import logging
-import uuid
 from typing import Optional
 from fastapi import WebSocket, WebSocketDisconnect
 from pydantic import ValidationError
@@ -31,14 +30,13 @@ class ChatSession:
         self,
         websocket: WebSocket,
         workspace_manager: WorkspaceManager,
-        session_uuid: uuid.UUID,
         client_factory: ClientFactory,
         agent_factory: AgentFactory,
         file_store: FileStore,
     ):
         self.websocket = websocket
         self.workspace_manager = workspace_manager
-        self.session_uuid = session_uuid
+        self.session_uuid = workspace_manager.session_id
         self.client_factory = client_factory
         self.agent_factory = agent_factory
         self.file_store = file_store
@@ -146,7 +144,6 @@ class ChatSession:
             # Create agent using factory
             self.agent = self.agent_factory.create_agent(
                 client,
-                self.session_uuid,
                 self.workspace_manager,
                 self.websocket,
                 init_content.tool_args,
