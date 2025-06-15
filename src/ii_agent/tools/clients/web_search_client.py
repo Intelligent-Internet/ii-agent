@@ -3,7 +3,7 @@ import os
 import asyncio
 import aiohttp
 import urllib
-from .utils import truncate_content
+from ..utils import truncate_content
 
 
 class BaseSearchClient:
@@ -155,7 +155,9 @@ class DuckDuckGoSearchClient(BaseSearchClient):
     async def forward_async(self, query: str) -> str:
         # Note: duckduckgo_search doesn't have async support, so we run it in a thread pool
         loop = asyncio.get_event_loop()
-        results = await loop.run_in_executor(None, self.ddgs.text, query, self.max_results)
+        results = await loop.run_in_executor(
+            None, self.ddgs.text, query, self.max_results
+        )
         if len(results) == 0:
             raise Exception("No results found! Try a less restrictive/shorter query.")
         postprocessed_results = [

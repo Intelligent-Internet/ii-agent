@@ -4,7 +4,7 @@ from ii_agent.tools.base import (
 )
 from typing import Any, Optional
 from ii_agent.llm.message_history import MessageHistory
-from ii_agent.tools.visit_webpage_client import (
+from ii_agent.tools.clients.visit_webpage_client import (
     create_visit_client,
     WebpageVisitException,
     ContentExtractionError,
