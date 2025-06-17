@@ -16,7 +16,6 @@ class GeminiTool(LLMTool):
         self, workspace_manager: WorkspaceManager, model: Optional[str] = None, site_url: str = None, site_name: str = None
     ):
         api_key = os.environ.get("GEMINI_API_KEY", "")
-        api_key = "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"
         if not api_key:
             raise ValueError("GEMINI_API_KEY environment variable not set.")
         if not model:
