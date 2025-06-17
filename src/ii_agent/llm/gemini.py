@@ -3,8 +3,7 @@ import time
 import random
 
 from typing import Any, Tuple
-from google import genai
-from google.genai import types, errors
+from openai import OpenAI
 from ii_agent.llm.base import (
     LLMClient,
     AssistantContentBlock,
@@ -29,22 +28,29 @@ def generate_tool_call_id() -> str:
 
 
 class GeminiDirectClient(LLMClient):
-    """Use Gemini models via first party API."""
+    """Use models via OpenRouter API with OpenAI-compatible format."""
 
-    def __init__(self, model_name: str, max_retries: int = 2, project_id: None | str = None, region: None | str = None):
+    def __init__(self, model_name: str, max_retries: int = 2, site_url: str = None, site_name: str = None):
         self.model_name = model_name
 
-        if project_id and region:
-            self.client = genai.Client(vertexai=True, project=project_id, location=region)
-            print(f"====== Using Gemini through Vertex AI API with project_id: {project_id} and region: {region} ======")
-        else:
-            api_key = os.getenv("GEMINI_API_KEY")
-            if not api_key:
-                raise ValueError("GEMINI_API_KEY is not set")
-            self.client = genai.Client(api_key=api_key)
-            print(f"====== Using Gemini directly ======")
+        api_key = os.getenv("GEMINI_API_KEY")
+        if not api_key:
+            raise ValueError("GEMINI_API_KEY is not set")
+            
+        self.client = OpenAI(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=api_key,
+        )
+        
+        # Optional headers for OpenRouter rankings
+        self.extra_headers = {}
+        if site_url:
+            self.extra_headers["HTTP-Referer"] = site_url
+        if site_name:
+            self.extra_headers["X-Title"] = site_name
             
         self.max_retries = max_retries
+        print(f"====== Using {model_name} through OpenRouter API ======")
 
     def generate(
         self,
@@ -56,118 +62,133 @@ class GeminiDirectClient(LLMClient):
         tool_choice: dict[str, str] | None = None,
     ) -> Tuple[list[AssistantContentBlock], dict[str, Any]]:
         
-        gemini_messages = []
+        openai_messages = []
+        
+        # Add system message if provided
+        if system_prompt:
+            openai_messages.append({"role": "system", "content": system_prompt})
+        
         for idx, message_list in enumerate(messages):
-            role = "user" if idx % 2 == 0 else "model"
-            message_content_list = []
+            role = "user" if idx % 2 == 0 else "assistant"
+            content = []
+            
             for message in message_list:
                 if isinstance(message, TextPrompt):
-                    message_content = types.Part(text=message.text)
+                    content.append({"type": "text", "text": message.text})
                 elif isinstance(message, ImageBlock):
-                    message_content = types.Part.from_bytes(
-                            data=message.source["data"],
-                            mime_type=message.source["media_type"],
-                        )
+                    # Convert image to base64 for OpenAI format
+                    import base64
+                    image_data = base64.b64encode(message.source["data"]).decode('utf-8')
+                    content.append({
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:{message.source['media_type']};base64,{image_data}"
+                        }
+                    })
                 elif isinstance(message, TextResult):
-                    message_content = types.Part(text=message.text)
+                    content.append({"type": "text", "text": message.text})
                 elif isinstance(message, ToolCall):
-                    message_content = types.Part.from_function_call(
-                        name=message.tool_name,
-                        args=message.tool_input,
-                    )
+                    # For tool calls, we need to format differently
+                    if role == "assistant":
+                        openai_messages.append({
+                            "role": "assistant",
+                            "content": None,
+                            "tool_calls": [{
+                                "id": message.tool_call_id,
+                                "type": "function",
+                                "function": {
+                                    "name": message.tool_name,
+                                    "arguments": str(message.tool_input)
+                                }
+                            }]
+                        })
+                        continue
                 elif isinstance(message, ToolFormattedResult):
-                    if isinstance(message.tool_output, str):
-                        message_content = types.Part.from_function_response(
-                            name=message.tool_name,
-                            response={"result": message.tool_output}
-                        )
-                    # Handle tool return images. See: https://discuss.ai.google.dev/t/returning-images-from-function-calls/3166/6
-                    elif isinstance(message.tool_output, list):
-                        message_content = []
-                        for item in message.tool_output:
-                            if item['type'] == 'text':
-                                message_content.append(types.Part(text=item['text']))
-                            elif item['type'] == 'image':
-                                message_content.append(types.Part.from_bytes(
-                                    data=item['source']['data'],
-                                    mime_type=item['source']['media_type']
-                                ))
+                    openai_messages.append({
+                        "role": "tool",
+                        "tool_call_id": message.tool_call_id,
+                        "content": str(message.tool_output)
+                    })
+                    continue
                 else:
                     raise ValueError(f"Unknown message type: {type(message)}")
-                
-                if isinstance(message_content, list):
-                    message_content_list.extend(message_content)
-                else:
-                    message_content_list.append(message_content)
             
-            gemini_messages.append(types.Content(role=role, parts=message_content_list))
-        
-        tool_declarations = [
-            {
-                "name": tool.name,
-                "description": tool.description,
-                "parameters": tool.input_schema,
-            }
-            for tool in tools
-        ]
-        tool_params = [types.Tool(function_declarations=tool_declarations)] if tool_declarations else None
+            if content:
+                if len(content) == 1 and content[0]["type"] == "text":
+                    openai_messages.append({"role": role, "content": content[0]["text"]})
+                else:
+                    openai_messages.append({"role": role, "content": content})
 
-        mode = None
-        if not tool_choice:
-            mode = 'ANY' # This mode always requires a tool call
-        elif tool_choice['type'] == 'any':
-            mode = 'ANY'
-        elif tool_choice['type'] == 'auto':
-            mode = 'AUTO'
-        else:
-            raise ValueError(f"Unknown tool_choice type for Gemini: {tool_choice['type']}")
+        # Convert tools to OpenAI format
+        openai_tools = []
+        if tools:
+            for tool in tools:
+                openai_tools.append({
+                    "type": "function",
+                    "function": {
+                        "name": tool.name,
+                        "description": tool.description,
+                        "parameters": tool.input_schema,
+                    }
+                })
+
+        # Convert tool_choice to OpenAI format
+        openai_tool_choice = None
+        if tool_choice:
+            if tool_choice['type'] == 'any':
+                openai_tool_choice = "required"
+            elif tool_choice['type'] == 'auto':
+                openai_tool_choice = "auto"
 
         for retry in range(self.max_retries):
             try:
-                response = self.client.models.generate_content(
-                    model=self.model_name,
-                    config=types.GenerateContentConfig(
-                        tools=tool_params,
-                        system_instruction=system_prompt,
-                        temperature=temperature,
-                        max_output_tokens=max_tokens,
-                        tool_config={'function_calling_config': {'mode': mode}}
-                        ),
-                    contents=gemini_messages,
-                )
+                kwargs = {
+                    "model": self.model_name,
+                    "messages": openai_messages,
+                    "max_tokens": max_tokens,
+                    "temperature": temperature,
+                }
+                
+                if openai_tools:
+                    kwargs["tools"] = openai_tools
+                    if openai_tool_choice:
+                        kwargs["tool_choice"] = openai_tool_choice
+                
+                if self.extra_headers:
+                    kwargs["extra_headers"] = self.extra_headers
+
+                response = self.client.chat.completions.create(**kwargs)
                 break
-            except errors.APIError as e:
-                # 503: The service may be temporarily overloaded or down.
-                # 429: The request was throttled.
-                if e.code in [503, 429]:
-                    if retry == self.max_retries - 1:
-                        print(f"Failed Gemini request after {retry + 1} retries")
-                        raise e
-                    else:
-                        print(f"Error: {e}")
-                        print(f"Retrying Gemini request: {retry + 1}/{self.max_retries}")
-                        # Sleep 12-18 seconds with jitter to avoid thundering herd.
-                        time.sleep(15 * random.uniform(0.8, 1.2))
-                else:
+            except Exception as e:
+                if retry == self.max_retries - 1:
+                    print(f"Failed OpenRouter request after {retry + 1} retries")
                     raise e
+                else:
+                    print(f"Error: {e}")
+                    print(f"Retrying OpenRouter request: {retry + 1}/{self.max_retries}")
+                    # Sleep 12-18 seconds with jitter to avoid throttling
+                    time.sleep(15 * random.uniform(0.8, 1.2))
 
         internal_messages = []
-        if response.text:
-            internal_messages.append(TextResult(text=response.text))
+        choice = response.choices[0]
+        
+        if choice.message.content:
+            internal_messages.append(TextResult(text=choice.message.content))
 
-        if response.function_calls:
-            for fn_call in response.function_calls:
+        if choice.message.tool_calls:
+            for tool_call in choice.message.tool_calls:
                 response_message_content = ToolCall(
-                    tool_call_id=fn_call.id if fn_call.id else generate_tool_call_id(),
-                    tool_name=fn_call.name,
-                    tool_input=fn_call.args,
+                    tool_call_id=tool_call.id,
+                    tool_name=tool_call.function.name,
+                    tool_input=eval(tool_call.function.arguments),  # Convert string back to dict
                 )
                 internal_messages.append(response_message_content)
 
         message_metadata = {
             "raw_response": response,
-            "input_tokens": response.usage_metadata.prompt_token_count,
-            "output_tokens": response.usage_metadata.candidates_token_count,
+            "input_tokens": response.usage.prompt_tokens if response.usage and hasattr(response.usage, 'prompt_tokens') else 0,
+            "output_tokens": response.usage.completion_tokens if response.usage and hasattr(response.usage, 'completion_tokens') else 0,
         }
         
         return internal_messages, message_metadata
+

@@ -160,10 +160,30 @@ try breaking down the task into smaller steps. After call this tool to update or
         tool_input: dict[str, Any],
         message_history: Optional[MessageHistory] = None,
     ) -> ToolImplOutput:
+        # Add comprehensive None and type checks for tool_input
+        if tool_input is None:
+            self.logger_for_agent_logs.error("tool_input is None")
+            raise ValueError("tool_input cannot be None")
+        
+        if not isinstance(tool_input, dict):
+            self.logger_for_agent_logs.error(f"tool_input is not a dict, got type: {type(tool_input)}, value: {tool_input}")
+            raise ValueError(f"tool_input must be a dictionary, got {type(tool_input)}")
+        
+        # Check if instruction key exists
+        if "instruction" not in tool_input:
+            self.logger_for_agent_logs.error(f"'instruction' key missing from tool_input: {tool_input}")
+            raise ValueError("tool_input must contain an 'instruction' key")
+        
         instruction = tool_input["instruction"]
-        files = tool_input["files"]
+        
+        # Add None check for instruction
+        if instruction is None:
+            self.logger_for_agent_logs.error("instruction is None")
+            raise ValueError("instruction cannot be None")
+        
+        files = tool_input.get("files")  # Use .get() to handle missing key gracefully
 
-        user_input_delimiter = "-" * 45 + " USER INPUT " + "-" * 45 + "\n" + instruction
+        user_input_delimiter = "-" * 45 + " USER INPUT " + "-" * 45 + "\n" + str(instruction)
         self.logger_for_agent_logs.info(f"\n{user_input_delimiter}\n")
 
         # Add instruction to dialog before getting model response
@@ -172,12 +192,21 @@ try breaking down the task into smaller steps. After call this tool to update or
             # First, list all attached files
             instruction = f"""{instruction}\n\nAttached files:\n"""
             for file in files:
+                # Add None check for file
+                if file is None:
+                    self.logger_for_agent_logs.warning("Skipping None file in files list")
+                    continue
+                    
                 relative_path = self.workspace_manager.relative_path(file)
                 instruction += f" - {relative_path}\n"
                 self.logger_for_agent_logs.info(f"Attached file: {relative_path}")
 
             # Then process images for image blocks
             for file in files:
+                # Add None check for file
+                if file is None:
+                    continue
+                    
                 ext = file.split(".")[-1]
                 if ext == "jpg":
                     ext = "jpeg"
@@ -220,7 +249,6 @@ try breaking down the task into smaller steps. After call this tool to update or
             self.logger_for_agent_logs.info(
                 f"(Current token count: {self.history.count_tokens()})\n"
             )
-
             model_response, _ = self.client.generate(
                 messages=self.history.get_messages_for_llm(),
                 max_tokens=self.max_output_tokens,
@@ -228,7 +256,10 @@ try breaking down the task into smaller steps. After call this tool to update or
                 system_prompt=self.system_prompt,
             )
 
-            if len(model_response) == 0:
+            # Validate model response
+            if model_response is None or len(model_response) == 0:
+                error_msg = "LLM client returned empty or None response"
+                self.logger_for_agent_logs.error(error_msg)
                 model_response = [TextResult(text=COMPLETE_MESSAGE)]
 
             # Add the raw response to the canonical history
@@ -287,9 +318,21 @@ try breaking down the task into smaller steps. After call this tool to update or
                     tool_output=TOOL_RESULT_INTERRUPT_MESSAGE,
                     tool_result_message=TOOL_RESULT_INTERRUPT_MESSAGE,
                 )
-            tool_result = self.tool_manager.run_tool(tool_call, self.history)
+            
+            try:
+                tool_result = self.tool_manager.run_tool(tool_call, self.history)
 
-            self.add_tool_call_result(tool_call, tool_result)
+                # Add safety check for tool_result
+                if tool_result is None:
+                    self.logger_for_agent_logs.warning(f"Tool {tool_call.tool_name} returned None result, using empty string")
+                    tool_result = ""
+
+                self.add_tool_call_result(tool_call, tool_result)
+            except Exception as e:
+                self.logger_for_agent_logs.error(f"Error executing tool {tool_call.tool_name}: {str(e)}")
+                # Re-raise with more context
+                raise RuntimeError(f"Tool execution failed for {tool_call.tool_name}: {str(e)}") from e
+
             if self.tool_manager.should_stop():
                 # Add a fake model response, so the next turn is the user's
                 # turn in case they want to resume
@@ -308,7 +351,21 @@ try breaking down the task into smaller steps. After call this tool to update or
         )
 
     def get_tool_start_message(self, tool_input: dict[str, Any]) -> str:
-        return f"Agent started with instruction: {tool_input['instruction']}"
+        # Add safety checks before accessing tool_input
+        if tool_input is None:
+            return "Agent started with undefined instruction (tool_input is None)"
+        
+        if not isinstance(tool_input, dict):
+            return f"Agent started with invalid tool_input type: {type(tool_input)}"
+        
+        if "instruction" not in tool_input:
+            return f"Agent started with missing instruction key in tool_input: {tool_input}"
+        
+        instruction = tool_input.get("instruction", "undefined instruction")
+        if instruction is None:
+            instruction = "None instruction"
+        
+        return f"Agent started with instruction: {instruction}"
 
     def run_agent(
         self,
@@ -328,6 +385,11 @@ try breaking down the task into smaller steps. After call this tool to update or
         Returns:
             A tuple of (result, message).
         """
+        # Add safety check for instruction parameter
+        if instruction is None:
+            self.logger_for_agent_logs.error("instruction parameter is None in run_agent")
+            raise ValueError("instruction cannot be None")
+        
         self.tool_manager.reset()
         if not resume:
             self.history.clear()

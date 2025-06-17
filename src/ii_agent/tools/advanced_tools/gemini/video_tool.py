@@ -1,5 +1,5 @@
 from typing import Any, Optional
-from google.genai import types
+import base64
 from ii_agent.llm.message_history import MessageHistory
 from ii_agent.tools.base import ToolImplOutput
 from ii_agent.tools.advanced_tools.gemini import GeminiTool
@@ -13,6 +13,7 @@ class YoutubeVideoUnderstandingTool(GeminiTool):
 - Answer questions about video content
 - Refer to specific timestamps within a video
 
+Note: This tool now uses OpenRouter API. Some models may have limitations with direct YouTube URL processing.
 Provide one query at a time.
 """
 
@@ -46,18 +47,30 @@ Provide one query at a time.
         query = tool_input["query"]
 
         try:
-            response = self.client.models.generate_content(
-                model=self.model,
-                contents=types.Content(
-                    parts=[
-                        types.Part(file_data=types.FileData(file_uri=url)),
-                        types.Part(text=query),
-                    ]
-                ),
-            )
-            output = response.candidates[0].content.parts[0].text
+            # OpenRouter with OpenAI format - attempt to use the URL directly in text
+            # Note: Direct YouTube URL processing may not be supported by all models through OpenRouter
+            messages = [
+                {
+                    "role": "user", 
+                    "content": f"Please analyze this YouTube video: {url}\n\nQuery: {query}\n\nNote: If you cannot directly access the video, please let me know and suggest alternative approaches."
+                }
+            ]
+            
+            kwargs = {
+                "model": self.model,
+                "messages": messages,
+                "max_tokens": 4000,
+                "temperature": 0.0,
+            }
+            
+            if self.extra_headers:
+                kwargs["extra_headers"] = self.extra_headers
+
+            response = self.client.chat.completions.create(**kwargs)
+            output = response.choices[0].message.content
+            
         except Exception as e:
-            output = "Error analyzing the Youtube video, try again later."
-            print(e)
+            output = f"Error analyzing the YouTube video: {str(e)}. Note: Direct YouTube URL processing may not be supported through OpenRouter. You may need to download the video first or use alternative methods."
+            print(f"Error in YouTube video analysis: {e}")
 
         return ToolImplOutput(output, output)

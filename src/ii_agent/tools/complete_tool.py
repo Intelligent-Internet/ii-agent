@@ -37,8 +37,25 @@ class CompleteTool(LLMTool):
         tool_input: dict[str, Any],
         message_history: Optional[MessageHistory] = None,
     ) -> ToolImplOutput:
-        assert tool_input["answer"], "Model returned empty answer"
-        self.answer = tool_input["answer"]
+        # Add safety checks for tool_input
+        if tool_input is None:
+            self.answer = "Tool called with None input"
+            return ToolImplOutput("Task completed with error", "Task completed with error")
+        
+        if not isinstance(tool_input, dict):
+            self.answer = f"Tool called with non-dict input: {type(tool_input)}"
+            return ToolImplOutput("Task completed with error", "Task completed with error")
+        
+        if "answer" not in tool_input:
+            self.answer = "Tool called without 'answer' key"
+            return ToolImplOutput("Task completed with error", "Task completed with error")
+        
+        answer = tool_input["answer"]
+        if not answer:
+            self.answer = "Model returned empty answer"
+            return ToolImplOutput("Task completed with empty answer", "Task completed with empty answer")
+        
+        self.answer = answer
         return ToolImplOutput("Task completed", "Task completed")
 
     def get_tool_start_message(self, tool_input: dict[str, Any]) -> str:

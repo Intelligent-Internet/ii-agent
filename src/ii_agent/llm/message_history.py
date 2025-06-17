@@ -143,6 +143,9 @@ class MessageHistory:
 
     def get_pending_tool_calls(self) -> list[ToolCallParameters]:
         """Returns tool calls from the last assistant turn, if any."""
+        if not self._message_lists:
+            return []
+        
         last_turn = self._message_lists[-1]
         tool_calls = []
         for message in last_turn:

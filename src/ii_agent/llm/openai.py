@@ -1,4 +1,4 @@
-"""LLM client for Anthropic models."""
+"""LLM client for OpenAI models via OpenRouter."""
 
 import json
 import os
@@ -8,7 +8,6 @@ from typing import Any, Tuple, cast
 import openai
 import logging
 
-logger = logging.getLogger(__name__)
 
 from openai import (
     APIConnectionError as OpenAI_APIConnectionError,
@@ -34,15 +33,17 @@ from ii_agent.llm.base import (
     ToolFormattedResult,
 )
 
+logger = logging.getLogger(__name__)
+
 
 class OpenAIDirectClient(LLMClient):
-    """Use OpenAI models via first party API."""
+    """Use OpenAI models via OpenRouter unified API."""
 
     def __init__(self, model_name: str, max_retries=2, cot_model: bool = True, azure_model: bool = False):
-        """Initialize the OpenAI first party client."""
-        api_key = os.getenv("OPENAI_API_KEY", "EMPTY")
-        base_url = os.getenv("OPENAI_BASE_URL", "http://0.0.0.0:2323")
+        """Initialize the OpenAI client via OpenRouter."""
+        
         if azure_model:
+            # Azure模型使用原有配置
             azure_endpoint = os.getenv("OPENAI_AZURE_ENDPOINT", "http://0.0.0.0:2323")
             api_key = os.getenv("OPENAI_API_KEY", "EMPTY")
             api_version = os.getenv("AZURE_API_VERSION", "2024-12-01-preview")
@@ -52,11 +53,34 @@ class OpenAIDirectClient(LLMClient):
                 api_version=api_version,
                 max_retries=max_retries,
             )
+            self.use_openrouter = False
         else:
-            self.client = openai.OpenAI(api_key=api_key, base_url=base_url, max_retries=max_retries)
+            # 使用OpenRouter统一API
+            api_key = os.getenv("OPENROUTER_API_KEY") or os.getenv("OPENAI_API_KEY", "EMPTY")
+            self.client = openai.OpenAI(
+                api_key=api_key, 
+                base_url="https://openrouter.ai/api/v1", 
+                max_retries=max_retries
+            )
+            self.use_openrouter = True
+            
+        # 确保模型名称符合OpenRouter格式
+        if self.use_openrouter and not model_name.startswith("openai/"):
+            if any(x in model_name.lower() for x in ["gpt", "o1", "chatgpt"]):
+                model_name = f"openai/{model_name}"
+                
         self.model_name = model_name
         self.max_retries = max_retries
         self.cot_model = cot_model
+        
+        # 设置OpenRouter专用headers
+        if self.use_openrouter:
+            self.extra_headers = {
+                "HTTP-Referer": "https://github.com/ii-agent",
+                "X-Title": "II-Agent",
+            }
+        else:
+            self.extra_headers = {}
 
     def generate(
         self,
@@ -68,7 +92,7 @@ class OpenAIDirectClient(LLMClient):
         tool_choice: dict[str, str] | None = None,
         thinking_tokens: int | None = None,
     ) -> Tuple[list[AssistantContentBlock], dict[str, Any]]:
-        """Generate responses.
+        """Generate responses using OpenRouter API with OpenAI models.
 
         Args:
             messages: A list of messages.
@@ -77,6 +101,7 @@ class OpenAIDirectClient(LLMClient):
             temperature: The temperature.
             tools: A list of tools.
             tool_choice: A tool choice.
+            thinking_tokens: Number of thinking tokens (for reasoning models).
 
         Returns:
             A generated response.
@@ -194,7 +219,8 @@ class OpenAIDirectClient(LLMClient):
                 "description": tool.description,
                 "parameters": tool.input_schema,
             }
-            tool_def["parameters"]["strict"] = True
+            if not self.use_openrouter:  # 只在非OpenRouter时使用strict模式
+                tool_def["parameters"]["strict"] = True
             openai_tool_object = {
                 "type": "function",
                 "function": tool_def,
@@ -211,14 +237,23 @@ class OpenAIDirectClient(LLMClient):
                     extra_body["max_completion_tokens"] = max_tokens
                     openai_max_tokens = OpenAI_NOT_GIVEN
                     openai_temperature = OpenAI_NOT_GIVEN
-                response = self.client.chat.completions.create(
-                    model=self.model_name,
-                    messages=openai_messages,
-                    tools=openai_tools if len(openai_tools) > 0 else OpenAI_NOT_GIVEN,
-                    tool_choice=tool_choice_param,
-                    max_tokens=openai_max_tokens,
-                    extra_body=extra_body,
-                )
+                
+                # 准备调用参数
+                call_params = {
+                    "model": self.model_name,
+                    "messages": openai_messages,
+                    "tools": openai_tools if len(openai_tools) > 0 else OpenAI_NOT_GIVEN,
+                    "tool_choice": tool_choice_param,
+                    "max_tokens": openai_max_tokens,
+                    "temperature": openai_temperature,
+                    "extra_body": extra_body if extra_body else None,
+                }
+                
+                # 只在使用OpenRouter时添加extra_headers
+                if self.use_openrouter:
+                    call_params["extra_headers"] = self.extra_headers
+                
+                response = self.client.chat.completions.create(**call_params)
                 break
             except (
                 OpenAI_APIConnectionError,
@@ -226,10 +261,12 @@ class OpenAIDirectClient(LLMClient):
                 OpenAI_RateLimitError,
             ) as e:
                 if retry == self.max_retries - 1:
-                    print(f"Failed OpenAI request after {retry + 1} retries")
+                    api_type = "OpenRouter" if self.use_openrouter else "OpenAI"
+                    print(f"Failed {api_type} request after {retry + 1} retries")
                     raise e
                 else:
-                    print(f"Retrying OpenAI request: {retry + 1}/{self.max_retries}")
+                    api_type = "OpenRouter" if self.use_openrouter else "OpenAI"
+                    print(f"Retrying {api_type} request: {retry + 1}/{self.max_retries}")
                     # Sleep 8-12 seconds with jitter to avoid thundering herd.
                     time.sleep(10 * random.uniform(0.8, 1.2))
 
@@ -298,11 +335,11 @@ class OpenAIDirectClient(LLMClient):
         else:
             raise ValueError(f"Unknown message type: {openai_response_message}")
 
-        assert response.usage is not None
+        # Use safe access instead of assertion
         message_metadata = {
             "raw_response": response,
-            "input_tokens": response.usage.prompt_tokens,
-            "output_tokens": response.usage.completion_tokens,
+            "input_tokens": response.usage.prompt_tokens if response.usage and hasattr(response.usage, 'prompt_tokens') else 0,
+            "output_tokens": response.usage.completion_tokens if response.usage and hasattr(response.usage, 'completion_tokens') else 0,
         }
 
         return internal_messages, message_metadata

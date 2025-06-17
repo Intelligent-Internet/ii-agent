@@ -3,22 +3,24 @@ import os
 import random
 import time
 from typing import Any, Tuple, cast
-import anthropic
-from anthropic import (
-    NOT_GIVEN as Anthropic_NOT_GIVEN,
+# 改为使用OpenAI SDK通过OpenRouter调用
+from openai import OpenAI
+from openai import (
+    APIConnectionError as OpenAI_APIConnectionError,
 )
-from anthropic import (
-    APIConnectionError as AnthropicAPIConnectionError,
+from openai import (
+    InternalServerError as OpenAI_InternalServerError,
 )
-from anthropic import (
-    InternalServerError as AnthropicInternalServerError,
+from openai import (
+    RateLimitError as OpenAI_RateLimitError,
 )
-from anthropic import (
-    RateLimitError as AnthropicRateLimitError,
+from openai._types import (
+    NOT_GIVEN as OpenAI_NOT_GIVEN,
 )
-from anthropic._exceptions import (
-    OverloadedError as AnthropicOverloadedError,  # pyright: ignore[reportPrivateImportUsage]
-)
+import json
+import logging
+
+# 保留Anthropic的类型定义用于兼容性
 from anthropic.types import (
     TextBlock as AnthropicTextBlock,
     ThinkingBlock as AnthropicThinkingBlock,
@@ -32,12 +34,6 @@ from anthropic.types import (
 from anthropic.types import (
     ToolUseBlock as AnthropicToolUseBlock,
 )
-from anthropic.types.message_create_params import (
-    ToolChoiceToolChoiceAny,
-    ToolChoiceToolChoiceAuto,
-    ToolChoiceToolChoiceTool,
-)
-
 
 from ii_agent.llm.base import (
     LLMClient,
@@ -54,9 +50,11 @@ from ii_agent.llm.base import (
 )
 from ii_agent.utils.constants import DEFAULT_MODEL
 
+logger = logging.getLogger(__name__)
+
 
 class AnthropicDirectClient(LLMClient):
-    """Use Anthropic models via first party API."""
+    """Use Anthropic models via OpenRouter unified API."""
 
     def __init__(
         self,
@@ -67,31 +65,41 @@ class AnthropicDirectClient(LLMClient):
         project_id: None | str = None,
         region: None | str = None,
     ):
-        """Initialize the Anthropic first party client."""
-        # Disable retries since we are handling retries ourselves.
-        if (project_id is not None) and (region is not None):
-            self.client = anthropic.AnthropicVertex(
-                project_id=project_id,
-                region=region,
-                timeout=60 * 5,
-                max_retries=1,
-            )
-        else:
-            api_key = os.getenv("ANTHROPIC_API_KEY")
-            self.client = anthropic.Anthropic(
-                api_key=api_key, max_retries=1, timeout=60 * 5
-            )
-            model_name = model_name.replace(
-                "@", "-"
-            )  # Quick fix for Anthropic Vertex API
+        """Initialize the Anthropic client via OpenRouter."""
+        # 使用OpenRouter统一API
+        api_key = os.getenv("OPENROUTER_API_KEY") or os.getenv("ANTHROPIC_API_KEY", "EMPTY")
+        
+        self.client = OpenAI(
+            api_key=api_key, 
+            base_url="https://openrouter.ai/api/v1",
+            max_retries=1, 
+            timeout=60 * 5
+        )
+        
+        # 确保模型名称符合OpenRouter格式
+        if not model_name.startswith("anthropic/"):
+            if "claude" in model_name.lower():
+                # 转换为OpenRouter格式
+                model_name = "anthropic/claude-3.7-sonnet"
+            else:
+                model_name = "anthropic/claude-3.7-sonnet"
+                
         self.model_name = model_name
         self.max_retries = max_retries
         self.use_caching = use_caching
-        if "claude-opus-4" in model_name or "claude-sonnet-4" in model_name: #Use Interleaved Thinking for Sonnet 4 and Opus 4
-            self.headers = {"anthropic-beta": "interleaved-thinking-2025-05-14,prompt-caching-2024-07-31"}
-        else:
-            self.headers = {"anthropic-beta": "prompt-caching-2024-07-31"}
         self.thinking_tokens = thinking_tokens
+        
+        # 设置OpenRouter专用headers
+        self.extra_headers = {
+            "HTTP-Referer": "https://github.com/ii-agent",
+            "X-Title": "II-Agent",
+        }
+        
+        # Anthropic特有功能的headers
+        if "claude-opus-4" in model_name or "claude-sonnet-4" in model_name:
+            self.extra_headers["anthropic-beta"] = "interleaved-thinking-2025-05-14,prompt-caching-2024-07-31"
+        else:
+            self.extra_headers["anthropic-beta"] = "prompt-caching-2024-07-31"
 
     def generate(
         self,
@@ -103,7 +111,7 @@ class AnthropicDirectClient(LLMClient):
         tool_choice: dict[str, str] | None = None,
         thinking_tokens: int | None = None,
     ) -> Tuple[list[AssistantContentBlock], dict[str, Any]]:
-        """Generate responses.
+        """Generate responses using OpenRouter API with Anthropic models.
 
         Args:
             messages: A list of messages.
@@ -112,195 +120,208 @@ class AnthropicDirectClient(LLMClient):
             temperature: The temperature.
             tools: A list of tools.
             tool_choice: A tool choice.
+            thinking_tokens: Number of thinking tokens for reasoning.
 
         Returns:
             A generated response.
         """
 
-        # Turn GeneralContentBlock into Anthropic message format
-        anthropic_messages = []
+        # 转换为OpenAI格式的消息
+        openai_messages = []
+        
+        # 添加系统消息
+        if system_prompt:
+            openai_messages.append({"role": "system", "content": system_prompt})
+
+        # 转换消息格式
         for idx, message_list in enumerate(messages):
-            role = (
-                "user" if isinstance(message_list[0], UserContentBlock) else "assistant"
-            )
-            message_content_list = []
+            role = "user" if isinstance(message_list[0], UserContentBlock) else "assistant"
+            
+            # 处理每个消息轮次中的每个消息
             for message in message_list:
-                # Check string type to avoid import issues particularly with reloads.
-                if str(type(message)) == str(TextPrompt):
-                    message = cast(TextPrompt, message)
-                    message_content = AnthropicTextBlock(
-                        type="text",
-                        text=message.text,
-                    )
-                elif str(type(message)) == str(ImageBlock):
-                    message = cast(ImageBlock, message)
-                    message_content = AnthropicImageBlockParam(
-                        type="image",
-                        source=message.source,
-                    )
-                elif str(type(message)) == str(TextResult):
-                    message = cast(TextResult, message)
-                    message_content = AnthropicTextBlock(
-                        type="text",
-                        text=message.text,
-                    )
-                elif str(type(message)) == str(ToolCall):
-                    message = cast(ToolCall, message)
-                    message_content = AnthropicToolUseBlock(
-                        type="tool_use",
-                        id=message.tool_call_id,
-                        name=message.tool_name,
-                        input=message.tool_input,
-                    )
-                elif str(type(message)) == str(ToolFormattedResult):
-                    message = cast(ToolFormattedResult, message)
-                    message_content = AnthropicToolResultBlockParam(
-                        type="tool_result",
-                        tool_use_id=message.tool_call_id,
-                        content=message.tool_output,
-                    )
-                elif str(type(message)) == str(AnthropicRedactedThinkingBlock):
-                    message = cast(AnthropicRedactedThinkingBlock, message)
-                    message_content = message
-                elif str(type(message)) == str(AnthropicThinkingBlock):
-                    message = cast(AnthropicThinkingBlock, message)
-                    message_content = message
+                if isinstance(message, ToolFormattedResult):
+                    # 工具结果总是独立的tool消息
+                    openai_messages.append({
+                        "role": "tool",
+                        "tool_call_id": message.tool_call_id,
+                        "content": message.tool_output,
+                    })
+                elif isinstance(message, ToolCall):
+                    # 工具调用需要创建assistant消息
+                    openai_messages.append({
+                        "role": "assistant",
+                        "tool_calls": [{
+                            "id": message.tool_call_id,
+                            "type": "function",
+                            "function": {
+                                "name": message.tool_name,
+                                "arguments": json.dumps(message.tool_input)
+                            }
+                        }]
+                    })
                 else:
-                    print(
-                        f"Unknown message type: {type(message)}, expected one of {str(TextPrompt)}, {str(TextResult)}, {str(ToolCall)}, {str(ToolFormattedResult)}"
-                    )
-                    raise ValueError(
-                        f"Unknown message type: {type(message)}, expected one of {str(TextPrompt)}, {str(TextResult)}, {str(ToolCall)}, {str(ToolFormattedResult)}"
-                    )
-                message_content_list.append(message_content)
+                    # 处理其他类型的消息（文本、图片等）
+                    content = self._convert_message_to_openai_format(message)
+                    if content:
+                        openai_messages.append({"role": role, "content": content})
 
-            # Anthropic supports up to 4 cache breakpoints, so we put them on the last 4 messages.
-            if self.use_caching and idx >= len(messages) - 4:
-                if isinstance(message_content_list[-1], dict):
-                    message_content_list[-1]["cache_control"] = {"type": "ephemeral"}
-                else:
-                    message_content_list[-1].cache_control = {"type": "ephemeral"}
-
-            anthropic_messages.append(
-                {
-                    "role": role,
-                    "content": message_content_list,
+        # 转换工具格式
+        openai_tools = []
+        for tool in tools:
+            openai_tools.append({
+                "type": "function",
+                "function": {
+                    "name": tool.name,
+                    "description": tool.description,
+                    "parameters": tool.input_schema,
                 }
-            )
+            })
 
-        if self.use_caching:
-            extra_headers = self.headers
-        else:
-            extra_headers = None
+        # 转换tool_choice
+        tool_choice_param = OpenAI_NOT_GIVEN
+        if tool_choice:
+            if tool_choice["type"] == "any":
+                tool_choice_param = "required"
+            elif tool_choice["type"] == "auto":
+                tool_choice_param = "auto"
+            elif tool_choice["type"] == "tool":
+                tool_choice_param = {
+                    "type": "function",
+                    "function": {"name": tool_choice["name"]}
+                }
 
-        # Turn tool_choice into Anthropic tool_choice format
-        if tool_choice is None:
-            tool_choice_param = Anthropic_NOT_GIVEN
-        elif tool_choice["type"] == "any":
-            tool_choice_param = ToolChoiceToolChoiceAny(type="any")
-        elif tool_choice["type"] == "auto":
-            tool_choice_param = ToolChoiceToolChoiceAuto(type="auto")
-        elif tool_choice["type"] == "tool":
-            tool_choice_param = ToolChoiceToolChoiceTool(
-                type="tool", name=tool_choice["name"]
-            )
-        else:
-            raise ValueError(f"Unknown tool_choice type: {tool_choice['type']}")
-
-        if len(tools) == 0:
-            tool_params = Anthropic_NOT_GIVEN
-        else:
-            tool_params = [
-                AnthropicToolParam(
-                    input_schema=tool.input_schema,
-                    name=tool.name,
-                    description=tool.description,
-                )
-                for tool in tools
-            ]
-
-        response = None
-
+        # 准备额外参数
+        extra_body = {}
         if thinking_tokens is None:
             thinking_tokens = self.thinking_tokens
         if thinking_tokens and thinking_tokens > 0:
-            extra_body = {
-                "thinking": {"type": "enabled", "budget_tokens": thinking_tokens}
-            }
-            temperature = 1
-        else:
-            extra_body = None
+            extra_body["thinking"] = {"type": "enabled", "budget_tokens": thinking_tokens}
+            temperature = 1.0
 
+        # 调用OpenRouter API
+        response = None
         for retry in range(self.max_retries):
             try:
-                response = self.client.messages.create(  # type: ignore
-                    max_tokens=max_tokens,
-                    messages=anthropic_messages,
+                response = self.client.chat.completions.create(
                     model=self.model_name,
+                    messages=openai_messages,
+                    max_tokens=max_tokens,
                     temperature=temperature,
-                    system=system_prompt or Anthropic_NOT_GIVEN,
-                    tool_choice=tool_choice_param,  # type: ignore
-                    tools=tool_params,
-                    extra_headers=extra_headers,
-                    extra_body=extra_body,
+                    tools=openai_tools if openai_tools else OpenAI_NOT_GIVEN,
+                    tool_choice=tool_choice_param,
+                    extra_headers=self.extra_headers,
+                    extra_body=extra_body if extra_body else None,
                 )
                 break
-            except (
-                AnthropicAPIConnectionError,
-                AnthropicInternalServerError,
-                AnthropicRateLimitError,
-                AnthropicOverloadedError,
-            ) as e:
+            except Exception as e:
+                # 检查是否是API错误响应
+                error_msg = str(e)
+                if "unexpected `tool_use_id` found in `tool_result` blocks" in error_msg:
+                    logger.error(f"Tool sequence error: {error_msg}")
+                    logger.error(f"OpenAI messages: {json.dumps(openai_messages, indent=2)}")
+                    raise Exception(f"Tool sequence error in message construction: {error_msg}")
+                
                 if retry == self.max_retries - 1:
-                    print(f"Failed Anthropic request after {retry + 1} retries")
+                    print(f"Failed OpenRouter request after {retry + 1} retries: {error_msg}")
                     raise e
                 else:
-                    print(f"Retrying LLM request: {retry + 1}/{self.max_retries}")
-                    # Sleep 12-18 seconds with jitter to avoid thundering herd.
+                    print(f"Retrying OpenRouter request: {retry + 1}/{self.max_retries}")
                     time.sleep(15 * random.uniform(0.8, 1.2))
-            except Exception as e:
-                raise e
 
-        # Convert messages back to internal format
+        # 转换响应格式
         internal_messages = []
         assert response is not None
-        for message in response.content:
-            if "</invoke>" in str(message):
-                warning_msg = "\n".join(
-                    ["!" * 80, "WARNING: Unexpected 'invoke' in message", "!" * 80]
-                )
-                print(warning_msg)
-
-            if str(type(message)) == str(AnthropicTextBlock):
-                message = cast(AnthropicTextBlock, message)
-                internal_messages.append(TextResult(text=message.text))
-            elif str(type(message)) == str(AnthropicRedactedThinkingBlock):
-                internal_messages.append(message)
-            elif str(type(message)) == str(AnthropicThinkingBlock):
-                message = cast(AnthropicThinkingBlock, message)
-                internal_messages.append(message)
-            elif str(type(message)) == str(AnthropicToolUseBlock):
-                message = cast(AnthropicToolUseBlock, message)
+        
+        print(f"Debug: Response:\n {response}")
+        # Parse response structure
+        try:
+            # Extract choice from response
+            if hasattr(response, 'choices') and response.choices:
+                choice = response.choices[0]
+            else:
+                # 检查是否是错误响应
+                if hasattr(response, 'error'):
+                    raise Exception(f"API Error: {response.error}")
+                raise ValueError("LLM response is missing choices")
+            
+            # Extract message from choice
+            if hasattr(choice, 'message'):
+                message = choice.message
+            else:
+                raise ValueError("LLM response choice is missing message")
+                
+        except Exception as e:
+            logger.error(f"Error parsing response structure: {e}")
+            # Try to create a fallback response
+            if hasattr(response, 'content'):
+                internal_messages.append(TextResult(text=str(response.content)))
+            elif hasattr(response, 'text'):
+                internal_messages.append(TextResult(text=str(response.text)))
+            else:
+                internal_messages.append(TextResult(text="Error: Could not parse LLM response"))
+            
+            # Return fallback response
+            return internal_messages, self._create_default_metadata(response)
+        
+        # Process the message content
+        if hasattr(message, 'content') and message.content:
+            # 检查是否包含意外的invoke标签
+            if "</invoke>" in str(message.content):
+                logger.warning("Unexpected 'invoke' tag found in message content")
+            internal_messages.append(TextResult(text=message.content))
+        
+        if hasattr(message, 'tool_calls') and message.tool_calls:
+            for tool_call in message.tool_calls:
+                try:
+                    args = json.loads(tool_call.function.arguments)
+                except json.JSONDecodeError:
+                    args = {}
+                
                 internal_messages.append(
                     ToolCall(
-                        tool_call_id=message.id,
-                        tool_name=message.name,
-                        tool_input=recursively_remove_invoke_tag(message.input),
+                        tool_call_id=tool_call.id,
+                        tool_name=tool_call.function.name,
+                        tool_input=recursively_remove_invoke_tag(args),
                     )
                 )
-            else:
-                raise ValueError(f"Unknown message type: {type(message)}")
 
-        message_metadata = {
+        return internal_messages, self._create_message_metadata(response)
+
+    def _create_default_metadata(self, response) -> dict[str, Any]:
+        """Create default metadata for fallback responses."""
+        return {
             "raw_response": response,
-            "input_tokens": response.usage.input_tokens,
-            "output_tokens": response.usage.output_tokens,
-            "cache_creation_input_tokens": getattr(
-                response.usage, "cache_creation_input_tokens", -1
-            ),
-            "cache_read_input_tokens": getattr(
-                response.usage, "cache_read_input_tokens", -1
-            ),
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cache_creation_input_tokens": -1,
+            "cache_read_input_tokens": -1,
         }
 
-        return internal_messages, message_metadata
+    def _create_message_metadata(self, response) -> dict[str, Any]:
+        """Create metadata from successful response."""
+        return {
+            "raw_response": response,
+            "input_tokens": response.usage.prompt_tokens if response.usage and hasattr(response.usage, 'prompt_tokens') else 0,
+            "output_tokens": response.usage.completion_tokens if response.usage and hasattr(response.usage, 'completion_tokens') else 0,
+            "cache_creation_input_tokens": -1,  # OpenRouter不直接提供这些信息
+            "cache_read_input_tokens": -1,
+        }
+
+    def _convert_message_to_openai_format(self, message) -> Any:
+        """将内部消息格式转换为OpenAI格式"""
+        if isinstance(message, TextPrompt):
+            return message.text
+        elif isinstance(message, TextResult):
+            return message.text
+        elif isinstance(message, ImageBlock):
+            return {
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:{message.source['media_type']};base64,{message.source['data']}"
+                }
+            }
+        elif isinstance(message, (AnthropicThinkingBlock, AnthropicRedactedThinkingBlock)):
+            # 保持Anthropic thinking blocks的兼容性
+            return str(message)
+        else:
+            return str(message)

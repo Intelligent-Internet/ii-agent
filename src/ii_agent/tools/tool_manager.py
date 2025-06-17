@@ -221,20 +221,45 @@ class AgentToolManager:
         llm_tool = self.get_tool(tool_params.tool_name)
         tool_name = tool_params.tool_name
         tool_input = tool_params.tool_input
+        
+        # Add comprehensive safety checks for tool_input
+        if tool_input is None:
+            self.logger_for_agent_logs.warning(f"Tool {tool_name} called with None input, using empty dict")
+            tool_input = {}
+        elif not isinstance(tool_input, dict):
+            self.logger_for_agent_logs.warning(f"Tool {tool_name} called with non-dict input: {type(tool_input)}, converting to dict")
+            tool_input = {"value": str(tool_input) if tool_input is not None else "None"}
+            
         self.logger_for_agent_logs.info(f"Running tool: {tool_name}")
         self.logger_for_agent_logs.info(f"Tool input: {tool_input}")
-        result = llm_tool.run(tool_input, history)
+        
+        try:
+            result = llm_tool.run(tool_input, history)
+        except Exception as e:
+            self.logger_for_agent_logs.error(f"Error running tool {tool_name}: {str(e)}")
+            # Return a safe error message instead of re-raising
+            return f"Error executing tool {tool_name}: {str(e)}"
 
-        tool_input_str = "\n".join([f" - {k}: {v}" for k, v in tool_input.items()])
+        # Add safety check for tool_input.items() call - ensure it's still a dict
+        if isinstance(tool_input, dict):
+            try:
+                tool_input_str = "\n".join([f" - {k}: {v}" for k, v in tool_input.items()])
+            except Exception as e:
+                self.logger_for_agent_logs.warning(f"Error formatting tool_input for logging: {e}")
+                tool_input_str = str(tool_input)
+        else:
+            tool_input_str = str(tool_input)
 
         log_message = f"Calling tool {tool_name} with input:\n{tool_input_str}"
         if isinstance(result, str):
             log_message += f"\nTool output: \n{result}\n\n"
         else:
             result_to_log = deepcopy(result)
-            for i in range(len(result_to_log)):
-                if result_to_log[i].get("type") == "image":
-                    result_to_log[i]["source"]["data"] = "[REDACTED]"
+            # Add safety check for result being a list
+            if isinstance(result_to_log, list):
+                for i in range(len(result_to_log)):
+                    if isinstance(result_to_log[i], dict) and result_to_log[i].get("type") == "image":
+                        result_to_log[i]["source"]["data"] = "[REDACTED]"
             log_message += f"\nTool output: \n{result_to_log}\n\n"
 
         self.logger_for_agent_logs.info(log_message)

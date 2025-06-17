@@ -28,6 +28,23 @@ Send a message to the user. Use this tool to communicate effectively in a variet
         tool_input: dict[str, Any],
         message_history: Optional[MessageHistory] = None,
     ) -> ToolImplOutput:
-        assert tool_input["text"], "Model returned empty message"
+        # Add safety checks for tool_input
+        if tool_input is None:
+            msg = "Message tool called with None input"
+            return ToolImplOutput(msg, msg, auxiliary_data={"success": False})
+        
+        if not isinstance(tool_input, dict):
+            msg = f"Message tool called with non-dict input: {type(tool_input)}"
+            return ToolImplOutput(msg, msg, auxiliary_data={"success": False})
+        
+        if "text" not in tool_input:
+            msg = "Message tool called without 'text' key"
+            return ToolImplOutput(msg, msg, auxiliary_data={"success": False})
+        
+        text = tool_input["text"]
+        if not text:
+            msg = "Model returned empty message"
+            return ToolImplOutput(msg, msg, auxiliary_data={"success": False})
+        
         msg = "Sent message to user"
         return ToolImplOutput(msg, msg, auxiliary_data={"success": True})
