@@ -21,6 +21,10 @@ import {
   Terminal,
   Video,
   Presentation,
+  Unplug,
+  Eye,
+  X,
+  SquareChevronRight,
 } from "lucide-react";
 import { useEffect, useMemo, useRef } from "react";
 
@@ -53,12 +57,22 @@ const Action = ({ workspaceInfo, type, value, onClick }: ActionProps) => {
       case TOOL.VISIT:
       case TOOL.BROWSER_USE:
         return <Globe className={className} />;
-      case TOOL.BASH:
+      case TOOL.SHELL_EXEC:
         return <Terminal className={className} />;
+      case TOOL.SHELL_WRITE_TO_PROCESS:
+        return <Terminal className={className} />;
+      case TOOL.SHELL_KILL_PROCESS:
+        return <X className={className} />;
+      case TOOL.SHELL_VIEW:
+        return <Eye className={className} />;
+      case TOOL.SHELL_WAIT:
+        return <LoaderCircle className={className} />;
       case TOOL.STR_REPLACE_EDITOR:
         return <Code className={className} />;
       case TOOL.STATIC_DEPLOY:
         return <Rocket className={className} />;
+      case TOOL.REGISTER_DEPLOYMENT:
+        return <Unplug className={className} />;
       case TOOL.PDF_TEXT_EXTRACT:
         return <FileText className={className} />;
       case TOOL.AUDIO_TRANSCRIBE:
@@ -76,6 +90,8 @@ const Action = ({ workspaceInfo, type, value, onClick }: ActionProps) => {
         return <Sparkle className={className} />;
       case TOOL.PRESENTATION:
         return <Presentation className={className} />;
+      case TOOL.PROJECT_START_UP:
+        return <SquareChevronRight className={className} />;
       case TOOL.REVIEWER_AGENT:
         return <SearchCheck className={className} />;
 
@@ -125,8 +141,16 @@ const Action = ({ workspaceInfo, type, value, onClick }: ActionProps) => {
       case TOOL.VISIT:
       case TOOL.BROWSER_USE:
         return "Browsing";
-      case TOOL.BASH:
+      case TOOL.SHELL_EXEC:
         return "Executing Command";
+      case TOOL.SHELL_WRITE_TO_PROCESS:
+        return "Writing to terminal";
+      case TOOL.SHELL_KILL_PROCESS:
+        return "Killing Process";
+      case TOOL.SHELL_VIEW:
+        return "Viewing Shell";
+      case TOOL.SHELL_WAIT:
+        return "Waiting for Shell";
       case TOOL.STR_REPLACE_EDITOR:
         return value?.tool_input?.command === "create"
           ? "Creating File"
@@ -135,6 +159,8 @@ const Action = ({ workspaceInfo, type, value, onClick }: ActionProps) => {
           : "Editing File";
       case TOOL.STATIC_DEPLOY:
         return "Deploying";
+      case TOOL.REGISTER_DEPLOYMENT:
+        return "Registering Deployment";
       case TOOL.PDF_TEXT_EXTRACT:
         return "Extracting Text";
       case TOOL.AUDIO_TRANSCRIBE:
@@ -155,9 +181,10 @@ const Action = ({ workspaceInfo, type, value, onClick }: ActionProps) => {
         return "Deep Researching";
       case TOOL.PRESENTATION:
         return "Using presentation agent";
+      case TOOL.PROJECT_START_UP:
+        return "Starting up project template";
       case TOOL.REVIEWER_AGENT:
         return "Reviewer agent";
-
       case TOOL.BROWSER_WAIT:
         return "Waiting for Page to Load";
       case TOOL.BROWSER_VIEW:
@@ -205,8 +232,16 @@ const Action = ({ workspaceInfo, type, value, onClick }: ActionProps) => {
         return value.tool_input?.url;
       case TOOL.BROWSER_USE:
         return value.tool_input?.url;
-      case TOOL.BASH:
+      case TOOL.SHELL_EXEC:
         return value.tool_input?.command;
+      case TOOL.SHELL_WRITE_TO_PROCESS:
+        return value.tool_input?.input;
+      case TOOL.SHELL_KILL_PROCESS:
+        return value.tool_input?.session_id;
+      case TOOL.SHELL_VIEW:
+        return value.tool_input?.session_id;
+      case TOOL.SHELL_WAIT:
+        return value.tool_input?.seconds + " seconds";
       case TOOL.STR_REPLACE_EDITOR:
         return value.tool_input?.path === workspaceInfo
           ? workspaceInfo
@@ -242,6 +277,8 @@ const Action = ({ workspaceInfo, type, value, onClick }: ActionProps) => {
         return value.tool_input?.query;
       case TOOL.PRESENTATION:
         return value.tool_input?.action + ": " + value.tool_input?.description;
+      case TOOL.PROJECT_START_UP:
+        return value.tool_input?.framework;
       case TOOL.REVIEWER_AGENT:
         return value.content;
 

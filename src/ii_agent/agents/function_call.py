@@ -254,6 +254,21 @@ try breaking down the task into smaller steps. After call this tool to update or
                     tool_result_message="Task completed",
                 )
 
+            text_results = [
+                item for item in model_response if isinstance(item, TextResult)
+            ]
+            if len(text_results) > 0:
+                text_result = text_results[0]
+                self.logger_for_agent_logs.info(
+                    f"Top-level agent planning next step: {text_result.text}\n",
+                )
+                self.message_queue.put_nowait(
+                    RealtimeEvent(
+                        type=EventType.AGENT_THINKING,
+                        content={"text": text_result.text},
+                    )
+                )
+
             if len(pending_tool_calls) > 1:
                 raise ValueError("Only one tool call per turn is supported")
 
@@ -271,15 +286,6 @@ try breaking down the task into smaller steps. After call this tool to update or
                     },
                 )
             )
-
-            text_results = [
-                item for item in model_response if isinstance(item, TextResult)
-            ]
-            if len(text_results) > 0:
-                text_result = text_results[0]
-                self.logger_for_agent_logs.info(
-                    f"Top-level agent planning next step: {text_result.text}\n",
-                )
 
             # Handle tool call by the agent
             if self.interrupted:
