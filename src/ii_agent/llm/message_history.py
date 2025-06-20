@@ -1,5 +1,11 @@
+from pydantic.json import pydantic_encoder
 import json
+
 from typing import Optional, cast, Any
+
+from pydantic import TypeAdapter
+from ii_agent.core.storage.files import FileStore
+from ii_agent.core.storage.locations import get_conversation_agent_history_filename
 from ii_agent.llm.base import (
     AssistantContentBlock,
     GeneralContentBlock,
@@ -100,6 +106,29 @@ class MessageHistory:
 
         return cleaned_turns
 
+    def restore_from_session(self, session_id: str, file_store: FileStore):
+        """Restores the message history from the file store."""
+        try:
+            json_str = file_store.read(
+                get_conversation_agent_history_filename(session_id)
+            )
+
+            message_lists = json.loads(json_str)
+
+            message_lists_type_adapter = TypeAdapter(list[list[GeneralContentBlock]])
+            message_lists = message_lists_type_adapter.validate_python(message_lists)
+
+            self._message_lists = message_lists
+        except FileNotFoundError:
+            raise FileNotFoundError(
+                f"Could not restore history from file for session id: {session_id}"
+            )
+
+    def save_to_session(self, session_id: str, file_store: FileStore):
+        json_str = json.dumps(self._message_lists, default=pydantic_encoder)
+
+        file_store.write(get_conversation_agent_history_filename(session_id), json_str)
+
     def add_user_prompt(
         self, prompt: str, image_blocks: list[dict[str, Any]] | None = None
     ):
@@ -131,10 +160,14 @@ class MessageHistory:
                 has_tool_call = True
                 messages_with_one_tool_call.append(message)
             elif isinstance(message, ToolCall) and has_tool_call:
-                print("WARNING: Multiple tool calls in one turn are not supported, selecting the first tool call")
+                print(
+                    "WARNING: Multiple tool calls in one turn are not supported, selecting the first tool call"
+                )
             else:
                 messages_with_one_tool_call.append(message)
-        self._message_lists.append(cast(list[GeneralContentBlock], messages_with_one_tool_call))
+        self._message_lists.append(
+            cast(list[GeneralContentBlock], messages_with_one_tool_call)
+        )
 
     def get_messages_for_llm(self) -> LLMMessages:  # TODO: change name to get_messages
         """Returns messages formatted for the LLM client."""

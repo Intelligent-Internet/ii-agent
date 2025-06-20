@@ -29,62 +29,66 @@ class BrowserGetSelectOptionsTool(BrowserTool):
         tool_input: dict[str, Any],
         message_history: Optional[MessageHistory] = None,
     ) -> ToolImplOutput:
-        index = int(tool_input["index"])
+        try:
+            index = int(tool_input["index"])
 
-        # Get the page and element information
-        page = await self.browser.get_current_page()
-        interactive_elements = self.browser.get_state().interactive_elements
+            # Get the page and element information
+            page = await self.browser.get_current_page()
+            interactive_elements = self.browser.get_state().interactive_elements
 
-        # Verify the element exists and is a select
-        if index not in interactive_elements:
-            return ToolImplOutput(
-                tool_output=f"No element found with index {index}",
-                tool_result_message=f"No element found with index {index}",
+            # Verify the element exists and is a select
+            if index not in interactive_elements:
+                return ToolImplOutput(
+                    tool_output=f"No element found with index {index}",
+                    tool_result_message=f"No element found with index {index}",
+                )
+
+            element = interactive_elements[index]
+
+            # Check if it's a select element
+            if element.tag_name.lower() != "select":
+                return ToolImplOutput(
+                    tool_output=f"Element {index} is not a select element, it's a {element.tag_name}",
+                    tool_result_message=f"Element {index} is not a select element, it's a {element.tag_name}",
+                )
+
+            # Use the unique ID to find the element
+            options_data = await page.evaluate(
+                """
+            (args) => {
+                // Find the select element using the unique ID
+                const select = document.querySelector(`[data-browser-agent-id="${args.browserAgentId}"]`);
+                if (!select) return null;
+                
+                // Get all options	
+                return {
+                    options: Array.from(select.options).map(opt => ({
+                        text: opt.text,
+                        value: opt.value,
+                        index: opt.index
+                    })),
+                    id: select.id,
+                    name: select.name
+                };
+            }
+            """,
+                {"browserAgentId": element.browser_agent_id},
             )
 
-        element = interactive_elements[index]
+            # Process options from direct approach
+            formatted_options = []
+            for opt in options_data["options"]:
+                encoded_text = json.dumps(opt["text"])
+                formatted_options.append(f"{opt['index']}: option={encoded_text}")
 
-        # Check if it's a select element
-        if element.tag_name.lower() != "select":
-            return ToolImplOutput(
-                tool_output=f"Element {index} is not a select element, it's a {element.tag_name}",
-                tool_result_message=f"Element {index} is not a select element, it's a {element.tag_name}",
-            )
+            msg = "\n".join(formatted_options)
+            msg += "\nIf you decide to use this select element, use the exact option name in select_dropdown_option"
+            state = await self.browser.update_state()
 
-        # Use the unique ID to find the element
-        options_data = await page.evaluate(
-            """
-        (args) => {
-            // Find the select element using the unique ID
-            const select = document.querySelector(`[data-browser-agent-id="${args.browserAgentId}"]`);
-            if (!select) return null;
-            
-            // Get all options	
-            return {
-                options: Array.from(select.options).map(opt => ({
-                    text: opt.text,
-                    value: opt.value,
-                    index: opt.index
-                })),
-                id: select.id,
-                name: select.name
-            };
-        }
-        """,
-            {"browserAgentId": element.browser_agent_id},
-        )
-
-        # Process options from direct approach
-        formatted_options = []
-        for opt in options_data["options"]:
-            encoded_text = json.dumps(opt["text"])
-            formatted_options.append(f"{opt['index']}: option={encoded_text}")
-
-        msg = "\n".join(formatted_options)
-        msg += "\nIf you decide to use this select element, use the exact option name in select_dropdown_option"
-        state = await self.browser.update_state()
-
-        return utils.format_screenshot_tool_output(state.screenshot, msg)
+            return utils.format_screenshot_tool_output(state.screenshot, msg)
+        except Exception as e:
+            error_msg = f"Get select options failed for element {index}: {type(e).__name__}: {str(e)}"
+            return ToolImplOutput(tool_output=error_msg, tool_result_message=error_msg)
 
 
 class BrowserSelectDropdownOptionTool(BrowserTool):
@@ -113,105 +117,109 @@ class BrowserSelectDropdownOptionTool(BrowserTool):
         tool_input: dict[str, Any],
         message_history: Optional[MessageHistory] = None,
     ) -> ToolImplOutput:
-        index = int(tool_input["index"])
-        option = tool_input["option"]
+        try:
+            index = int(tool_input["index"])
+            option = tool_input["option"]
 
-        # Get the interactive element
-        page = await self.browser.get_current_page()
-        interactive_elements = self.browser.get_state().interactive_elements
+            # Get the interactive element
+            page = await self.browser.get_current_page()
+            interactive_elements = self.browser.get_state().interactive_elements
 
-        # Verify the element exists and is a select
-        if index not in interactive_elements:
-            return ToolImplOutput(
-                tool_output=f"No element found with index {index}",
-                tool_result_message=f"No element found with index {index}",
-            )
+            # Verify the element exists and is a select
+            if index not in interactive_elements:
+                return ToolImplOutput(
+                    tool_output=f"No element found with index {index}",
+                    tool_result_message=f"No element found with index {index}",
+                )
 
-        element = interactive_elements[index]
+            element = interactive_elements[index]
 
-        # Check if it's a select element
-        if element.tag_name.lower() != "select":
-            return ToolImplOutput(
-                tool_output=f"Element {index} is not a select element, it's a {element.tag_name}",
-                tool_result_message=f"Element {index} is not a select element, it's a {element.tag_name}",
-            )
+            # Check if it's a select element
+            if element.tag_name.lower() != "select":
+                return ToolImplOutput(
+                    tool_output=f"Element {index} is not a select element, it's a {element.tag_name}",
+                    tool_result_message=f"Element {index} is not a select element, it's a {element.tag_name}",
+                )
 
-        # Use JavaScript to select the option using the unique ID
-        result = await page.evaluate(
-            """
-        (args) => {
-            const uniqueId = args.uniqueId;
-            const optionText = args.optionText;
-            
-            try {
-                // Find the select element by unique ID - works across frames too
-                function findElementByUniqueId(root, id) {
-                    // Check in main document first
-                    let element = document.querySelector(`[data-browser-agent-id="${id}"]`);
-                    if (element) return element;
-                }
+            # Use JavaScript to select the option using the unique ID
+            result = await page.evaluate(
+                """
+            (args) => {
+                const uniqueId = args.uniqueId;
+                const optionText = args.optionText;
                 
-                const select = findElementByUniqueId(window, uniqueId);
-                if (!select) {
-                    return { 
-                        success: false, 
-                        error: "Select element not found with ID: " + uniqueId 
-                    };
-                }
-                
-                // Find the option with matching text
-                let found = false;
-                let selectedValue = null;
-                let selectedIndex = -1;
-                
-                for (let i = 0; i < select.options.length; i++) {
-                    const opt = select.options[i];
-                    if (opt.text === optionText) {
-                        // Select this option
-                        opt.selected = true;
-                        found = true;
-                        selectedValue = opt.value;
-                        selectedIndex = i;
-                        
-                        // Trigger change event
-                        const event = new Event('change', { bubbles: true });
-                        select.dispatchEvent(event);
-                        break;
+                try {
+                    // Find the select element by unique ID - works across frames too
+                    function findElementByUniqueId(root, id) {
+                        // Check in main document first
+                        let element = document.querySelector(`[data-browser-agent-id="${id}"]`);
+                        if (element) return element;
                     }
-                }
-                
-                if (found) {
-                    return { 
-                        success: true, 
-                        value: selectedValue, 
-                        index: selectedIndex 
-                    };
-                } else {
+                    
+                    const select = findElementByUniqueId(window, uniqueId);
+                    if (!select) {
+                        return { 
+                            success: false, 
+                            error: "Select element not found with ID: " + uniqueId 
+                        };
+                    }
+                    
+                    // Find the option with matching text
+                    let found = false;
+                    let selectedValue = null;
+                    let selectedIndex = -1;
+                    
+                    for (let i = 0; i < select.options.length; i++) {
+                        const opt = select.options[i];
+                        if (opt.text === optionText) {
+                            // Select this option
+                            opt.selected = true;
+                            found = true;
+                            selectedValue = opt.value;
+                            selectedIndex = i;
+                            
+                            // Trigger change event
+                            const event = new Event('change', { bubbles: true });
+                            select.dispatchEvent(event);
+                            break;
+                        }
+                    }
+                    
+                    if (found) {
+                        return { 
+                            success: true, 
+                            value: selectedValue, 
+                            index: selectedIndex 
+                        };
+                    } else {
+                        return { 
+                            success: false, 
+                            error: "Option not found: " + optionText,
+                            availableOptions: Array.from(select.options).map(o => o.text)
+                        };
+                    }
+                } catch (e) {
                     return { 
                         success: false, 
-                        error: "Option not found: " + optionText,
-                        availableOptions: Array.from(select.options).map(o => o.text)
+                        error: e.toString() 
                     };
                 }
-            } catch (e) {
-                return { 
-                    success: false, 
-                    error: e.toString() 
-                };
             }
-        }
-        """,
-            {"uniqueId": element.browser_agent_id, "optionText": option},
-        )
+            """,
+                {"uniqueId": element.browser_agent_id, "optionText": option},
+            )
 
-        if result.get("success"):
-            msg = f"Selected option '{option}' with value '{result.get('value')}' at index {result.get('index')}"
-            state = await self.browser.update_state()
-            return utils.format_screenshot_tool_output(state.screenshot, msg)
-        else:
-            error_msg = result.get("error", "Unknown error")
-            if "availableOptions" in result:
-                available = result.get("availableOptions", [])
-                error_msg += f". Available options: {', '.join(available)}"
+            if result.get("success"):
+                msg = f"Selected option '{option}' with value '{result.get('value')}' at index {result.get('index')}"
+                state = await self.browser.update_state()
+                return utils.format_screenshot_tool_output(state.screenshot, msg)
+            else:
+                error_msg = result.get("error", "Unknown error")
+                if "availableOptions" in result:
+                    available = result.get("availableOptions", [])
+                    error_msg += f". Available options: {', '.join(available)}"
 
+                return ToolImplOutput(tool_output=error_msg, tool_result_message=error_msg)
+        except Exception as e:
+            error_msg = f"Select dropdown option failed for element {index} with option '{option}': {type(e).__name__}: {str(e)}"
             return ToolImplOutput(tool_output=error_msg, tool_result_message=error_msg)

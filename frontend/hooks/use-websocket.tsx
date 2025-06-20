@@ -2,6 +2,7 @@ import { AgentEvent, WebSocketConnectionState } from "@/typings/agent";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { useAppContext } from "@/context/app-context";
+import { useSearchParams } from "next/navigation";
 
 interface WebSocketMessageContent {
   [key: string]: unknown;
@@ -19,6 +20,8 @@ export function useWebSocket(
     workspacePath?: string
   ) => void
 ) {
+  const searchParams = useSearchParams();
+  const session_uuid = searchParams.get("id");
   const [socket, setSocket] = useState<WebSocket | null>(null);
   const { dispatch } = useAppContext();
 
@@ -27,7 +30,18 @@ export function useWebSocket(
       type: "SET_WS_CONNECTION_STATE",
       payload: WebSocketConnectionState.CONNECTING,
     });
-    const params = new URLSearchParams({ device_id: deviceId });
+    // Reset agent initialization state when connecting
+    dispatch({
+      type: "SET_AGENT_INITIALIZED",
+      payload: false,
+    });
+    const wsPayload: { [key: string]: string } = {
+      device_id: deviceId,
+    };
+    if (session_uuid) {
+      wsPayload["session_uuid"] = session_uuid;
+    }
+    const params = new URLSearchParams(wsPayload);
     const ws = new WebSocket(
       `${process.env.NEXT_PUBLIC_API_URL}/ws?${params.toString()}`
     );

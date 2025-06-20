@@ -12,6 +12,8 @@ import logging
 import asyncio
 from dotenv import load_dotenv
 
+from ii_agent.llm.message_history import MessageHistory
+
 load_dotenv()
 
 from ii_agent.core.event import RealtimeEvent, EventType
@@ -22,12 +24,14 @@ from rich.panel import Panel
 
 from ii_agent.tools import get_system_tools
 from ii_agent.prompts.system_prompt import SYSTEM_PROMPT
-from ii_agent.agents.anthropic_fc import AnthropicFC
+from ii_agent.prompts.reviewer_system_prompt import REVIEWER_SYSTEM_PROMPT
+from ii_agent.agents.function_call import FunctionCallAgent
+from ii_agent.agents.reviewer import ReviewerAgent
 from ii_agent.utils import WorkspaceManager
 from ii_agent.llm import get_client
 from ii_agent.llm.context_manager.llm_summarizing import LLMSummarizingContextManager
 from ii_agent.llm.token_counter import TokenCounter
-from ii_agent.db.manager import DatabaseManager
+from ii_agent.db.manager import Sessions
 
 MAX_OUTPUT_TOKENS_PER_TURN = 32768
 MAX_TURNS = 200
@@ -54,9 +58,6 @@ async def async_main():
     # Initialize console
     console = Console()
 
-    # Initialize database manager
-    db_manager = DatabaseManager()
-
     # Create a new workspace manager for the CLI session
     workspace_manager, session_id = create_workspace_manager_for_connection(
         args.workspace, args.use_container_workspace
@@ -64,7 +65,7 @@ async def async_main():
     workspace_path = workspace_manager.root
 
     # Create a new session and get its workspace directory
-    db_manager.create_session(
+    Sessions.create_session(
         session_uuid=session_id, workspace_path=workspace_manager.root
     )
     logger_for_agent_logs.info(
@@ -128,8 +129,9 @@ async def async_main():
         client=client,
         token_counter=token_counter,
         logger=logger_for_agent_logs,
-        token_budget=TOKEN_BUDGET
+        token_budget=TOKEN_BUDGET,
     )
+    init_history = MessageHistory(context_manager)
 
     queue = asyncio.Queue()
     tools = get_system_tools(
@@ -147,21 +149,43 @@ async def async_main():
             "memory_tool": args.memory_tool,
         },
     )
-    agent = AnthropicFC(
+    agent = FunctionCallAgent(
         system_prompt=SYSTEM_PROMPT,
         client=client,
         workspace_manager=workspace_manager,
         tools=tools,
         message_queue=queue,
         logger_for_agent_logs=logger_for_agent_logs,
-        context_manager=context_manager,
+        init_history=init_history,
         max_output_tokens_per_turn=MAX_OUTPUT_TOKENS_PER_TURN,
         max_turns=MAX_TURNS,
         session_id=session_id,  # Pass the session_id from database manager
     )
 
+
+    # Create reviewer agent only if enabled
+    enable_reviewer = args.enable_reviewer if hasattr(args, 'enable_reviewer') else False
+    reviewer_agent = None
+    
+    if enable_reviewer:
+        reviewer_agent = ReviewerAgent(
+            system_prompt=REVIEWER_SYSTEM_PROMPT,
+            client=client,
+            tools=tools,
+            workspace_manager=workspace_manager,
+            message_queue=queue,
+            logger_for_agent_logs=logger_for_agent_logs,
+            context_manager=context_manager,
+            max_output_tokens_per_turn=MAX_OUTPUT_TOKENS_PER_TURN,
+            max_turns=MAX_TURNS,
+            session_id=session_id,
+        )
+
     # Create background task for message processing
     message_task = agent.start_message_processing()
+    reviewer_message_task = None
+    if reviewer_agent:
+        reviewer_message_task = reviewer_agent.start_message_processing()
 
     loop = asyncio.get_running_loop()
     # Main interaction loop
@@ -169,7 +193,9 @@ async def async_main():
         while True:
             # Use async input
             if args.prompt is None:
-                user_input = await loop.run_in_executor(None, lambda: input("User input: "))
+                user_input = await loop.run_in_executor(
+                    None, lambda: input("User input: ")
+                )
             else:
                 user_input = args.prompt
 
@@ -184,12 +210,56 @@ async def async_main():
 
             logger_for_agent_logs.info("\nAgent is thinking...")
             try:
-                # Run synchronous method in executor
-                result = await loop.run_in_executor(
-                    None,  # Uses default ThreadPoolExecutor
-                    lambda: agent.run_agent(user_input, resume=True),
-                )
+                # Run the agent using the new async method
+                result = await agent.run_agent_async(user_input, resume=True)
+                
+                # Extract final result for reviewer
+                final_result = ""
+                for message in agent.history._message_lists[::-1]:
+                    message = message[0]
+                    if str(type(message)) == "ToolFormattedResult" and message.tool_name == "message_user":
+                        final_result = message.tool_output
+                        break
+                        
                 logger_for_agent_logs.info(f"Agent: {result}")
+                
+                # Run reviewer if enabled
+                if reviewer_agent and final_result:
+                    logger_for_agent_logs.info("\nReviewer agent is analyzing the output...")
+                    status = await loop.run_in_executor(
+                        None,  # Uses default ThreadPoolExecutor
+                        lambda: reviewer_agent.run_agent(
+                            task=user_input,
+                            result=final_result,
+                            workspace_dir=str(workspace_path),
+                        ),
+                    )
+                    
+                    # Extract reviewer feedback
+                    try:
+                        review_result = reviewer_agent.history._message_lists[-1][0].text
+                    except:
+                        try:
+                            review_result = reviewer_agent.history._message_lists[-2][0].text
+                        except:
+                            review_result = ""
+                    
+                    if review_result:
+                        logger_for_agent_logs.info(f"Reviewer: {review_result}")
+                    
+                    # Continue agent with reviewer feedback
+                    if review_result and review_result.strip():
+                        logger_for_agent_logs.info("\nFeeding reviewer feedback to agent for improvement...")
+                        feedback_prompt = f"""Based on the reviewer's analysis, here is the feedback for improvement:
+
+{review_result}
+
+Please review this feedback and implement the suggested improvements to better complete the original task: "{user_input}"
+"""
+                        
+                        # Run agent with reviewer feedback
+                        improved_result = await agent.run_agent_async(feedback_prompt, resume=True)
+                        logger_for_agent_logs.info(f"Agent improvement response: {improved_result}")
             except (KeyboardInterrupt, asyncio.CancelledError):
                 agent.cancel()
                 logger_for_agent_logs.info("Agent cancelled")
@@ -205,6 +275,8 @@ async def async_main():
     finally:
         # Cleanup tasks
         message_task.cancel()
+        if reviewer_message_task:
+            reviewer_message_task.cancel()
 
     console.print("[bold]Goodbye![/bold]")
 

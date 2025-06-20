@@ -31,10 +31,12 @@ interface AppState {
   toolSettings: ToolSettings;
   selectedModel?: string;
   wsConnectionState: WebSocketConnectionState;
+  isAgentInitialized: boolean;
+  requireClearFiles: boolean;
 }
 
 // Define action types
-type AppAction =
+export type AppAction =
   | { type: "SET_MESSAGES"; payload: Message[] }
   | { type: "ADD_MESSAGE"; payload: Message }
   | { type: "UPDATE_MESSAGE"; payload: Message }
@@ -57,6 +59,8 @@ type AppAction =
   | { type: "SET_TOOL_SETTINGS"; payload: AppState["toolSettings"] }
   | { type: "SET_SELECTED_MODEL"; payload: string | undefined }
   | { type: "SET_WS_CONNECTION_STATE"; payload: WebSocketConnectionState }
+  | { type: "SET_AGENT_INITIALIZED"; payload: boolean }
+  | { type: "SET_REQUIRE_CLEAR_FILES"; payload: boolean }
   | {
       type: "HANDLE_EVENT";
       payload: {
@@ -91,6 +95,8 @@ const initialState: AppState = {
   },
   wsConnectionState: WebSocketConnectionState.CONNECTING,
   selectedModel: AVAILABLE_MODELS[0],
+  isAgentInitialized: false,
+  requireClearFiles: false,
 };
 
 // Create the context
@@ -163,6 +169,11 @@ function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, selectedModel: action.payload };
     case "SET_WS_CONNECTION_STATE":
       return { ...state, wsConnectionState: action.payload };
+    case "SET_AGENT_INITIALIZED":
+      return { ...state, isAgentInitialized: action.payload };
+    case "SET_REQUIRE_CLEAR_FILES":
+      return { ...state, requireClearFiles: action.payload };
+
     default:
       return state;
   }

@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+import asyncio
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
@@ -49,12 +50,12 @@ class LLMTool(ABC):
     # run(). There may be a reason in the future to override run() itself, and
     # if such a reason comes up, this @final decorator can be removed.
     @final
-    def run(
+    async def run_async(
         self,
         tool_input: dict[str, Any],
         message_history: Optional[MessageHistory] = None,
     ) -> str | list[dict[str, Any]]:
-        """Run the tool.
+        """Run the tool asynchronously.
 
         Args:
             tool_input: The input to the tool.
@@ -65,7 +66,7 @@ class LLMTool(ABC):
         """
         try:
             self._validate_tool_input(tool_input)
-            result = self.run_impl(tool_input, message_history)
+            result = await self.run_impl(tool_input, message_history)
             tool_output = result.tool_output
         except jsonschema.ValidationError as exc:
             tool_output = "Invalid tool input: " + exc.message
@@ -74,12 +75,28 @@ class LLMTool(ABC):
 
         return tool_output
 
+    @final
+    def run(
+        self,
+        tool_input: dict[str, Any],
+        message_history: Optional[MessageHistory] = None,
+    ) -> str | list[dict[str, Any]]:
+        """Run the tool synchronously.
+
+        Args:
+            tool_input: The input to the tool.
+            message_history: The dialog messages so far, if available. The tool
+                is allowed to modify this object, so the caller should make a copy
+                if that's not desired. The dialog messages should not contain
+        """
+        return asyncio.run(self.run_async(tool_input, message_history))
+
     def get_tool_start_message(self, tool_input: ToolInputSchema) -> str:
         """Return a user-friendly message to be shown to the model when the tool is called."""
         return f"Calling tool '{self.name}'"
 
     @abstractmethod
-    def run_impl(
+    async def run_impl(
         self,
         tool_input: dict[str, Any],
         message_history: Optional[MessageHistory] = None,

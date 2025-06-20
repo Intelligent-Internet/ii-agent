@@ -47,7 +47,7 @@ Note:
 
         return result.text_content
 
-    def run_impl(
+    async def run_impl(
         self,
         tool_input: dict[str, Any],
         message_history: Optional[MessageHistory] = None,

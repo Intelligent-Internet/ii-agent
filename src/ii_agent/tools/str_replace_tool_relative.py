@@ -126,10 +126,6 @@ async def run(
         ) from exc
 
 
-def run_sync(*args, **kwargs):
-    return asyncio.run(run(*args, **kwargs))
-
-
 class StrReplaceEditorTool(LLMTool):
     name = "str_replace_editor"
 
@@ -214,7 +210,7 @@ Notes for using the `str_replace` command:\n
                 )
             )
 
-    def run_impl(
+    async def run_impl(
         self,
         tool_input: dict[str, Any],
         message_history: Optional[MessageHistory] = None,
@@ -239,7 +235,7 @@ Notes for using the `str_replace` command:\n
                     {"success": False},
                 )
             if command == "view":
-                return self.view(_ws_path, view_range)
+                return await self.view(_ws_path, view_range)
             elif command == "create":
                 if file_text is None:
                     raise ToolError(
@@ -317,7 +313,7 @@ Notes for using the `str_replace` command:\n
                     f"The path {rel_path} is a directory and only the `view` command can be used on directories"
                 )
 
-    def view(
+    async def view(
         self, path: Path, view_range: Optional[list[int]] = None
     ) -> ExtendedToolImplOutput:
         if path.is_dir():
@@ -326,7 +322,9 @@ Notes for using the `str_replace` command:\n
                     "The `view_range` parameter is not allowed when `path` points to a directory."
                 )
 
-            _, stdout, stderr = run_sync(rf"find {path} -maxdepth 2 -not -path '*/\.*'")
+            _, stdout, stderr = await run(
+                rf"find {path} -maxdepth 2 -not -path '*/\.*'"
+            )
             if not stderr:
                 rel_path = self.workspace_manager.relative_path(path)
                 output = f"Here's the files and directories up to 2 levels deep in {rel_path}, excluding hidden items:\n{stdout}\n"

@@ -23,14 +23,14 @@ class WebSearchTool(LLMTool):
         self.max_results = max_results
         self.web_search_client = create_search_client(max_results=max_results, **kwargs)
 
-    def run_impl(
+    async def run_impl(
         self,
         tool_input: dict[str, Any],
         message_history: Optional[MessageHistory] = None,
     ) -> ToolImplOutput:
         query = tool_input["query"]
         try:
-            output = self.web_search_client.forward(query)
+            output = await self.web_search_client.forward_async(query)
             return ToolImplOutput(
                 output,
                 f"Search Results with query: {query} successfully retrieved using {self.web_search_client.name}",

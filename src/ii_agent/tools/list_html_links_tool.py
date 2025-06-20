@@ -59,7 +59,7 @@ class ListHtmlLinksTool(LLMTool):
                 links.add(Path(href).name)
         return links
 
-    def run_impl(
+    async def run_impl(
         self,
         tool_input: dict[str, Any],
         message_history: Optional[MessageHistory] = None,

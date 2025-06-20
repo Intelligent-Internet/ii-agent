@@ -7,7 +7,7 @@
 # II Agent
 
 [![GitHub stars](https://img.shields.io/github/stars/Intelligent-Internet/ii-agent?style=social)](https://github.com/Intelligent-Internet/ii-agent/stargazers)
-[![Discord Follow](https://dcbadge.vercel.app/api/server/yDWPsshPHB?style=flat)](https://discord.gg/yDWPsshPHB)
+[![Discord Follow](https://dcbadge.limes.pink/api/server/yDWPsshPHB?style=flat)](https://discord.gg/yDWPsshPHB)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Blog](https://img.shields.io/badge/Blog-II--Agent-blue)](https://ii.inc/web/blog/post/ii-agent)
 [![GAIA Benchmark](https://img.shields.io/badge/GAIA-Benchmark-green)](https://ii-agent-gaia.ii.inc/)
@@ -23,7 +23,8 @@ II-Agent is an open-source intelligent assistant designed to streamline and enha
 
 
 ## Introduction
-https://github.com/user-attachments/assets/d0eb7440-a6e2-4276-865c-a1055181bb33
+
+<https://github.com/user-attachments/assets/2707b106-f37d-41a8-beff-8802b1c9b186>
 
 
 ## Overview
@@ -35,54 +36,6 @@ II Agent is built around providing an agentic interface to leading language mode
 - Integration with multiple LLM providers:
   - Anthropic Claude models (direct API or via Google Cloud Vertex AI)
   - Google Gemini models (direct API or via Google Cloud Vertex AI)
-
-## Core Capabilities
-
-II-Agent is a versatile open-source assistant built to elevate your productivity across domains:
-
-| Domain | What II‑Agent Can Do |
-|--------|----------------------|
-| Research & Fact‑Checking | Multistep web search, source triangulation, structured note‑taking, rapid summarization |
-| Content Generation | Blog & article drafts, lesson plans, creative prose, technical manuals, Website creations |
-| Data Analysis & Visualization | Cleaning, statistics, trend detection, charting, and automated report generation |
-| Software Development | Code synthesis, refactoring, debugging, test‑writing, and step‑by‑step tutorials across multiple languages |
-| Workflow Automation | Script generation, browser automation, file management, process optimization |
-| Problem Solving | Decomposition, alternative‑path exploration, stepwise guidance, troubleshooting |
-
-## Methods
-
-The II-Agent system represents a sophisticated approach to building versatile AI agents. Our methodology centers on:
-
-1. **Core Agent Architecture and LLM Interaction**
-   - System prompting with dynamically tailored context
-   - Comprehensive interaction history management
-   - Intelligent context management to handle token limitations
-   - Systematic LLM invocation and capability selection
-   - Iterative refinement through execution cycles
-
-2. **Planning and Reflection**
-   - Structured reasoning for complex problem-solving
-   - Problem decomposition and sequential thinking
-   - Transparent decision-making process
-   - Hypothesis formation and testing
-
-3. **Execution Capabilities**
-   - File system operations with intelligent code editing
-   - Command line execution in a secure environment
-   - Advanced web interaction and browser automation
-   - Task finalization and reporting
-   - Specialized capabilities for various modalities (Experimental) (PDF, audio, image, video, slides)
-   - Deep research integration
-
-4. **Context Management**
-   - Token usage estimation and optimization
-   - Strategic truncation for lengthy interactions
-   - File-based archival for large outputs
-
-5. **Real-time Communication**
-   - WebSocket-based interface for interactive use
-   - Isolated agent instances per client
-   - Streaming operational events for responsive UX
 
 ## GAIA Benchmark Evaluation
 
@@ -108,10 +61,10 @@ You can view the full traces of some samples here: [GAIA Benchmark Traces](https
   - Google Gemini API key, or  
   - Google Cloud project with Vertex AI API enabled
 
-## Best Practices:
-- For best performance, we recommend using Claude 4.0 Sonnet or Claude Opus 4.0 models.
-- For fast and cheap, we recommend using GPT4.1 from OpenAI.
-- Gemini 2.5 Pro is a good balance between performance and cost.
+> \[!TIP]
+> - For best performance, we recommend using Claude 4.0 Sonnet or Claude Opus 4.0 models.
+> - For fast and cheap, we recommend using GPT4.1 from OpenAI.
+> - Gemini 2.5 Pro is a good balance between performance and cost.
 
 ## Environment
 
@@ -260,6 +213,55 @@ npm run dev
   - `llm/`: LLM client interfaces
   - `tools/`: Tool implementations
   - `utils/`: Utility functions
+
+
+## Core Capabilities
+
+II-Agent is a versatile open-source assistant built to elevate your productivity across domains:
+
+| Domain | What II‑Agent Can Do |
+|--------|----------------------|
+| Research & Fact‑Checking | Multistep web search, source triangulation, structured note‑taking, rapid summarization |
+| Content Generation | Blog & article drafts, lesson plans, creative prose, technical manuals, Website creations |
+| Data Analysis & Visualization | Cleaning, statistics, trend detection, charting, and automated report generation |
+| Software Development | Code synthesis, refactoring, debugging, test‑writing, and step‑by‑step tutorials across multiple languages |
+| Workflow Automation | Script generation, browser automation, file management, process optimization |
+| Problem Solving | Decomposition, alternative‑path exploration, stepwise guidance, troubleshooting |
+
+## Methods
+
+The II-Agent system represents a sophisticated approach to building versatile AI agents. Our methodology centers on:
+
+1. **Core Agent Architecture and LLM Interaction**
+   - System prompting with dynamically tailored context
+   - Comprehensive interaction history management
+   - Intelligent context management to handle token limitations
+   - Systematic LLM invocation and capability selection
+   - Iterative refinement through execution cycles
+
+2. **Planning and Reflection**
+   - Structured reasoning for complex problem-solving
+   - Problem decomposition and sequential thinking
+   - Transparent decision-making process
+   - Hypothesis formation and testing
+
+3. **Execution Capabilities**
+   - File system operations with intelligent code editing
+   - Command line execution in a secure environment
+   - Advanced web interaction and browser automation
+   - Task finalization and reporting
+   - Specialized capabilities for various modalities (Experimental) (PDF, audio, image, video, slides)
+   - Deep research integration
+
+4. **Context Management**
+   - Token usage estimation and optimization
+   - Strategic truncation for lengthy interactions
+   - File-based archival for large outputs
+
+5. **Real-time Communication**
+   - WebSocket-based interface for interactive use
+   - Isolated agent instances per client
+   - Streaming operational events for responsive UX
 
 ## Conclusion
 

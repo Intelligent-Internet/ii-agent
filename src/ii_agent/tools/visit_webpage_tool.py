@@ -32,7 +32,7 @@ class VisitWebpageTool(LLMTool):
         self.max_output_length = max_output_length
         self.visit_client = create_visit_client(max_output_length=max_output_length)
 
-    def run_impl(
+    async def run_impl(
         self,
         tool_input: dict[str, Any],
         message_history: Optional[MessageHistory] = None,
@@ -42,7 +42,7 @@ class VisitWebpageTool(LLMTool):
             url = "https://arxiv.org/html/" + url.split("/")[-1]
 
         try:
-            output = self.visit_client.forward(url)
+            output = await self.visit_client.forward_async(url)
             return ToolImplOutput(
                 output,
                 f"Webpage {url} successfully visited using {self.visit_client.name}",

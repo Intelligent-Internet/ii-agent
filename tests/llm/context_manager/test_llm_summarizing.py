@@ -1,9 +1,7 @@
 import logging
 from unittest.mock import Mock
-import re
 
 from ii_agent.llm.base import (
-    ImageBlock,
     TextPrompt,
     TextResult,
     LLMClient,

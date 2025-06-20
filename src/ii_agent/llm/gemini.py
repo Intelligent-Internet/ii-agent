@@ -42,7 +42,7 @@ class GeminiDirectClient(LLMClient):
             if not api_key:
                 raise ValueError("GEMINI_API_KEY is not set")
             self.client = genai.Client(api_key=api_key)
-            print(f"====== Using Gemini directly ======")
+            print("====== Using Gemini directly ======")
             
         self.max_retries = max_retries
 

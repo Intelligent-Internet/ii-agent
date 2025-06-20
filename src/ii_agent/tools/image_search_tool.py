@@ -28,14 +28,14 @@ class ImageSearchTool(LLMTool):
     def is_available(self):
         return self.image_search_client
 
-    def run_impl(
+    async def run_impl(
         self,
         tool_input: dict[str, Any],
         message_history: Optional[MessageHistory] = None,
     ) -> ToolImplOutput:
         query = tool_input["query"]
         try:
-            output = self.image_search_client.forward(query)
+            output = await self.image_search_client.forward_async(query)
             return ToolImplOutput(
                 output,
                 f"Image Search Results with query: {query} successfully retrieved using {self.image_search_client.name}",

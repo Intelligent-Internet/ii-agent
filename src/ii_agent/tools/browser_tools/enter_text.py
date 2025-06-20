@@ -30,23 +30,27 @@ class BrowserEnterTextTool(BrowserTool):
         tool_input: dict[str, Any],
         message_history: Optional[MessageHistory] = None,
     ) -> ToolImplOutput:
-        text = tool_input["text"]
-        press_enter = tool_input.get("press_enter", False)
+        try:
+            text = tool_input["text"]
+            press_enter = tool_input.get("press_enter", False)
 
-        page = await self.browser.get_current_page()
-        await page.keyboard.press("ControlOrMeta+a")
+            page = await self.browser.get_current_page()
+            await page.keyboard.press("ControlOrMeta+a")
 
-        await asyncio.sleep(0.1)
-        await page.keyboard.press("Backspace")
-        await asyncio.sleep(0.1)
+            await asyncio.sleep(0.1)
+            await page.keyboard.press("Backspace")
+            await asyncio.sleep(0.1)
 
-        await page.keyboard.type(text)
+            await page.keyboard.type(text)
 
-        if press_enter:
-            await page.keyboard.press("Enter")
-            await asyncio.sleep(2)
+            if press_enter:
+                await page.keyboard.press("Enter")
+                await asyncio.sleep(2)
 
-        msg = f'Entered "{text}" on the keyboard. Make sure to double check that the text was entered to where you intended.'
-        state = await self.browser.update_state()
+            msg = f'Entered "{text}" on the keyboard. Make sure to double check that the text was entered to where you intended.'
+            state = await self.browser.update_state()
 
-        return utils.format_screenshot_tool_output(state.screenshot, msg)
+            return utils.format_screenshot_tool_output(state.screenshot, msg)
+        except Exception as e:
+            error_msg = f"Enter text operation failed: {type(e).__name__}: {str(e)}"
+            return ToolImplOutput(tool_output=error_msg, tool_result_message=error_msg)

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { toast } from "sonner";
 import { AgentEvent, Message, IEvent } from "@/typings/agent";
 import { useAppContext } from "@/context/app-context";
@@ -10,12 +10,17 @@ export function useSessionManager({
   searchParams: URLSearchParams;
   handleEvent: (
     data: { id: string; type: AgentEvent; content: Record<string, unknown> },
-    workspacePath?: string
+    workspacePath?: string,
+    ignoreClickAction?: boolean
   ) => void;
 }) {
   const { dispatch } = useAppContext();
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [isLoadingSession, setIsLoadingSession] = useState(false);
+  const eventsDataRef = useRef<{ events: IEvent[]; workspace: string } | null>(
+    null
+  );
+  const delayTimeRef = useRef<number>(1500);
 
   const isReplayMode = !!searchParams.get("id");
 
@@ -24,6 +29,10 @@ export function useSessionManager({
     const id = searchParams.get("id");
     setSessionId(id);
   }, [searchParams]);
+
+  const processAllEventsImmediately = () => {
+    delayTimeRef.current = 0;
+  };
 
   const fetchSessionEvents = useCallback(async () => {
     const id = searchParams.get("id");
@@ -46,6 +55,9 @@ export function useSessionManager({
       dispatch({ type: "SET_WORKSPACE_INFO", payload: workspace });
 
       if (data.events && Array.isArray(data.events)) {
+        // Store events data for potential immediate processing
+        eventsDataRef.current = { events: data.events, workspace };
+
         // Process events to reconstruct the conversation
         const reconstructedMessages: Message[] = [];
 
@@ -54,8 +66,17 @@ export function useSessionManager({
           dispatch({ type: "SET_LOADING", payload: true });
           for (let i = 0; i < data.events.length; i++) {
             const event = data.events[i];
-            await new Promise((resolve) => setTimeout(resolve, 1500));
-            handleEvent({ ...event.event_payload, id: event.id }, workspace);
+            if (delayTimeRef.current > 0) {
+              await new Promise((resolve) =>
+                setTimeout(resolve, delayTimeRef.current)
+              );
+            }
+
+            handleEvent(
+              { ...event.event_payload, id: event.id },
+              workspace,
+              delayTimeRef.current === 0
+            );
           }
           dispatch({ type: "SET_LOADING", payload: false });
         };
@@ -95,5 +116,6 @@ export function useSessionManager({
     isReplayMode,
     setSessionId,
     fetchSessionEvents,
+    processAllEventsImmediately,
   };
 }

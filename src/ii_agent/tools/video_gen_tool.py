@@ -158,7 +158,7 @@ The generated video will be saved to the specified local path in the workspace."
         )
         self.video_model = DEFAULT_MODEL
 
-    def run_impl(
+    async def run_impl(
         self,
         tool_input: dict[str, Any],
         message_history: Optional[MessageHistory] = None,
@@ -325,7 +325,7 @@ The generated video will be saved to the specified local path in the workspace."
         )
         self.video_model = DEFAULT_MODEL
 
-    def run_impl(
+    async def run_impl(
         self,
         tool_input: dict[str, Any],
         message_history: Optional[MessageHistory] = None,
@@ -477,7 +477,7 @@ The generated video will be saved to the specified local path in the workspace."
 
 class LongVideoGenerateFromTextTool(LLMTool):
     name = "generate_long_video_from_text"
-    description = f"""Generates a long video (>= 10 seconds) based on a sequence of text prompts. Each prompt presents a new scene in the video, each scene is minimum 5 and maximum 8 seconds (preferably 5 seconds). Video is combined sequentially from the first scene to the last.
+    description = """Generates a long video (>= 10 seconds) based on a sequence of text prompts. Each prompt presents a new scene in the video, each scene is minimum 5 and maximum 8 seconds (preferably 5 seconds). Video is combined sequentially from the first scene to the last.
 The generated video will be saved to the specified local path in the workspace."""
     input_schema = {
         "type": "object",
@@ -519,7 +519,7 @@ The generated video will be saved to the specified local path in the workspace."
         if not MEDIA_GCP_PROJECT_ID:
             raise ValueError("MEDIA_GCP_PROJECT_ID environment variable not set.")
 
-    def run_impl(
+    async def run_impl(
         self,
         tool_input: dict[str, Any],
         message_history: Optional[MessageHistory] = None,
@@ -562,11 +562,11 @@ The generated video will be saved to the specified local path in the workspace."
                 duration_per_scene = 8
             
             # Generate first scene from text
-            first_scene_filename = f"scene_0.mp4"
+            first_scene_filename = "scene_0.mp4"
             first_scene_path = temp_dir / first_scene_filename
             
             text_tool = VideoGenerateFromTextTool(self.workspace_manager)
-            first_scene_result = text_tool.run_impl({
+            first_scene_result = await text_tool.run_impl({
                 "prompt": prompts[0],
                 "output_filename": str(first_scene_path.relative_to(self.workspace_manager.workspace_path(Path()))),
                 "aspect_ratio": aspect_ratio,
@@ -612,7 +612,7 @@ The generated video will be saved to the specified local path in the workspace."
                 scene_filename = f"scene_{i}.mp4"
                 scene_path = temp_dir / scene_filename
                 
-                scene_result = image_tool.run_impl({
+                scene_result = await image_tool.run_impl({
                     "image_file_path": str(last_frame_path.relative_to(self.workspace_manager.workspace_path(Path()))),
                     "output_filename": str(scene_path.relative_to(self.workspace_manager.workspace_path(Path()))),
                     "prompt": prompt,
@@ -683,7 +683,7 @@ The generated video will be saved to the specified local path in the workspace."
 
 class LongVideoGenerateFromImageTool(LLMTool):
     name = "generate_long_video_from_image"
-    description = f"""Generates a long video (>= 10 seconds) based on input image and a sequence of text prompts. Each prompt presents a new scene in the video, each scene is minimum 5 and maximum 8 seconds (preferably 5 seconds). Video is combined sequentially from the first scene to the last.
+    description = """Generates a long video (>= 10 seconds) based on input image and a sequence of text prompts. Each prompt presents a new scene in the video, each scene is minimum 5 and maximum 8 seconds (preferably 5 seconds). Video is combined sequentially from the first scene to the last.
 The generated video will be saved to the specified local path in the workspace."""
     input_schema = {
         "type": "object",
@@ -727,7 +727,7 @@ The generated video will be saved to the specified local path in the workspace."
         super().__init__()
         self.workspace_manager = workspace_manager
 
-    def run_impl(
+    async def run_impl(
         self,
         tool_input: dict[str, Any],
         message_history: Optional[MessageHistory] = None,
@@ -771,11 +771,11 @@ The generated video will be saved to the specified local path in the workspace."
                 duration_per_scene = 8
             
             # Generate first scene from text
-            first_scene_filename = f"scene_0.mp4"
+            first_scene_filename = "scene_0.mp4"
             first_scene_path = temp_dir / first_scene_filename
             
             image_tool = VideoGenerateFromImageTool(self.workspace_manager)
-            first_scene_result = image_tool.run_impl({
+            first_scene_result = await image_tool.run_impl({
                 "image_file_path": image_file_path,
                 "prompt": prompts[0],
                 "output_filename": str(first_scene_path.relative_to(self.workspace_manager.workspace_path(Path()))),
@@ -819,7 +819,7 @@ The generated video will be saved to the specified local path in the workspace."
                 scene_filename = f"scene_{i}.mp4"
                 scene_path = temp_dir / scene_filename
                 
-                scene_result = image_tool.run_impl({
+                scene_result = await image_tool.run_impl({
                     "image_file_path": str(last_frame_path.relative_to(self.workspace_manager.workspace_path(Path()))),
                     "output_filename": str(scene_path.relative_to(self.workspace_manager.workspace_path(Path()))),
                     "prompt": prompt,

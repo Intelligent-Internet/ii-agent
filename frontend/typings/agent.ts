@@ -24,6 +24,7 @@ export type Source = {
 };
 
 export enum AgentEvent {
+  AGENT_INITIALIZED = "agent_initialized",
   USER_MESSAGE = "user_message",
   CONNECTION_ESTABLISHED = "connection_established",
   WORKSPACE_INFO = "workspace_info",
@@ -67,6 +68,8 @@ export enum TOOL {
   RETURN_CONTROL_TO_USER = "return_control_to_user",
   SLIDE_DECK_INIT = "slide_deck_init",
   SLIDE_DECK_COMPLETE = "slide_deck_complete",
+  DISPLAY_IMAGE = "display_image",
+  REVIEWER_AGENT = "reviewer_agent",
 
   // browser tools
   BROWSER_VIEW = "browser_view",
@@ -82,6 +85,7 @@ export enum TOOL {
   BROWSER_SELECT_DROPDOWN_OPTION = "browser_select_dropdown_option",
   BROWSER_SWITCH_TAB = "browser_switch_tab",
   BROWSER_OPEN_NEW_TAB = "browser_open_new_tab",
+  BROWSER_VIEW_INTERACTIVE_ELEMENTS = "browser_view_interactive_elements",
 }
 
 export type ActionStep = {
@@ -120,6 +124,7 @@ export interface Message {
   action?: ActionStep;
   files?: string[]; // File names
   fileContents?: { [filename: string]: string }; // Base64 content of files
+  isHidden?: boolean;
 }
 
 export interface ISession {
@@ -127,7 +132,7 @@ export interface ISession {
   workspace_dir: string;
   created_at: string;
   device_id: string;
-  first_message: string;
+  name: string;
 }
 
 export interface IEvent {
@@ -148,6 +153,7 @@ export interface ToolSettings {
   audio_generation: boolean;
   browser: boolean;
   thinking_tokens: number;
+  enable_reviewer: boolean;
 }
 export interface GooglePickerResponse {
   action: string;

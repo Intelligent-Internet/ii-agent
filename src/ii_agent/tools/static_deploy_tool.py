@@ -35,7 +35,7 @@ class StaticDeployTool(LLMTool):
         default_base_url = f"file://{workspace_manager.root.parent.parent.absolute()}"
         self.base_url = os.getenv("STATIC_FILE_BASE_URL", default_base_url)
 
-    def run_impl(
+    async def run_impl(
         self,
         tool_input: dict[str, Any],
         message_history: Optional[MessageHistory] = None,

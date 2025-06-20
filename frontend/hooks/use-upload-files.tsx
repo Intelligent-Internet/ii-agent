@@ -20,6 +20,8 @@ export function useUploadFiles() {
     ): Promise<UploadResult[]> => {
       if (!files.length) return [];
 
+      dispatch({ type: "SET_REQUIRE_CLEAR_FILES", payload: false });
+
       // Check if we're dealing with a folder upload from Google Drive
       const folderFile = files.find((file) => file.name.startsWith("folder:"));
 
@@ -40,6 +42,7 @@ export function useUploadFiles() {
         files: messageFiles,
         fileContents: fileContentMap,
         timestamp: Date.now(),
+        isHidden: true, // Mark as hidden initially
       };
 
       if (!dontAddToUserMessage) {

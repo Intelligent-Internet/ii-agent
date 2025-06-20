@@ -53,7 +53,7 @@ Supported file formats: {", ".join(SUPPORTED_AUDIO_FORMATS)}"""
             api_version="2025-01-01-preview",
         )
 
-    def run_impl(
+    async def run_impl(
         self,
         tool_input: dict[str, Any],
         message_history: Optional[MessageHistory] = None,
@@ -178,7 +178,7 @@ Saves the output as an MP3 file in the workspace. Available voices: {", ".join(A
             print("Audio generation might fail without ffmpeg.")
             print("---------------\n")
 
-    def run_impl(
+    async def run_impl(
         self,
         tool_input: dict[str, Any],
         message_history: Optional[MessageHistory] = None,

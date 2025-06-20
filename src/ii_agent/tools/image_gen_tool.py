@@ -79,7 +79,9 @@ The generated image will be saved to the specified local path in the workspace a
         super().__init__()
         self.workspace_manager = workspace_manager
         if not MEDIA_GCP_PROJECT_ID or not MEDIA_GCP_LOCATION:
-            raise ValueError("MEDIA_GCP_PROJECT_ID and MEDIA_GCP_LOCATION environment variables not set.")
+            raise ValueError(
+                "MEDIA_GCP_PROJECT_ID and MEDIA_GCP_LOCATION environment variables not set."
+            )
 
         try:
             vertexai.init(project=MEDIA_GCP_PROJECT_ID, location=MEDIA_GCP_LOCATION)
@@ -90,7 +92,7 @@ The generated image will be saved to the specified local path in the workspace a
             print(f"Error initializing Vertex AI or loading Imagen model: {e}")
             self.model = None
 
-    def run_impl(
+    async def run_impl(
         self,
         tool_input: dict[str, Any],
         message_history: Optional[MessageHistory] = None,
@@ -184,9 +186,3 @@ The generated image will be saved to the specified local path in the workspace a
 
     def get_tool_start_message(self, tool_input: dict[str, Any]) -> str:
         return f"Generating image from text prompt, saving to: {tool_input['output_filename']}"
-
-
-if __name__ == "__main__":
-    workspace_manager = WorkspaceManager(root="workspace")
-    tool = ImageGenerateTool(workspace_manager)
-    print(tool.run_impl({"prompt": "A photo of a cat", "output_filename": "cat.png"}))

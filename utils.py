@@ -94,6 +94,12 @@ def parse_common_args(parser: ArgumentParser):
         default=None,
         help="Prompt to use for the LLM",
     )
+    parser.add_argument(
+        "--enable-reviewer",
+        action="store_true",
+        default=False,
+        help="Enable reviewer agent to analyze and improve outputs",
+    )
     return parser
 
 

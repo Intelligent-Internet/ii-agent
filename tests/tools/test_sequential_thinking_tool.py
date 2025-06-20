@@ -9,10 +9,10 @@ from ii_agent.tools.sequential_thinking_tool import (
 )
 
 
-class TestSequentialThinkingTool(unittest.TestCase):
+class TestSequentialThinkingTool(unittest.IsolatedAsyncioTestCase):
     """Test cases for the SequentialThinkingTool."""
 
-    def setUp(self):
+    async def asyncSetUp(self):
         """Set up test fixtures."""
         self.mock_logger = Mock()
         self.tool = SequentialThinkingTool(self.mock_logger)
@@ -101,7 +101,7 @@ class TestSequentialThinkingTool(unittest.TestCase):
         self.assertIn("(from thought 2, ID: branch-1)", formatted)
         self.assertIn("This is a branch", formatted)
 
-    def test_run_impl_success(self):
+    async def test_run_impl_success(self):
         """Test successful execution of run_impl."""
         input_data = {
             "thought": "This is a test thought",
@@ -114,7 +114,7 @@ class TestSequentialThinkingTool(unittest.TestCase):
             mock_logger = Mock()
             mock_get_logger.return_value = mock_logger
 
-            result = self.tool.run_impl(input_data)
+            result = await self.tool.run_impl(input_data)
 
             # Verify the result
             self.assertIsNotNone(result)
@@ -134,10 +134,10 @@ class TestSequentialThinkingTool(unittest.TestCase):
                 "This is a test thought",
             )
 
-    def test_run_impl_with_branch(self):
+    async def test_run_impl_with_branch(self):
         """Test run_impl with a branch thought."""
         # First add a regular thought
-        self.tool.run_impl(
+        await self.tool.run_impl(
             {
                 "thought": "Initial thought",
                 "thoughtNumber": 1,
@@ -156,7 +156,7 @@ class TestSequentialThinkingTool(unittest.TestCase):
             "branchId": "test-branch",
         }
 
-        result = self.tool.run_impl(branch_input)
+        result = await self.tool.run_impl(branch_input)
 
         # Verify branch was created
         self.assertIn("test-branch", self.tool.branches)
@@ -166,14 +166,14 @@ class TestSequentialThinkingTool(unittest.TestCase):
         output_data = json.loads(result.tool_output)
         self.assertIn("test-branch", output_data["branches"])
 
-    def test_run_impl_error(self):
+    async def test_run_impl_error(self):
         """Test run_impl with invalid input that causes an error."""
         invalid_input = {
             # Missing required fields
             "thought": "Test thought"
         }
 
-        result = self.tool.run_impl(invalid_input)
+        result = await self.tool.run_impl(invalid_input)
 
         # Verify error response
         self.assertIn("error", result.tool_output)
@@ -184,7 +184,7 @@ class TestSequentialThinkingTool(unittest.TestCase):
         self.assertEqual(output_data["status"], "failed")
         self.assertIn("Invalid", output_data["error"])
 
-    def test_adjust_total_thoughts(self):
+    async def test_adjust_total_thoughts(self):
         """Test that totalThoughts is adjusted if thoughtNumber is greater."""
         input_data = {
             "thought": "Thought beyond the initial estimate",
@@ -193,7 +193,7 @@ class TestSequentialThinkingTool(unittest.TestCase):
             "nextThoughtNeeded": True,
         }
 
-        result = self.tool.run_impl(input_data)
+        result = await self.tool.run_impl(input_data)
         output_data = json.loads(result.tool_output)
 
         # Verify totalThoughts was adjusted

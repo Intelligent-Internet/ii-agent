@@ -31,7 +31,7 @@ class PdfTextExtractTool(LLMTool):
         self.workspace_manager = workspace_manager
         self.max_output_length = max_output_length
 
-    def run_impl(
+    async def run_impl(
         self,
         tool_input: dict[str, Any],
         message_history: Optional[MessageHistory] = None,

@@ -1,7 +1,15 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Check, CircleStop, Pencil, Folder } from "lucide-react";
+import {
+  Check,
+  CircleStop,
+  Pencil,
+  Folder,
+  SkipForward,
+  SearchCheck,
+} from "lucide-react";
+import { useState, useEffect } from "react";
 
 import Action from "@/components/action";
 import Markdown from "@/components/markdown";
@@ -25,6 +33,9 @@ interface ChatMessageProps {
   handleEnhancePrompt: () => void;
   handleCancel: () => void;
   handleEditMessage: (newQuestion: string) => void;
+  processAllEventsImmediately?: () => void;
+  connectWebSocket: () => void;
+  handleReviewSession: () => void;
 }
 
 const ChatMessage = ({
@@ -37,8 +48,36 @@ const ChatMessage = ({
   handleEnhancePrompt,
   handleCancel,
   handleEditMessage,
+  processAllEventsImmediately,
+  connectWebSocket,
+  handleReviewSession,
 }: ChatMessageProps) => {
   const { state, dispatch } = useAppContext();
+  const [showQuestionInput, setShowQuestionInput] = useState(false);
+  const [pendingFilesCount, setPendingFilesCount] = useState(0);
+
+  const handleFilesChange = (count: number) => {
+    setPendingFilesCount(count);
+  };
+
+  useEffect(() => {
+    if (isReplayMode && !state.isLoading && state.messages.length > 0) {
+      // If we're in replay mode, loading is complete, and we have messages,
+      // we can assume all events have been processed
+      setShowQuestionInput(true);
+    }
+  }, [isReplayMode, state.isLoading, state.messages.length]);
+
+  const handleJumpToResult = () => {
+    if (processAllEventsImmediately) {
+      processAllEventsImmediately();
+    }
+
+    setTimeout(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      setShowQuestionInput(true);
+    }, 100);
+  };
 
   // Helper function to check if a message is the latest user message
   const isLatestUserMessage = (
@@ -56,10 +95,22 @@ const ChatMessage = ({
     dispatch({ type: "SET_EDITING_MESSAGE", payload: message });
   };
 
+  useEffect(() => {
+    if (isReplayMode && showQuestionInput) {
+      connectWebSocket();
+    }
+  }, [isReplayMode, showQuestionInput]);
+
   return (
     <div className="col-span-4">
       <motion.div
-        className="p-4 pt-0 w-full h-full max-h-[calc(100vh-230px)] overflow-y-auto relative"
+        className={`p-4 pt-0 w-full h-full ${
+          isReplayMode && !showQuestionInput
+            ? "max-h-[calc(100vh-167px)]"
+            : pendingFilesCount > 0
+            ? "max-h-[calc(100vh-330px)]"
+            : "max-h-[calc(100vh-210px)]"
+        } overflow-y-auto relative`}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 0.2, duration: 0.3 }}
@@ -69,7 +120,9 @@ const ChatMessage = ({
             key={message.id}
             className={`mb-4 ${
               message.role === "user" ? "text-right" : "text-left"
-            } ${message.role === "user" && !message.files && "mb-8"}`}
+            } ${message.role === "user" && !message.files && "mb-8"} ${
+              message.isHidden ? "hidden" : ""
+            }`}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 * index, duration: 0.3 }}
@@ -305,9 +358,40 @@ const ChatMessage = ({
         )}
 
         {state.isCompleted && (
-          <div className="flex gap-x-2 items-center bg-[#25BA3B1E] text-green-600 text-sm p-2 rounded-full">
-            <Check className="size-4" />
-            <span>II-Agent has completed the current task.</span>
+          <div className="flex flex-col gap-y-4">
+            <div className="flex gap-x-2 items-center bg-[#25BA3B1E] text-green-600 text-sm p-2 rounded-full">
+              <div className="flex gap-x-2 items-center">
+                <Check className="size-4" />
+                <span>II-Agent has completed the current task.</span>
+              </div>
+            </div>
+            {state.toolSettings?.enable_reviewer && (
+              <div
+                className={`group cursor-pointer flex items-start gap-2 px-3 py-2 bg-[#35363a] rounded-xl backdrop-blur-sm 
+      shadow-sm
+      transition-all duration-200 ease-out
+      hover:shadow-[0_2px_8px_rgba(0,0,0,0.24)]
+      active:scale-[0.98] overflow-hidden
+      animate-fadeIn`}
+              >
+                <div className="flex text-sm items-center justify-between flex-1">
+                  <div className="flex items-center gap-x-1.5 flex-1">
+                    <SearchCheck className="size-5 text-white" />
+                    <span className="text-neutral-100 flex-1 font-medium group-hover:text-white">
+                      Allow II-Agent to review the results
+                    </span>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="cursor-pointer text-neutral-900 bg-gradient-skyblue-lavender hover:text-neutral-950"
+                    onClick={handleReviewSession}
+                  >
+                    Review
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -320,25 +404,71 @@ const ChatMessage = ({
 
         <div ref={messagesEndRef} />
       </motion.div>
-      <motion.div
-        className="sticky bottom-0 left-0 w-full"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.2, duration: 0.3 }}
-      >
-        <QuestionInput
-          hideSettings
-          className="p-4 pb-0 w-full max-w-none"
-          textareaClassName="h-30 w-full"
-          placeholder="Ask me anything..."
-          value={state.currentQuestion}
-          setValue={setCurrentQuestion}
-          handleKeyDown={handleKeyDown}
-          handleSubmit={handleQuestionSubmit}
-          handleEnhancePrompt={handleEnhancePrompt}
-          handleCancel={handleCancel}
-        />
-      </motion.div>
+      {isReplayMode ? (
+        showQuestionInput ? (
+          <QuestionInput
+            hideSettings
+            className="px-4 w-full max-w-none"
+            textareaClassName="h-30 w-full"
+            placeholder="Ask me anything..."
+            value={state.currentQuestion}
+            setValue={setCurrentQuestion}
+            handleKeyDown={handleKeyDown}
+            handleSubmit={handleQuestionSubmit}
+            handleEnhancePrompt={handleEnhancePrompt}
+            handleCancel={handleCancel}
+            onFilesChange={handleFilesChange}
+          />
+        ) : (
+          <motion.div
+            className="sticky bottom-0 left-0 w-full p-4 pb-0"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.2, duration: 0.3 }}
+          >
+            <div className="bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-3 flex items-center justify-between">
+              <div className="flex items-center gap-2 ml-2">
+                <div className="animate-pulse">
+                  <div className="h-2 w-2 bg-white rounded-full"></div>
+                </div>
+                <span className="text-white">
+                  II-Agent is replaying the task...
+                </span>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  className="cursor-pointer"
+                  onClick={handleJumpToResult}
+                >
+                  <SkipForward /> Skip to results
+                </Button>
+              </div>
+            </div>
+          </motion.div>
+        )
+      ) : (
+        <motion.div
+          className="sticky bottom-0 left-0 w-full"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.2, duration: 0.3 }}
+        >
+          <QuestionInput
+            hideSettings
+            className="p-4 pb-0 w-full max-w-none"
+            textareaClassName="h-30 w-full"
+            placeholder="Ask me anything..."
+            value={state.currentQuestion}
+            setValue={setCurrentQuestion}
+            handleKeyDown={handleKeyDown}
+            handleSubmit={handleQuestionSubmit}
+            handleEnhancePrompt={handleEnhancePrompt}
+            handleCancel={handleCancel}
+            onFilesChange={handleFilesChange}
+          />
+        </motion.div>
+      )}
     </div>
   );
 };

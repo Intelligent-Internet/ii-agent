@@ -92,7 +92,7 @@ class SimpleMemoryTool(LLMTool):
     def __str__(self) -> str:
         return self.full_memory
 
-    def run_impl(
+    async def run_impl(
         self,
         tool_input: Dict[str, Any],
         message_history: Optional[MessageHistory] = None,

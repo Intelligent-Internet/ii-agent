@@ -1,51 +1,49 @@
 from contextlib import contextmanager
-from typing import Optional, Generator
+from typing import Optional, Generator, List
 import uuid
 from pathlib import Path
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, asc, text
 from sqlalchemy.orm import sessionmaker, Session as DBSession
 from ii_agent.db.models import Base, Session, Event
 from ii_agent.core.event import EventType, RealtimeEvent
 
 
-class DatabaseManager:
-    """Manager class for database operations."""
+# Database setup
+DATABASE_URL = "sqlite:///db/events.db"
+engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine, expire_on_commit=False)
 
-    def __init__(self, db_path: str = "events.db"):
-        """Initialize the database manager.
+# Create tables if they don't exist
+Base.metadata.create_all(engine)
 
-        Args:
-            db_path: Path to the SQLite database file
-        """
-        self.engine = create_engine(f"sqlite:///{db_path}")
-        self.SessionFactory = sessionmaker(bind=self.engine)
 
-        # Create tables if they don't exist
-        Base.metadata.create_all(self.engine)
+@contextmanager
+def get_db() -> Generator[DBSession, None, None]:
+    """Get a database session as a context manager.
 
-    @contextmanager
-    def get_session(self) -> Generator[DBSession, None, None]:
-        """Get a database session as a context manager.
+    Yields:
+        A database session that will be automatically committed or rolled back
+    """
+    db = SessionLocal()
+    try:
+        yield db
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
 
-        Yields:
-            A database session that will be automatically committed or rolled back
-        """
-        session = self.SessionFactory()
-        try:
-            yield session
-            session.commit()
-        except Exception:
-            session.rollback()
-            raise
-        finally:
-            session.close()
+
+class SessionsTable:
+    """Table class for session operations following Open WebUI pattern."""
 
     def create_session(
         self,
         session_uuid: uuid.UUID,
         workspace_path: Path,
         device_id: Optional[str] = None,
-    ) -> None:
+    ) -> tuple[uuid.UUID, Path]:
         """Create a new session with a UUID-based workspace directory.
 
         Args:
@@ -56,50 +54,15 @@ class DatabaseManager:
         Returns:
             A tuple of (session_uuid, workspace_path)
         """
-
         # Create session in database
-        with self.get_session() as session:
+        with get_db() as db:
             db_session = Session(
                 id=session_uuid, workspace_dir=str(workspace_path), device_id=device_id
             )
-            session.add(db_session)
-            session.flush()  # This will populate the id field
+            db.add(db_session)
+            db.flush()  # This will populate the id field
 
         return session_uuid, workspace_path
-
-    def save_event(self, session_id: uuid.UUID, event: RealtimeEvent) -> uuid.UUID:
-        """Save an event to the database.
-
-        Args:
-            session_id: The UUID of the session this event belongs to
-            event: The event to save
-
-        Returns:
-            The UUID of the created event
-        """
-        with self.get_session() as session:
-            db_event = Event(
-                session_id=session_id,
-                event_type=event.type.value,
-                event_payload=event.model_dump(),
-            )
-            session.add(db_event)
-            session.flush()  # This will populate the id field
-            return uuid.UUID(db_event.id)
-
-    def get_session_events(self, session_id: uuid.UUID) -> list[Event]:
-        """Get all events for a session.
-
-        Args:
-            session_id: The UUID of the session
-
-        Returns:
-            A list of events for the session
-        """
-        with self.get_session() as session:
-            return (
-                session.query(Event).filter(Event.session_id == str(session_id)).all()
-            )
 
     def get_session_by_workspace(self, workspace_dir: str) -> Optional[Session]:
         """Get a session by its workspace directory.
@@ -110,9 +73,9 @@ class DatabaseManager:
         Returns:
             The session if found, None otherwise
         """
-        with self.get_session() as session:
+        with get_db() as db:
             return (
-                session.query(Session)
+                db.query(Session)
                 .filter(Session.workspace_dir == workspace_dir)
                 .first()
             )
@@ -126,8 +89,8 @@ class DatabaseManager:
         Returns:
             The session if found, None otherwise
         """
-        with self.get_session() as session:
-            return session.query(Session).filter(Session.id == str(session_id)).first()
+        with get_db() as db:
+            return db.query(Session).filter(Session.id == str(session_id)).first()
 
     def get_session_by_device_id(self, device_id: str) -> Optional[Session]:
         """Get a session by its device ID.
@@ -138,8 +101,99 @@ class DatabaseManager:
         Returns:
             The session if found, None otherwise
         """
-        with self.get_session() as session:
-            return session.query(Session).filter(Session.device_id == device_id).first()
+        with get_db() as db:
+            return db.query(Session).filter(Session.device_id == device_id).first()
+
+    def update_session_name(self, session_id: uuid.UUID, name: str) -> None:
+        """Update the name of a session.
+
+        Args:
+            session_id: The UUID of the session to update
+            name: The new name for the session
+        """
+        with get_db() as db:
+            db_session = db.query(Session).filter(Session.id == str(session_id)).first()
+            if db_session:
+                db_session.name = name
+                db.flush()
+
+    def get_sessions_by_device_id(self, device_id: str) -> List[dict]:
+        """Get all sessions for a specific device ID, sorted by creation time descending.
+        
+        Args:
+            device_id: The device identifier to look up sessions for
+
+        Returns:
+            A list of session dictionaries with their details, sorted by creation time descending
+        """
+        with get_db() as db:
+            # Use raw SQL query to get sessions by device_id
+            query = text("""
+            SELECT 
+                session.id,
+                session.workspace_dir,
+                session.created_at,
+                session.device_id,
+                session.name
+            FROM session
+            WHERE session.device_id = :device_id
+            ORDER BY session.created_at DESC
+            """)
+
+            # Execute the raw query with parameters
+            result = db.execute(query, {"device_id": device_id})
+
+            # Convert result to a list of dictionaries
+            sessions = []
+            for row in result:
+                session_data = {
+                    "id": row.id,
+                    "workspace_dir": row.workspace_dir,
+                    "created_at": row.created_at,
+                    "device_id": row.device_id,
+                    "name": row.name or "",
+                }
+                sessions.append(session_data)
+
+            return sessions
+
+
+class EventsTable:
+    """Table class for event operations following Open WebUI pattern."""
+
+    def save_event(self, session_id: uuid.UUID, event: RealtimeEvent) -> uuid.UUID:
+        """Save an event to the database.
+
+        Args:
+            session_id: The UUID of the session this event belongs to
+            event: The event to save
+
+        Returns:
+            The UUID of the created event
+        """
+        with get_db() as db:
+            db_event = Event(
+                session_id=session_id,
+                event_type=event.type.value,
+                event_payload=event.model_dump(),
+            )
+            db.add(db_event)
+            db.flush()  # This will populate the id field
+            return uuid.UUID(db_event.id)
+
+    def get_session_events(self, session_id: uuid.UUID) -> list[Event]:
+        """Get all events for a session.
+
+        Args:
+            session_id: The UUID of the session
+
+        Returns:
+            A list of events for the session
+        """
+        with get_db() as db:
+            return (
+                db.query(Event).filter(Event.session_id == str(session_id)).all()
+            )
 
     def delete_session_events(self, session_id: uuid.UUID) -> None:
         """Delete all events for a session.
@@ -147,22 +201,23 @@ class DatabaseManager:
         Args:
             session_id: The UUID of the session to delete events for
         """
-        with self.get_session() as session:
-            session.query(Event).filter(Event.session_id == str(session_id)).delete()
+        with get_db() as db:
+            db.query(Event).filter(Event.session_id == str(session_id)).delete()
 
     def delete_events_from_last_to_user_message(self, session_id: uuid.UUID) -> None:
         """Delete events from the most recent event backwards to the last user message (inclusive).
         This preserves the conversation history before the last user message.
+        
         Args:
             session_id: The UUID of the session to delete events for
         """
-        with self.get_session() as session:
+        with get_db() as db:
             # Find the last user message event
             last_user_event = (
-                session.query(Event)
+                db.query(Event)
                 .filter(
                     Event.session_id == str(session_id),
-                    Event.event_type == EventType.USER_MESSAGE.value
+                    Event.event_type == EventType.USER_MESSAGE.value,
                 )
                 .order_by(Event.timestamp.desc())
                 .first()
@@ -170,12 +225,49 @@ class DatabaseManager:
 
             if last_user_event:
                 # Delete all events after the last user message (inclusive)
-                session.query(Event).filter(
+                db.query(Event).filter(
                     Event.session_id == str(session_id),
-                    Event.timestamp >= last_user_event.timestamp
+                    Event.timestamp >= last_user_event.timestamp,
                 ).delete()
             else:
                 # If no user message found, delete all events
-                session.query(Event).filter(
+                db.query(Event).filter(
                     Event.session_id == str(session_id)
                 ).delete()
+
+    def get_session_events_with_details(self, session_id: str) -> List[dict]:
+        """Get all events for a specific session ID with session details, sorted by timestamp ascending.
+
+        Args:
+            session_id: The session identifier to look up events for
+
+        Returns:
+            A list of event dictionaries with their details, sorted by timestamp ascending
+        """
+        with get_db() as db:
+            events = (
+                db.query(Event)
+                .filter(Event.session_id == session_id)
+                .order_by(asc(Event.timestamp))
+                .all()
+            )
+
+            # Convert events to a list of dictionaries
+            event_list = []
+            for e in events:
+                event_data = {
+                    "id": e.id,
+                    "session_id": e.session_id,
+                    "timestamp": e.timestamp.isoformat(),
+                    "event_type": e.event_type,
+                    "event_payload": e.event_payload,
+                    "workspace_dir": e.session.workspace_dir,
+                }
+                event_list.append(event_data)
+
+            return event_list
+
+
+# Create singleton instances following Open WebUI pattern
+Sessions = SessionsTable()
+Events = EventsTable()

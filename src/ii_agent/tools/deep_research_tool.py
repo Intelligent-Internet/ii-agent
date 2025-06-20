@@ -51,7 +51,7 @@ class DeepResearchTool(LLMTool):
     def reset(self):
         self.answer = ""
 
-    def run_impl(
+    async def run_impl(
         self,
         tool_input: dict[str, Any],
         message_history: Optional[MessageHistory] = None,
@@ -60,9 +60,7 @@ class DeepResearchTool(LLMTool):
         agent = ReasoningAgent(
             question=tool_input["query"], report_type=ReportType.BASIC
         )
-        result = get_event_loop().run_until_complete(
-            agent.run(on_token=on_token, is_stream=True)
-        )
+        result = await agent.run(on_token=on_token, is_stream=True)
 
         assert result, "Model returned empty answer"
         self.answer = result

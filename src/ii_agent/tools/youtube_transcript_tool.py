@@ -5,7 +5,8 @@ from ii_agent.tools.base import (
 from typing import Any, Optional
 from ii_agent.llm.message_history import MessageHistory
 import yt_dlp
-import requests
+import aiohttp
+import asyncio
 
 
 class YoutubeTranscriptTool(LLMTool):
@@ -29,7 +30,7 @@ class YoutubeTranscriptTool(LLMTool):
     def __init__(self):
         super().__init__()
 
-    def run_impl(
+    async def run_impl(
         self,
         tool_input: dict[str, Any],
         message_history: Optional[MessageHistory] = None,
@@ -44,8 +45,13 @@ class YoutubeTranscriptTool(LLMTool):
                 "skip_download": True,
             }
 
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=False)
+            # Run yt_dlp in thread pool since it's not async
+            loop = asyncio.get_event_loop()
+            info = await loop.run_in_executor(
+                None, 
+                lambda: yt_dlp.YoutubeDL(ydl_opts).extract_info(url, download=False)
+            )
+            
             # Get manual or auto subtitles
             subtitles = info.get("subtitles", {})
             automatic_captions = info.get("automatic_captions", {})
@@ -54,24 +60,38 @@ class YoutubeTranscriptTool(LLMTool):
             subtitle_list = subtitles.get("en", []) or automatic_captions.get("en", [])
 
             if not subtitle_list:
-                return "No subtitles available for the requested language."
+                return ToolImplOutput(
+                    tool_output="No subtitles available for the requested language.",
+                    tool_result_message="No subtitles found",
+                    auxiliary_data={"success": False}
+                )
 
             # Get the first subtitle URL (usually VTT format)
             subtitle_url = subtitle_list[0]["url"]
 
-            # Download and return subtitle text
-            response = requests.get(subtitle_url)
-            response.raise_for_status()
-            events = response.json().get("events")
+            # Download subtitle text using aiohttp
+            async with aiohttp.ClientSession() as session:
+                async with session.get(subtitle_url) as response:
+                    response.raise_for_status()
+                    subtitle_data = await response.json()
+                    
+            events = subtitle_data.get("events", [])
             subtitle_text = ""
             for event in events:
                 if "segs" in event:
                     for seg in event["segs"]:
-                        subtitle_text += seg["utf8"]
+                        subtitle_text += seg.get("utf8", "")
+                        
             return ToolImplOutput(
-                tool_output=subtitle_text, tool_result_message=subtitle_text
+                tool_output=subtitle_text, 
+                tool_result_message="Successfully extracted transcript",
+                auxiliary_data={"success": True}
             )
 
         except Exception as e:
-            print(f"Error fetching subtitles: {str(e)}")
-            return ""
+            error_msg = f"Error fetching subtitles: {str(e)}"
+            return ToolImplOutput(
+                tool_output=error_msg,
+                tool_result_message="Failed to extract transcript",
+                auxiliary_data={"success": False, "error": str(e)}
+            )

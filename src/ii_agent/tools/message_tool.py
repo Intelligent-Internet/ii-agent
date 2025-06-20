@@ -23,7 +23,7 @@ Send a message to the user. Use this tool to communicate effectively in a variet
         "required": ["text"],
     }
 
-    def run_impl(
+    async def run_impl(
         self,
         tool_input: dict[str, Any],
         message_history: Optional[MessageHistory] = None,

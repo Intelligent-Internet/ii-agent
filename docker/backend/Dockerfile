@@ -51,6 +51,10 @@ RUN playwright install --with-deps chromium
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
+ENV FILE_STORE=local
+ENV FILE_STORE_PATH=/.ii_agent_file_store
+
+RUN mkdir -p $FILE_STORE_PATH
 
 COPY docker/backend/run.sh /app/run.sh
 RUN chmod +x /app/run.sh

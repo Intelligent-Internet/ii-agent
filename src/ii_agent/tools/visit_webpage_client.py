@@ -1,7 +1,7 @@
-import requests
+import asyncio
+import aiohttp
 from .utils import truncate_content
 import os
-import json
 from ii_agent.utils.constants import VISIT_WEB_PAGE_MAX_OUTPUT_LENGTH
 
 
@@ -29,6 +29,9 @@ class BaseVisitClient:
     max_output_length: int
 
     def forward(self, url: str) -> str:
+        return asyncio.run(self.forward_async(url))
+
+    async def forward_async(self, url: str) -> str:
         raise NotImplementedError("Subclasses must implement this method")
 
 
@@ -38,25 +41,28 @@ class MarkdownifyVisitClient(BaseVisitClient):
     def __init__(self, max_output_length: int = VISIT_WEB_PAGE_MAX_OUTPUT_LENGTH):
         self.max_output_length = max_output_length
 
-    def forward(self, url: str) -> str:
+    async def forward_async(self, url: str) -> str:
         try:
             import re
-            import requests
             from markdownify import markdownify
-            from requests.exceptions import RequestException
 
         except ImportError:
             raise WebpageVisitException(
-                "Required packages 'markdownify' and 'requests' are not installed"
+                "Required package 'markdownify' is not installed"
             )
 
         try:
             # Send a GET request to the URL with a 20-second timeout
-            response = requests.get(url, timeout=20)
-            response.raise_for_status()
+            timeout = aiohttp.ClientTimeout(total=20)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(url) as response:
+                    response.raise_for_status()
+                    html_content = await response.text()
 
-            # Convert the HTML content to Markdown
-            markdown_content = markdownify(response.text).strip()
+            # Convert the HTML content to Markdown (run in executor since markdownify is not async)
+            loop = asyncio.get_event_loop()
+            markdown_content = await loop.run_in_executor(None, markdownify, html_content)
+            markdown_content = markdown_content.strip()
 
             # Remove multiple line breaks
             markdown_content = re.sub(r"\n{3,}", "\n\n", markdown_content)
@@ -66,9 +72,9 @@ class MarkdownifyVisitClient(BaseVisitClient):
 
             return truncate_content(markdown_content, self.max_output_length)
 
-        except requests.exceptions.Timeout:
+        except asyncio.TimeoutError:
             raise NetworkError("The request timed out")
-        except RequestException as e:
+        except aiohttp.ClientError as e:
             raise NetworkError(f"Error fetching the webpage: {str(e)}")
 
 
@@ -81,41 +87,44 @@ class TavilyVisitClient(BaseVisitClient):
         if not self.api_key:
             raise WebpageVisitException("TAVILY_API_KEY environment variable not set")
 
-    def forward(self, url: str) -> str:
+    async def forward_async(self, url: str) -> str:
         try:
-            from tavily import TavilyClient
+            from tavily import AsyncTavilyClient
         except ImportError as e:
             raise ImportError(
                 "You must install package `tavily` to run this tool: for instance run `pip install tavily-python`."
             ) from e
 
-        tavily_client = TavilyClient(api_key=self.api_key)
-        response = tavily_client.extract(url)
+        try:
+            tavily_client = AsyncTavilyClient(api_key=self.api_key)
+            
+            # Extract webpage content
+            response = await tavily_client.extract(
+                url, include_images=True, extract_depth="advanced"
+            )
 
-        # Extract webpage content
-        response = tavily_client.extract(
-            url, include_images=True, extract_depth="advanced"
-        )
+            # Check if response contains results
+            if not response or "results" not in response or not response["results"]:
+                return f"No content could be extracted from {url}"
 
-        # Check if response contains results
-        if not response or "results" not in response or not response["results"]:
-            return f"No content could be extracted from {url}"
+            # Format the content from the first result
+            data = response["results"][0]
+            if not data:
+                return f"No textual content could be extracted from {url}"
 
-        # Format the content from the first result
-        data = response["results"][0]
-        if not data:
-            return f"No textual content could be extracted from {url}"
+            content = data["raw_content"]
+            # Format images as markdown
+            images = response["results"][0].get("images", [])
+            if images:
+                image_markdown = "\n\n### Images:\n"
+                for i, img_url in enumerate(images):
+                    image_markdown += f"![Image {i + 1}]({img_url})\n"
+                content += image_markdown
 
-        content = data["raw_content"]
-        # Format images as markdown
-        images = response["results"][0].get("images", [])
-        if images:
-            image_markdown = "\n\n### Images:\n"
-            for i, img_url in enumerate(images):
-                image_markdown += f"![Image {i + 1}]({img_url})\n"
-            content += image_markdown
+            return truncate_content(content, self.max_output_length)
 
-        return truncate_content(content, self.max_output_length)
+        except Exception as e:
+            raise WebpageVisitException(f"Error using Tavily: {str(e)}")
 
 
 class FireCrawlVisitClient(BaseVisitClient):
@@ -129,7 +138,7 @@ class FireCrawlVisitClient(BaseVisitClient):
                 "FIRECRAWL_API_KEY environment variable not set"
             )
 
-    def forward(self, url: str) -> str:
+    async def forward_async(self, url: str) -> str:
         base_url = "https://api.firecrawl.dev/v1/scrape"
         headers = {
             "Content-Type": "application/json",
@@ -138,12 +147,14 @@ class FireCrawlVisitClient(BaseVisitClient):
         payload = {"url": url, "onlyMainContent": False, "formats": ["markdown"]}
 
         try:
-            response = requests.request(
-                "POST", base_url, headers=headers, data=json.dumps(payload)
-            )
-            response.raise_for_status()
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    base_url, headers=headers, json=payload
+                ) as response:
+                    response.raise_for_status()
+                    response_data = await response.json()
 
-            data = response.json().get("data").get("markdown")
+            data = response_data.get("data", {}).get("markdown")
             if not data:
                 raise ContentExtractionError(
                     "No content could be extracted from webpage"
@@ -151,7 +162,7 @@ class FireCrawlVisitClient(BaseVisitClient):
 
             return truncate_content(data, self.max_output_length)
 
-        except requests.exceptions.RequestException as e:
+        except aiohttp.ClientError as e:
             raise NetworkError(f"Error making request: {str(e)}")
 
 
@@ -164,7 +175,7 @@ class JinaVisitClient(BaseVisitClient):
         if not self.api_key:
             raise WebpageVisitException("JINA_API_KEY environment variable not set")
 
-    def forward(self, url: str) -> str:
+    async def forward_async(self, url: str) -> str:
         jina_url = f"https://r.jina.ai/{url}"
         headers = {
             "Accept": "application/json",
@@ -175,10 +186,11 @@ class JinaVisitClient(BaseVisitClient):
         }
 
         try:
-            response = requests.get(jina_url, headers=headers)
-            response.raise_for_status()
+            async with aiohttp.ClientSession() as session:
+                async with session.get(jina_url, headers=headers) as response:
+                    response.raise_for_status()
+                    json_response = await response.json()
 
-            json_response = response.json()
             if not json_response or "data" not in json_response:
                 raise ContentExtractionError(
                     "No content could be extracted from webpage"
@@ -194,7 +206,7 @@ class JinaVisitClient(BaseVisitClient):
 
             return truncate_content(content, self.max_output_length)
 
-        except requests.exceptions.RequestException as e:
+        except aiohttp.ClientError as e:
             raise NetworkError(f"Error making request: {str(e)}")
 
 

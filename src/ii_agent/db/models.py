@@ -18,6 +18,7 @@ class Session(Base):
     workspace_dir = Column(String, unique=True, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     device_id = Column(String, nullable=True)  # Add device_id column
+    name = Column(String, nullable=True)  # Add name column
 
     # Relationship with events
     events = relationship(
@@ -25,7 +26,7 @@ class Session(Base):
     )
 
     def __init__(
-        self, id: uuid.UUID, workspace_dir: str, device_id: Optional[str] = None
+        self, id: uuid.UUID, workspace_dir: str, device_id: Optional[str] = None, name: Optional[str] = None
     ):
         """Initialize a session with a UUID and workspace directory.
 
@@ -33,10 +34,12 @@ class Session(Base):
             id: The UUID for the session
             workspace_dir: The workspace directory path
             device_id: Optional device identifier
+            name: Optional session name
         """
         self.id = str(id)  # Convert UUID to string for storage
         self.workspace_dir = workspace_dir
         self.device_id = device_id
+        self.name = name
 
 
 class Event(Base):

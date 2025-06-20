@@ -22,7 +22,7 @@ class CompactifyMemoryTool(LLMTool):
     def __init__(self, context_manager: ContextManager):
         self.context_manager = context_manager
 
-    def run_impl(
+    async def run_impl(
         self, tool_input: dict[str, Any], message_history: MessageHistory | None = None
     ) -> ToolImplOutput:
         if not message_history:

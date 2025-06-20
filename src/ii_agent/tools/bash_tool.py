@@ -248,7 +248,7 @@ Run commands in a bash shell
             filtered_command = filter.filter_command(filtered_command)
         return filtered_command
 
-    def run_impl(
+    async def run_impl(
         self,
         tool_input: Dict[str, Any],
         message_history: Optional[MessageHistory] = None,

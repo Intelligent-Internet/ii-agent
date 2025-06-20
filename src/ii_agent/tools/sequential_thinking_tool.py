@@ -228,7 +228,7 @@ You should:
 │ {thought.ljust(border_length)} │
 └{border}┘"""
 
-    def run_impl(
+    async def run_impl(
         self,
         tool_input: Dict[str, Any],
         message_history: Optional[MessageHistory] = None,

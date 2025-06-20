@@ -1,23 +1,5 @@
-#!/usr/bin/env python3
-"""
-FastAPI WebSocket Server for the Agent.
-
-This script provides a WebSocket interface for interacting with the Agent,
-allowing real-time communication with a frontend application.
-"""
-
-import os
 import argparse
-import asyncio
-import json
 import logging
-import uuid
-from pathlib import Path
-from typing import Dict, List, Set, Any
-from dotenv import load_dotenv
-
-load_dotenv()
-
 import uvicorn
 from fastapi import (
     FastAPI,
@@ -590,8 +572,6 @@ def setup_workspace(app, workspace_path):
 
 def main():
     """Main entry point for the WebSocket server."""
-    global global_args
-
     # Parse command-line arguments
     parser = argparse.ArgumentParser(
         description="WebSocket Server for interacting with the Agent"
@@ -610,233 +590,13 @@ def main():
         help="Port to run the server on",
     )
     args = parser.parse_args()
-    global_args = args
 
-    setup_workspace(app, args.workspace)
+    # Create the FastAPI app
+    app = create_app(args)
 
     # Start the FastAPI server
     logger.info(f"Starting WebSocket server on {args.host}:{args.port}")
     uvicorn.run(app, host=args.host, port=args.port)
-
-
-@app.post("/api/upload")
-async def upload_file_endpoint(request: Request):
-    """API endpoint for uploading a single file to the workspace.
-
-    Expects a JSON payload with:
-    - session_id: UUID of the session/workspace
-    - file: Object with path and content properties
-    """
-    try:
-        data = await request.json()
-        session_id = data.get("session_id")
-        file_info = data.get("file")
-
-        if not session_id:
-            return JSONResponse(
-                status_code=400, content={"error": "session_id is required"}
-            )
-
-        if not file_info:
-            return JSONResponse(
-                status_code=400, content={"error": "No file provided for upload"}
-            )
-
-        # Find the workspace path for this session
-        workspace_path = Path(global_args.workspace).resolve() / session_id
-        if not workspace_path.exists():
-            return JSONResponse(
-                status_code=404,
-                content={"error": f"Workspace not found for session: {session_id}"},
-            )
-
-        # Create the upload directory if it doesn't exist
-        upload_dir = workspace_path / UPLOAD_FOLDER_NAME
-        upload_dir.mkdir(parents=True, exist_ok=True)
-
-        file_path = file_info.get("path", "")
-        file_content = file_info.get("content", "")
-
-        if not file_path:
-            return JSONResponse(
-                status_code=400, content={"error": "File path is required"}
-            )
-
-        # Ensure the file path is relative to the workspace
-        if Path(file_path).is_absolute():
-            file_path = Path(file_path).name
-
-        # Create the full path within the upload directory
-        original_path = upload_dir / file_path
-        full_path = original_path
-
-        # Handle filename collision by adding a suffix
-        if full_path.exists():
-            base_name = full_path.stem
-            extension = full_path.suffix
-            counter = 1
-
-            # Keep incrementing counter until we find a unique filename
-            while full_path.exists():
-                new_filename = f"{base_name}_{counter}{extension}"
-                full_path = upload_dir / new_filename
-                counter += 1
-
-            # Update the file_path to reflect the new name
-            file_path = f"{full_path.relative_to(upload_dir)}"
-
-        # Ensure any subdirectories exist
-        full_path.parent.mkdir(parents=True, exist_ok=True)
-
-        # Check if content is base64 encoded (for binary files)
-        if file_content.startswith("data:"):
-            # Handle data URLs (e.g., "data:application/pdf;base64,...")
-            # Split the header from the base64 content
-            header, encoded = file_content.split(",", 1)
-
-            # Decode the content
-            decoded = base64.b64decode(encoded)
-
-            # Write binary content
-            with open(full_path, "wb") as f:
-                f.write(decoded)
-        else:
-            # Write text content
-            with open(full_path, "w") as f:
-                f.write(file_content)
-
-        # Log the upload
-        logger.info(f"File uploaded to {full_path}")
-
-        # Return the path relative to the workspace for client use
-        relative_path = f"/{UPLOAD_FOLDER_NAME}/{file_path}"
-
-        return {
-            "message": "File uploaded successfully",
-            "file": {"path": relative_path, "saved_path": str(full_path)},
-        }
-
-    except Exception as e:
-        logger.error(f"Error uploading file: {str(e)}")
-        return JSONResponse(
-            status_code=500, content={"error": f"Error uploading file: {str(e)}"}
-        )
-
-
-@app.get("/api/sessions/{device_id}")
-async def get_sessions_by_device_id(device_id: str):
-    """Get all sessions for a specific device ID, sorted by creation time descending.
-    For each session, also includes the first user message if available.
-
-    Args:
-        device_id: The device identifier to look up sessions for
-
-    Returns:
-        A list of sessions with their details and first user message, sorted by creation time descending
-    """
-    try:
-        # Initialize database manager
-        db_manager = DatabaseManager()
-
-        # Get all sessions for this device, sorted by created_at descending
-        with db_manager.get_session() as session:
-            # Use raw SQL query to get sessions with their first user message
-            query = text("""
-            SELECT 
-                session.id AS session_id,
-                session.*, 
-                event.id AS first_event_id,
-                event.event_payload AS first_message,
-                event.timestamp AS first_event_time
-            FROM session
-            LEFT JOIN event ON session.id = event.session_id
-            WHERE event.id IN (
-                SELECT e.id
-                FROM event e
-                WHERE e.event_type = "user_message" 
-                AND e.timestamp = (
-                    SELECT MIN(e2.timestamp)
-                    FROM event e2
-                    WHERE e2.session_id = e.session_id
-                    AND e2.event_type = "user_message"
-                )
-            )
-            AND session.device_id = :device_id
-            ORDER BY session.created_at DESC
-            """)
-
-            # Execute the raw query with parameters
-            result = session.execute(query, {"device_id": device_id})
-
-            # Convert result to a list of dictionaries
-            sessions = []
-            for row in result:
-                session_data = {
-                    "id": row.id,
-                    "workspace_dir": row.workspace_dir,
-                    "created_at": row.created_at,
-                    "device_id": row.device_id,
-                    "first_message": json.loads(row.first_message)
-                    .get("content", {})
-                    .get("text", "")
-                    if row.first_message
-                    else "",
-                }
-                sessions.append(session_data)
-
-            return {"sessions": sessions}
-
-    except Exception as e:
-        logger.error(f"Error retrieving sessions: {str(e)}")
-        raise HTTPException(
-            status_code=500, detail=f"Error retrieving sessions: {str(e)}"
-        )
-
-
-@app.get("/api/sessions/{session_id}/events")
-async def get_session_events(session_id: str):
-    """Get all events for a specific session ID, sorted by timestamp ascending.
-
-    Args:
-        session_id: The session identifier to look up events for
-
-    Returns:
-        A list of events with their details, sorted by timestamp ascending
-    """
-    try:
-        # Initialize database manager
-        db_manager = DatabaseManager()
-
-        # Get all events for this session, sorted by timestamp ascending
-        with db_manager.get_session() as session:
-            events = (
-                session.query(Event)
-                .filter(Event.session_id == session_id)
-                .order_by(asc(Event.timestamp))
-                .all()
-            )
-
-            # Convert events to a list of dictionaries
-            event_list = []
-            for e in events:
-                event_list.append(
-                    {
-                        "id": e.id,
-                        "session_id": e.session_id,
-                        "timestamp": e.timestamp.isoformat(),
-                        "event_type": e.event_type,
-                        "event_payload": e.event_payload,
-                        "workspace_dir": e.session.workspace_dir,
-                    }
-                )
-
-            return {"events": event_list}
-
-    except Exception as e:
-        logger.error(f"Error retrieving events: {str(e)}")
-        raise HTTPException(
-            status_code=500, detail=f"Error retrieving events: {str(e)}"
-        )
 
 
 if __name__ == "__main__":
