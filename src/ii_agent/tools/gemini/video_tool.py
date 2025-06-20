@@ -45,8 +45,16 @@ Provide one query at a time.
         url = tool_input["url"]
         query = tool_input["query"]
 
+        # Video understanding requires direct Gemini API for multimodal support
+        if not self.gemini_client:
+            return ToolImplOutput(
+                "Error: Video understanding requires GEMINI_API_KEY to be set for multimodal support.",
+                "Gemini API key required for video processing"
+            )
+
         try:
-            response = self.client.models.generate_content(
+            # Use direct Gemini API for video processing
+            response = self.gemini_client.models.generate_content(
                 model=self.model,
                 contents=types.Content(
                     parts=[
