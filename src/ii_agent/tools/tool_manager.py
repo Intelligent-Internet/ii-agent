@@ -18,7 +18,12 @@ from ii_agent.tools.str_replace_tool_relative import StrReplaceEditorTool
 from ii_agent.tools.static_deploy_tool import StaticDeployTool
 from ii_agent.tools.sequential_thinking_tool import SequentialThinkingTool
 from ii_agent.tools.message_tool import MessageTool
-from ii_agent.tools.complete_tool import CompleteTool, ReturnControlToUserTool, CompleteToolReviewer, ReturnControlToGeneralAgentTool
+from ii_agent.tools.complete_tool import (
+    CompleteTool, 
+    ReturnControlToUserTool, 
+    CompleteToolReviewer, 
+    ReturnControlToGeneralAgentTool
+)
 from ii_agent.tools.bash_tool import create_bash_tool, create_docker_bash_tool
 from ii_agent.browser.browser import Browser
 from ii_agent.utils import WorkspaceManager
@@ -50,6 +55,7 @@ from ii_agent.tools.video_gen_tool import (
     LongVideoGenerateFromImageTool,
 )
 from ii_agent.tools.image_gen_tool import ImageGenerateTool
+from ii_agent.tools.speech_gen_tool import SingleSpeakerSpeechGenerationTool
 from ii_agent.tools.pdf_tool import PdfTextExtractTool
 from ii_agent.tools.deep_research_tool import DeepResearchTool
 from ii_agent.tools.list_html_links_tool import ListHtmlLinksTool
@@ -123,8 +129,7 @@ def get_system_tools(
             # Check if media config is available in settings
             has_media_config = False
             if settings and settings.media_config:
-                if (settings.media_config.gcp_project_id and 
-                    settings.media_config.gcp_location):
+                if (settings.media_config.gcp_project_id and settings.media_config.gcp_location) or (settings.media_config.google_ai_studio_api_key):
                     has_media_config = True
                 
             if has_media_config:
@@ -136,6 +141,8 @@ def get_system_tools(
                         LongVideoGenerateFromTextTool(workspace_manager=workspace_manager, settings=settings),
                         LongVideoGenerateFromImageTool(workspace_manager=workspace_manager, settings=settings)
                     ])
+                if settings.media_config.google_ai_studio_api_key:
+                    tools.append(SingleSpeakerSpeechGenerationTool(workspace_manager=workspace_manager, settings=settings))
         if tool_args.get("audio_generation", False):
             # Check if audio config is available in settings
             has_audio_config = False

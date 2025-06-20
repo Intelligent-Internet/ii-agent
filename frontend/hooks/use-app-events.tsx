@@ -232,49 +232,61 @@ export function useAppEvents({
             ) {
               // Get the latest messages from our ref
               const messages = [...messagesRef.current];
-              const lastMessage = cloneDeep(messages[messages.length - 1]);
 
-              if (
-                lastMessage?.action &&
-                lastMessage.action?.type === data.content.tool_name
-              ) {
-                lastMessage.action.data.result = `${data.content.result}`;
-                if (
-                  [
-                    TOOL.BROWSER_VIEW,
-                    TOOL.BROWSER_CLICK,
-                    TOOL.BROWSER_ENTER_TEXT,
-                    TOOL.BROWSER_PRESS_KEY,
-                    TOOL.BROWSER_GET_SELECT_OPTIONS,
-                    TOOL.BROWSER_SELECT_DROPDOWN_OPTION,
-                    TOOL.BROWSER_SWITCH_TAB,
-                    TOOL.BROWSER_OPEN_NEW_TAB,
-                    TOOL.BROWSER_WAIT,
-                    TOOL.BROWSER_SCROLL_DOWN,
-                    TOOL.BROWSER_SCROLL_UP,
-                    TOOL.BROWSER_NAVIGATION,
-                    TOOL.BROWSER_RESTART,
-                  ].includes(data.content.tool_name as TOOL)
-                ) {
-                  lastMessage.action.data.result =
-                    data.content.result && Array.isArray(data.content.result)
-                      ? data.content.result.find(
-                          (item) => item.type === "image"
-                        )?.source?.data
-                      : undefined;
-                }
-                lastMessage.action.data.isResult = true;
-                if (!ignoreClickAction) {
-                  setTimeout(() => {
-                    handleClickAction(lastMessage.action);
-                  }, 500);
-                }
+              // Find the last message with a matching tool call
+              const lastToolCallMessageIndex = messages.findLastIndex(
+                (msg) =>
+                  msg.action?.type === data.content.tool_name &&
+                  !msg.action?.data?.isResult
+              );
 
-                safeDispatch({
-                  type: "UPDATE_MESSAGE",
-                  payload: lastMessage,
-                });
+              // If we found a matching tool call message
+              if (lastToolCallMessageIndex !== -1) {
+                const lastToolCallMessage = cloneDeep(
+                  messages[lastToolCallMessageIndex]
+                );
+
+                if (lastToolCallMessage?.action) {
+                  lastToolCallMessage.action.data.result = `${data.content.result}`;
+                  if (
+                    [
+                      TOOL.BROWSER_VIEW,
+                      TOOL.BROWSER_CLICK,
+                      TOOL.BROWSER_ENTER_TEXT,
+                      TOOL.BROWSER_PRESS_KEY,
+                      TOOL.BROWSER_GET_SELECT_OPTIONS,
+                      TOOL.BROWSER_SELECT_DROPDOWN_OPTION,
+                      TOOL.BROWSER_SWITCH_TAB,
+                      TOOL.BROWSER_OPEN_NEW_TAB,
+                      TOOL.BROWSER_WAIT,
+                      TOOL.BROWSER_SCROLL_DOWN,
+                      TOOL.BROWSER_SCROLL_UP,
+                      TOOL.BROWSER_NAVIGATION,
+                      TOOL.BROWSER_RESTART,
+                    ].includes(data.content.tool_name as TOOL)
+                  ) {
+                    lastToolCallMessage.action.data.result =
+                      data.content.result && Array.isArray(data.content.result)
+                        ? data.content.result.find(
+                            (item) => item.type === "image"
+                          )?.source?.data
+                        : undefined;
+                  }
+                  lastToolCallMessage.action.data.isResult = true;
+                  if (!ignoreClickAction) {
+                    setTimeout(() => {
+                      handleClickAction(lastToolCallMessage.action);
+                    }, 500);
+                  }
+
+                  safeDispatch({
+                    type: "UPDATE_MESSAGE",
+                    payload: lastToolCallMessage,
+                  });
+                }
               } else {
+                // If no matching tool call message was found, fall back to using the last message
+                const lastMessage = cloneDeep(messages[messages.length - 1]);
                 safeDispatch({
                   type: "ADD_MESSAGE",
                   payload: {

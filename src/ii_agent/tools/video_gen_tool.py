@@ -10,8 +10,12 @@ from typing import Any, Optional
 from google import genai
 from google.genai import types
 
-from google.cloud import storage
-from google.auth.exceptions import DefaultCredentialsError
+try:
+    from google.cloud import storage
+    from google.auth.exceptions import DefaultCredentialsError
+    HAS_GCS = True
+except ImportError:
+    HAS_GCS = False
 
 from ii_agent.tools.base import (
     MessageHistory,
@@ -22,6 +26,13 @@ from ii_agent.utils import WorkspaceManager
 from ii_agent.core.storage.models.settings import Settings
 
 DEFAULT_MODEL = "veo-2.0-generate-001"
+
+# Google AI Studio person generation mapping
+GENAI_PERSON_GENERATION_MAP = {
+    "allow_adult": "allow_adult",
+    "dont_allow": "dont_allow",
+    "allow_all": "allow_all"
+}
 
 
 def _get_gcs_client():
@@ -103,8 +114,9 @@ def delete_gcs_blob(gcs_uri: str) -> None:
 
 class VideoGenerateFromTextTool(LLMTool):
     name = "generate_video_from_text"
-    description = """Generates a short video based on a text prompt only using Google's Veo 2 model.
-The generated video will be saved to the specified local path in the workspace."""
+    description = """Generates a short video based on a text prompt using Google's Veo 2 model via Vertex AI or Google AI Studio.
+The generated video will be saved to the specified local path in the workspace.
+Uses Google AI Studio if GEMINI_API_KEY is set, otherwise falls back to Vertex AI if configured."""
     input_schema = {
         "type": "object",
         "properties": {
@@ -150,25 +162,36 @@ The generated video will be saved to the specified local path in the workspace."
         gcp_project_id = None
         gcp_location = None
         gcs_output_bucket = None
+        google_ai_studio_api_key = None
         
         if settings and settings.media_config:
             gcp_project_id = settings.media_config.gcp_project_id
             gcp_location = settings.media_config.gcp_location
             gcs_output_bucket = settings.media_config.gcs_output_bucket
-            
-        if not gcs_output_bucket or not gcs_output_bucket.startswith("gs://"):
-            raise ValueError(
-                "GCS output bucket must be provided in settings.media_config.gcs_output_bucket as a valid GCS URI (e.g., gs://my-bucket-name)"
+            google_ai_studio_api_key = settings.media_config.google_ai_studio_api_key
+        
+        if google_ai_studio_api_key:
+            self.client = genai.Client(
+                api_key=google_ai_studio_api_key.get_secret_value(), 
+                http_options={"api_version": "v1beta"}
             )
-        if not gcp_project_id or not gcp_location:
-            raise ValueError(
-                "GCP project ID and location must be provided in settings.media_config"
+            self.api_type = "genai"
+        elif gcp_project_id and gcp_location and gcs_output_bucket:
+            if not gcs_output_bucket.startswith("gs://"):
+                raise ValueError(
+                    "GCS output bucket must be a valid GCS URI (e.g., gs://my-bucket-name)"
+                )
+            self.gcs_output_bucket = gcs_output_bucket
+            self.client = genai.Client(
+                project=gcp_project_id,
+                location=gcp_location,
+                vertexai=True
             )
-            
-        self.gcs_output_bucket = gcs_output_bucket
-        self.client = genai.Client(
-            project=gcp_project_id, location=gcp_location, vertexai=True
-        )
+            self.api_type = "vertex"
+        else:
+            raise ValueError(
+                "Either Google AI Studio API key or GCP project ID, location, and GCS bucket must be provided in settings.media_config"
+            )
         self.video_model = DEFAULT_MODEL
 
     async def run_impl(
@@ -197,31 +220,39 @@ The generated video will be saved to the specified local path in the workspace."
         )
         local_output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Veo outputs to GCS, so we need a unique GCS path for the intermediate file
-        unique_gcs_filename = f"veo_temp_output_{uuid.uuid4().hex}.mp4"
-        gcs_output_uri = f"{self.gcs_output_bucket.rstrip('/')}/{unique_gcs_filename}"
-
         try:
-            operation = self.client.models.generate_videos(
-                model=self.video_model,
-                prompt=prompt,
-                config=types.GenerateVideosConfig(
+            if self.api_type == "genai":
+                # Google AI Studio API
+                video_config = types.GenerateVideosConfig(
                     aspect_ratio=aspect_ratio,
-                    output_gcs_uri=gcs_output_uri,  # Veo requires a GCS URI
                     number_of_videos=1,
                     duration_seconds=duration_seconds,
                     person_generation=person_generation_setting,
-                    enhance_prompt=enhance_prompt,
-                ),
-            )
-
-            # Poll for completion (as in the notebook)
-            # Consider making this truly async in a real agent to not block the main thread
-            # For now, we'll simulate with sleeps and checks.
+                )
+                operation = self.client.models.generate_videos(
+                    model=self.video_model,
+                    prompt=prompt,
+                    config=video_config,
+                )
+            else:  # vertex AI
+                unique_gcs_filename = f"veo_temp_output_{uuid.uuid4().hex}.mp4"
+                gcs_output_uri = f"{self.gcs_output_bucket.rstrip('/')}/{unique_gcs_filename}"
+                
+                video_config = types.GenerateVideosConfig(
+                    aspect_ratio=aspect_ratio,
+                    output_gcs_uri=gcs_output_uri,
+                    number_of_videos=1,
+                    duration_seconds=duration_seconds,
+                    person_generation=person_generation_setting,
+                )
+                operation = self.client.models.generate_videos(
+                    model=self.video_model,
+                    prompt=prompt,
+                    config=video_config,
+                )
             polling_interval_seconds = 15
-            max_wait_time_seconds = 600  # 10 minutes
+            max_wait_time_seconds = 600
             elapsed_time = 0
-
             while not operation.done:
                 if elapsed_time >= max_wait_time_seconds:
                     return ToolImplOutput(
@@ -231,18 +262,13 @@ The generated video will be saved to the specified local path in the workspace."
                     )
                 time.sleep(polling_interval_seconds)
                 elapsed_time += polling_interval_seconds
-                operation = self.client.operations.get(
-                    operation
-                )  # Refresh operation status
-                # Optionally log operation.metadata or progress if available
-
+                operation = self.client.operations.get(operation)
             if operation.error:
                 return ToolImplOutput(
                     f"Error generating video: {str(operation.error)}",
                     "Video generation failed.",
                     {"success": False, "error": str(operation.error)},
                 )
-
             if not operation.response or not operation.result.generated_videos:
                 return ToolImplOutput(
                     f"Video generation completed but no video was returned for prompt: {prompt}",
@@ -250,13 +276,14 @@ The generated video will be saved to the specified local path in the workspace."
                     {"success": False, "error": "No video output from API"},
                 )
 
-            generated_video_gcs_uri = operation.result.generated_videos[0].video.uri
-
-            # Download the video from GCS to the local workspace
-            download_gcs_file(generated_video_gcs_uri, local_output_path)
-
-            # Delete the temporary file from GCS
-            delete_gcs_blob(generated_video_gcs_uri)
+            if self.api_type == "genai":
+                generated_video = operation.result.generated_videos[0]
+                self.client.files.download(file=generated_video.video)
+                generated_video.video.save(str(local_output_path))
+            else:  # vertex AI
+                generated_video_gcs_uri = operation.result.generated_videos[0].video.uri
+                download_gcs_file(generated_video_gcs_uri, local_output_path)
+                delete_gcs_blob(generated_video_gcs_uri)
 
             return ToolImplOutput(
                 f"Successfully generated video from text and saved to '{relative_output_filename}'",
@@ -266,7 +293,6 @@ The generated video will be saved to the specified local path in the workspace."
                     "output_path": relative_output_filename,
                 },
             )
-
         except Exception as e:
             return ToolImplOutput(
                 f"Error generating video from text: {str(e)}",
@@ -288,7 +314,7 @@ SUPPORTED_IMAGE_FORMATS_MIMETYPE = {
 
 class VideoGenerateFromImageTool(LLMTool):
     name = "generate_video_from_image"
-    description = f"""Generates a short video by adding motion to an input image using Google's Veo 2 model.
+    description = f"""Generates a short video by adding motion to an input image using Google's Veo 2 model via Vertex AI or Google AI Studio.
 Optionally, a text prompt can be provided to guide the motion.
 The input image must be in the workspace. Supported image formats: {", ".join(SUPPORTED_IMAGE_FORMATS_MIMETYPE.keys())}.
 The generated video will be saved to the specified local path in the workspace."""
@@ -336,25 +362,35 @@ The generated video will be saved to the specified local path in the workspace."
         gcp_project_id = None
         gcp_location = None
         gcs_output_bucket = None
+        google_ai_studio_api_key = None
         
         if settings and settings.media_config:
             gcp_project_id = settings.media_config.gcp_project_id
             gcp_location = settings.media_config.gcp_location
             gcs_output_bucket = settings.media_config.gcs_output_bucket
-            
-        if not gcs_output_bucket or not gcs_output_bucket.startswith("gs://"):
-            raise ValueError(
-                "GCS output bucket must be provided in settings.media_config.gcs_output_bucket as a valid GCS URI (e.g., gs://my-bucket-name)"
+            google_ai_studio_api_key = settings.media_config.google_ai_studio_api_key
+        
+        if google_ai_studio_api_key:
+            self.genai_client = genai.Client(
+                api_key=google_ai_studio_api_key.get_secret_value(), 
+                http_options={"api_version": "v1beta"}
             )
-        if not gcp_project_id or not gcp_location:
-            raise ValueError(
-                "GCP project ID and location must be provided in settings.media_config"
+            self.client = self.genai_client
+            self.api_type = "genai"
+        elif gcp_project_id and gcp_location and gcs_output_bucket:
+            if not gcs_output_bucket.startswith("gs://"):
+                raise ValueError(
+                    "GCS output bucket must be a valid GCS URI (e.g., gs://my-bucket-name)"
+                )
+            self.gcs_output_bucket = gcs_output_bucket
+            self.client = genai.Client(
+                project=gcp_project_id, location=gcp_location, vertexai=True
             )
-            
-        self.gcs_output_bucket = gcs_output_bucket
-        self.client = genai.Client(
-            project=gcp_project_id, location=gcp_location, vertexai=True
-        )
+            self.api_type = "vertex"
+        else:
+            raise ValueError(
+                "Either Google AI Studio API key or GCP project ID and location must be provided in settings.media_config"
+            )
         self.video_model = DEFAULT_MODEL
 
     async def run_impl(
@@ -402,39 +438,58 @@ The generated video will be saved to the specified local path in the workspace."
 
         mime_type = SUPPORTED_IMAGE_FORMATS_MIMETYPE[image_suffix]
 
-        temp_gcs_image_filename = f"veo_temp_input_{uuid.uuid4().hex}{image_suffix}"
-        temp_gcs_image_uri = (
-            f"{self.gcs_output_bucket.rstrip('/')}/{temp_gcs_image_filename}"
-        )
-
-        generated_video_gcs_uri_for_cleanup = None  # For finally block
 
         try:
-            upload_to_gcs(local_input_image_path, temp_gcs_image_uri)
+            if self.api_type == "genai":
+                # Google AI Studio - use image bytes directly
+                with open(local_input_image_path, 'rb') as f:
+                    image_bytes = f.read()
+                
+                generate_videos_kwargs = {
+                    "model": self.video_model,
+                    "image": types.Image(image_bytes=image_bytes, mime_type=mime_type),
+                    "config": types.GenerateVideosConfig(
+                        # person_generation is not allowed for image-to-video generation in Google AI Studio
+                        aspect_ratio=aspect_ratio,
+                        number_of_videos=1,
+                        duration_seconds=duration_seconds,
+                    ),
+                }
+            else:  # vertex AI
+                temp_gcs_image_filename = f"veo_temp_input_{uuid.uuid4().hex}{image_suffix}"
+                temp_gcs_image_uri = (
+                    f"{self.gcs_output_bucket.rstrip('/')}/{temp_gcs_image_filename}"
+                )
+                upload_to_gcs(local_input_image_path, temp_gcs_image_uri)
+                unique_gcs_video_filename = f"veo_temp_output_{uuid.uuid4().hex}.mp4"
+                gcs_output_video_uri = (
+                    f"{self.gcs_output_bucket.rstrip('/')}/{unique_gcs_video_filename}"
+                )
+                generated_video_gcs_uri_for_cleanup = gcs_output_video_uri
 
-            unique_gcs_video_filename = f"veo_temp_output_{uuid.uuid4().hex}.mp4"
-            gcs_output_video_uri = (
-                f"{self.gcs_output_bucket.rstrip('/')}/{unique_gcs_video_filename}"
-            )
-            generated_video_gcs_uri_for_cleanup = gcs_output_video_uri
-
-            generate_videos_kwargs = {
-                "model": self.video_model,
-                "image": types.Image(gcs_uri=temp_gcs_image_uri, mime_type=mime_type),
-                "config": types.GenerateVideosConfig(
-                    aspect_ratio=aspect_ratio,
-                    output_gcs_uri=gcs_output_video_uri,
-                    number_of_videos=1,
-                    duration_seconds=duration_seconds,
-                    person_generation=person_generation_setting,
-                ),
-            }
+                generate_videos_kwargs = {
+                    "model": self.video_model,
+                    "image": types.Image(gcs_uri=temp_gcs_image_uri, mime_type=mime_type),
+                    "config": types.GenerateVideosConfig(
+                        aspect_ratio=aspect_ratio,
+                        output_gcs_uri=gcs_output_video_uri,
+                        number_of_videos=1,
+                        duration_seconds=duration_seconds,
+                        person_generation=person_generation_setting,
+                    ),
+                }
+                
             if prompt:
                 generate_videos_kwargs["prompt"] = prompt
 
-            operation = self.client.models.generate_videos(
-                **generate_videos_kwargs
-            )
+            if self.api_type == "genai":
+                operation = self.genai_client.models.generate_videos(
+                    **generate_videos_kwargs
+                )
+            else:
+                operation = self.client.models.generate_videos(
+                    **generate_videos_kwargs
+                )
 
             polling_interval_seconds = 15
             max_wait_time_seconds = 600
@@ -447,9 +502,10 @@ The generated video will be saved to the specified local path in the workspace."
                     )
                 time.sleep(polling_interval_seconds)
                 elapsed_time += polling_interval_seconds
-                operation = self.client.operations.get(
-                    operation
-                )  # Use self.client
+                if self.api_type == "genai":
+                    operation = self.genai_client.operations.get(operation)
+                else:
+                    operation = self.client.operations.get(operation)
 
             if operation.error:
                 raise Exception(
@@ -459,15 +515,14 @@ The generated video will be saved to the specified local path in the workspace."
             if not operation.response or not operation.result.generated_videos:
                 raise Exception("Video generation completed but no video was returned.")
 
-            # The GCS URI of the *actual* generated video might differ slightly if Veo adds prefixes/folders
-            actual_generated_video_gcs_uri = operation.result.generated_videos[
-                0
-            ].video.uri
-            generated_video_gcs_uri_for_cleanup = (
-                actual_generated_video_gcs_uri  # Update for accurate cleanup
-            )
-
-            download_gcs_file(actual_generated_video_gcs_uri, local_output_video_path)
+            if self.api_type == "genai":
+                generated_video = operation.result.generated_videos[0]
+                self.genai_client.files.download(file=generated_video.video)
+                generated_video.video.save(str(local_output_video_path))
+            else:  # vertex AI
+                actual_generated_video_gcs_uri = operation.result.generated_videos[0].video.uri
+                generated_video_gcs_uri_for_cleanup = actual_generated_video_gcs_uri
+                download_gcs_file(actual_generated_video_gcs_uri, local_output_video_path)
 
             return ToolImplOutput(
                 f"Successfully generated video from image '{relative_image_path}' and saved to '{relative_output_filename}'.",
@@ -485,8 +540,8 @@ The generated video will be saved to the specified local path in the workspace."
                 {"success": False, "error": str(e)},
             )
         finally:
-            # Clean up temporary GCS files
-            if temp_gcs_image_uri:
+            # Clean up temporary files
+            if self.api_type == "vertex" and temp_gcs_image_uri:
                 try:
                     delete_gcs_blob(temp_gcs_image_uri)
                 except Exception as e_cleanup_img:
@@ -494,9 +549,8 @@ The generated video will be saved to the specified local path in the workspace."
                         f"Warning: Failed to clean up GCS input image {temp_gcs_image_uri}: {e_cleanup_img}"
                     )
 
-            if (
-                generated_video_gcs_uri_for_cleanup
-            ):  # This will be the actual output URI from Veo
+            if self.api_type == "vertex" and generated_video_gcs_uri_for_cleanup:
+                # This will be the actual output URI from Veo
                 try:
                     delete_gcs_blob(generated_video_gcs_uri_for_cleanup)
                 except Exception as e_cleanup_vid:

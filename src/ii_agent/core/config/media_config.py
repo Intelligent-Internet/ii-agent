@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, SecretStr
 
 
 class MediaConfig(BaseModel):
@@ -12,3 +12,4 @@ class MediaConfig(BaseModel):
     gcp_project_id: str | None = Field(default=None, description="Google Cloud Project ID for Vertex AI")
     gcp_location: str | None = Field(default=None, description="Google Cloud location/region for Vertex AI") 
     gcs_output_bucket: str | None = Field(default=None, description="GCS bucket URI for storing temporary media files (e.g., gs://my-bucket-name)") 
+    google_ai_studio_api_key: SecretStr | None = Field(default=None, description="Google AI Studio API key")
