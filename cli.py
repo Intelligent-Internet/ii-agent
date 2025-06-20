@@ -90,22 +90,30 @@ async def async_main():
             f"Agent CLI started with session {session_id}. Waiting for user input. Press Ctrl+C to exit. Type 'exit' or 'quit' to end the session."
         )
 
-    # Initialize LLM client
+    # Initialize LLM client - automatically uses OpenRouter if OPENROUTER_API_KEY is set
     client_kwargs = {
         "model_name": args.model_name,
     }
-    if args.llm_client == "anthropic-direct":
-        client_kwargs["use_caching"] = False # Or a configurable value if needed later
-        client_kwargs["project_id"] = args.project_id
-        client_kwargs["region"] = args.region
-    elif args.llm_client == "openai-direct":
-        client_kwargs["azure_model"] = args.azure_model
-        client_kwargs["cot_model"] = args.cot_model
     
-    client = get_client(
-        args.llm_client,
-        **client_kwargs
-    )
+    # Add provider-specific kwargs only if not using OpenRouter
+    if not os.getenv("OPENROUTER_API_KEY"):
+        if args.llm_client == "anthropic-direct":
+            client_kwargs["use_caching"] = False
+            client_kwargs["project_id"] = args.project_id
+            client_kwargs["region"] = args.region
+        elif args.llm_client == "openai-direct":
+            client_kwargs["azure_model"] = args.azure_model
+            client_kwargs["cot_model"] = args.cot_model
+    
+        client = get_client(
+            args.llm_client,
+            **client_kwargs
+        )
+    else:
+        client = get_client(
+            "openrouter",
+            **client_kwargs
+        )
 
     # Initialize workspace manager with the session-specific workspace
     workspace_manager = WorkspaceManager(

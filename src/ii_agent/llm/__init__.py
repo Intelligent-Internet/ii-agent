@@ -2,15 +2,24 @@ from ii_agent.llm.base import LLMClient
 from ii_agent.llm.openai import OpenAIDirectClient
 from ii_agent.llm.anthropic import AnthropicDirectClient
 from ii_agent.llm.gemini import GeminiDirectClient
+from ii_agent.llm.openrouter import OpenRouterClient
+import os
 
 def get_client(client_name: str, **kwargs) -> LLMClient:
     """Get a client for a given client name."""
+    # If OPENROUTER_API_KEY is available, use OpenRouter for all models
+    if os.getenv("OPENROUTER_API_KEY"):
+        return OpenRouterClient(**kwargs)
+    
+    # Otherwise use direct clients
     if client_name == "anthropic-direct":
         return AnthropicDirectClient(**kwargs)
     elif client_name == "openai-direct":
         return OpenAIDirectClient(**kwargs)
     elif client_name == "gemini-direct":
         return GeminiDirectClient(**kwargs)
+    elif client_name == "openrouter":
+        return OpenRouterClient(**kwargs)
     else:
         raise ValueError(f"Unknown client name: {client_name}")
 
@@ -20,5 +29,6 @@ __all__ = [
     "OpenAIDirectClient",
     "AnthropicDirectClient",
     "GeminiDirectClient",
+    "OpenRouterClient",
     "get_client",
 ]

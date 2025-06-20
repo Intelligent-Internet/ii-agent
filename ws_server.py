@@ -99,6 +99,14 @@ def map_model_name_to_client(model_name: str, ws_content: Dict[str, Any]) -> LLM
     Raises:
         ValueError: If the model name is not supported
     """
+    # If OPENROUTER_API_KEY is available, use OpenRouter for all models
+    if os.getenv("OPENROUTER_API_KEY"):
+        return get_client(
+            "openrouter",
+            model_name=model_name,
+        )
+    
+    # Otherwise use provider-specific logic
     if "claude" in model_name:
         return get_client(
             "anthropic-direct",
