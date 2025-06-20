@@ -1,10 +1,10 @@
 "use client";
 
 import { createContext, useContext, useReducer, ReactNode } from "react";
+import Cookies from "js-cookie";
 import {
   ActionStep,
   AgentEvent,
-  AVAILABLE_MODELS,
   Message,
   TAB,
   ToolSettings,
@@ -30,6 +30,7 @@ interface AppState {
   editingMessage?: Message;
   toolSettings: ToolSettings;
   selectedModel?: string;
+  availableModels: string[];
   wsConnectionState: WebSocketConnectionState;
   isAgentInitialized: boolean;
   requireClearFiles: boolean;
@@ -58,6 +59,7 @@ export type AppAction =
   | { type: "SET_EDITING_MESSAGE"; payload: Message | undefined }
   | { type: "SET_TOOL_SETTINGS"; payload: AppState["toolSettings"] }
   | { type: "SET_SELECTED_MODEL"; payload: string | undefined }
+  | { type: "SET_AVAILABLE_MODELS"; payload: string[] }
   | { type: "SET_WS_CONNECTION_STATE"; payload: WebSocketConnectionState }
   | { type: "SET_AGENT_INITIALIZED"; payload: boolean }
   | { type: "SET_REQUIRE_CLEAR_FILES"; payload: boolean }
@@ -88,13 +90,15 @@ const initialState: AppState = {
   toolSettings: {
     deep_research: false,
     pdf: true,
-    media_generation: true,
-    audio_generation: true,
+    media_generation: false,
+    audio_generation: false,
     browser: true,
     thinking_tokens: 10000,
+    enable_reviewer: false,
   },
   wsConnectionState: WebSocketConnectionState.CONNECTING,
-  selectedModel: AVAILABLE_MODELS[0],
+  selectedModel: undefined,
+  availableModels: [],
   isAgentInitialized: false,
   requireClearFiles: false,
 };
@@ -167,6 +171,8 @@ function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, toolSettings: action.payload };
     case "SET_SELECTED_MODEL":
       return { ...state, selectedModel: action.payload };
+    case "SET_AVAILABLE_MODELS":
+      return { ...state, availableModels: action.payload };
     case "SET_WS_CONNECTION_STATE":
       return { ...state, wsConnectionState: action.payload };
     case "SET_AGENT_INITIALIZED":
@@ -181,7 +187,31 @@ function appReducer(state: AppState, action: AppAction): AppState {
 
 // Context provider component
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(appReducer, initialState);
+  // Load initial state from cookies before creating the reducer
+  const getInitialState = (): AppState => {
+    // Start with the default initial state
+    const defaultState = { ...initialState };
+
+    // Try to load tool settings from cookies
+    const savedToolSettings = Cookies.get("tool_settings");
+    if (savedToolSettings) {
+      try {
+        defaultState.toolSettings = JSON.parse(savedToolSettings);
+      } catch (error) {
+        console.error("Failed to parse saved tool settings:", error);
+      }
+    }
+
+    // Try to load selected model from cookies
+    const savedModel = Cookies.get("selected_model");
+    if (savedModel) {
+      defaultState.selectedModel = savedModel;
+    }
+
+    return defaultState;
+  };
+
+  const [state, dispatch] = useReducer(appReducer, getInitialState());
 
   return (
     <AppContext.Provider value={{ state, dispatch }}>

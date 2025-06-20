@@ -2,20 +2,34 @@ from contextlib import contextmanager
 from typing import Optional, Generator, List
 import uuid
 from pathlib import Path
-from sqlalchemy import create_engine, asc, text
-from sqlalchemy.orm import sessionmaker, Session as DBSession
+from sqlalchemy import asc, create_engine, text
+from sqlalchemy.orm import Session as DBSession, sessionmaker
+from ii_agent.core.config.utils import load_ii_agent_config
 from ii_agent.db.models import Base, Session, Event
 from ii_agent.core.event import EventType, RealtimeEvent
+from ii_agent.core.config.ii_agent_config import II_AGENT_DIR
+from ii_agent.core.logger import logger
 
 
-# Database setup
-DATABASE_URL = "sqlite:///db/events.db"
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+def run_migrations():
+    try:
+        from alembic import command
+        from alembic.config import Config
+
+        alembic_cfg = Config(II_AGENT_DIR / "alembic.ini")
+        migrations_path = II_AGENT_DIR / "migrations"
+        alembic_cfg.set_main_option("script_location", str(migrations_path))
+
+        command.upgrade(alembic_cfg, "head")
+
+    except Exception as e:
+        logger.error(f"Error running migrations: {e}")
+        raise
+
+run_migrations()
+
+engine = create_engine(load_ii_agent_config().database_url, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine, expire_on_commit=False)
-
-# Create tables if they don't exist
-Base.metadata.create_all(engine)
-
 
 @contextmanager
 def get_db() -> Generator[DBSession, None, None]:

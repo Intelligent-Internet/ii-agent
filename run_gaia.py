@@ -56,7 +56,6 @@ from ii_agent.llm import get_client
 from ii_agent.llm.context_manager.llm_summarizing import LLMSummarizingContextManager
 from ii_agent.llm.token_counter import TokenCounter
 from ii_agent.utils.constants import DEFAULT_MODEL, TOKEN_BUDGET, UPLOAD_FOLDER_NAME
-from utils import parse_common_args
 from ii_agent.db.manager import Sessions, get_db
 from ii_agent.core.event import RealtimeEvent, EventType
 from ii_agent.tools.youtube_transcript_tool import YoutubeTranscriptTool
@@ -68,7 +67,36 @@ append_answer_lock = Lock()
 def parse_args():
     """Parse command line arguments for GAIA evaluation."""
     parser = argparse.ArgumentParser(description="Run GAIA dataset evaluation")
-    parser = parse_common_args(parser)
+    parser.add_argument(
+        "--logs-path",
+        type=str,
+        default="agent_logs.txt",
+        help="Path to save logs",
+    ) 
+    parser.add_argument(
+        "--use-container-workspace",
+        type=str,
+        default=None,
+        help="(Optional) Path to the container workspace to run commands in.",
+    )
+    parser.add_argument(
+        "--minimize-stdout-logs",
+        help="Minimize the amount of logs printed to stdout.",
+        action="store_true",
+        default=False,
+    )
+    parser.add_argument(
+        "--project-id",
+        type=str,
+        default=None,
+        help="Project ID to use for Anthropic",
+    )
+    parser.add_argument(
+        "--region",
+        type=str,
+        default=None,
+        help="Region to use for Anthropic",
+    )
 
     # GAIA-specific arguments
     parser.add_argument(

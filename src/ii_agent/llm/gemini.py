@@ -5,6 +5,7 @@ import random
 from typing import Any, Tuple
 from google import genai
 from google.genai import types, errors
+from ii_agent.core.config.llm_config import LLMConfig
 from ii_agent.llm.base import (
     LLMClient,
     AssistantContentBlock,
@@ -31,20 +32,17 @@ def generate_tool_call_id() -> str:
 class GeminiDirectClient(LLMClient):
     """Use Gemini models via first party API."""
 
-    def __init__(self, model_name: str, max_retries: int = 2, project_id: None | str = None, region: None | str = None):
-        self.model_name = model_name
+    def __init__(self, llm_config: LLMConfig):
+        self.model_name = llm_config.model
 
-        if project_id and region:
-            self.client = genai.Client(vertexai=True, project=project_id, location=region)
-            print(f"====== Using Gemini through Vertex AI API with project_id: {project_id} and region: {region} ======")
+        if llm_config.vertex_project_id and llm_config.vertex_region:
+            self.client = genai.Client(vertexai=True, project=llm_config.vertex_project_id, location=llm_config.vertex_region)
+            print(f"====== Using Gemini through Vertex AI API with project_id: {llm_config.vertex_project_id} and region: {llm_config.vertex_region} ======")
         else:
-            api_key = os.getenv("GEMINI_API_KEY")
-            if not api_key:
-                raise ValueError("GEMINI_API_KEY is not set")
-            self.client = genai.Client(api_key=api_key)
+            self.client = genai.Client(api_key=llm_config.api_key.get_secret_value() if llm_config.api_key else None)
             print("====== Using Gemini directly ======")
             
-        self.max_retries = max_retries
+        self.max_retries = llm_config.max_retries
 
     def generate(
         self,

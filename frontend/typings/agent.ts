@@ -166,3 +166,22 @@ export interface GoogleDocument {
   thumbnailUrl: string;
   mimeType: string;
 }
+
+export interface LLMConfig {
+  api_key?: string;
+  model?: string;
+  base_url?: string;
+  max_retries?: string;
+  temperature?: string;
+  vertex_region?: string;
+  vertex_project_id?: string;
+  api_type?: string;
+  cot_model?: boolean;
+  azure_endpoint?: string;
+  azure_api_version?: string;
+}
+
+export interface IModel {
+  model_name: string;
+  provider: string;
+}

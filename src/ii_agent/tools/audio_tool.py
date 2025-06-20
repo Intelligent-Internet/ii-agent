@@ -13,6 +13,7 @@ from ii_agent.tools.base import (
 
 from ii_agent.utils import WorkspaceManager
 from ii_agent.llm.message_history import MessageHistory
+from ii_agent.core.storage.models.settings import Settings
 
 SUPPORTED_AUDIO_FORMATS = [
     ".flac",
@@ -43,14 +44,33 @@ Supported file formats: {", ".join(SUPPORTED_AUDIO_FORMATS)}"""
         "required": ["file_path"],
     }
 
-    def __init__(self, workspace_manager: WorkspaceManager):
+    def __init__(self, workspace_manager: WorkspaceManager, settings: Optional[Settings] = None):
         super().__init__()
         self.workspace_manager = workspace_manager
+        
+        # Extract configuration from settings
+        openai_api_key = None
+        azure_endpoint = None
+        azure_api_version = None
+        
+        if settings and settings.audio_config:
+            openai_api_key = settings.audio_config.openai_api_key.get_secret_value() if settings.audio_config.openai_api_key else None
+            azure_endpoint = settings.audio_config.azure_endpoint
+            azure_api_version = settings.audio_config.azure_api_version
+            
+        if not azure_api_version:
+            azure_api_version = "2025-01-01-preview"  # Default value
+            
+        if not openai_api_key or not azure_endpoint:
+            raise ValueError(
+                "OpenAI API key and Azure endpoint must be provided in settings.audio_config"
+            )
+            
         self.client = AzureOpenAI(
-            api_key=os.getenv("OPENAI_API_KEY"),
-            azure_endpoint=os.getenv("OPENAI_AZURE_ENDPOINT"),
+            api_key=openai_api_key,
+            azure_endpoint=azure_endpoint,
             azure_deployment="gpt-4o-transcribe",
-            api_version="2025-01-01-preview",
+            api_version=azure_api_version,
         )
 
     async def run_impl(
@@ -148,14 +168,33 @@ Saves the output as an MP3 file in the workspace. Available voices: {", ".join(A
         "required": ["text", "output_filename"],
     }
 
-    def __init__(self, workspace_manager: WorkspaceManager):
+    def __init__(self, workspace_manager: WorkspaceManager, settings: Optional[Settings] = None):
         super().__init__()
         self.workspace_manager = workspace_manager
+        
+        # Extract configuration from settings
+        openai_api_key = None
+        azure_endpoint = None
+        azure_api_version = None
+        
+        if settings and settings.audio_config:
+            openai_api_key = settings.audio_config.openai_api_key.get_secret_value() if settings.audio_config.openai_api_key else None
+            azure_endpoint = settings.audio_config.azure_endpoint
+            azure_api_version = settings.audio_config.azure_api_version
+            
+        if not azure_api_version:
+            azure_api_version = "2025-01-01-preview"  # Default value
+            
+        if not openai_api_key or not azure_endpoint:
+            raise ValueError(
+                "OpenAI API key and Azure endpoint must be provided in settings.audio_config"
+            )
+            
         self.client = AzureOpenAI(
-            api_key=os.getenv("OPENAI_API_KEY"),
-            azure_endpoint=os.getenv("OPENAI_AZURE_ENDPOINT"),
+            api_key=openai_api_key,
+            azure_endpoint=azure_endpoint,
             azure_deployment="gpt-4o-audio-preview",
-            api_version="2025-01-01-preview",
+            api_version=azure_api_version,
         )
         self._check_ffmpeg()
 

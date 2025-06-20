@@ -11,6 +11,7 @@ from ii_agent.tools.visit_webpage_client import (
     NetworkError,
 )
 from ii_agent.utils.constants import VISIT_WEB_PAGE_MAX_OUTPUT_LENGTH
+from ii_agent.core.storage.models.settings import Settings
 
 
 class VisitWebpageTool(LLMTool):
@@ -28,9 +29,9 @@ class VisitWebpageTool(LLMTool):
     }
     output_type = "string"
 
-    def __init__(self, max_output_length: int = VISIT_WEB_PAGE_MAX_OUTPUT_LENGTH):
+    def __init__(self, settings: Optional[Settings] = None, max_output_length: int = VISIT_WEB_PAGE_MAX_OUTPUT_LENGTH):
         self.max_output_length = max_output_length
-        self.visit_client = create_visit_client(max_output_length=max_output_length)
+        self.visit_client = create_visit_client(settings=settings, max_output_length=max_output_length)
 
     async def run_impl(
         self,

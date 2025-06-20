@@ -1,6 +1,8 @@
 from typing import Dict, List, Any
 from pydantic import BaseModel
 
+from ii_agent.core.storage.models.settings import Settings
+
 
 class WebSocketMessage(BaseModel):
     """Base model for WebSocket messages."""
@@ -91,3 +93,8 @@ class ReviewResultContent(BaseModel):
     """Model for review result content."""
 
     user_input: str = ""
+class GETSettingsModel(Settings):
+    """Model for GET settings."""
+
+    llm_api_key_set: bool
+    search_api_key_set: bool 

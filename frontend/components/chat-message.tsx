@@ -55,6 +55,7 @@ const ChatMessage = ({
   const { state, dispatch } = useAppContext();
   const [showQuestionInput, setShowQuestionInput] = useState(false);
   const [pendingFilesCount, setPendingFilesCount] = useState(0);
+  const [userHasScrolledUp, setUserHasScrolledUp] = useState(false);
 
   const handleFilesChange = (count: number) => {
     setPendingFilesCount(count);
@@ -67,6 +68,32 @@ const ChatMessage = ({
       setShowQuestionInput(true);
     }
   }, [isReplayMode, state.isLoading, state.messages.length]);
+
+  // Add scroll event listener to detect manual scrolling
+  useEffect(() => {
+    const messagesContainer = messagesEndRef.current?.parentElement;
+    if (!messagesContainer) return;
+    console.log("🚀 ~ useEffect ~ messagesContainer:", messagesContainer);
+
+    const handleScroll = () => {
+      const isAtBottom =
+        messagesContainer.scrollHeight -
+          messagesContainer.scrollTop -
+          messagesContainer.clientHeight <
+        50;
+      setUserHasScrolledUp(!isAtBottom);
+    };
+
+    messagesContainer.addEventListener("scroll", handleScroll);
+    return () => messagesContainer.removeEventListener("scroll", handleScroll);
+  }, [messagesEndRef]);
+
+  // Replace the existing useEffect for message changes
+  useEffect(() => {
+    if (state.messages.length > 0 && !userHasScrolledUp) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [state.messages, userHasScrolledUp]);
 
   const handleJumpToResult = () => {
     if (processAllEventsImmediately) {
@@ -109,7 +136,7 @@ const ChatMessage = ({
             ? "max-h-[calc(100vh-167px)]"
             : pendingFilesCount > 0
             ? "max-h-[calc(100vh-330px)]"
-            : "max-h-[calc(100vh-210px)]"
+            : "max-h-[calc(100vh-264px)]"
         } overflow-y-auto relative`}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
@@ -409,7 +436,7 @@ const ChatMessage = ({
           <QuestionInput
             hideSettings
             className="px-4 w-full max-w-none"
-            textareaClassName="h-30 w-full"
+            textareaClassName="min-h-40 h-40 w-full"
             placeholder="Ask me anything..."
             value={state.currentQuestion}
             setValue={setCurrentQuestion}
@@ -457,7 +484,7 @@ const ChatMessage = ({
           <QuestionInput
             hideSettings
             className="p-4 pb-0 w-full max-w-none"
-            textareaClassName="h-30 w-full"
+            textareaClassName="min-h-40 h-40 w-full"
             placeholder="Ask me anything..."
             value={state.currentQuestion}
             setValue={setCurrentQuestion}

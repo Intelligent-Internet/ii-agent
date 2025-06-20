@@ -506,6 +506,7 @@ const QuestionInput = ({
         <SettingsDrawer
           isOpen={isSettingsOpen}
           onClose={() => setIsSettingsOpen(false)}
+          onOpen={() => setIsSettingsOpen(true)}
         />
       )}
 
@@ -609,8 +610,8 @@ const QuestionInput = ({
         )}
         <Textarea
           className={`w-full p-4 pb-[72px] rounded-xl !text-lg focus:ring-0 resize-none !placeholder-gray-400 !bg-[#35363a] border-[#ffffff0f] shadow-[0px_0px_10px_0px_rgba(0,0,0,0.02)] ${
-            files.length > 0 ? "pt-24 !h-[240px]" : "h-[200px]"
-          } ${textareaClassName}`}
+            files.length > 0 ? "pt-24 !min-h-[240px]" : "min-h-[200px]"
+          } max-h-[400px] ${textareaClassName}`}
           placeholder={
             placeholder ||
             "Enter your research query or complex question for in-depth analysis..."

@@ -71,7 +71,3 @@ class Event(Base):
         self.event_type = event_type
         self.event_payload = event_payload
 
-
-def init_db(engine):
-    """Initialize the database by creating all tables."""
-    Base.metadata.create_all(engine)

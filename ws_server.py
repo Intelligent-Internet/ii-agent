@@ -3,7 +3,6 @@ import logging
 import uvicorn
 
 from ii_agent.server.app import create_app
-from utils import parse_common_args
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +13,6 @@ def main():
     parser = argparse.ArgumentParser(
         description="WebSocket Server for interacting with the Agent"
     )
-    parser = parse_common_args(parser)
     parser.add_argument(
         "--host",
         type=str,
@@ -30,7 +28,7 @@ def main():
     args = parser.parse_args()
 
     # Create the FastAPI app
-    app = create_app(args)
+    app = create_app()
 
     # Start the FastAPI server
     logger.info(f"Starting WebSocket server on {args.host}:{args.port}")

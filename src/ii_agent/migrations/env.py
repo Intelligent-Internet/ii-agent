@@ -6,6 +6,7 @@ from sqlalchemy import pool
 from alembic import context
 
 # Import your models here
+from ii_agent.core.config.utils import load_ii_agent_config
 from ii_agent.db.models import Base
 
 # this is the Alembic Config object, which provides
@@ -26,6 +27,10 @@ target_metadata = Base.metadata
 # my_important_option = config.get_main_option("my_important_option")
 # ... etc.
 
+ii_agent_config = load_ii_agent_config()
+
+if ii_agent_config.database_url:
+    config.set_main_option("sqlalchemy.url", ii_agent_config.database_url.replace("%", "%%"))
 
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode.

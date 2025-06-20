@@ -19,10 +19,8 @@ from ii_agent.tools.base import (
     ToolImplOutput,
 )
 from ii_agent.utils import WorkspaceManager
+from ii_agent.core.storage.models.settings import Settings
 
-MEDIA_GCP_PROJECT_ID = os.environ.get("MEDIA_GCP_PROJECT_ID")
-MEDIA_GCP_LOCATION = os.environ.get("MEDIA_GCP_LOCATION")
-MEDIA_GCS_OUTPUT_BUCKET = os.environ.get("MEDIA_GCS_OUTPUT_BUCKET")
 DEFAULT_MODEL = "veo-2.0-generate-001"
 
 
@@ -144,17 +142,32 @@ The generated video will be saved to the specified local path in the workspace."
         "required": ["prompt", "output_filename"],
     }
 
-    def __init__(self, workspace_manager: WorkspaceManager):
+    def __init__(self, workspace_manager: WorkspaceManager, settings: Optional[Settings] = None):
         super().__init__()
-        if not MEDIA_GCS_OUTPUT_BUCKET or not MEDIA_GCS_OUTPUT_BUCKET.startswith("gs://"):
-            raise ValueError(
-                "MEDIA_GCS_OUTPUT_BUCKET environment variable must be set to a valid GCS URI (e.g., gs://my-bucket-name)"
-            )
         self.workspace_manager = workspace_manager
-        if not MEDIA_GCP_PROJECT_ID or not MEDIA_GCP_LOCATION:
-            raise ValueError("MEDIA_GCP_PROJECT_ID and MEDIA_GCP_LOCATION environment variables not set.")
+        
+        # Extract configuration from settings
+        gcp_project_id = None
+        gcp_location = None
+        gcs_output_bucket = None
+        
+        if settings and settings.media_config:
+            gcp_project_id = settings.media_config.gcp_project_id
+            gcp_location = settings.media_config.gcp_location
+            gcs_output_bucket = settings.media_config.gcs_output_bucket
+            
+        if not gcs_output_bucket or not gcs_output_bucket.startswith("gs://"):
+            raise ValueError(
+                "GCS output bucket must be provided in settings.media_config.gcs_output_bucket as a valid GCS URI (e.g., gs://my-bucket-name)"
+            )
+        if not gcp_project_id or not gcp_location:
+            raise ValueError(
+                "GCP project ID and location must be provided in settings.media_config"
+            )
+            
+        self.gcs_output_bucket = gcs_output_bucket
         self.client = genai.Client(
-            project=MEDIA_GCP_PROJECT_ID, location=MEDIA_GCP_LOCATION, vertexai=True
+            project=gcp_project_id, location=gcp_location, vertexai=True
         )
         self.video_model = DEFAULT_MODEL
 
@@ -186,7 +199,7 @@ The generated video will be saved to the specified local path in the workspace."
 
         # Veo outputs to GCS, so we need a unique GCS path for the intermediate file
         unique_gcs_filename = f"veo_temp_output_{uuid.uuid4().hex}.mp4"
-        gcs_output_uri = f"{MEDIA_GCS_OUTPUT_BUCKET.rstrip('/')}/{unique_gcs_filename}"
+        gcs_output_uri = f"{self.gcs_output_bucket.rstrip('/')}/{unique_gcs_filename}"
 
         try:
             operation = self.client.models.generate_videos(
@@ -315,13 +328,32 @@ The generated video will be saved to the specified local path in the workspace."
         "required": ["image_file_path", "output_filename"],
     }
 
-    def __init__(self, workspace_manager: WorkspaceManager):
+    def __init__(self, workspace_manager: WorkspaceManager, settings: Optional[Settings] = None):
         super().__init__()
         self.workspace_manager = workspace_manager
-        if not MEDIA_GCP_PROJECT_ID or not MEDIA_GCP_LOCATION:
-            raise ValueError("MEDIA_GCP_PROJECT_ID and MEDIA_GCP_LOCATION environment variables not set.")
-        self.genai_client = genai.Client(
-            project=MEDIA_GCP_PROJECT_ID, location=MEDIA_GCP_LOCATION, vertexai=True
+        
+        # Extract configuration from settings
+        gcp_project_id = None
+        gcp_location = None
+        gcs_output_bucket = None
+        
+        if settings and settings.media_config:
+            gcp_project_id = settings.media_config.gcp_project_id
+            gcp_location = settings.media_config.gcp_location
+            gcs_output_bucket = settings.media_config.gcs_output_bucket
+            
+        if not gcs_output_bucket or not gcs_output_bucket.startswith("gs://"):
+            raise ValueError(
+                "GCS output bucket must be provided in settings.media_config.gcs_output_bucket as a valid GCS URI (e.g., gs://my-bucket-name)"
+            )
+        if not gcp_project_id or not gcp_location:
+            raise ValueError(
+                "GCP project ID and location must be provided in settings.media_config"
+            )
+            
+        self.gcs_output_bucket = gcs_output_bucket
+        self.client = genai.Client(
+            project=gcp_project_id, location=gcp_location, vertexai=True
         )
         self.video_model = DEFAULT_MODEL
 
@@ -372,7 +404,7 @@ The generated video will be saved to the specified local path in the workspace."
 
         temp_gcs_image_filename = f"veo_temp_input_{uuid.uuid4().hex}{image_suffix}"
         temp_gcs_image_uri = (
-            f"{MEDIA_GCS_OUTPUT_BUCKET.rstrip('/')}/{temp_gcs_image_filename}"
+            f"{self.gcs_output_bucket.rstrip('/')}/{temp_gcs_image_filename}"
         )
 
         generated_video_gcs_uri_for_cleanup = None  # For finally block
@@ -382,7 +414,7 @@ The generated video will be saved to the specified local path in the workspace."
 
             unique_gcs_video_filename = f"veo_temp_output_{uuid.uuid4().hex}.mp4"
             gcs_output_video_uri = (
-                f"{MEDIA_GCS_OUTPUT_BUCKET.rstrip('/')}/{unique_gcs_video_filename}"
+                f"{self.gcs_output_bucket.rstrip('/')}/{unique_gcs_video_filename}"
             )
             generated_video_gcs_uri_for_cleanup = gcs_output_video_uri
 
@@ -400,7 +432,7 @@ The generated video will be saved to the specified local path in the workspace."
             if prompt:
                 generate_videos_kwargs["prompt"] = prompt
 
-            operation = self.genai_client.models.generate_videos(
+            operation = self.client.models.generate_videos(
                 **generate_videos_kwargs
             )
 
@@ -415,9 +447,9 @@ The generated video will be saved to the specified local path in the workspace."
                     )
                 time.sleep(polling_interval_seconds)
                 elapsed_time += polling_interval_seconds
-                operation = self.genai_client.operations.get(
+                operation = self.client.operations.get(
                     operation
-                )  # Use self.genai_client
+                )  # Use self.client
 
             if operation.error:
                 raise Exception(
@@ -513,11 +545,10 @@ The generated video will be saved to the specified local path in the workspace."
         "required": ["prompts", "output_filename", "duration_seconds"],
     }
 
-    def __init__(self, workspace_manager: WorkspaceManager):
+    def __init__(self, workspace_manager: WorkspaceManager, settings: Optional[Settings] = None):
         super().__init__()
         self.workspace_manager = workspace_manager
-        if not MEDIA_GCP_PROJECT_ID:
-            raise ValueError("MEDIA_GCP_PROJECT_ID environment variable not set.")
+        self.settings = settings
 
     async def run_impl(
         self,
@@ -565,7 +596,7 @@ The generated video will be saved to the specified local path in the workspace."
             first_scene_filename = "scene_0.mp4"
             first_scene_path = temp_dir / first_scene_filename
             
-            text_tool = VideoGenerateFromTextTool(self.workspace_manager)
+            text_tool = VideoGenerateFromTextTool(self.workspace_manager, self.settings)
             first_scene_result = await text_tool.run_impl({
                 "prompt": prompts[0],
                 "output_filename": str(first_scene_path.relative_to(self.workspace_manager.workspace_path(Path()))),
@@ -585,7 +616,7 @@ The generated video will be saved to the specified local path in the workspace."
             scene_video_paths.append(first_scene_path)
             
             # Generate subsequent scenes from last frame + prompt
-            image_tool = VideoGenerateFromImageTool(self.workspace_manager)
+            image_tool = VideoGenerateFromImageTool(self.workspace_manager, self.settings)
             
             for i, prompt in enumerate(prompts[1:], 1):
                 # Extract last frame from previous scene
@@ -669,7 +700,6 @@ The generated video will be saved to the specified local path in the workspace."
             )
         finally:
             # Clean up temporary files
-            
             if temp_dir.exists():
                 try:
                     shutil.rmtree(temp_dir)
@@ -723,9 +753,10 @@ The generated video will be saved to the specified local path in the workspace."
         "required": ["image_file_path", "prompts", "output_filename", "duration_seconds"],
     }
 
-    def __init__(self, workspace_manager: WorkspaceManager):
+    def __init__(self, workspace_manager: WorkspaceManager, settings: Optional[Settings] = None):
         super().__init__()
         self.workspace_manager = workspace_manager
+        self.settings = settings
 
     async def run_impl(
         self,
@@ -774,7 +805,7 @@ The generated video will be saved to the specified local path in the workspace."
             first_scene_filename = "scene_0.mp4"
             first_scene_path = temp_dir / first_scene_filename
             
-            image_tool = VideoGenerateFromImageTool(self.workspace_manager)
+            image_tool = VideoGenerateFromImageTool(self.workspace_manager, self.settings)
             first_scene_result = await image_tool.run_impl({
                 "image_file_path": image_file_path,
                 "prompt": prompts[0],

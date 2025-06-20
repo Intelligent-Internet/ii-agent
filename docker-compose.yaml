@@ -1,0 +1,31 @@
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend/Dockerfile
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    volumes:
+      - ~/.ii_agent/workspace:/.ii_agent/workspace
+    environment:
+      - NODE_ENV=production
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+
+  backend:
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile
+    init: true # Needed for the browser use
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    environment:
+      #Path of mounted file in docker
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/google-application-credentials.json
+      # Static file base url
+      - STATIC_FILE_BASE_URL=${STATIC_FILE_BASE_URL:-http://localhost:8000}
+    volumes:
+      #If file doesn't exist, use a dummy file
+      - ${GOOGLE_APPLICATION_CREDENTIALS:-./docker/.dummy-credentials.json}:/app/google-application-credentials.json
+      - ~/.ii_agent:/.ii_agent

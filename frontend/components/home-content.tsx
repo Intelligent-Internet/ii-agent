@@ -11,7 +11,7 @@ import {
   Loader2,
 } from "lucide-react";
 import Image from "next/image";
-import { useEffect, useMemo, useRef } from "react";
+import { useMemo, useRef } from "react";
 import { toast } from "sonner";
 import dynamic from "next/dynamic";
 import { Kumbh_Sans } from "next/font/google";
@@ -316,10 +316,6 @@ export default function HomeContent() {
       ].includes(state.currentActionData?.type as TOOL),
     [state.currentActionData]
   );
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [state.messages?.length]);
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-[#191E1B]">

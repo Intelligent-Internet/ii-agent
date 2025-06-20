@@ -8,7 +8,7 @@ from typing import Any, Tuple, cast
 import openai
 import logging
 
-logger = logging.getLogger(__name__)
+
 
 from openai import (
     APIConnectionError as OpenAI_APIConnectionError,
@@ -23,6 +23,7 @@ from openai._types import (
     NOT_GIVEN as OpenAI_NOT_GIVEN,  # pyright: ignore[reportPrivateImportUsage]
 )
 
+from ii_agent.core.config.llm_config import LLMConfig
 from ii_agent.llm.base import (
     LLMClient,
     AssistantContentBlock,
@@ -34,29 +35,32 @@ from ii_agent.llm.base import (
     ToolFormattedResult,
 )
 
+logger = logging.getLogger(__name__)
+
 
 class OpenAIDirectClient(LLMClient):
     """Use OpenAI models via first party API."""
 
-    def __init__(self, model_name: str, max_retries=2, cot_model: bool = True, azure_model: bool = False):
+    def __init__(self, llm_config: LLMConfig):
         """Initialize the OpenAI first party client."""
-        api_key = os.getenv("OPENAI_API_KEY", "EMPTY")
-        base_url = os.getenv("OPENAI_BASE_URL", "http://0.0.0.0:2323")
-        if azure_model:
-            azure_endpoint = os.getenv("OPENAI_AZURE_ENDPOINT", "http://0.0.0.0:2323")
-            api_key = os.getenv("OPENAI_API_KEY", "EMPTY")
-            api_version = os.getenv("AZURE_API_VERSION", "2024-12-01-preview")
+        if llm_config.azure_endpoint is not None:
             self.client = openai.AzureOpenAI(
-                api_key=api_key,
-                azure_endpoint=azure_endpoint,
-                api_version=api_version,
-                max_retries=max_retries,
+                api_key=llm_config.api_key.get_secret_value() if llm_config.api_key else None,
+                azure_endpoint=llm_config.azure_endpoint,
+                api_version=llm_config.azure_api_version,
+                max_retries=llm_config.max_retries,
             )
+
         else:
-            self.client = openai.OpenAI(api_key=api_key, base_url=base_url, max_retries=max_retries)
-        self.model_name = model_name
-        self.max_retries = max_retries
-        self.cot_model = cot_model
+            base_url = llm_config.base_url or "https://api.openai.com/v1"
+            self.client = openai.OpenAI(
+                api_key=llm_config.api_key.get_secret_value() if llm_config.api_key else None,
+                base_url=base_url,
+                max_retries=llm_config.max_retries,
+            )
+        self.model_name = llm_config.model
+        self.max_retries = llm_config.max_retries
+        self.cot_model = llm_config.cot_model
 
     def generate(
         self,

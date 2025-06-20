@@ -4,16 +4,13 @@ from fastapi.middleware.cors import CORSMiddleware
 import os
 from fastapi.staticfiles import StaticFiles
 
-from ii_agent.core.storage import get_file_store
-from .api import upload_router, sessions_router
-from ii_agent.server.websocket import ConnectionManager
-from ii_agent.server.factories import AgentFactory, AgentConfig, ClientFactory
-from ii_agent.core.config.utils import load_ii_agent_config
+from .api import upload_router, sessions_router, settings_router
+from ii_agent.server import shared
 
 logger = logging.getLogger(__name__)
 
 
-def create_app(args) -> FastAPI:
+def create_app() -> FastAPI:
     """Create and configure the FastAPI application.
 
     Args:
@@ -23,7 +20,6 @@ def create_app(args) -> FastAPI:
         FastAPI: Configured FastAPI application instance
     """
     app = FastAPI(title="Agent WebSocket API")
-    ii_agent_config = load_ii_agent_config()
 
     # Add CORS middleware
     app.add_middleware(
@@ -35,41 +31,22 @@ def create_app(args) -> FastAPI:
     )
 
     # Store global args in app state for access in endpoints
-    app.state.workspace = args.workspace
+    app.state.workspace = shared.config.workspace_root
 
-    # Create factory instances
-    client_factory = ClientFactory(project_id=args.project_id, region=args.region)
-
-    agent_config = AgentConfig(
-        logs_path=args.logs_path,
-        minimize_stdout_logs=args.minimize_stdout_logs,
-        docker_container_id=args.docker_container_id,
-        needs_permission=args.needs_permission,
-    )
-    agent_factory = AgentFactory(agent_config)
-
-    # Create connection manager with injected dependencies
-    connection_manager = ConnectionManager(
-        workspace_root=args.workspace,
-        use_container_workspace=args.use_container_workspace,
-        client_factory=client_factory,
-        agent_factory=agent_factory,
-        file_store=get_file_store(
-            ii_agent_config.file_store, ii_agent_config.file_store_path
-        ),
-    )
+    
 
     # Include API routers
     app.include_router(upload_router)
     app.include_router(sessions_router)
+    app.include_router(settings_router)
 
     # Setup workspace static files
-    setup_workspace(app, args.workspace)
+    setup_workspace(app, shared.config.workspace_root)
 
     # WebSocket endpoint
     @app.websocket("/ws")
     async def websocket_handler(websocket: WebSocket):
-        session = await connection_manager.connect(websocket)
+        session = await shared.connection_manager.connect(websocket)
         await session.start_chat_loop()
 
     return app

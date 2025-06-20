@@ -2,7 +2,7 @@ import asyncio
 import json
 import logging
 import uuid
-from typing import Optional
+from typing import Optional, Dict, Any
 from fastapi import WebSocket, WebSocketDisconnect
 from pydantic import ValidationError
 
@@ -11,7 +11,10 @@ from ii_agent.agents.base import BaseAgent
 from ii_agent.agents.reviewer import ReviewerAgent
 from ii_agent.core.event import RealtimeEvent, EventType
 from ii_agent.core.storage.files import FileStore
+from ii_agent.core.storage.models.settings import Settings
+from ii_agent.core.storage.settings.file_settings_store import FileSettingsStore
 from ii_agent.db.manager import Sessions, Events
+from ii_agent.llm import get_client
 from ii_agent.utils.prompt_generator import enhance_user_prompt
 from ii_agent.utils.workspace_manager import WorkspaceManager
 from ii_agent.server.models.messages import (
@@ -22,28 +25,36 @@ from ii_agent.server.models.messages import (
     EditQueryContent,
     ReviewResultContent,
 )
-from ii_agent.server.factories import ClientFactory, AgentFactory
+from ii_agent.core.config.ii_agent_config import IIAgentConfig
+from ii_agent.llm.base import LLMClient
+from ii_agent.llm.message_history import MessageHistory
+from ii_agent.agents.function_call import FunctionCallAgent
+from ii_agent.llm.context_manager.llm_summarizing import LLMSummarizingContextManager
+from ii_agent.llm.token_counter import TokenCounter
+from ii_agent.tools import get_system_tools
+from ii_agent.prompts.system_prompt import (
+    SYSTEM_PROMPT,
+    SYSTEM_PROMPT_WITH_SEQ_THINKING,
+)
+from ii_agent.prompts.reviewer_system_prompt import REVIEWER_SYSTEM_PROMPT
 
 logger = logging.getLogger(__name__)
 
 
 class ChatSession:
-    """Manages a single chat session with its own agent, workspace, and message handling."""
+    """Manages a single standalone chat session with its own agent, workspace, and message handling."""
 
     def __init__(
         self,
         websocket: WebSocket,
         workspace_manager: WorkspaceManager,
         session_uuid: uuid.UUID,
-        client_factory: ClientFactory,
-        agent_factory: AgentFactory,
         file_store: FileStore,
+        config: IIAgentConfig,
     ):
         self.websocket = websocket
         self.workspace_manager = workspace_manager
         self.session_uuid = session_uuid
-        self.client_factory = client_factory
-        self.agent_factory = agent_factory
         self.file_store = file_store
         # Session state
         self.agent: Optional[BaseAgent] = None
@@ -53,6 +64,7 @@ class ChatSession:
         self.reviewer_message_processor: Optional[asyncio.Task] = None
         self.first_message = True
         self.enable_reviewer = False
+        self.config = config
 
     async def send_event(self, event: RealtimeEvent):
         """Send an event to the client via WebSocket."""
@@ -146,18 +158,25 @@ class ChatSession:
             init_content = InitAgentContent(**content)
 
             # Create LLM client using factory
-            client = self.client_factory.create_client(
-                init_content.model_name, thinking_tokens=init_content.thinking_tokens
-            )
+            user_id = None # TODO: Support user id
+            settings_store = await FileSettingsStore.get_instance(self.config, user_id)
+            settings = await settings_store.load() 
+            llm_config = settings.llm_configs.get(init_content.model_name)
+            if not llm_config:
+                raise ValueError(f"LLM config not found for model: {init_content.model_name}")
+            
+            llm_config.thinking_tokens = init_content.thinking_tokens
+            client = get_client(llm_config)
 
-            # Create agent using factory
-            self.agent = self.agent_factory.create_agent(
+            # Create agent using internal methods
+            self.agent = self._create_agent(
                 client,
                 self.session_uuid,
                 self.workspace_manager,
                 self.websocket,
                 init_content.tool_args,
                 self.file_store,
+                settings=settings,
             )
 
             # Start message processor for this session
@@ -167,13 +186,14 @@ class ChatSession:
             self.enable_reviewer = init_content.tool_args.get("enable_reviewer", False)
             if self.enable_reviewer:
                 # Create reviewer agent using factory
-                self.reviewer_agent = self.agent_factory.create_reviewer_agent(
+                self.reviewer_agent = self._create_reviewer_agent(
                     client,
                     self.session_uuid,
                     self.workspace_manager,
                     self.websocket,
                     init_content.tool_args,
                     self.file_store,
+                    settings=settings,
                 )
                 
                 # Start message processor for reviewer
@@ -368,9 +388,15 @@ class ChatSession:
         """Handle prompt enhancement request."""
         try:
             enhance_content = EnhancePromptContent(**content)
-
             # Create LLM client using factory
-            client = self.client_factory.create_client(enhance_content.model_name)
+            user_id = None # TODO: Support user id
+            settings_store = await FileSettingsStore.get_instance(self.config, user_id)
+            settings = await settings_store.load()
+
+            llm_config = settings.llm_configs.get(enhance_content.model_name)
+            if not llm_config:
+                raise ValueError(f"LLM config not found for model: {enhance_content.model_name}")
+            client = get_client(llm_config)
 
             # Call the enhance_prompt function
             success, message, enhanced_prompt = await enhance_user_prompt(
@@ -569,3 +595,192 @@ Please review this feedback and implement the suggested improvements to better c
         self.reviewer_agent = None
         self.message_processor = None
         self.reviewer_message_processor = None
+
+    def _create_agent(
+        self,
+        client: LLMClient,
+        session_id: uuid.UUID,
+        workspace_manager: WorkspaceManager,
+        websocket: WebSocket,
+        tool_args: Dict[str, Any],
+        file_store: FileStore,
+        settings: Settings,
+    ):
+        """Create a new agent instance for a websocket connection.
+
+        Args:
+            client: LLM client instance
+            session_id: Session UUID
+            workspace_manager: Workspace manager
+            websocket: WebSocket connection
+            tool_args: Tool configuration arguments
+
+        Returns:
+            Configured agent instance
+        """
+        device_id = websocket.query_params.get("device_id")
+
+        # Setup logging
+        logger_for_agent_logs = logging.getLogger(f"agent_logs_{id(websocket)}")
+        logger_for_agent_logs.setLevel(logging.DEBUG)
+        logger_for_agent_logs.propagate = False
+
+        # Ensure we don't duplicate handlers
+        if not logger_for_agent_logs.handlers:
+            logger_for_agent_logs.addHandler(logging.FileHandler(self.config.logs_path))
+            if not self.config.minimize_stdout_logs:
+                logger_for_agent_logs.addHandler(logging.StreamHandler())
+
+        # Check and create database session
+        existing_session = Sessions.get_session_by_id(session_id)
+        if existing_session:
+            logger.info(
+                f"Found existing session {session_id} with workspace at {existing_session.workspace_dir}"
+            )
+        else:
+            # Create new session if it doesn't exist
+            Sessions.create_session(
+                device_id=device_id,
+                session_uuid=session_id,
+                workspace_path=workspace_manager.root,
+            )
+            logger.info(
+                f"Created new session {session_id} with workspace at {workspace_manager.root}"
+            )
+
+        # Create context manager
+        token_counter = TokenCounter()
+        context_manager = LLMSummarizingContextManager(
+            client=client,
+            token_counter=token_counter,
+            logger=logger,
+            token_budget=self.config.token_budget,
+        )
+
+        # Create agent
+        return self._create_agent_instance(
+            client,
+            workspace_manager,
+            websocket,
+            session_id,
+            tool_args,
+            context_manager,
+            logger_for_agent_logs,
+            file_store,
+            settings,
+        )
+
+    def _create_agent_instance(
+        self,
+        client: LLMClient,
+        workspace_manager: WorkspaceManager,
+        websocket: WebSocket,
+        session_id: uuid.UUID,
+        tool_args: Dict[str, Any],
+        context_manager,
+        logger: logging.Logger,
+        file_store: FileStore,
+        settings: Settings,
+    ):
+        """Create the actual agent instance."""
+        # Initialize agent queue and tools
+        queue = asyncio.Queue()
+        tools = get_system_tools(
+            client=client,
+            workspace_manager=workspace_manager,
+            message_queue=queue,
+            container_id=self.config.docker_container_id,
+            tool_args=tool_args,
+            settings=settings,
+        )
+
+        # Choose system prompt based on tool args
+        system_prompt = (
+            SYSTEM_PROMPT_WITH_SEQ_THINKING
+            if tool_args.get("sequential_thinking", False)
+            else SYSTEM_PROMPT
+        )
+
+        # try to get history from file store
+        init_history = MessageHistory(context_manager)
+        try:
+            init_history.restore_from_session(str(session_id), file_store)
+
+        except FileNotFoundError:
+            logger.info(f"No history found for session {session_id}")
+
+        agent = FunctionCallAgent(
+            system_prompt=system_prompt,
+            client=client,
+            tools=tools,
+            workspace_manager=workspace_manager,
+            message_queue=queue,
+            logger_for_agent_logs=logger,
+            init_history=init_history,
+            max_output_tokens_per_turn=self.config.max_output_tokens_per_turn,
+            max_turns=self.config.max_turns,
+            websocket=websocket,
+            session_id=session_id,
+        )
+
+        # Store the session ID in the agent for event tracking
+        agent.session_id = session_id
+        return agent
+    
+    def _create_reviewer_agent(
+        self,
+        client: LLMClient,
+        session_id: uuid.UUID,
+        workspace_manager: WorkspaceManager,
+        websocket: WebSocket,
+        tool_args: Dict[str, Any],
+        file_store: FileStore,
+        settings: Settings,
+    ):
+        """Create a new reviewer agent instance for a websocket connection.
+
+        Args:
+            client: LLM client instance
+            session_id: Session UUID
+            workspace_manager: Workspace manager
+            websocket: WebSocket connection
+            tool_args: Tool configuration arguments
+            file_store: File store instance
+
+        Returns:
+            Configured reviewer agent instance
+        """
+        # Setup logging
+        logger_for_agent_logs = self._setup_logger(websocket)
+
+        # Create context manager
+        context_manager = self._create_context_manager(client, logger_for_agent_logs)
+
+        # Initialize agent queue and tools
+        queue = asyncio.Queue()
+        tools = get_system_tools(
+            client=client,
+            workspace_manager=workspace_manager,
+            message_queue=queue,
+            container_id=self.config.docker_container_id,
+            tool_args=tool_args,
+            settings=settings,
+        )
+
+        reviewer_agent = ReviewerAgent(
+            system_prompt=REVIEWER_SYSTEM_PROMPT,
+            client=client,
+            tools=tools,
+            workspace_manager=workspace_manager,
+            message_queue=queue,
+            logger_for_agent_logs=logger_for_agent_logs,
+            context_manager=context_manager,
+            max_output_tokens_per_turn=self.config.max_output_tokens_per_turn,
+            max_turns=self.config.max_turns,
+            websocket=websocket,
+            session_id=session_id,
+        )
+
+        return reviewer_agent
+
+    

@@ -4,6 +4,8 @@ import asyncio
 import aiohttp
 import urllib
 from .utils import truncate_content
+from ii_agent.core.storage.models.settings import Settings
+from typing import Optional
 
 
 class BaseSearchClient:
@@ -28,15 +30,15 @@ class JinaSearchClient(BaseSearchClient):
 
     name = "Jina"
 
-    def __init__(self, max_results=10, **kwargs):
+    def __init__(self, max_results=10, api_key: Optional[str] = None, **kwargs):
         self.max_results = max_results
-        self.api_key = os.environ.get("JINA_API_KEY", "")
+        self.api_key = api_key or ""
 
     async def _search_query_by_jina(self, query, max_results=10):
         """Searches the query using Jina AI search API."""
         jina_api_key = self.api_key
         if not jina_api_key:
-            print("Error: JINA_API_KEY environment variable not set")
+            print("Error: Jina API key not provided")
             return []
 
         url = "https://s.jina.ai/"
@@ -88,9 +90,9 @@ class SerpAPISearchClient(BaseSearchClient):
 
     name = "SerpAPI"
 
-    def __init__(self, max_results=10, **kwargs):
+    def __init__(self, max_results=10, api_key: Optional[str] = None, **kwargs):
         self.max_results = max_results
-        self.api_key = os.environ.get("SERPAPI_API_KEY", "")
+        self.api_key = api_key or ""
 
     async def _search_query_by_serp_api(self, query, max_results=10):
         """Searches the query using SerpAPI."""
@@ -174,12 +176,12 @@ class TavilySearchClient(BaseSearchClient):
 
     name = "Tavily"
 
-    def __init__(self, max_results=5, **kwargs):
+    def __init__(self, max_results=5, api_key: Optional[str] = None, **kwargs):
         self.max_results = max_results
-        self.api_key = os.environ.get("TAVILY_API_KEY", "")
+        self.api_key = api_key or ""
         if not self.api_key:
             print(
-                "Warning: TAVILY_API_KEY environment variable not set. Tool may not function correctly."
+                "Warning: Tavily API key not provided. Tool may not function correctly."
             )
 
     async def forward_async(self, query: str) -> str:
@@ -215,9 +217,9 @@ class ImageSearchClient:
 
     name = "ImageSerpAPI"
 
-    def __init__(self, max_results=10, **kwargs):
+    def __init__(self, max_results=10, api_key: Optional[str] = None, **kwargs):
         self.max_results = max_results
-        self.api_key = os.environ.get("SERPAPI_API_KEY", "")
+        self.api_key = api_key or ""
 
     async def _search_query_by_serp_api(self, query, max_results=10):
         """Searches the query using SerpAPI."""
@@ -263,41 +265,76 @@ class ImageSearchClient:
             return f"Error searching with SerpAPI: {str(e)}"
 
 
-def create_search_client(max_results=10, **kwargs) -> BaseSearchClient:
+def create_search_client(settings: Optional[Settings] = None, max_results=10, **kwargs) -> BaseSearchClient:
     """
     A search client that selects from available search APIs in the following order:
-    Tavily > Jina > SerpAPI > DuckDuckGo
+    SerpAPI > Jina > Tavily > DuckDuckGo
 
     It defaults to DuckDuckGo if no API keys are found for the other services.
+    
+    Args:
+        settings: Settings object containing API keys
+        max_results: Maximum number of results to return
+        **kwargs: Additional arguments
     """
+    
+    # Extract API keys from settings if available, otherwise fall back to environment
+    serpapi_key = None
+    jina_key = None
+    tavily_key = None
+    
+    if settings and settings.search_config:
+        serpapi_key = settings.search_config.serpapi_api_key.get_secret_value() if settings.search_config.serpapi_api_key else None
+        jina_key = settings.search_config.jina_api_key.get_secret_value() if settings.search_config.jina_api_key else None
+        tavily_key = settings.search_config.tavily_api_key.get_secret_value() if settings.search_config.tavily_api_key else None
+    
+    # Fall back to environment variables if not in settings
+    if not serpapi_key:
+        serpapi_key = os.environ.get("SERPAPI_API_KEY", "")
+    if not jina_key:
+        jina_key = os.environ.get("JINA_API_KEY", "")
+    if not tavily_key:
+        tavily_key = os.environ.get("TAVILY_API_KEY", "")
 
-    serp_api_key = os.environ.get("SERPAPI_API_KEY", "")
-    if serp_api_key:
+    if serpapi_key:
         print("Using SerpAPI to search")
-        return SerpAPISearchClient(max_results=max_results, **kwargs)
+        return SerpAPISearchClient(max_results=max_results, api_key=serpapi_key, **kwargs)
 
-    jina_api_key = os.environ.get("JINA_API_KEY", "")
-    if jina_api_key:
+    if jina_key:
         print("Using Jina to search")
-        return JinaSearchClient(max_results=max_results, **kwargs)
+        return JinaSearchClient(max_results=max_results, api_key=jina_key, **kwargs)
 
-    tavily_api_key = os.environ.get("TAVILY_API_KEY", "")
-    if tavily_api_key:
+    if tavily_key:
         print("Using Tavily to search")
-        return TavilySearchClient(max_results=max_results, **kwargs)
+        return TavilySearchClient(max_results=max_results, api_key=tavily_key, **kwargs)
 
     print("Using DuckDuckGo to search")
     return DuckDuckGoSearchClient(max_results=max_results, **kwargs)
 
 
-def create_image_search_client(max_results=5, **kwargs) -> ImageSearchClient:
+def create_image_search_client(settings: Optional[Settings] = None, max_results=5, **kwargs) -> Optional[ImageSearchClient]:
     """
-    A search client that selects from available image search APIs in the following order:
-    Google > Bing > DuckDuckGo
+    A search client that selects from available image search APIs.
+    
+    Args:
+        settings: Settings object containing API keys
+        max_results: Maximum number of results to return
+        **kwargs: Additional arguments
     """
-    if os.environ.get("SERPAPI_API_KEY"):
+    
+    # Extract API key from settings if available, otherwise fall back to environment
+    serpapi_key = None
+    
+    if settings and settings.search_config:
+        serpapi_key = settings.search_config.serpapi_api_key.get_secret_value() if settings.search_config.serpapi_api_key else None
+    
+    # Fall back to environment variables if not in settings
+    if not serpapi_key:
+        serpapi_key = os.environ.get("SERPAPI_API_KEY", "")
+
+    if serpapi_key:
         print("Using SerpAPI to search for images")
-        return ImageSearchClient(max_results=max_results, **kwargs)
+        return ImageSearchClient(max_results=max_results, api_key=serpapi_key, **kwargs)
     else:
-        print("No image search API key found, using DuckDuckGo")
+        print("No image search API key found")
         return None

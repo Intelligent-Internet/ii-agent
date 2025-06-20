@@ -15,9 +15,7 @@ from ii_agent.tools.base import (
     ToolImplOutput,
 )
 from ii_agent.utils import WorkspaceManager
-
-MEDIA_GCP_PROJECT_ID = os.environ.get("MEDIA_GCP_PROJECT_ID")
-MEDIA_GCP_LOCATION = os.environ.get("MEDIA_GCP_LOCATION")
+from ii_agent.core.storage.models.settings import Settings
 
 SUPPORTED_ASPECT_RATIOS = ["1:1", "16:9", "9:16", "4:3", "3:4"]
 SAFETY_FILTER_LEVELS = ["block_some", "block_most", "block_few"]
@@ -75,16 +73,25 @@ The generated image will be saved to the specified local path in the workspace a
         "required": ["prompt", "output_filename"],
     }
 
-    def __init__(self, workspace_manager: WorkspaceManager):
+    def __init__(self, workspace_manager: WorkspaceManager, settings: Optional[Settings] = None):
         super().__init__()
         self.workspace_manager = workspace_manager
-        if not MEDIA_GCP_PROJECT_ID or not MEDIA_GCP_LOCATION:
+        
+        # Extract configuration from settings
+        gcp_project_id = None
+        gcp_location = None
+        
+        if settings and settings.media_config:
+            gcp_project_id = settings.media_config.gcp_project_id
+            gcp_location = settings.media_config.gcp_location
+            
+        if not gcp_project_id or not gcp_location:
             raise ValueError(
-                "MEDIA_GCP_PROJECT_ID and MEDIA_GCP_LOCATION environment variables not set."
+                "GCP project ID and location must be provided in settings.media_config"
             )
 
         try:
-            vertexai.init(project=MEDIA_GCP_PROJECT_ID, location=MEDIA_GCP_LOCATION)
+            vertexai.init(project=gcp_project_id, location=gcp_location)
             self.model = ImageGenerationModel.from_pretrained(
                 "imagen-3.0-generate-002"
             )  # As per snippet

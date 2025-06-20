@@ -4,6 +4,7 @@ from ii_agent.tools.base import (
     ToolImplOutput,
 )
 from ii_agent.tools.web_search_client import create_image_search_client
+from ii_agent.core.storage.models.settings import Settings
 from typing import Any, Optional
 
 
@@ -19,10 +20,10 @@ class ImageSearchTool(LLMTool):
     }
     output_type = "array"
 
-    def __init__(self, max_results=5, **kwargs):
+    def __init__(self, settings: Optional[Settings] = None, max_results=5, **kwargs):
         self.max_results = max_results
         self.image_search_client = create_image_search_client(
-            max_results=max_results, **kwargs
+            settings=settings, max_results=max_results, **kwargs
         )
 
     def is_available(self):
