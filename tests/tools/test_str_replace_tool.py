@@ -3,11 +3,13 @@ from unittest.mock import MagicMock, patch
 import pytest
 from ii_agent.tools.str_replace_tool_relative import StrReplaceEditorTool
 
-pytest_plugins = ('pytest_asyncio',)
+pytest_plugins = ("pytest_asyncio",)
+
 
 def build_ws_manager(root):
     workspace_manager = MagicMock()
     workspace_manager.root = root
+    workspace_manager.root_path.side_effect = lambda: root
     workspace_manager.workspace_path.side_effect = lambda path: path
     workspace_manager.container_path.side_effect = lambda path: path
     return workspace_manager
@@ -46,6 +48,7 @@ async def test_view_command(tmp_path):
     assert "line2" in result.tool_output
     assert "line3" not in result.tool_output
     assert "Total lines in file: 3" in result.tool_output
+
 
 @pytest.mark.asyncio
 async def test_view_directory(tmp_path):

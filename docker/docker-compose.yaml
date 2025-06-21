@@ -1,4 +1,19 @@
 services:
+
+  nginx:
+    build:
+      context: ..
+      dockerfile: docker/nginx/Dockerfile
+    image: nginx-${COMPOSE_PROJECT_NAME}
+    environment:
+      - PUBLIC_DOMAIN=${PUBLIC_DOMAIN}
+    ports:
+      - "${NGINX_PORT:-80}:80"
+    profiles:
+      - docker
+    networks:
+      - ii
+
   frontend:
     build:
       context: ..
@@ -8,6 +23,20 @@ services:
       - "${FRONTEND_PORT:-3000}:3000"
     volumes:
       - ${WORKSPACE_PATH:-../workspace}:/app/workspace
+    networks:
+      - ii
+
+  sandbox:
+    build:
+      context: ..
+      dockerfile: docker/sandbox/Dockerfile
+    image: sandbox-${COMPOSE_PROJECT_NAME}
+    environment:
+      - WDS_SOCKET_PORT=0
+    profiles:
+      - docker
+    deploy:
+      replicas: 0
 
   backend:
     build:
@@ -21,14 +50,23 @@ services:
       - ../.env
     environment:
       - COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME}
-      #Path of mounted file in docker
+      - BASE_URL=${BASE_URL}
+      #Path of mounted file
       - GOOGLE_APPLICATION_CREDENTIALS=/app/google-application-credentials.json
       - PROJECT_ID=${PROJECT_ID}
       - REGION=${REGION}
       - WORKSPACE_PATH=${WORKSPACE_PATH}
+      - USE_DOCKER_SANDBOX=${USE_DOCKER_SANDBOX}
     volumes:
+      - /var/run/docker.sock:/var/run/docker.sock #ONLY WORK FOR UNIX FOR NOW
       - ${WORKSPACE_PATH:-../workspace}:/app/workspace
       #If file doesn't exist, use a dummy file
       - ${GOOGLE_APPLICATION_CREDENTIALS:-.dummy-credentials.json}:/app/google-application-credentials.json
       - ../db:/app/db
       - ~/.ii_agent_file_store:/.ii_agent_file_store
+    networks:
+      - ii
+
+networks:
+  ii:
+    name: ii-${COMPOSE_PROJECT_NAME}

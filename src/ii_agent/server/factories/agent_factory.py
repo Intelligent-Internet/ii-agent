@@ -15,8 +15,8 @@ from ii_agent.llm.token_counter import TokenCounter
 from ii_agent.db.manager import Sessions
 from ii_agent.tools import get_system_tools
 from ii_agent.prompts.system_prompt import (
-    SYSTEM_PROMPT,
-    SYSTEM_PROMPT_WITH_SEQ_THINKING,
+    get_system_prompt,
+    get_system_prompt_with_seq_thinking,
 )
 from ii_agent.prompts.reviewer_system_prompt import REVIEWER_SYSTEM_PROMPT
 from ii_agent.utils.constants import TOKEN_BUDGET
@@ -33,7 +33,6 @@ class AgentConfig:
         self,
         logs_path: str,
         minimize_stdout_logs: bool = False,
-        docker_container_id: str = None,
         needs_permission: bool = True,
         max_output_tokens_per_turn: int = MAX_OUTPUT_TOKENS_PER_TURN,
         max_turns: int = MAX_TURNS,
@@ -41,7 +40,6 @@ class AgentConfig:
     ):
         self.logs_path = logs_path
         self.minimize_stdout_logs = minimize_stdout_logs
-        self.docker_container_id = docker_container_id
         self.needs_permission = needs_permission
         self.max_output_tokens_per_turn = max_output_tokens_per_turn
         self.max_turns = max_turns
@@ -62,7 +60,6 @@ class AgentFactory:
     def create_agent(
         self,
         client: LLMClient,
-        session_id: uuid.UUID,
         workspace_manager: WorkspaceManager,
         websocket: WebSocket,
         tool_args: Dict[str, Any],
@@ -72,7 +69,6 @@ class AgentFactory:
 
         Args:
             client: LLM client instance
-            session_id: Session UUID
             workspace_manager: Workspace manager
             websocket: WebSocket connection
             tool_args: Tool configuration arguments
@@ -84,6 +80,7 @@ class AgentFactory:
 
         # Setup logging
         logger_for_agent_logs = self._setup_logger(websocket)
+        session_id = workspace_manager.session_id
 
         # Create database session
         self._create_db_session(
@@ -98,7 +95,6 @@ class AgentFactory:
             client,
             workspace_manager,
             websocket,
-            session_id,
             tool_args,
             context_manager,
             logger_for_agent_logs,
@@ -162,7 +158,6 @@ class AgentFactory:
         client: LLMClient,
         workspace_manager: WorkspaceManager,
         websocket: WebSocket,
-        session_id: uuid.UUID,
         tool_args: Dict[str, Any],
         context_manager,
         logger: logging.Logger,
@@ -170,21 +165,20 @@ class AgentFactory:
     ):
         """Create the actual agent instance."""
         # Initialize agent queue and tools
+        session_id = workspace_manager.session_id
         queue = asyncio.Queue()
         tools = get_system_tools(
             client=client,
             workspace_manager=workspace_manager,
             message_queue=queue,
-            container_id=self.config.docker_container_id,
-            ask_user_permission=self.config.needs_permission,
             tool_args=tool_args,
         )
 
         # Choose system prompt based on tool args
         system_prompt = (
-            SYSTEM_PROMPT_WITH_SEQ_THINKING
+            get_system_prompt_with_seq_thinking(workspace_manager.workspace_mode)
             if tool_args.get("sequential_thinking", False)
-            else SYSTEM_PROMPT
+            else get_system_prompt(workspace_manager.workspace_mode)
         )
 
         # try to get history from file store
@@ -247,8 +241,6 @@ class AgentFactory:
             client=client,
             workspace_manager=workspace_manager,
             message_queue=queue,
-            container_id=self.config.docker_container_id,
-            ask_user_permission=self.config.needs_permission,
             tool_args=tool_args,
         )
 

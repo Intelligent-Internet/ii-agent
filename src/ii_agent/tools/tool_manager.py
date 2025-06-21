@@ -2,20 +2,37 @@ import os
 import asyncio
 import logging
 from copy import deepcopy
-from typing import Optional, List, Dict, Any
+from typing import List, Dict, Any
+
+from e2b import Sandbox
 from ii_agent.llm.base import LLMClient
 from ii_agent.llm.context_manager.llm_summarizing import LLMSummarizingContextManager
 from ii_agent.llm.token_counter import TokenCounter
+from ii_agent.sandbox.config import SandboxSettings
+from ii_agent.tools.clients.str_replace_client import StrReplaceClient
 from ii_agent.tools.image_search_tool import ImageSearchTool
 from ii_agent.tools.base import LLMTool
 from ii_agent.llm.message_history import ToolCallParameters
+from ii_agent.tools.clients.config import RemoteClientConfig
+from ii_agent.tools.project_start_up_tool import ProjectStartUpTool
+from ii_agent.tools.register_deployment import RegisterDeploymentTool
+from ii_agent.tools.shell_tools import (
+    ShellExecTool,
+    ShellViewTool,
+    ShellWaitTool,
+    ShellKillProcessTool,
+    ShellWriteToProcessTool,
+)
+from ii_agent.tools.static_deploy_tool import StaticDeployTool
+from ii_agent.tools.clients.terminal_client import TerminalClient
 from ii_agent.tools.memory.compactify_memory import CompactifyMemoryTool
 from ii_agent.tools.memory.simple_memory import SimpleMemoryTool
 from ii_agent.tools.slide_deck_tool import SlideDeckInitTool, SlideDeckCompleteTool
 from ii_agent.tools.web_search_tool import WebSearchTool
 from ii_agent.tools.visit_webpage_tool import VisitWebpageTool
-from ii_agent.tools.str_replace_tool_relative import StrReplaceEditorTool
-from ii_agent.tools.static_deploy_tool import StaticDeployTool
+from ii_agent.tools.str_replace_tool_relative import (
+    StrReplaceEditorTool as StrReplaceEditorToolRelative,
+)
 from ii_agent.tools.sequential_thinking_tool import SequentialThinkingTool
 from ii_agent.tools.message_tool import MessageTool
 from ii_agent.tools.complete_tool import CompleteTool, ReturnControlToUserTool, CompleteToolReviewer, ReturnControlToGeneralAgentTool
@@ -54,14 +71,13 @@ from ii_agent.tools.pdf_tool import PdfTextExtractTool
 from ii_agent.tools.deep_research_tool import DeepResearchTool
 from ii_agent.tools.list_html_links_tool import ListHtmlLinksTool
 from ii_agent.utils.constants import TOKEN_BUDGET
+from ii_agent.utils.workspace_manager import WorkSpaceMode
 
 
 def get_system_tools(
     client: LLMClient,
     workspace_manager: WorkspaceManager,
     message_queue: asyncio.Queue,
-    container_id: Optional[str] = None,
-    ask_user_permission: bool = False,
     tool_args: Dict[str, Any] = None,
 ) -> list[LLMTool]:
     """
@@ -70,14 +86,6 @@ def get_system_tools(
     Returns:
         list[LLMTool]: A list of all system tools.
     """
-    if container_id is not None:
-        bash_tool = create_docker_bash_tool(
-            container=container_id, ask_user_permission=ask_user_permission
-        )
-    else:
-        bash_tool = create_bash_tool(
-            ask_user_permission=ask_user_permission, cwd=workspace_manager.root
-        )
 
     logger = logging.getLogger("presentation_context_manager")
     context_manager = LLMSummarizingContextManager(
@@ -87,24 +95,80 @@ def get_system_tools(
         token_budget=TOKEN_BUDGET,
     )
 
-    tools = [
-        MessageTool(),
-        WebSearchTool(),
-        VisitWebpageTool(),
-        StaticDeployTool(workspace_manager=workspace_manager),
-        StrReplaceEditorTool(
-            workspace_manager=workspace_manager, message_queue=message_queue
-        ),
-        bash_tool,
-        ListHtmlLinksTool(workspace_manager=workspace_manager),
-        SlideDeckInitTool(
-            workspace_manager=workspace_manager,
-        ),
-        SlideDeckCompleteTool(
-            workspace_manager=workspace_manager,
-        ),
-        DisplayImageTool(workspace_manager=workspace_manager),
-    ]
+    tools = []
+    config = None
+    if workspace_manager.workspace_mode == WorkSpaceMode.E2B:
+        sandbox = Sandbox.connect(
+            workspace_manager.e2b_sandbox_id
+        )  # Quick fix needs refactoring
+        host = sandbox.get_host(17300)
+        config = RemoteClientConfig(
+            mode="e2b",
+            server_url=f"https://{host}",
+            ignore_indentation_for_str_replace=False,
+            expand_tabs=False,
+            container_id=workspace_manager.e2b_sandbox_id,
+        )
+        tools.append(
+            RegisterDeploymentTool(workspace_manager=workspace_manager, config=config)
+        )
+    elif workspace_manager.workspace_mode == WorkSpaceMode.DOCKER:
+        sandbox_settings = SandboxSettings()
+        config = RemoteClientConfig(
+            mode="remote",
+            server_url=f"http://{workspace_manager.session_id}:17300",
+            ignore_indentation_for_str_replace=False,
+            expand_tabs=False,
+            cwd=sandbox_settings.work_dir,
+            container_id=workspace_manager.session_id,
+        )
+        tools.append(
+            RegisterDeploymentTool(workspace_manager=workspace_manager, config=config)
+        )
+    else:
+        config = RemoteClientConfig(
+            mode="local",
+            cwd=str(workspace_manager.root.absolute()),
+            ignore_indentation_for_str_replace=False,
+            expand_tabs=False,
+        )
+        tools.append(
+            StaticDeployTool(workspace_manager=workspace_manager)
+        )  # Todo: Replace this with local mode of register deployment tool
+    terminal_client = TerminalClient(config)
+    str_replace_client = StrReplaceClient(config)
+
+    tools.extend(
+        [
+            StrReplaceEditorToolRelative(
+                workspace_manager=workspace_manager,
+                message_queue=message_queue,
+                str_replace_client=str_replace_client,
+            ),
+            MessageTool(),
+            WebSearchTool(),
+            VisitWebpageTool(),
+            ShellExecTool(terminal_client=terminal_client),
+            ShellViewTool(terminal_client=terminal_client),
+            ShellWaitTool(terminal_client=terminal_client),
+            ShellWriteToProcessTool(terminal_client=terminal_client),
+            ShellKillProcessTool(terminal_client=terminal_client),
+            ListHtmlLinksTool(workspace_manager=workspace_manager),
+            SlideDeckInitTool(
+                workspace_manager=workspace_manager,
+                terminal_client=terminal_client,
+            ),
+            SlideDeckCompleteTool(
+                workspace_manager=workspace_manager,
+                str_replace_client=str_replace_client,
+            ),
+            ProjectStartUpTool(
+                workspace_manager=workspace_manager, terminal_client=terminal_client
+            ),
+            DisplayImageTool(workspace_manager=workspace_manager),
+        ]
+    )
+
     image_search_tool = ImageSearchTool()
     if image_search_tool.is_available():
         tools.append(image_search_tool)
@@ -123,12 +187,18 @@ def get_system_tools(
         ):
             tools.append(ImageGenerateTool(workspace_manager=workspace_manager))
             if tool_args.get("video_generation", False):
-                tools.extend([
-                    VideoGenerateFromTextTool(workspace_manager=workspace_manager), 
-                    VideoGenerateFromImageTool(workspace_manager=workspace_manager),
-                    LongVideoGenerateFromTextTool(workspace_manager=workspace_manager),
-                    LongVideoGenerateFromImageTool(workspace_manager=workspace_manager)
-                ])
+                tools.extend(
+                    [
+                        VideoGenerateFromTextTool(workspace_manager=workspace_manager),
+                        VideoGenerateFromImageTool(workspace_manager=workspace_manager),
+                        LongVideoGenerateFromTextTool(
+                            workspace_manager=workspace_manager
+                        ),
+                        LongVideoGenerateFromImageTool(
+                            workspace_manager=workspace_manager
+                        ),
+                    ]
+                )
         if tool_args.get("audio_generation", False) and (
             os.environ.get("OPEN_API_KEY") and os.environ.get("AZURE_OPENAI_ENDPOINT")
         ):
@@ -138,7 +208,7 @@ def get_system_tools(
                     AudioGenerateTool(workspace_manager=workspace_manager),
                 ]
             )
-            
+
         # Browser tools
         if tool_args.get("browser", False):
             browser = Browser()

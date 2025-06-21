@@ -9,6 +9,7 @@ from ii_agent.core.storage.files import FileStore
 from ii_agent.server.websocket.chat_session import ChatSession
 from ii_agent.utils.workspace_manager import WorkspaceManager
 from ii_agent.server.factories import ClientFactory, AgentFactory
+from utils import WorkSpaceMode
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +21,7 @@ class ConnectionManager:
         self,
         workspace_root: str,
         file_store: FileStore,
-        use_container_workspace: bool = False,
+        use_container_workspace: WorkSpaceMode = WorkSpaceMode.LOCAL,
         client_factory: ClientFactory = None,
         agent_factory: AgentFactory = None,
     ):
@@ -44,18 +45,20 @@ class ConnectionManager:
             session_uuid = uuid.UUID(session_uuid)
 
         workspace_path = Path(self.workspace_root).resolve()
-        connection_workspace = workspace_path / str(session_uuid)
-        connection_workspace.mkdir(parents=True, exist_ok=True)
         workspace_manager = WorkspaceManager(
-            root=connection_workspace,
-            container_workspace=self.use_container_workspace,
+            parent_dir=workspace_path,
+            session_id=str(session_uuid),
+            workspace_mode=self.use_container_workspace,
         )
+        if websocket.query_params.get("session_uuid") is None:
+            await (
+                workspace_manager.start_sandbox()
+            )  # Quick fix: Manage Sandbox lifecycle
 
         # Create a new chat session for this connection
         session = ChatSession(
             websocket,
             workspace_manager,
-            session_uuid,
             self.client_factory,
             self.agent_factory,
             self.file_store,

@@ -43,7 +43,6 @@ def create_app(args) -> FastAPI:
     agent_config = AgentConfig(
         logs_path=args.logs_path,
         minimize_stdout_logs=args.minimize_stdout_logs,
-        docker_container_id=args.docker_container_id,
         needs_permission=args.needs_permission,
     )
     agent_factory = AgentFactory(agent_config)

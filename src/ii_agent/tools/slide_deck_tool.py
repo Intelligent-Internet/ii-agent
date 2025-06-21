@@ -1,8 +1,9 @@
 from typing import Any, Optional
-import subprocess
-import os
 from ii_agent.llm.message_history import MessageHistory
+from ii_agent.sandbox.config import SandboxSettings
 from ii_agent.tools.base import LLMTool, ToolImplOutput
+from ii_agent.tools.clients.str_replace_client import StrReplaceClient
+from ii_agent.tools.clients.terminal_client import TerminalClient
 from ii_agent.utils.workspace_manager import WorkspaceManager
 
 
@@ -15,9 +16,15 @@ class SlideDeckInitTool(LLMTool):
         "required": [],
     }
 
-    def __init__(self, workspace_manager: WorkspaceManager) -> None:
+    def __init__(
+        self,
+        workspace_manager: WorkspaceManager,
+        terminal_client: TerminalClient,
+    ) -> None:
         super().__init__()
+        self.terminal_client = terminal_client
         self.workspace_manager = workspace_manager
+        self.sandbox_settings = SandboxSettings()
 
     async def run_impl(
         self,
@@ -26,53 +33,58 @@ class SlideDeckInitTool(LLMTool):
     ) -> ToolImplOutput:
         try:
             # Create the presentation directory if it doesn't exist
-            presentation_dir = f"{self.workspace_manager.root}/presentation"
-            os.makedirs(presentation_dir, exist_ok=True)
+            presentation_dir = str(
+                self.workspace_manager.relative_path("./presentation")
+            )
+            self.terminal_client.shell_exec(
+                self.sandbox_settings.system_shell,
+                f"mkdir -p {presentation_dir}",
+                exec_dir=str(self.workspace_manager.root_path()),
+                timeout=999999,  # Quick fix: No Timeout
+            )
 
             # Clone the reveal.js repository to the specified path
-            clone_command = f"git clone https://github.com/Intelligent-Internet/reveal.js {self.workspace_manager.root}/presentation/reveal.js"
-            
-            # Execute the clone command
-            clone_result = subprocess.run(
+            clone_command = "git clone https://github.com/Intelligent-Internet/reveal.js.git presentation/reveal.js"
+            clone_result = self.terminal_client.shell_exec(
+                self.sandbox_settings.system_shell,
                 clone_command,
-                shell=True,
-                capture_output=True,
-                text=True,
-                cwd=self.workspace_manager.root
+                exec_dir=str(self.workspace_manager.root_path()),
+                timeout=999999,  # Quick fix: No Timeout
             )
-            
-            if clone_result.returncode != 0:
+
+            if not clone_result.success:
                 return ToolImplOutput(
-                    f"Failed to clone reveal.js repository: {clone_result.stderr}",
+                    f"Failed to clone reveal.js repository: {clone_result.output}",
                     "Failed to clone reveal.js repository",
-                    auxiliary_data={"success": False, "error": clone_result.stderr},
+                    auxiliary_data={"success": False, "error": clone_result.output},
                 )
 
             # Install dependencies
             install_command = "npm install"
-            
-            # Execute the install command in the reveal.js directory
-            install_result = subprocess.run(
+            install_result = self.terminal_client.shell_exec(
+                self.sandbox_settings.system_shell,
                 install_command,
-                shell=True,
-                capture_output=True,
-                text=True,
-                cwd=f"{self.workspace_manager.root}/presentation/reveal.js"
+                exec_dir=f"{self.workspace_manager.root_path()}/presentation/reveal.js",
+                timeout=999999,  # Quick fix: No Timeout
             )
-            
-            if install_result.returncode != 0:
+
+            if not install_result.success:
                 return ToolImplOutput(
-                    f"Failed to install dependencies: {install_result.stderr}",
+                    f"Failed to install dependencies: {install_result.output}",
                     "Failed to install dependencies",
-                    auxiliary_data={"success": False, "error": install_result.stderr},
+                    auxiliary_data={"success": False, "error": install_result.output},
                 )
 
             return ToolImplOutput(
-                "Successfully initialized slide deck. Repository cloned into `./presentation/reveal.js` and dependencies installed (npm install).",
+                f"Successfully initialized slide deck in {self.workspace_manager.relative_path(presentation_dir)}. Repository cloned into `./presentation/reveal.js` and dependencies installed (npm install).",
                 "Successfully initialized slide deck",
-                auxiliary_data={"success": True, "clone_output": clone_result.stdout, "install_output": install_result.stdout},
+                auxiliary_data={
+                    "success": True,
+                    "clone_output": clone_result.output,
+                    "install_output": install_result.output,
+                },
             )
-            
+
         except Exception as e:
             return ToolImplOutput(
                 f"Error initializing slide deck: {str(e)}",
@@ -85,6 +97,7 @@ SLIDE_IFRAME_TEMPLATE = """\
         <section>
             <iframe src="{slide_path}" scrolling="auto" style="width: 100%; height: 100%;"></iframe>
         </section>"""
+
 
 class SlideDeckCompleteTool(LLMTool):
     name = "slide_deck_complete"
@@ -102,9 +115,12 @@ class SlideDeckCompleteTool(LLMTool):
         "required": ["slide_paths"],
     }
 
-    def __init__(self, workspace_manager: WorkspaceManager) -> None:
+    def __init__(
+        self, workspace_manager: WorkspaceManager, str_replace_client: StrReplaceClient
+    ) -> None:
         super().__init__()
         self.workspace_manager = workspace_manager
+        self.str_replace_client = str_replace_client
 
     async def run_impl(
         self,
@@ -119,13 +135,20 @@ class SlideDeckCompleteTool(LLMTool):
                 return ToolImplOutput(
                     f"Error: Slide path '{slide_path}' must be in the slides/ subdirectory (e.g. `./slides/introduction.html`, `./slides/conclusion.html`)",
                     "Invalid slide path",
-                    auxiliary_data={"success": False, "error": "Invalid slide path format"},
+                    auxiliary_data={
+                        "success": False,
+                        "error": "Invalid slide path format",
+                    },
                 )
-        slide_iframes = [SLIDE_IFRAME_TEMPLATE.format(slide_path=slide_path) for slide_path in slide_paths]
+        slide_iframes = [
+            SLIDE_IFRAME_TEMPLATE.format(slide_path=slide_path)
+            for slide_path in slide_paths
+        ]
+        index_path = str(
+            self.workspace_manager.relative_path("./presentation/reveal.js/index.html")
+        )
         try:
-            index_path = f"{self.workspace_manager.root}/presentation/reveal.js/index.html"
-            with open(index_path, "r") as file:
-                index_content = file.read()
+            index_content = self.str_replace_client.read_file(index_path).file_content
         except Exception as e:
             return ToolImplOutput(
                 f"Error reading `index.html`: {str(e)}",
@@ -134,9 +157,10 @@ class SlideDeckCompleteTool(LLMTool):
             )
 
         slide_iframes_str = "\n".join(slide_iframes)
-        index_content = index_content.replace("<!--PLACEHOLDER SLIDES REPLACE THIS-->", slide_iframes_str)
-        with open(index_path, "w") as file:
-            file.write(index_content)
+        index_content = index_content.replace(
+            "<!--PLACEHOLDER SLIDES REPLACE THIS-->", slide_iframes_str
+        )
+        self.str_replace_client.write_file(index_path, index_content)
 
         message = f"Successfully combined slides with order {slide_paths} into `presentation/reveal.js/index.html`. If the order is not correct, you can use the `slide_deck_complete` tool again to correct the order. The final presentation is now available in `presentation/reveal.js/index.html`."
 
@@ -144,4 +168,4 @@ class SlideDeckCompleteTool(LLMTool):
             message,
             message,
             auxiliary_data={"success": True, "slide_paths": slide_paths},
-        ) 
+        )
