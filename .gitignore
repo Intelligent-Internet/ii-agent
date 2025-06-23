@@ -1,4 +1,6 @@
 trace_logs/
+*.json
+*.sh
 
 # Python-generated files
 __pycache__/

@@ -21,6 +21,10 @@ class BrowserClickTool(BrowserTool):
                 "type": "number",
                 "description": "Y coordinate of click position",
             },
+            "console": {
+                "type": "boolean",
+                "description": "If True, return console logs for debugging."
+            }
         },
         "required": ["coordinate_x", "coordinate_y"],
     }
@@ -36,13 +40,14 @@ class BrowserClickTool(BrowserTool):
         try:
             coordinate_x = tool_input.get("coordinate_x")
             coordinate_y = tool_input.get("coordinate_y")
+            console = tool_input.get("console", False)
 
             if not coordinate_x or not coordinate_y:
                 msg = (
                     "Must provide both coordinate_x and coordinate_y to click on an element"
                 )
                 return ToolImplOutput(tool_output=msg, tool_result_message=msg)
-
+            before = utils.get_console_logs(self.browser, console)
             page = await self.browser.get_current_page()
             initial_pages = len(self.browser.context.pages) if self.browser.context else 0
 
@@ -59,7 +64,10 @@ class BrowserClickTool(BrowserTool):
             state = await self.browser.update_state()
             state = await self.browser.handle_pdf_url_navigation()
 
-            return utils.format_screenshot_tool_output(state.screenshot, msg)
+            logs = utils.get_console_logs(self.browser, console)
+            if console:
+                logs = logs[len(before):]
+            return utils.format_screenshot_tool_output(state.screenshot, msg, logs)
         except Exception as e:
             error_msg = f"Click operation failed at ({coordinate_x}, {coordinate_y}): {type(e).__name__}: {str(e)}"
             return ToolImplOutput(tool_output=error_msg, tool_result_message=error_msg)

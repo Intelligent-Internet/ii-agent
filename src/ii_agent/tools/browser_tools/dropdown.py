@@ -16,8 +16,13 @@ class BrowserGetSelectOptionsTool(BrowserTool):
             "index": {
                 "type": "integer",
                 "description": "Index of the <select> element to get options from.",
-            }
+            },
+            "console": {
+                "type": "boolean",
+                "description": "Return console logs for debugging purpose."
+            },
         },
+        
         "required": ["index"],
     }
 
@@ -31,7 +36,8 @@ class BrowserGetSelectOptionsTool(BrowserTool):
     ) -> ToolImplOutput:
         try:
             index = int(tool_input["index"])
-
+            console = tool_input.get("console", False)
+            before = utils.get_console_logs(self.browser, console)
             # Get the page and element information
             page = await self.browser.get_current_page()
             interactive_elements = self.browser.get_state().interactive_elements
@@ -84,8 +90,11 @@ class BrowserGetSelectOptionsTool(BrowserTool):
             msg = "\n".join(formatted_options)
             msg += "\nIf you decide to use this select element, use the exact option name in select_dropdown_option"
             state = await self.browser.update_state()
-
-            return utils.format_screenshot_tool_output(state.screenshot, msg)
+            
+            logs = utils.get_console_logs(self.browser, console)
+            if console:
+                logs = logs[len(before):]
+            return utils.format_screenshot_tool_output(state.screenshot, msg, logs)
         except Exception as e:
             error_msg = f"Get select options failed for element {index}: {type(e).__name__}: {str(e)}"
             return ToolImplOutput(tool_output=error_msg, tool_result_message=error_msg)
@@ -105,6 +114,10 @@ class BrowserSelectDropdownOptionTool(BrowserTool):
                 "type": "string",
                 "description": "Text (name) of the option to select from the dropdown.",
             },
+            "console": {
+                "type": "boolean",
+                "description": "If True, return console logs for debugging."
+            }
         },
         "required": ["index", "option"],
     }
@@ -120,6 +133,8 @@ class BrowserSelectDropdownOptionTool(BrowserTool):
         try:
             index = int(tool_input["index"])
             option = tool_input["option"]
+            console = tool_input.get("console", False)
+            before = utils.get_console_logs(self.browser, console)
 
             # Get the interactive element
             page = await self.browser.get_current_page()
@@ -208,11 +223,15 @@ class BrowserSelectDropdownOptionTool(BrowserTool):
             """,
                 {"uniqueId": element.browser_agent_id, "optionText": option},
             )
-
+            
             if result.get("success"):
                 msg = f"Selected option '{option}' with value '{result.get('value')}' at index {result.get('index')}"
                 state = await self.browser.update_state()
-                return utils.format_screenshot_tool_output(state.screenshot, msg)
+                
+                logs = utils.get_console_logs(self.browser, console)
+                if console:
+                    logs = logs[len(before): ]
+                return utils.format_screenshot_tool_output(state.screenshot, msg, logs)
             else:
                 error_msg = result.get("error", "Unknown error")
                 if "availableOptions" in result:

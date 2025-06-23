@@ -107,6 +107,9 @@ class Browser:
         self.detector: Optional[Detector] = config.detector
 
         self.screenshot_scale_factor = None
+        
+        # Store console logs
+        self.captured_logs = {}
 
         # Initialize state
         self._init_state()
@@ -167,6 +170,7 @@ class Browser:
             else:
                 logger.info("Launching new browser instance")
                 self.playwright_browser = await self.playwright.chromium.launch(
+                    channel="chrome",
                     headless=False,
                     args=[
                         "--no-sandbox",
@@ -318,6 +322,7 @@ class Browser:
     async def goto(self, url: str):
         """Navigate to a URL"""
         page = await self.get_current_page()
+        await self.init_console_log(url)
         await page.goto(url, wait_until="domcontentloaded")
         await asyncio.sleep(2)
 
@@ -357,6 +362,7 @@ class Browser:
         await new_page.wait_for_load_state()
 
         if url:
+            await self.init_console_log(url)
             await new_page.goto(url, wait_until="domcontentloaded")
 
     async def close_current_tab(self):
@@ -571,3 +577,18 @@ class Browser:
 
         state = await self.update_state()
         return state
+
+    async def init_console_log(self, url: str) -> None:
+        if url not in self.captured_logs:
+            self.captured_logs[url] = []
+            
+        page = self.current_page
+        page.on('console', lambda msg: self.captured_logs[url].append(f"[{msg.type}] {msg.text}"))
+
+async def main():
+    browser = Browser()
+    await browser.create_new_tab('http://localhost:9000/workspace/17122040-bcfc-4286-86d0-b8444f882382/index.html')
+    print(browser.captured_logs)
+
+if __name__ == '__main__':
+    asyncio.run(main())

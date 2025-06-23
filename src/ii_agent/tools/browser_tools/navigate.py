@@ -17,6 +17,10 @@ class BrowserNavigationTool(BrowserTool):
             "url": {
                 "type": "string",
                 "description": "Complete URL to visit. Must include protocol prefix.",
+            },
+            "console": {
+                "type": "boolean",
+                "description": "If True, return console logs for debugging."
             }
         },
         "required": ["url"],
@@ -32,11 +36,8 @@ class BrowserNavigationTool(BrowserTool):
     ) -> ToolImplOutput:
         try:
             url = tool_input["url"]
-
-            page = await self.browser.get_current_page()
             try:
-                await page.goto(url, wait_until="domcontentloaded")
-                await asyncio.sleep(1.5)
+                await self.browser.goto(url)
             except TimeoutError:
                 msg = f"Timeout error navigating to {url}"
                 return ToolImplOutput(msg, msg)
@@ -48,8 +49,10 @@ class BrowserNavigationTool(BrowserTool):
             state = await self.browser.handle_pdf_url_navigation()
 
             msg = f"Navigated to {url}"
-
-            return utils.format_screenshot_tool_output(state.screenshot, msg)
+            
+            console = tool_input.get("console", False)
+            logs = utils.get_console_logs(self.browser, console)
+            return utils.format_screenshot_tool_output(state.screenshot, msg, logs)
         except Exception as e:
             error_msg = f"Navigation operation failed: {type(e).__name__}: {str(e)}"
             return ToolImplOutput(tool_output=error_msg, tool_result_message=error_msg)
@@ -64,6 +67,10 @@ class BrowserRestartTool(BrowserTool):
             "url": {
                 "type": "string",
                 "description": "Complete URL to visit after restart. Must include protocol prefix.",
+            },
+            "console": {
+                "type": "boolean",
+                "description": "If True, return console logs for debugging."
             }
         },
         "required": ["url"],
@@ -80,11 +87,9 @@ class BrowserRestartTool(BrowserTool):
         try:
             url = tool_input["url"]
             await self.browser.restart()
-
-            page = await self.browser.get_current_page()
+            
             try:
-                await page.goto(url, wait_until="domcontentloaded")
-                await asyncio.sleep(1.5)
+                await self.browser.goto(url)
             except TimeoutError:
                 msg = f"Timeout error navigating to {url}"
                 return ToolImplOutput(msg, msg)
@@ -96,8 +101,10 @@ class BrowserRestartTool(BrowserTool):
             state = await self.browser.handle_pdf_url_navigation()
 
             msg = f"Navigated to {url}"
-
-            return utils.format_screenshot_tool_output(state.screenshot, msg)
+            
+            console = tool_input.get("console", False)
+            logs = utils.get_console_logs(self.browser, console)
+            return utils.format_screenshot_tool_output(state.screenshot, msg, logs)
         except Exception as e:
             error_msg = f"Browser restart and navigation failed: {type(e).__name__}: {str(e)}"
             return ToolImplOutput(tool_output=error_msg, tool_result_message=error_msg)

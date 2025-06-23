@@ -16,6 +16,10 @@ class BrowserPressKeyTool(BrowserTool):
             "key": {
                 "type": "string",
                 "description": "Key name to simulate (e.g., Enter, Tab, ArrowUp), supports key combinations (e.g., Control+Enter).",
+            },
+            "console": {
+                "type": "boolean",
+                "description": "If True, return console logs for debugging."
             }
         },
         "required": ["key"],
@@ -31,6 +35,8 @@ class BrowserPressKeyTool(BrowserTool):
     ) -> ToolImplOutput:
         try:
             key = tool_input["key"]
+            console = tool_input.get("console", False)
+            before = utils.get_console_logs(self.browser, console)
             page = await self.browser.get_current_page()
             try:
                 await page.keyboard.press(key)
@@ -44,8 +50,11 @@ class BrowserPressKeyTool(BrowserTool):
 
             msg = f'Pressed "{key}" on the keyboard.'
             state = await self.browser.update_state()
-
-            return utils.format_screenshot_tool_output(state.screenshot, msg)
+            
+            logs = utils.get_console_logs(self.browser, console)
+            if console:
+                logs = logs[len(before): ]
+            return utils.format_screenshot_tool_output(state.screenshot, msg, logs)
         except Exception as e:
             return ToolImplOutput(
                 f"Failed to press key: {type(e).__name__}: {str(e)}",

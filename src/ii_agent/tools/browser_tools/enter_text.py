@@ -18,6 +18,10 @@ class BrowserEnterTextTool(BrowserTool):
                 "type": "boolean",
                 "description": "If True, `Enter` button will be pressed after entering the text. Use this when you think it would make sense to press `Enter` after entering the text, such as when you're submitting a form, performing a search, etc.",
             },
+            "console": {
+                "type": "boolean",
+                "description": "If True, return console logs for debugging."
+            }
         },
         "required": ["text"],
     }
@@ -32,6 +36,8 @@ class BrowserEnterTextTool(BrowserTool):
     ) -> ToolImplOutput:
         try:
             text = tool_input["text"]
+            console = tool_input.get("console", False)
+            before = utils.get_console_logs(self.browser, console)
             press_enter = tool_input.get("press_enter", False)
 
             page = await self.browser.get_current_page()
@@ -49,8 +55,11 @@ class BrowserEnterTextTool(BrowserTool):
 
             msg = f'Entered "{text}" on the keyboard. Make sure to double check that the text was entered to where you intended.'
             state = await self.browser.update_state()
-
-            return utils.format_screenshot_tool_output(state.screenshot, msg)
+            
+            logs = utils.get_console_logs(self.browser, console)
+            if console:
+                logs = logs[len(before):]
+            return utils.format_screenshot_tool_output(state.screenshot, msg, logs)
         except Exception as e:
             error_msg = f"Enter text operation failed: {type(e).__name__}: {str(e)}"
             return ToolImplOutput(tool_output=error_msg, tool_result_message=error_msg)
