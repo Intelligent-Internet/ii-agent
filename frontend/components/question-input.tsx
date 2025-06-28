@@ -164,6 +164,77 @@ const QuestionInput = ({
     }, 5000);
   };
 
+  // Handle clipboard paste for images
+  const handlePaste = useCallback(
+    async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+      if (!handleFileUpload) return;
+
+      const clipboardItems = e.clipboardData?.items;
+      if (!clipboardItems) return;
+
+      const imageItems = Array.from(clipboardItems).filter((item) =>
+        item.type.startsWith("image/")
+      );
+
+      if (imageItems.length === 0) return;
+
+      // Prevent default paste behavior for images
+      e.preventDefault();
+
+      for (const item of imageItems) {
+        const file = item.getAsFile();
+        if (!file) continue;
+
+        // Generate a unique filename for the pasted image
+        const timestamp = Date.now();
+        const extension = file.type.split("/")[1] || "png";
+        const fileName = `pasted-image-${timestamp}.${extension}`;
+
+        // Create a new File object with the generated name
+        const renamedFile = new File([file], fileName, { type: file.type });
+
+        // Create file status object for UI
+        const preview = URL.createObjectURL(renamedFile);
+        const newFile: FileUploadStatus = {
+          name: fileName,
+          loading: true,
+          isImage: true,
+          preview,
+        };
+
+        setFiles((prev) => [...prev, newFile]);
+
+        // Create a synthetic file list and event
+        const fileList = {
+          length: 1,
+          item: () => renamedFile,
+          [Symbol.iterator]: function* () {
+            yield renamedFile;
+          },
+        } as FileList;
+
+        const syntheticEvent = {
+          target: {
+            files: fileList,
+          },
+        } as React.ChangeEvent<HTMLInputElement>;
+
+        // Upload the file
+        await handleFileUpload(syntheticEvent, false);
+
+        // Mark as not loading after upload
+        setTimeout(() => {
+          setFiles((prev) =>
+            prev.map((f) =>
+              f.name === fileName ? { ...f, loading: false } : f
+            )
+          );
+        }, 5000);
+      }
+    },
+    [handleFileUpload, setFiles]
+  );
+
   const pickerCallback = useCallback(
     async (data: GooglePickerResponse) => {
       if (data.action === window.google.picker.Action.CANCEL) {
@@ -621,6 +692,7 @@ const QuestionInput = ({
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={handleKeyDownWithAutoScroll}
+          onPaste={handlePaste}
           ref={textareaRef}
         />
         <div className="flex justify-between items-center absolute bottom-0 py-4 m-px w-[calc(100%-4px)] rounded-b-xl bg-[#35363a] px-4">

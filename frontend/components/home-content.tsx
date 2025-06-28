@@ -11,7 +11,7 @@ import {
   Loader2,
 } from "lucide-react";
 import Image from "next/image";
-import { useMemo, useRef } from "react";
+import { useMemo, useRef, useCallback } from "react";
 import { toast } from "sonner";
 import dynamic from "next/dynamic";
 import { Kumbh_Sans } from "next/font/google";
@@ -262,11 +262,14 @@ export default function HomeContent() {
     dispatch({ type: "SET_EDITING_MESSAGE", payload: undefined });
   };
 
-  const getRemoteURL = (path: string | undefined) => {
-    if (!path || !state.workspaceInfo) return "";
-    const workspaceId = state.workspaceInfo.split("/").pop();
-    return `${process.env.NEXT_PUBLIC_API_URL}/workspace/${workspaceId}/${path}`;
-  };
+  const getRemoteURL = useCallback(
+    (path: string | undefined) => {
+      if (!path || !state.workspaceInfo) return "";
+      const workspaceId = state.workspaceInfo.split("/").pop();
+      return `${process.env.NEXT_PUBLIC_API_URL}/workspace/${workspaceId}/${path}`;
+    },
+    [state.workspaceInfo]
+  );
 
   const isInChatView = useMemo(
     () => !!sessionId && !isLoadingSession,
@@ -315,6 +318,67 @@ export default function HomeContent() {
         TOOL.BROWSER_RESTART,
       ].includes(state.currentActionData?.type as TOOL),
     [state.currentActionData]
+  );
+
+  const browserProps = useMemo(
+    () => ({
+      className:
+        state.activeTab === TAB.BROWSER &&
+        (state.currentActionData?.type === TOOL.VISIT || isBrowserTool)
+          ? ""
+          : "hidden",
+      url: state.currentActionData?.data?.tool_input?.url || state.browserUrl,
+      screenshot: isBrowserTool
+        ? (state.currentActionData?.data.result as string)
+        : undefined,
+      raw:
+        state.currentActionData?.type === TOOL.VISIT
+          ? (state.currentActionData?.data?.result as string)
+          : undefined,
+    }),
+    [state.activeTab, state.currentActionData, state.browserUrl, isBrowserTool]
+  );
+
+  const searchBrowserProps = useMemo(
+    () => ({
+      className:
+        state.activeTab === TAB.BROWSER &&
+        state.currentActionData?.type === TOOL.WEB_SEARCH
+          ? ""
+          : "hidden",
+      keyword: state.currentActionData?.data.tool_input?.query,
+      search_results:
+        state.currentActionData?.type === TOOL.WEB_SEARCH &&
+        state.currentActionData?.data?.result
+          ? parseJson(state.currentActionData?.data?.result as string)
+          : undefined,
+    }),
+    [state.activeTab, state.currentActionData]
+  );
+
+  const imageBrowserProps = useMemo(
+    () => ({
+      className:
+        (state.activeTab === TAB.BROWSER &&
+          state.currentActionData?.type === TOOL.IMAGE_GENERATE) ||
+        state.currentActionData?.type === TOOL.IMAGE_SEARCH
+          ? ""
+          : "hidden",
+      url:
+        state.currentActionData?.data.tool_input?.output_filename ||
+        state.currentActionData?.data.tool_input?.query,
+      images:
+        state.currentActionData?.type === TOOL.IMAGE_SEARCH
+          ? parseJson(state.currentActionData?.data?.result as string)?.map(
+              (item: { image_url: string }) => item?.image_url
+            )
+          : [
+              getRemoteURL(
+                state.currentActionData?.data.tool_input?.output_filename
+              ),
+            ],
+    }),
+    [state.activeTab, state.currentActionData, getRemoteURL]
   );
 
   return (
@@ -500,75 +564,9 @@ export default function HomeContent() {
                       Open with VS Code
                     </Button>
                   </div>
-                  <Browser
-                    className={
-                      state.activeTab === TAB.BROWSER &&
-                      (state.currentActionData?.type === TOOL.VISIT ||
-                        isBrowserTool)
-                        ? ""
-                        : "hidden"
-                    }
-                    url={
-                      state.currentActionData?.data?.tool_input?.url ||
-                      state.browserUrl
-                    }
-                    screenshot={
-                      isBrowserTool
-                        ? (state.currentActionData?.data.result as string)
-                        : undefined
-                    }
-                    raw={
-                      state.currentActionData?.type === TOOL.VISIT
-                        ? (state.currentActionData?.data?.result as string)
-                        : undefined
-                    }
-                  />
-                  <SearchBrowser
-                    className={
-                      state.activeTab === TAB.BROWSER &&
-                      state.currentActionData?.type === TOOL.WEB_SEARCH
-                        ? ""
-                        : "hidden"
-                    }
-                    keyword={state.currentActionData?.data.tool_input?.query}
-                    search_results={
-                      state.currentActionData?.type === TOOL.WEB_SEARCH &&
-                      state.currentActionData?.data?.result
-                        ? parseJson(
-                            state.currentActionData?.data?.result as string
-                          )
-                        : undefined
-                    }
-                  />
-                  <ImageBrowser
-                    className={
-                      (state.activeTab === TAB.BROWSER &&
-                        state.currentActionData?.type ===
-                          TOOL.IMAGE_GENERATE) ||
-                      state.currentActionData?.type === TOOL.IMAGE_SEARCH
-                        ? ""
-                        : "hidden"
-                    }
-                    url={
-                      state.currentActionData?.data.tool_input
-                        ?.output_filename ||
-                      state.currentActionData?.data.tool_input?.query
-                    }
-                    images={
-                      state.currentActionData?.type === TOOL.IMAGE_SEARCH
-                        ? parseJson(
-                            state.currentActionData?.data?.result as string
-                          )?.map(
-                            (item: { image_url: string }) => item?.image_url
-                          )
-                        : [
-                            getRemoteURL(
-                              state.currentActionData?.data.tool_input
-                                ?.output_filename
-                            ),
-                          ]
-                    }
-                  />
+                  <Browser {...browserProps} />
+                  <SearchBrowser {...searchBrowserProps} />
+                  <ImageBrowser {...imageBrowserProps} />
                   <CodeEditor
                     currentActionData={state.currentActionData}
                     activeTab={state.activeTab}
