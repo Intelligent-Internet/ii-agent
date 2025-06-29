@@ -20,9 +20,14 @@ WORKDIR /app
 
 RUN pip install -r ii_client/requirements.txt
 
-# Install pnpm and vercel
 RUN npm install -g pnpm vercel
+
+RUN curl -fsSL https://code-server.dev/install.sh | sh
 
 COPY .templates /app/templates
 
-CMD ["python", "-m", "ii_client.sandbox_server", "--port", "17300" , "--cwd", "/workspace"]
+# Create a startup script to run both services
+COPY docker/sandbox/start-services.sh /app/start-services.sh
+RUN chmod +x /app/start-services.sh
+
+CMD ["/app/start-services.sh"]
