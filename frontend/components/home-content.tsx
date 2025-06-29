@@ -170,8 +170,12 @@ export default function HomeContent() {
   };
 
   const handleOpenVSCode = () => {
-    let url = process.env.NEXT_PUBLIC_VSCODE_URL || "http://127.0.0.1:8080";
-    url += `/?folder=${state.workspaceInfo}`;
+    if (!sessionId) {
+      toast.error("Session not available. Please try again.");
+      return;
+    }
+
+    const url = `http://${sessionId}-9000.${process.env.NEXT_PUBLIC_VSCODE_URL}`;
     window.open(url, "_blank");
   };
 
