@@ -5,6 +5,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from ii_agent.utils.constants import TOKEN_BUDGET
 from pathlib import Path
 
+from ii_agent.utils.constants import WorkSpaceMode
+
 # Constants
 MAX_OUTPUT_TOKENS_PER_TURN = 32000
 MAX_TURNS = 200
@@ -21,21 +23,24 @@ class IIAgentConfig(BaseSettings):
         file_store_path: The path to the file store.
     """
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=".env", env_file_encoding="utf-8", extra="ignore"
+    )
     file_store: str = Field(default="local")
     file_store_path: str = Field(default="~/.ii_agent")
-    use_container_workspace: bool = Field(default=False)
+    use_container_workspace: WorkSpaceMode = Field(default=WorkSpaceMode.LOCAL)
     minimize_stdout_logs: bool = False
-    docker_container_id: Optional[str] = None
     max_output_tokens_per_turn: int = MAX_OUTPUT_TOKENS_PER_TURN
     max_turns: int = MAX_TURNS
     token_budget: int = TOKEN_BUDGET
     database_url: Optional[str] = None
 
-    @model_validator(mode='after')
+    @model_validator(mode="after")
     def set_database_url(self) -> "IIAgentConfig":
         if self.database_url is None:
-            self.database_url = f"sqlite:///{os.path.expanduser(self.file_store_path)}/ii_agent.db"
+            self.database_url = (
+                f"sqlite:///{os.path.expanduser(self.file_store_path)}/ii_agent.db"
+            )
 
         return self
 
@@ -48,12 +53,13 @@ class IIAgentConfig(BaseSettings):
     @property
     def logs_path(self) -> str:
         return os.path.join(self.file_store_path, "logs")
- 
-    @field_validator('file_store_path')
+
+    @field_validator("file_store_path")
     def expand_path(cls, v):
-        if v.startswith('~'):
+        if v.startswith("~"):
             return os.path.expanduser(v)
         return v
+
 
 if __name__ == "__main__":
     config = IIAgentConfig()

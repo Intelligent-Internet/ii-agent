@@ -4,7 +4,7 @@ from ii_agent.tools.base import (
 )
 from typing import Any, Optional
 from ii_agent.llm.message_history import MessageHistory
-from ii_agent.tools.visit_webpage_client import (
+from ii_agent.tools.clients.visit_webpage_client import (
     create_visit_client,
     WebpageVisitException,
     ContentExtractionError,
@@ -29,9 +29,15 @@ class VisitWebpageTool(LLMTool):
     }
     output_type = "string"
 
-    def __init__(self, settings: Optional[Settings] = None, max_output_length: int = VISIT_WEB_PAGE_MAX_OUTPUT_LENGTH):
+    def __init__(
+        self,
+        settings: Optional[Settings] = None,
+        max_output_length: int = VISIT_WEB_PAGE_MAX_OUTPUT_LENGTH,
+    ):
         self.max_output_length = max_output_length
-        self.visit_client = create_visit_client(settings=settings, max_output_length=max_output_length)
+        self.visit_client = create_visit_client(
+            settings=settings, max_output_length=max_output_length
+        )
 
     async def run_impl(
         self,

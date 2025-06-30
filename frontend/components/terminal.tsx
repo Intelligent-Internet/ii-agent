@@ -7,6 +7,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { forwardRef, Ref, useEffect, useRef } from "react";
 import "@xterm/xterm/css/xterm.css";
 import clsx from "clsx";
+import chalk from "chalk";
 
 interface TerminalProps {
   className?: string;
@@ -55,7 +56,7 @@ const Terminal = (
         term.open(container);
         fitAddon.fit();
 
-        term.writeln("Welcome to II-Agent!");
+        term.writeln(chalk.hex("#BAE9F4")("Welcome to II-Agent!"));
         prompt(term);
 
         term.onKey(({ key, domEvent }) => {
@@ -132,7 +133,7 @@ const Terminal = (
   }, []);
 
   const prompt = (term: XTerm) => {
-    term.write("\r\n$ ");
+    term.write("\r\n");
   };
 
   const clearCurrentLine = (term: XTerm) => {

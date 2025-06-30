@@ -1,11 +1,10 @@
 import asyncio
 import aiohttp
-from .utils import truncate_content
 import os
 from ii_agent.utils.constants import VISIT_WEB_PAGE_MAX_OUTPUT_LENGTH
+from ii_agent.tools.utils import truncate_content
 from ii_agent.core.storage.models.settings import Settings
 from typing import Optional
-
 
 
 class WebpageVisitException(Exception):
@@ -63,7 +62,9 @@ class MarkdownifyVisitClient(BaseVisitClient):
 
             # Convert the HTML content to Markdown (run in executor since markdownify is not async)
             loop = asyncio.get_event_loop()
-            markdown_content = await loop.run_in_executor(None, markdownify, html_content)
+            markdown_content = await loop.run_in_executor(
+                None, markdownify, html_content
+            )
             markdown_content = markdown_content.strip()
 
             # Remove multiple line breaks
@@ -83,7 +84,11 @@ class MarkdownifyVisitClient(BaseVisitClient):
 class TavilyVisitClient(BaseVisitClient):
     name = "Tavily"
 
-    def __init__(self, max_output_length: int = VISIT_WEB_PAGE_MAX_OUTPUT_LENGTH, api_key: Optional[str] = None):
+    def __init__(
+        self,
+        max_output_length: int = VISIT_WEB_PAGE_MAX_OUTPUT_LENGTH,
+        api_key: Optional[str] = None,
+    ):
         self.max_output_length = max_output_length
         self.api_key = api_key or ""
         if not self.api_key:
@@ -99,7 +104,7 @@ class TavilyVisitClient(BaseVisitClient):
 
         try:
             tavily_client = AsyncTavilyClient(api_key=self.api_key)
-            
+
             # Extract webpage content
             response = await tavily_client.extract(
                 url, include_images=True, extract_depth="advanced"
@@ -132,13 +137,15 @@ class TavilyVisitClient(BaseVisitClient):
 class FireCrawlVisitClient(BaseVisitClient):
     name = "FireCrawl"
 
-    def __init__(self, max_output_length: int = VISIT_WEB_PAGE_MAX_OUTPUT_LENGTH, api_key: Optional[str] = None):
+    def __init__(
+        self,
+        max_output_length: int = VISIT_WEB_PAGE_MAX_OUTPUT_LENGTH,
+        api_key: Optional[str] = None,
+    ):
         self.max_output_length = max_output_length
         self.api_key = api_key or ""
         if not self.api_key:
-            raise WebpageVisitException(
-                "FireCrawl API key not provided"
-            )
+            raise WebpageVisitException("FireCrawl API key not provided")
 
     async def forward_async(self, url: str) -> str:
         base_url = "https://api.firecrawl.dev/v1/scrape"
@@ -171,7 +178,11 @@ class FireCrawlVisitClient(BaseVisitClient):
 class JinaVisitClient(BaseVisitClient):
     name = "Jina"
 
-    def __init__(self, max_output_length: int = VISIT_WEB_PAGE_MAX_OUTPUT_LENGTH, api_key: Optional[str] = None):
+    def __init__(
+        self,
+        max_output_length: int = VISIT_WEB_PAGE_MAX_OUTPUT_LENGTH,
+        api_key: Optional[str] = None,
+    ):
         self.max_output_length = max_output_length
         self.api_key = api_key or ""
         if not self.api_key:
@@ -212,7 +223,10 @@ class JinaVisitClient(BaseVisitClient):
             raise NetworkError(f"Error making request: {str(e)}")
 
 
-def create_visit_client(settings: Optional[Settings] = None, max_output_length: int = VISIT_WEB_PAGE_MAX_OUTPUT_LENGTH) -> BaseVisitClient:
+def create_visit_client(
+    settings: Optional[Settings] = None,
+    max_output_length: int = VISIT_WEB_PAGE_MAX_OUTPUT_LENGTH,
+) -> BaseVisitClient:
     """
     Factory function that creates a visit client based on available API keys.
     Priority order: FireCrawl > Jina > Tavily > Markdownify
@@ -224,17 +238,29 @@ def create_visit_client(settings: Optional[Settings] = None, max_output_length: 
     Returns:
         BaseVisitClient: An instance of a visit client
     """
-    
+
     # Extract API keys from settings if available, otherwise fall back to environment
     firecrawl_key = None
     jina_key = None
     tavily_key = None
-    
+
     if settings and settings.search_config:
-        firecrawl_key = settings.search_config.firecrawl_api_key.get_secret_value() if settings.search_config.firecrawl_api_key else None
-        jina_key = settings.search_config.jina_api_key.get_secret_value() if settings.search_config.jina_api_key else None
-        tavily_key = settings.search_config.tavily_api_key.get_secret_value() if settings.search_config.tavily_api_key else None
-    
+        firecrawl_key = (
+            settings.search_config.firecrawl_api_key.get_secret_value()
+            if settings.search_config.firecrawl_api_key
+            else None
+        )
+        jina_key = (
+            settings.search_config.jina_api_key.get_secret_value()
+            if settings.search_config.jina_api_key
+            else None
+        )
+        tavily_key = (
+            settings.search_config.tavily_api_key.get_secret_value()
+            if settings.search_config.tavily_api_key
+            else None
+        )
+
     # Fall back to environment variables if not in settings
     if not firecrawl_key:
         firecrawl_key = os.environ.get("FIRECRAWL_API_KEY", "")
@@ -245,7 +271,9 @@ def create_visit_client(settings: Optional[Settings] = None, max_output_length: 
 
     if firecrawl_key:
         print("Using FireCrawl to visit webpage")
-        return FireCrawlVisitClient(max_output_length=max_output_length, api_key=firecrawl_key)
+        return FireCrawlVisitClient(
+            max_output_length=max_output_length, api_key=firecrawl_key
+        )
 
     if jina_key:
         print("Using Jina to visit webpage")
@@ -253,7 +281,9 @@ def create_visit_client(settings: Optional[Settings] = None, max_output_length: 
 
     if tavily_key:
         print("Using Tavily to visit webpage")
-        return TavilyVisitClient(max_output_length=max_output_length, api_key=tavily_key)
+        return TavilyVisitClient(
+            max_output_length=max_output_length, api_key=tavily_key
+        )
 
     print("Using Markdownify to visit webpage")
     return MarkdownifyVisitClient(max_output_length=max_output_length)

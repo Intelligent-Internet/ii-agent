@@ -1,30 +1,49 @@
-import os
 import asyncio
 import logging
 from copy import deepcopy
-from typing import Optional, List, Dict, Any
+from typing import List, Dict, Any
+
+from e2b import Sandbox
 from ii_agent.llm.base import LLMClient
 from ii_agent.llm.context_manager.llm_summarizing import LLMSummarizingContextManager
 from ii_agent.llm.token_counter import TokenCounter
+from ii_agent.prompts.system_prompt import SystemPromptBuilder
+from ii_agent.sandbox.config import SandboxSettings
+from ii_agent.tools.clients.str_replace_client import StrReplaceClient
+from ii_agent.tools.deploy_tool import DeployTool
+from ii_agent.tools.get_database_connection import DatabaseConnection
 from ii_agent.tools.image_search_tool import ImageSearchTool
 from ii_agent.tools.base import LLMTool
 from ii_agent.llm.message_history import ToolCallParameters
+from ii_agent.tools.clients.config import RemoteClientConfig
+from ii_agent.tools.openai_llm_tool import OpenAILLMTool
+from ii_agent.tools.register_deployment import RegisterDeploymentTool
+from ii_agent.tools.shell_tools import (
+    ShellExecTool,
+    ShellViewTool,
+    ShellWaitTool,
+    ShellKillProcessTool,
+    ShellWriteToProcessTool,
+)
+from ii_agent.tools.static_deploy_tool import StaticDeployTool
+from ii_agent.tools.clients.terminal_client import TerminalClient
 from ii_agent.tools.memory.compactify_memory import CompactifyMemoryTool
 from ii_agent.tools.memory.simple_memory import SimpleMemoryTool
 from ii_agent.tools.slide_deck_tool import SlideDeckInitTool, SlideDeckCompleteTool
+from ii_agent.tools.web_dev_tool import FullStackInitTool
 from ii_agent.tools.web_search_tool import WebSearchTool
 from ii_agent.tools.visit_webpage_tool import VisitWebpageTool
-from ii_agent.tools.str_replace_tool_relative import StrReplaceEditorTool
-from ii_agent.tools.static_deploy_tool import StaticDeployTool
+from ii_agent.tools.str_replace_tool_relative import (
+    StrReplaceEditorTool as StrReplaceEditorToolRelative,
+)
 from ii_agent.tools.sequential_thinking_tool import SequentialThinkingTool
 from ii_agent.tools.message_tool import MessageTool
 from ii_agent.tools.complete_tool import (
-    CompleteTool, 
-    ReturnControlToUserTool, 
-    CompleteToolReviewer, 
-    ReturnControlToGeneralAgentTool
+    CompleteTool,
+    ReturnControlToUserTool,
+    CompleteToolReviewer,
+    ReturnControlToGeneralAgentTool,
 )
-from ii_agent.tools.bash_tool import create_bash_tool, create_docker_bash_tool
 from ii_agent.browser.browser import Browser
 from ii_agent.utils import WorkspaceManager
 from ii_agent.llm.message_history import MessageHistory
@@ -59,7 +78,7 @@ from ii_agent.tools.speech_gen_tool import SingleSpeakerSpeechGenerationTool
 from ii_agent.tools.pdf_tool import PdfTextExtractTool
 from ii_agent.tools.deep_research_tool import DeepResearchTool
 from ii_agent.tools.list_html_links_tool import ListHtmlLinksTool
-from ii_agent.utils.constants import TOKEN_BUDGET
+from ii_agent.utils.constants import TOKEN_BUDGET, WorkSpaceMode
 from ii_agent.core.storage.models.settings import Settings
 
 
@@ -67,8 +86,8 @@ def get_system_tools(
     client: LLMClient,
     workspace_manager: WorkspaceManager,
     message_queue: asyncio.Queue,
+    system_prompt_builder: SystemPromptBuilder,
     settings: Settings,
-    container_id: Optional[str] = None,
     tool_args: Dict[str, Any] = None,
 ) -> list[LLMTool]:
     """
@@ -77,42 +96,105 @@ def get_system_tools(
     Returns:
         list[LLMTool]: A list of all system tools.
     """
-    ask_user_permission = False # Not support
-    if container_id is not None:
-        bash_tool = create_docker_bash_tool(
-            container=container_id, ask_user_permission=ask_user_permission
+
+    logger = logging.getLogger("tool_manager")
+
+    tools = []
+    config = None
+    if workspace_manager.workspace_mode == WorkSpaceMode.E2B:
+        sandbox = Sandbox.connect(
+            workspace_manager.e2b_sandbox_id
+        )  # Quick fix needs refactoring
+        host = sandbox.get_host(17300)
+        config = RemoteClientConfig(
+            mode="e2b",
+            server_url=f"https://{host}",
+            ignore_indentation_for_str_replace=False,
+            expand_tabs=False,
+            container_id=workspace_manager.e2b_sandbox_id,
+        )
+        tools.append(
+            RegisterDeploymentTool(workspace_manager=workspace_manager, config=config)
+        )
+    elif workspace_manager.workspace_mode == WorkSpaceMode.DOCKER:
+        sandbox_settings = SandboxSettings()
+        config = RemoteClientConfig(
+            mode="remote",
+            server_url=f"http://{workspace_manager.session_id}:17300",
+            ignore_indentation_for_str_replace=False,
+            expand_tabs=False,
+            cwd=sandbox_settings.work_dir,
+            container_id=workspace_manager.session_id,
+        )
+        tools.append(
+            RegisterDeploymentTool(workspace_manager=workspace_manager, config=config)
         )
     else:
-        bash_tool = create_bash_tool(
-            ask_user_permission=ask_user_permission, cwd=workspace_manager.root
+        config = RemoteClientConfig(
+            mode="local",
+            cwd=str(workspace_manager.root.absolute()),
+            ignore_indentation_for_str_replace=False,
+            expand_tabs=False,
         )
+        tools.append(
+            StaticDeployTool(workspace_manager=workspace_manager),
+            ListHtmlLinksTool(workspace_manager=workspace_manager),
+        )  # Todo: Replace this with local mode of register deployment tool
 
-    logger = logging.getLogger("presentation_context_manager")
-    context_manager = LLMSummarizingContextManager(
-        client=client,
-        token_counter=TokenCounter(),
-        logger=logger,
-        token_budget=TOKEN_BUDGET,
+    terminal_client = TerminalClient(config)
+    str_replace_client = StrReplaceClient(config)
+
+    # Shell tools
+    tools.extend(
+        [
+            ShellViewTool(terminal_client=terminal_client),
+            ShellWaitTool(terminal_client=terminal_client),
+            ShellWriteToProcessTool(terminal_client=terminal_client),
+            ShellKillProcessTool(terminal_client=terminal_client),
+            ShellExecTool(
+                terminal_client=terminal_client, workspace_manager=workspace_manager
+            ),
+        ]
     )
 
-    tools = [
-        MessageTool(),
-        WebSearchTool(settings=settings),
-        VisitWebpageTool(settings=settings),
-        StaticDeployTool(workspace_manager=workspace_manager),
-        StrReplaceEditorTool(
-            workspace_manager=workspace_manager, message_queue=message_queue
-        ),
-        bash_tool,
-        ListHtmlLinksTool(workspace_manager=workspace_manager),
-        SlideDeckInitTool(
-            workspace_manager=workspace_manager,
-        ),
-        SlideDeckCompleteTool(
-            workspace_manager=workspace_manager,
-        ),
-        DisplayImageTool(workspace_manager=workspace_manager),
-    ]
+    # Str replace tools
+    tools.extend(
+        [
+            StrReplaceEditorToolRelative(
+                workspace_manager=workspace_manager,
+                message_queue=message_queue,
+                str_replace_client=str_replace_client,
+            ),
+        ]
+    )
+
+    tools.extend(
+        [
+            MessageTool(),
+            WebSearchTool(settings=settings),
+            VisitWebpageTool(settings=settings),
+            SlideDeckInitTool(
+                workspace_manager=workspace_manager,
+                terminal_client=terminal_client,
+            ),
+            SlideDeckCompleteTool(
+                workspace_manager=workspace_manager,
+                str_replace_client=str_replace_client,
+            ),
+            FullStackInitTool(
+                workspace_manager=workspace_manager,
+                terminal_client=terminal_client,
+                system_prompt_builder=system_prompt_builder,
+            ),
+            DisplayImageTool(workspace_manager=workspace_manager),
+            DatabaseConnection(),
+            OpenAILLMTool(),
+            DeployTool(
+                terminal_client=terminal_client, workspace_manager=workspace_manager
+            ),
+        ]
+    )
+
     image_search_tool = ImageSearchTool(settings=settings)
     if image_search_tool.is_available():
         tools.append(image_search_tool)
@@ -129,39 +211,70 @@ def get_system_tools(
             # Check if media config is available in settings
             has_media_config = False
             if settings and settings.media_config:
-                if (settings.media_config.gcp_project_id and settings.media_config.gcp_location) or (settings.media_config.google_ai_studio_api_key):
+                if (
+                    settings.media_config.gcp_project_id
+                    and settings.media_config.gcp_location
+                ) or (settings.media_config.google_ai_studio_api_key):
                     has_media_config = True
-                
+
             if has_media_config:
-                tools.append(ImageGenerateTool(workspace_manager=workspace_manager, settings=settings))
+                tools.append(
+                    ImageGenerateTool(
+                        workspace_manager=workspace_manager, settings=settings
+                    )
+                )
                 if tool_args.get("video_generation", True):
-                    tools.extend([
-                        VideoGenerateFromTextTool(workspace_manager=workspace_manager, settings=settings), 
-                        VideoGenerateFromImageTool(workspace_manager=workspace_manager, settings=settings),
-                        LongVideoGenerateFromTextTool(workspace_manager=workspace_manager, settings=settings),
-                        LongVideoGenerateFromImageTool(workspace_manager=workspace_manager, settings=settings)
-                    ])
+                    tools.extend(
+                        [
+                            VideoGenerateFromTextTool(
+                                workspace_manager=workspace_manager, settings=settings
+                            ),
+                            VideoGenerateFromImageTool(
+                                workspace_manager=workspace_manager, settings=settings
+                            ),
+                            LongVideoGenerateFromTextTool(
+                                workspace_manager=workspace_manager, settings=settings
+                            ),
+                            LongVideoGenerateFromImageTool(
+                                workspace_manager=workspace_manager, settings=settings
+                            ),
+                        ]
+                    )
                 if settings.media_config.google_ai_studio_api_key:
-                    tools.append(SingleSpeakerSpeechGenerationTool(workspace_manager=workspace_manager, settings=settings))
+                    tools.append(
+                        SingleSpeakerSpeechGenerationTool(
+                            workspace_manager=workspace_manager, settings=settings
+                        )
+                    )
             else:
-                logger.warning("Media generation tools not added due to missing configuration")
-                raise Exception("Media generation tools not added due to missing configuration")
+                logger.warning(
+                    "Media generation tools not added due to missing configuration"
+                )
+                raise Exception(
+                    "Media generation tools not added due to missing configuration"
+                )
         if tool_args.get("audio_generation", False):
             # Check if audio config is available in settings
             has_audio_config = False
             if settings and settings.audio_config:
-                if (settings.audio_config.openai_api_key and 
-                    settings.audio_config.azure_endpoint):
+                if (
+                    settings.audio_config.openai_api_key
+                    and settings.audio_config.azure_endpoint
+                ):
                     has_audio_config = True
-                
+
             if has_audio_config:
                 tools.extend(
                     [
-                        AudioTranscribeTool(workspace_manager=workspace_manager, settings=settings),
-                        AudioGenerateTool(workspace_manager=workspace_manager, settings=settings),
+                        AudioTranscribeTool(
+                            workspace_manager=workspace_manager, settings=settings
+                        ),
+                        AudioGenerateTool(
+                            workspace_manager=workspace_manager, settings=settings
+                        ),
                     ]
                 )
-            
+
         # Browser tools
         if tool_args.get("browser", False):
             browser = Browser()
@@ -185,6 +298,12 @@ def get_system_tools(
 
         memory_tool = tool_args.get("memory_tool")
         if memory_tool == "compactify-memory":
+            context_manager = LLMSummarizingContextManager(
+                client=client,
+                token_counter=TokenCounter(),
+                logger=logger,
+                token_budget=TOKEN_BUDGET,
+            )
             tools.append(CompactifyMemoryTool(context_manager=context_manager))
         elif memory_tool == "none":
             pass
@@ -208,12 +327,24 @@ class AgentToolManager:
     search capabilities, and task completion functionality.
     """
 
-    def __init__(self, tools: List[LLMTool], logger_for_agent_logs: logging.Logger, interactive_mode: bool = True, reviewer_mode: bool = False):
+    def __init__(
+        self,
+        tools: List[LLMTool],
+        logger_for_agent_logs: logging.Logger,
+        interactive_mode: bool = True,
+        reviewer_mode: bool = False,
+    ):
         self.logger_for_agent_logs = logger_for_agent_logs
         if reviewer_mode:
-            self.complete_tool = ReturnControlToGeneralAgentTool() if interactive_mode else CompleteToolReviewer()
+            self.complete_tool = (
+                ReturnControlToGeneralAgentTool()
+                if interactive_mode
+                else CompleteToolReviewer()
+            )
         else:
-            self.complete_tool = ReturnControlToUserTool() if interactive_mode else CompleteTool()
+            self.complete_tool = (
+                ReturnControlToUserTool() if interactive_mode else CompleteTool()
+            )
         self.tools = tools
 
     def get_tool(self, tool_name: str) -> LLMTool:

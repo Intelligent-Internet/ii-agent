@@ -38,18 +38,20 @@ class ConnectionManager:
             session_uuid = uuid.UUID(session_uuid)
 
         workspace_path = Path(self.config.workspace_root).resolve()
-        connection_workspace = workspace_path / str(session_uuid)
-        connection_workspace.mkdir(parents=True, exist_ok=True)
         workspace_manager = WorkspaceManager(
-            root=connection_workspace,
-            container_workspace=self.config.use_container_workspace,
+            parent_dir=workspace_path,
+            session_id=str(session_uuid),
+            workspace_mode=self.config.use_container_workspace,
         )
+        if websocket.query_params.get("session_uuid") is None:
+            await (
+                workspace_manager.start_sandbox()
+            )  # Quick fix: Manage Sandbox lifecycle
 
         # Create a new chat session for this connection
         session = ChatSession(
             websocket,
             workspace_manager,
-            session_uuid,
             self.file_store,
             config=self.config,
         )

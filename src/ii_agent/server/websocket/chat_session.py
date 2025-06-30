@@ -33,8 +33,7 @@ from ii_agent.llm.context_manager.llm_summarizing import LLMSummarizingContextMa
 from ii_agent.llm.token_counter import TokenCounter
 from ii_agent.tools import get_system_tools
 from ii_agent.prompts.system_prompt import (
-    SYSTEM_PROMPT,
-    SYSTEM_PROMPT_WITH_SEQ_THINKING,
+    SystemPromptBuilder,
 )
 from ii_agent.prompts.reviewer_system_prompt import REVIEWER_SYSTEM_PROMPT
 
@@ -48,13 +47,12 @@ class ChatSession:
         self,
         websocket: WebSocket,
         workspace_manager: WorkspaceManager,
-        session_uuid: uuid.UUID,
         file_store: FileStore,
         config: IIAgentConfig,
     ):
         self.websocket = websocket
         self.workspace_manager = workspace_manager
-        self.session_uuid = session_uuid
+        self.session_uuid = workspace_manager.session_id
         self.file_store = file_store
         # Session state
         self.agent: Optional[BaseAgent] = None
@@ -185,7 +183,6 @@ class ChatSession:
             # Create agent using internal methods
             self.agent = self._create_agent(
                 client,
-                self.session_uuid,
                 self.workspace_manager,
                 self.websocket,
                 init_content.tool_args,
@@ -714,20 +711,18 @@ Please review this feedback and implement the suggested improvements to better c
         """Create the actual agent instance."""
         # Initialize agent queue and tools
         queue = asyncio.Queue()
+
+        system_prompt_builder = SystemPromptBuilder(
+            workspace_manager.workspace_mode,
+            tool_args.get("sequential_thinking", False),
+        )
         tools = get_system_tools(
             client=client,
             workspace_manager=workspace_manager,
             message_queue=queue,
-            container_id=self.config.docker_container_id,
-            tool_args=tool_args,
+            system_prompt_builder=system_prompt_builder,
             settings=settings,
-        )
-
-        # Choose system prompt based on tool args
-        system_prompt = (
-            SYSTEM_PROMPT_WITH_SEQ_THINKING
-            if tool_args.get("sequential_thinking", False)
-            else SYSTEM_PROMPT
+            tool_args=tool_args,
         )
 
         # try to get history from file store
@@ -739,7 +734,7 @@ Please review this feedback and implement the suggested improvements to better c
             logger.info(f"No history found for session {session_id}")
 
         agent = FunctionCallAgent(
-            system_prompt=system_prompt,
+            system_prompt_builder=system_prompt_builder,
             client=client,
             tools=tools,
             workspace_manager=workspace_manager,
@@ -787,15 +782,18 @@ Please review this feedback and implement the suggested improvements to better c
 
         # Initialize agent queue and tools
         queue = asyncio.Queue()
+        system_prompt_builder = SystemPromptBuilder(
+            workspace_manager.workspace_mode,
+            tool_args.get("sequential_thinking", False),
+        )
         tools = get_system_tools(
             client=client,
             workspace_manager=workspace_manager,
             message_queue=queue,
-            container_id=self.config.docker_container_id,
-            tool_args=tool_args,
+            system_prompt_builder=system_prompt_builder,
             settings=settings,
+            tool_args=tool_args,
         )
-
         reviewer_agent = ReviewerAgent(
             system_prompt=REVIEWER_SYSTEM_PROMPT,
             client=client,

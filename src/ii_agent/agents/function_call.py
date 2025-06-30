@@ -10,6 +10,7 @@ from ii_agent.agents.base import BaseAgent
 from ii_agent.core.event import EventType, RealtimeEvent
 from ii_agent.llm.base import LLMClient, TextResult, ToolCallParameters
 from ii_agent.llm.message_history import MessageHistory
+from ii_agent.prompts.system_prompt import SystemPromptBuilder
 from ii_agent.tools.base import ToolImplOutput, LLMTool
 from ii_agent.tools.utils import encode_image
 from ii_agent.db.manager import Events
@@ -49,7 +50,7 @@ try breaking down the task into smaller steps. After call this tool to update or
 
     def __init__(
         self,
-        system_prompt: str,
+        system_prompt_builder: SystemPromptBuilder,
         client: LLMClient,
         tools: List[LLMTool],
         init_history: MessageHistory,
@@ -65,7 +66,7 @@ try breaking down the task into smaller steps. After call this tool to update or
         """Initialize the agent.
 
         Args:
-            system_prompt: The system prompt to use
+            system_prompt_builder: The system prompt builder to use
             client: The LLM client to use
             tools: List of tools to use
             message_queue: Message queue for real-time communication
@@ -79,7 +80,7 @@ try breaking down the task into smaller steps. After call this tool to update or
         """
         super().__init__()
         self.workspace_manager = workspace_manager
-        self.system_prompt = system_prompt
+        self.system_prompt_builder = system_prompt_builder
         self.client = client
         self.tool_manager = AgentToolManager(
             tools=tools,
@@ -227,7 +228,7 @@ try breaking down the task into smaller steps. After call this tool to update or
                     messages=self.history.get_messages_for_llm(),
                     max_tokens=self.max_output_tokens,
                     tools=all_tool_params,
-                    system_prompt=self.system_prompt,
+                    system_prompt=self.system_prompt_builder.get_system_prompt(),
                 ),
             )
 
@@ -254,6 +255,21 @@ try breaking down the task into smaller steps. After call this tool to update or
                     tool_result_message="Task completed",
                 )
 
+            text_results = [
+                item for item in model_response if isinstance(item, TextResult)
+            ]
+            if len(text_results) > 0:
+                text_result = text_results[0]
+                self.logger_for_agent_logs.info(
+                    f"Top-level agent planning next step: {text_result.text}\n",
+                )
+                self.message_queue.put_nowait(
+                    RealtimeEvent(
+                        type=EventType.AGENT_THINKING,
+                        content={"text": text_result.text},
+                    )
+                )
+
             if len(pending_tool_calls) > 1:
                 raise ValueError("Only one tool call per turn is supported")
 
@@ -271,15 +287,6 @@ try breaking down the task into smaller steps. After call this tool to update or
                     },
                 )
             )
-
-            text_results = [
-                item for item in model_response if isinstance(item, TextResult)
-            ]
-            if len(text_results) > 0:
-                text_result = text_results[0]
-                self.logger_for_agent_logs.info(
-                    f"Top-level agent planning next step: {text_result.text}\n",
-                )
 
             # Handle tool call by the agent
             if self.interrupted:
