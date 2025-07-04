@@ -1,12 +1,14 @@
 import asyncio
 import json
 import logging
+from pathlib import Path
 import uuid
 from typing import Optional, Dict, Any
 from fastapi import WebSocket, WebSocketDisconnect
 from pydantic import ValidationError
 
-from ii_agent.llm.base import ToolCall
+from ii_agent.core.config.client_config import ClientConfig
+from ii_agent.llm.base import ToolCall, TextPrompt
 from ii_agent.agents.base import BaseAgent
 from ii_agent.agents.reviewer import ReviewerAgent
 from ii_agent.core.event import RealtimeEvent, EventType
@@ -16,6 +18,7 @@ from ii_agent.core.storage.settings.file_settings_store import FileSettingsStore
 from ii_agent.db.manager import Sessions, Events
 from ii_agent.llm import get_client
 from ii_agent.utils.prompt_generator import enhance_user_prompt
+from ii_agent.utils.sandbox_manager import SandboxManager
 from ii_agent.utils.workspace_manager import WorkspaceManager
 from ii_agent.server.models.messages import (
     WebSocketMessage,
@@ -33,8 +36,7 @@ from ii_agent.llm.context_manager.llm_summarizing import LLMSummarizingContextMa
 from ii_agent.llm.token_counter import TokenCounter
 from ii_agent.tools import get_system_tools
 from ii_agent.prompts.system_prompt import (
-    SYSTEM_PROMPT,
-    SYSTEM_PROMPT_WITH_SEQ_THINKING,
+    SystemPromptBuilder,
 )
 from ii_agent.prompts.reviewer_system_prompt import REVIEWER_SYSTEM_PROMPT
 
@@ -47,13 +49,11 @@ class ChatSession:
     def __init__(
         self,
         websocket: WebSocket,
-        workspace_manager: WorkspaceManager,
         session_uuid: uuid.UUID,
         file_store: FileStore,
         config: IIAgentConfig,
     ):
         self.websocket = websocket
-        self.workspace_manager = workspace_manager
         self.session_uuid = session_uuid
         self.file_store = file_store
         # Session state
@@ -112,7 +112,10 @@ class ChatSession:
                 type=EventType.CONNECTION_ESTABLISHED,
                 content={
                     "message": "Connected to Agent WebSocket Server",
-                    "workspace_path": str(self.workspace_manager.root),
+                    "workspace_path": str(
+                        Path(self.config.workspace_root).resolve()
+                        / str(self.session_uuid)
+                    ),
                 },
             )
         )
@@ -182,11 +185,35 @@ class ChatSession:
             llm_config.thinking_tokens = init_content.thinking_tokens
             client = get_client(llm_config)
 
+            # Create workspace manager
+            workspace_path = Path(self.config.workspace_root).resolve()
+            workspace_manager = WorkspaceManager(
+                parent_dir=workspace_path,
+                session_id=str(self.session_uuid),
+                settings=settings,
+            )
+
+            sandbox_manager = SandboxManager(
+                session_id=self.session_uuid, settings=settings
+            )
+            if self.websocket.query_params.get("session_uuid") is None:
+                await sandbox_manager.start_sandbox()
+            else:
+                # WIP
+                await sandbox_manager.connect_sandbox()
+
+            # Update Config for client
+            client_config = ClientConfig(
+                server_url=sandbox_manager.get_host_url(),
+                cwd=str(workspace_manager.root.absolute()),
+            )
+            settings.client_config = client_config
+
             # Create agent using internal methods
             self.agent = self._create_agent(
                 client,
-                self.session_uuid,
-                self.workspace_manager,
+                workspace_manager,
+                sandbox_manager,
                 self.websocket,
                 init_content.tool_args,
                 self.file_store,
@@ -202,11 +229,10 @@ class ChatSession:
                 # Create reviewer agent using factory
                 self.reviewer_agent = self._create_reviewer_agent(
                     client,
-                    self.session_uuid,
-                    self.workspace_manager,
+                    workspace_manager,
+                    sandbox_manager,
                     self.websocket,
                     init_content.tool_args,
-                    self.file_store,
                     settings=settings,
                 )
 
@@ -252,6 +278,11 @@ class ChatSession:
                 Sessions.update_session_name(self.session_uuid, session_name)
                 self.first_message = False
 
+            # Check for slash commands
+            if query_content.text.strip().startswith("/"):
+                await self._handle_slash_command(query_content.text.strip())
+                return
+
             # Check if there's an active task for this session
             if self.has_active_task():
                 await self.send_event(
@@ -290,7 +321,12 @@ class ChatSession:
         await self.send_event(
             RealtimeEvent(
                 type=EventType.WORKSPACE_INFO,
-                content={"path": str(self.workspace_manager.root)},
+                content={
+                    "path": str(
+                        Path(self.config.workspace_root).resolve()
+                        / str(self.session_uuid)
+                    )
+                },
             )
         )
 
@@ -401,6 +437,174 @@ class ChatSession:
                 )
             )
 
+    async def _handle_slash_command(self, command: str):
+        """Handle slash commands."""
+        try:
+            command_parts = command.split()
+            command_name = command_parts[0].lower()
+            
+            if command_name == "/compact":
+                await self._handle_compact_command()
+            elif command_name == "/help":
+                await self._handle_help_command()
+            else:
+                await self.send_event(
+                    RealtimeEvent(
+                        type=EventType.ERROR,
+                        content={"message": f"Unknown command: {command_name}. Use /help to see available commands."},
+                    )
+                )
+                # Signal completion for unknown command
+                await self.send_event(
+                    RealtimeEvent(
+                        type=EventType.STREAM_COMPLETE,
+                        content={},
+                    )
+                )
+        except Exception as e:
+            await self.send_event(
+                RealtimeEvent(
+                    type=EventType.ERROR,
+                    content={"message": f"Error processing command: {str(e)}"},
+                )
+            )
+            # Signal completion even on error
+            await self.send_event(
+                RealtimeEvent(
+                    type=EventType.STREAM_COMPLETE,
+                    content={},
+                )
+            )
+
+    async def _handle_compact_command(self):
+        """Handle /compact command to summarize conversation history."""
+        try:
+            if not self.agent or not self.agent.history:
+                await self.send_event(
+                    RealtimeEvent(
+                        type=EventType.ERROR,
+                        content={"message": "No conversation history available to compact."},
+                    )
+                )
+                await self.send_event(
+                    RealtimeEvent(
+                        type=EventType.STREAM_COMPLETE,
+                        content={},
+                    )
+                )
+                return
+
+            # Get the full conversation history as message lists
+            message_lists = self.agent.history.get_messages_for_llm()
+            
+            # If history is empty, return early
+            if not message_lists:
+                await self.send_event(
+                    RealtimeEvent(
+                        type=EventType.ERROR,
+                        content={"message": "No conversation history available to compact."},
+                    )
+                )
+                await self.send_event(
+                    RealtimeEvent(
+                        type=EventType.STREAM_COMPLETE,
+                        content={},
+                    )
+                )
+                return
+
+            # Send processing message
+            await self.send_event(
+                RealtimeEvent(
+                    type=EventType.PROCESSING,
+                    content={"message": "Compacting conversation history..."},
+                )
+            )
+
+            # Use the context manager's new method to generate the complete summary
+            summary_response = await asyncio.to_thread(
+                self.agent.history._context_manager.generate_complete_conversation_summary,
+                message_lists
+            )
+            
+            # Format the summary for display
+            compact_summary = f"""## Conversation Summary
+
+{summary_response}
+
+---
+
+*This conversation summary was generated by the /compact command to help preserve context.*
+"""
+
+            # Clear the conversation history and start fresh with the summary
+            self.agent.history.clear()
+            
+            # Add the summary as the new conversation starting point
+            summary_message = f"This session is being continued from a previous conversation that ran out of context. The conversation is summarized below:\n\n{summary_response}"
+            self.agent.history.add_user_prompt(summary_message)
+
+            # Send the summary to the client
+            await self.send_event(
+                RealtimeEvent(
+                    type=EventType.SYSTEM,
+                    content={
+                        "message": f"Conversation compacted successfully. History has been summarized and condensed. This is the summarize {compact_summary}",
+                        "summary": compact_summary
+                    },
+                )
+            )
+            
+            # Signal that processing is complete
+            await self.send_event(
+                RealtimeEvent(
+                    type=EventType.AGENT_RESPONSE,
+                    content={},
+                )
+            )
+
+        except Exception as e:
+            logger.error(f"Error compacting conversation: {str(e)}")
+            await self.send_event(
+                RealtimeEvent(
+                    type=EventType.ERROR,
+                    content={"message": f"Error compacting conversation: {str(e)}"},
+                )
+            )
+            # Signal completion even on error
+            await self.send_event(
+                RealtimeEvent(
+                    type=EventType.AGENT_RESPONSE,
+                    content={"text": "Conversation compacted successfully"},
+                )
+            )
+
+    async def _handle_help_command(self):
+        """Handle /help command to show available commands."""
+        help_text = """## Available Commands
+
+- `/compact` - Summarize and compress the current conversation history
+- `/help` - Show this help message
+
+### Command Usage
+- `/compact`: Analyzes the entire conversation history and creates a detailed summary, then clears the history and starts fresh with the summary as context. This helps when approaching token limits or when you want to preserve context while starting fresh.
+"""
+        
+        await self.send_event(
+            RealtimeEvent(
+                type=EventType.SYSTEM,
+                content={"message": help_text},
+            )
+        )
+        
+        # Signal that processing is complete
+        await self.send_event(
+            RealtimeEvent(
+                type=EventType.STREAM_COMPLETE,
+                content={},
+            )
+        )
+
     async def _handle_enhance_prompt(self, content: dict):
         """Handle prompt enhancement request."""
         try:
@@ -507,6 +711,11 @@ class ChatSession:
             )
             # Run the agent with the query using the new async method
             await self.agent.run_agent_async(user_input, files, resume)
+            # Save history to file store when finished
+            if self.agent.history:
+                self.agent.history.save_to_session(
+                    str(self.session_uuid), self.file_store
+                )
 
         except Exception as e:
             logger.error(f"Error running agent: {str(e)}")
@@ -560,7 +769,9 @@ class ChatSession:
                 self.reviewer_agent.run_agent,
                 task=user_input,
                 result=final_result,
-                workspace_dir=str(self.workspace_manager.root),
+                workspace_dir=str(
+                    Path(self.config.workspace_root).resolve() / str(self.session_uuid)
+                ),
             )
             if reviewer_feedback and reviewer_feedback.strip():
                 # Send feedback to agent for improvement
@@ -604,10 +815,6 @@ Please review this feedback and implement the suggested improvements to better c
             self.agent.websocket = (
                 None  # This will prevent sending to websocket but keep processing
             )
-            if self.agent.history:
-                self.agent.history.save_to_session(
-                    str(self.session_uuid), self.file_store
-                )
 
         # Clean up reviewer agent
         if self.reviewer_agent:
@@ -628,8 +835,8 @@ Please review this feedback and implement the suggested improvements to better c
     def _create_agent(
         self,
         client: LLMClient,
-        session_id: uuid.UUID,
         workspace_manager: WorkspaceManager,
+        sandbox_manager: SandboxManager,
         websocket: WebSocket,
         tool_args: Dict[str, Any],
         file_store: FileStore,
@@ -639,7 +846,6 @@ Please review this feedback and implement the suggested improvements to better c
 
         Args:
             client: LLM client instance
-            session_id: Session UUID
             workspace_manager: Workspace manager
             websocket: WebSocket connection
             tool_args: Tool configuration arguments
@@ -648,6 +854,7 @@ Please review this feedback and implement the suggested improvements to better c
             Configured agent instance
         """
         device_id = websocket.query_params.get("device_id")
+        session_id = workspace_manager.session_id
 
         # Setup logging
         logger_for_agent_logs = logging.getLogger(f"agent_logs_{id(websocket)}")
@@ -690,8 +897,8 @@ Please review this feedback and implement the suggested improvements to better c
         return self._create_agent_instance(
             client,
             workspace_manager,
+            sandbox_manager,
             websocket,
-            session_id,
             tool_args,
             context_manager,
             logger_for_agent_logs,
@@ -703,8 +910,8 @@ Please review this feedback and implement the suggested improvements to better c
         self,
         client: LLMClient,
         workspace_manager: WorkspaceManager,
+        sandbox_manager: SandboxManager,
         websocket: WebSocket,
-        session_id: uuid.UUID,
         tool_args: Dict[str, Any],
         context_manager,
         logger: logging.Logger,
@@ -713,21 +920,21 @@ Please review this feedback and implement the suggested improvements to better c
     ):
         """Create the actual agent instance."""
         # Initialize agent queue and tools
+        session_id = workspace_manager.session_id
         queue = asyncio.Queue()
+
+        system_prompt_builder = SystemPromptBuilder(
+            workspace_manager.workspace_mode,
+            tool_args.get("sequential_thinking", False),
+        )
         tools = get_system_tools(
             client=client,
             workspace_manager=workspace_manager,
+            sandbox_manager=sandbox_manager,
             message_queue=queue,
-            container_id=self.config.docker_container_id,
-            tool_args=tool_args,
+            system_prompt_builder=system_prompt_builder,
             settings=settings,
-        )
-
-        # Choose system prompt based on tool args
-        system_prompt = (
-            SYSTEM_PROMPT_WITH_SEQ_THINKING
-            if tool_args.get("sequential_thinking", False)
-            else SYSTEM_PROMPT
+            tool_args=tool_args,
         )
 
         # try to get history from file store
@@ -739,7 +946,7 @@ Please review this feedback and implement the suggested improvements to better c
             logger.info(f"No history found for session {session_id}")
 
         agent = FunctionCallAgent(
-            system_prompt=system_prompt,
+            system_prompt_builder=system_prompt_builder,
             client=client,
             tools=tools,
             workspace_manager=workspace_manager,
@@ -749,28 +956,50 @@ Please review this feedback and implement the suggested improvements to better c
             max_output_tokens_per_turn=self.config.max_output_tokens_per_turn,
             max_turns=self.config.max_turns,
             websocket=websocket,
-            session_id=session_id,
         )
 
         # Store the session ID in the agent for event tracking
         agent.session_id = session_id
         return agent
 
+    def _setup_logger(self, websocket: WebSocket) -> logging.Logger:
+        """Setup logger for the agent."""
+        logger_for_agent_logs = logging.getLogger(f"agent_logs_{id(websocket)}")
+        logger_for_agent_logs.setLevel(logging.DEBUG)
+        logger_for_agent_logs.propagate = False
+
+        # Ensure we don't duplicate handlers
+        if not logger_for_agent_logs.handlers:
+            logger_for_agent_logs.addHandler(logging.FileHandler(self.config.logs_path))
+            if not self.config.minimize_stdout_logs:
+                logger_for_agent_logs.addHandler(logging.StreamHandler())
+
+        return logger_for_agent_logs
+
+    def _create_context_manager(self, client: LLMClient, logger: logging.Logger):
+        """Create context manager based on configuration."""
+        token_counter = TokenCounter()
+
+        return LLMSummarizingContextManager(
+            client=client,
+            token_counter=token_counter,
+            logger=logger,
+            token_budget=self.config.token_budget,
+        )
+
     def _create_reviewer_agent(
         self,
         client: LLMClient,
-        session_id: uuid.UUID,
         workspace_manager: WorkspaceManager,
+        sandbox_manager: SandboxManager,
         websocket: WebSocket,
         tool_args: Dict[str, Any],
-        file_store: FileStore,
         settings: Settings,
     ):
         """Create a new reviewer agent instance for a websocket connection.
 
         Args:
             client: LLM client instance
-            session_id: Session UUID
             workspace_manager: Workspace manager
             websocket: WebSocket connection
             tool_args: Tool configuration arguments
@@ -787,27 +1016,29 @@ Please review this feedback and implement the suggested improvements to better c
 
         # Initialize agent queue and tools
         queue = asyncio.Queue()
+        system_prompt_builder = SystemPromptBuilder(
+            workspace_manager.workspace_mode,
+            tool_args.get("sequential_thinking", False),
+        )
         tools = get_system_tools(
             client=client,
             workspace_manager=workspace_manager,
+            sandbox_manager=sandbox_manager,
             message_queue=queue,
-            container_id=self.config.docker_container_id,
-            tool_args=tool_args,
+            system_prompt_builder=system_prompt_builder,
             settings=settings,
+            tool_args=tool_args,
         )
-
         reviewer_agent = ReviewerAgent(
             system_prompt=REVIEWER_SYSTEM_PROMPT,
             client=client,
             tools=tools,
-            workspace_manager=workspace_manager,
             message_queue=queue,
             logger_for_agent_logs=logger_for_agent_logs,
             context_manager=context_manager,
             max_output_tokens_per_turn=self.config.max_output_tokens_per_turn,
             max_turns=self.config.max_turns,
             websocket=websocket,
-            session_id=session_id,
         )
 
         return reviewer_agent

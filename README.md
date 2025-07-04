@@ -97,6 +97,13 @@ If you are using Vertex, run with these variables
 GOOGLE_APPLICATION_CREDENTIALS=absolute-path-to-credential docker compose up
 ```
 
+### Docker with Sandbox Installation (Experimental)
+Each Agent session will have access to a seperate Sandbox. We are still experimenting with this mode. To test, run:
+```
+COMPOSE_PROFILE=sandbox \
+./start.sh
+```
+
 ### Manual Installation
 
 1. Clone the repository

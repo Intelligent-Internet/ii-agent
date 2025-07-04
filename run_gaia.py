@@ -51,7 +51,7 @@ from ii_agent.tools.text_inspector_tool import TextInspectorTool
 from ii_agent.tools.visit_webpage_tool import VisitWebpageTool
 from ii_agent.tools.visualizer import DisplayImageTool
 from ii_agent.tools.web_search_tool import WebSearchTool
-from ii_agent.utils import WorkspaceManager
+from ii_agent.utils.workspace_manager import WorkspaceManager
 from ii_agent.llm import get_client
 from ii_agent.llm.context_manager.llm_summarizing import LLMSummarizingContextManager
 from ii_agent.llm.token_counter import TokenCounter

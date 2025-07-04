@@ -52,9 +52,16 @@ export enum TOOL {
   WEB_SEARCH = "web_search",
   IMAGE_SEARCH = "image_search",
   VISIT = "visit_webpage",
+  SHELL_EXEC = "shell_exec",
+  SHELL_KILL_PROCESS = "shell_kill_process",
+  SHELL_VIEW = "shell_view",
+  SHELL_WRITE_TO_PROCESS = "shell_write_to_process",
+  SHELL_WAIT = "shell_wait",
   BASH = "bash",
+  FULLSTACK_PROJECT_INIT = "fullstack_project_init",
   COMPLETE = "complete",
   STATIC_DEPLOY = "static_deploy",
+  REGISTER_DEPLOYMENT = "register_deployment",
   PDF_TEXT_EXTRACT = "pdf_text_extract",
   AUDIO_TRANSCRIBE = "audio_transcribe",
   GENERATE_AUDIO_RESPONSE = "generate_audio_response",
@@ -71,6 +78,8 @@ export enum TOOL {
   DISPLAY_IMAGE = "display_image",
   REVIEWER_AGENT = "reviewer_agent",
 
+  GET_DATABASE_CONNECTION = "get_database_connection",
+  GET_OPENAI_KEY = "get_openai_api_key",
   // browser tools
   BROWSER_VIEW = "browser_view",
   BROWSER_NAVIGATION = "browser_navigation",
@@ -108,6 +117,12 @@ export type ActionStep = {
       instruction?: string;
       output_filename?: string;
       key?: string;
+      session_id?: string;
+      seconds?: number;
+      input?: string;
+      enter?: boolean;
+      framework?: string;
+      database_type?: string;
     };
     result?: string | Record<string, unknown>;
     query?: string;

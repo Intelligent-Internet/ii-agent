@@ -6,7 +6,7 @@ from urllib.parse import urlparse
 
 from ii_agent.llm.message_history import MessageHistory  # Or DialogMessages
 from ii_agent.tools.base import LLMTool, ToolImplOutput
-from ii_agent.utils import WorkspaceManager
+from ii_agent.utils.workspace_manager import WorkspaceManager
 
 
 class ListHtmlLinksTool(LLMTool):

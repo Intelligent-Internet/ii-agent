@@ -1,11 +1,9 @@
-from pydantic.json import pydantic_encoder
 import pickle
 import base64
 import json
 
 from typing import Optional, cast, Any
 
-from pydantic import TypeAdapter
 from ii_agent.core.storage.files import FileStore
 from ii_agent.core.storage.locations import get_conversation_agent_history_filename
 from ii_agent.llm.base import (
@@ -111,9 +109,11 @@ class MessageHistory:
     def restore_from_session(self, session_id: str, file_store: FileStore):
         """Restores the message history from the file store."""
         try:
-            encoded = file_store.read(get_conversation_agent_history_filename(session_id))
+            encoded = file_store.read(
+                get_conversation_agent_history_filename(session_id)
+            )
             pickled = base64.b64decode(encoded)
-            self._message_lists = pickle.loads(pickled) 
+            self._message_lists = pickle.loads(pickled)
         except FileNotFoundError:
             raise FileNotFoundError(
                 f"Could not restore history from file for session id: {session_id}"
@@ -121,10 +121,12 @@ class MessageHistory:
 
     def save_to_session(self, session_id: str, file_store: FileStore):
         pickled = pickle.dumps(self._message_lists)
-        encoded = base64.b64encode(pickled).decode('utf-8')
+        encoded = base64.b64encode(pickled).decode("utf-8")
 
         try:
-            file_store.write(get_conversation_agent_history_filename(session_id), encoded)
+            file_store.write(
+                get_conversation_agent_history_filename(session_id), encoded
+            )
         except Exception as e:
             raise Exception(f"Error saving message history to session: {e}")
 

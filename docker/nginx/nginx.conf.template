@@ -1,0 +1,65 @@
+# Nginx configuration for Docker container subdomain reverse proxy
+# Place this in /etc/nginx/sites-available/ and symlink to sites-enabled/
+server {
+    listen 80;
+    listen [::]:80;
+    server_name server_name *.${PUBLIC_DOMAIN};
+    
+    # Configure Docker's internal DNS resolver
+    resolver 127.0.0.11 valid=30s;
+    
+    # Extract containerId and port from subdomain (format: containerId-port.domain.com)
+    if ($host ~* ^(.+)-([0-9]+)\.${ESCAPED_PUBLIC_DOMAIN}$) {
+        set $container_id $1;
+        set $container_port $2;
+    }
+    
+    # Return 404 if subdomain doesn't match the expected format
+    if ($container_id = "") {
+        return 404;
+    }
+    
+    location / {
+        # Use a variable to force runtime DNS resolution
+        set $upstream http://$container_id:$container_port;
+        
+        # Proxy to Docker container at containerId:port
+        proxy_pass $upstream;
+        
+        # Standard proxy headers
+        proxy_set_header Host $host;
+        proxy_set_header Origin http://$host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+        
+        # WebSocket support - These headers enable WebSocket proxying
+        proxy_http_version 1.1;                    # Required for WebSocket
+        proxy_set_header Upgrade $http_upgrade;    # Pass through WebSocket upgrade header
+        proxy_set_header Connection "upgrade";     # Set connection to upgrade for WebSocket
+        
+        # Timeouts
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+        
+        # Buffer settings for better performance
+        proxy_buffering on;
+        proxy_buffer_size 4k;
+        proxy_buffers 8 4k;
+        
+        # Handle redirects properly
+        proxy_redirect off;
+        
+        # Handle connection errors gracefully
+        proxy_next_upstream error timeout invalid_header http_500 http_502 http_503 http_504;
+    }
+    
+    # Health check endpoint (optional)
+    location /health {
+        access_log off;
+        return 200 "healthy\n";
+        add_header Content-Type text/plain;
+    }
+}

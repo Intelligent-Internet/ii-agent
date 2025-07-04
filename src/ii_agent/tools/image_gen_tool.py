@@ -1,13 +1,13 @@
 # src/ii_agent/tools/image_generate_tool.py
 
-import os
 from pathlib import Path
-from typing import Any, Optional, Union, Literal
+from typing import Any, Optional, Union
 from io import BytesIO
 from enum import Enum
 
 try:
     from google import genai
+
     HAS_GENAI = True
 except ImportError:
     HAS_GENAI = False
@@ -15,6 +15,7 @@ except ImportError:
 try:
     import vertexai
     from vertexai.preview.vision_models import ImageGenerationModel
+
     HAS_VERTEX = True
 except ImportError:
     HAS_VERTEX = False
@@ -22,7 +23,7 @@ except ImportError:
 from PIL import Image
 
 from ii_agent.tools.base import MessageHistory, LLMTool, ToolImplOutput
-from ii_agent.utils import WorkspaceManager
+from ii_agent.utils.workspace_manager import WorkspaceManager
 from ii_agent.core.storage.models.settings import Settings
 
 
@@ -55,7 +56,7 @@ class APIType(str, Enum):
 GENAI_PERSON_GENERATION_MAP = {
     PersonGeneration.ALLOW_ADULT: "ALLOW_ADULT",
     PersonGeneration.DONT_ALLOW: "DONT_ALLOW",
-    PersonGeneration.ALLOW_ALL: "ALLOW_ALL"
+    PersonGeneration.ALLOW_ALL: "ALLOW_ALL",
 }
 
 IMAGE_MODEL_NAME = "imagen-3.0-generate-002"
@@ -65,6 +66,7 @@ PNG_EXTENSION = ".png"
 
 class ImageGenerationError(Exception):
     """Custom exception for image generation errors."""
+
     pass
 
 
@@ -72,7 +74,7 @@ class ImageGenerateTool(LLMTool):
     name = "generate_image_from_text"
     description = """Generates an image based on a text prompt using Google's Imagen 3 model via Vertex AI or Google AI Studio.
 The generated image will be saved to the specified local path in the workspace as a PNG file."""
-    
+
     input_schema = {
         "type": "object",
         "properties": {
@@ -120,13 +122,15 @@ The generated image will be saved to the specified local path in the workspace a
         "required": ["prompt", "output_filename"],
     }
 
-    def __init__(self, workspace_manager: WorkspaceManager, settings: Optional[Settings] = None):
+    def __init__(
+        self, workspace_manager: WorkspaceManager, settings: Optional[Settings] = None
+    ):
         super().__init__()
         self.workspace_manager = workspace_manager
         self.api_type: Optional[APIType] = None
         self.genai_client: Optional[Any] = None
         self.vertex_model: Optional[Any] = None
-        
+
         self._initialize_api_client(settings)
 
     def _initialize_api_client(self, settings: Optional[Settings]) -> None:
@@ -135,15 +139,20 @@ The generated image will be saved to the specified local path in the workspace a
             raise ImageGenerationError(
                 "Settings with media_config must be provided for image generation"
             )
-        
+
         media_config = settings.media_config
-        
+
         # Try Google AI Studio first
-        if hasattr(media_config, 'google_ai_studio_api_key') and media_config.google_ai_studio_api_key:
+        if (
+            hasattr(media_config, "google_ai_studio_api_key")
+            and media_config.google_ai_studio_api_key
+        ):
             self._initialize_genai_client(media_config.google_ai_studio_api_key)
         # Fall back to Vertex AI
         elif media_config.gcp_project_id and media_config.gcp_location:
-            self._initialize_vertex_client(media_config.gcp_project_id, media_config.gcp_location)
+            self._initialize_vertex_client(
+                media_config.gcp_project_id, media_config.gcp_location
+            )
         else:
             raise ImageGenerationError(
                 "Either Google AI Studio API key or GCP project ID and location must be provided in settings.media_config"
@@ -153,7 +162,7 @@ The generated image will be saved to the specified local path in the workspace a
         """Initialize Google AI Studio client."""
         if not HAS_GENAI:
             raise ImageGenerationError("Google GenAI package not available")
-        
+
         self.genai_client = genai.Client(api_key=api_key.get_secret_value())
         self.api_type = APIType.GENAI
         print("Using Google AI Studio for image generation")
@@ -162,7 +171,7 @@ The generated image will be saved to the specified local path in the workspace a
         """Initialize Vertex AI client."""
         if not HAS_VERTEX:
             raise ImageGenerationError("Vertex AI package not available")
-        
+
         vertexai.init(project=project_id, location=location)
         self.vertex_model = ImageGenerationModel.from_pretrained(IMAGE_MODEL_NAME)
         self.api_type = APIType.VERTEX
@@ -171,46 +180,54 @@ The generated image will be saved to the specified local path in the workspace a
     def _validate_input(self, tool_input: dict[str, Any]) -> None:
         """Validate the tool input parameters."""
         output_filename = tool_input["output_filename"]
-        
+
         if not output_filename.lower().endswith(PNG_EXTENSION):
             raise ImageGenerationError(
                 f"Output filename must end with {PNG_EXTENSION} for Imagen generation"
             )
-        
+
         # Validate seed and watermark mutual exclusivity
         if tool_input.get("seed") is not None and tool_input.get("add_watermark", True):
             tool_input["add_watermark"] = False
 
     def _prepare_output_path(self, relative_filename: str) -> Path:
         """Prepare the output path and create directories if needed."""
-        local_output_path = self.workspace_manager.workspace_path(Path(relative_filename))
+        local_output_path = self.workspace_manager.workspace_path(
+            Path(relative_filename)
+        )
         local_output_path.parent.mkdir(parents=True, exist_ok=True)
         return local_output_path
 
-    def _generate_with_genai(self, prompt: str, tool_input: dict[str, Any]) -> Image.Image:
+    def _generate_with_genai(
+        self, prompt: str, tool_input: dict[str, Any]
+    ) -> Image.Image:
         """Generate image using Google AI Studio API."""
         if not self.genai_client:
             raise ImageGenerationError("GenAI client not initialized")
-        
+
         config = {
             "number_of_images": tool_input.get("number_of_images", 1),
             "output_mime_type": DEFAULT_OUTPUT_MIME_TYPE,
             "aspect_ratio": tool_input.get("aspect_ratio", AspectRatio.SQUARE.value),
             "person_generation": GENAI_PERSON_GENERATION_MAP.get(
-                PersonGeneration(tool_input.get("person_generation", PersonGeneration.ALLOW_ADULT.value)),
-                "ALLOW_ADULT"
+                PersonGeneration(
+                    tool_input.get(
+                        "person_generation", PersonGeneration.ALLOW_ADULT.value
+                    )
+                ),
+                "ALLOW_ADULT",
             ),
         }
-        
+
         result = self.genai_client.models.generate_images(
             model=f"models/{IMAGE_MODEL_NAME}",
             prompt=prompt,
             config=config,
         )
-        
+
         if not result.generated_images:
             raise ImageGenerationError("No images returned from Google AI Studio API")
-        
+
         generated_image = result.generated_images[0]
         return Image.open(BytesIO(generated_image.image.image_bytes))
 
@@ -218,23 +235,32 @@ The generated image will be saved to the specified local path in the workspace a
         """Generate image using Vertex AI API."""
         if not self.vertex_model:
             raise ImageGenerationError("Vertex AI model not initialized")
-        
+
         generate_params = {
             "number_of_images": tool_input.get("number_of_images", 1),
             "language": "en",
             "aspect_ratio": tool_input.get("aspect_ratio", AspectRatio.SQUARE.value),
-            "safety_filter_level": tool_input.get("safety_filter_level", SafetyFilterLevel.BLOCK_SOME.value),
-            "person_generation": tool_input.get("person_generation", PersonGeneration.ALLOW_ADULT.value),
+            "safety_filter_level": tool_input.get(
+                "safety_filter_level", SafetyFilterLevel.BLOCK_SOME.value
+            ),
+            "person_generation": tool_input.get(
+                "person_generation", PersonGeneration.ALLOW_ADULT.value
+            ),
         }
-        
+
         images = self.vertex_model.generate_images(prompt=prompt, **generate_params)
-        
+
         if not images:
             raise ImageGenerationError("No images returned from Vertex AI API")
-        
+
         return images[0]
 
-    def _save_image(self, image: Union[Image.Image, Any], output_path: Path, is_pil_image: bool = True) -> None:
+    def _save_image(
+        self,
+        image: Union[Image.Image, Any],
+        output_path: Path,
+        is_pil_image: bool = True,
+    ) -> None:
         """Save the generated image to the specified path."""
         if is_pil_image:
             image.save(str(output_path), "PNG")
@@ -257,13 +283,13 @@ The generated image will be saved to the specified local path in the workspace a
         try:
             # Validate input
             self._validate_input(tool_input)
-            
+
             prompt = tool_input["prompt"]
             relative_output_filename = tool_input["output_filename"]
-            
+
             # Prepare output path
             local_output_path = self._prepare_output_path(relative_output_filename)
-            
+
             # Generate image based on API type
             if self.api_type == APIType.GENAI:
                 image = self._generate_with_genai(prompt, tool_input)
@@ -273,10 +299,10 @@ The generated image will be saved to the specified local path in the workspace a
                 self._save_image(image, local_output_path, is_pil_image=False)
             else:
                 raise ImageGenerationError("No image generation API is configured")
-            
+
             # Generate output URL
             output_url = self._get_output_url(relative_output_filename)
-            
+
             return ToolImplOutput(
                 f"Successfully generated image from text and saved to '{relative_output_filename}'. View at: {output_url}",
                 f"Image generated and saved to {relative_output_filename}",
@@ -286,7 +312,7 @@ The generated image will be saved to the specified local path in the workspace a
                     "url": output_url,
                 },
             )
-            
+
         except ImageGenerationError as e:
             return ToolImplOutput(
                 f"Image generation failed: {str(e)}",

@@ -1,5 +1,4 @@
 # src/ii_agent/tools/video_generate_from_text_tool.py
-import os
 import time
 import uuid
 import shutil
@@ -13,6 +12,7 @@ from google.genai import types
 try:
     from google.cloud import storage
     from google.auth.exceptions import DefaultCredentialsError
+
     HAS_GCS = True
 except ImportError:
     HAS_GCS = False
@@ -22,7 +22,7 @@ from ii_agent.tools.base import (
     LLMTool,
     ToolImplOutput,
 )
-from ii_agent.utils import WorkspaceManager
+from ii_agent.utils.workspace_manager import WorkspaceManager
 from ii_agent.core.storage.models.settings import Settings
 
 DEFAULT_MODEL = "veo-2.0-generate-001"
@@ -31,7 +31,7 @@ DEFAULT_MODEL = "veo-2.0-generate-001"
 GENAI_PERSON_GENERATION_MAP = {
     "allow_adult": "allow_adult",
     "dont_allow": "dont_allow",
-    "allow_all": "allow_all"
+    "allow_all": "allow_all",
 }
 
 
@@ -154,26 +154,28 @@ Uses Google AI Studio if GEMINI_API_KEY is set, otherwise falls back to Vertex A
         "required": ["prompt", "output_filename"],
     }
 
-    def __init__(self, workspace_manager: WorkspaceManager, settings: Optional[Settings] = None):
+    def __init__(
+        self, workspace_manager: WorkspaceManager, settings: Optional[Settings] = None
+    ):
         super().__init__()
         self.workspace_manager = workspace_manager
-        
+
         # Extract configuration from settings
         gcp_project_id = None
         gcp_location = None
         gcs_output_bucket = None
         google_ai_studio_api_key = None
-        
+
         if settings and settings.media_config:
             gcp_project_id = settings.media_config.gcp_project_id
             gcp_location = settings.media_config.gcp_location
             gcs_output_bucket = settings.media_config.gcs_output_bucket
             google_ai_studio_api_key = settings.media_config.google_ai_studio_api_key
-        
+
         if google_ai_studio_api_key:
             self.client = genai.Client(
-                api_key=google_ai_studio_api_key.get_secret_value(), 
-                http_options={"api_version": "v1beta"}
+                api_key=google_ai_studio_api_key.get_secret_value(),
+                http_options={"api_version": "v1beta"},
             )
             self.api_type = "genai"
         elif gcp_project_id and gcp_location and gcs_output_bucket:
@@ -183,9 +185,7 @@ Uses Google AI Studio if GEMINI_API_KEY is set, otherwise falls back to Vertex A
                 )
             self.gcs_output_bucket = gcs_output_bucket
             self.client = genai.Client(
-                project=gcp_project_id,
-                location=gcp_location,
-                vertexai=True
+                project=gcp_project_id, location=gcp_location, vertexai=True
             )
             self.api_type = "vertex"
         else:
@@ -236,8 +236,10 @@ Uses Google AI Studio if GEMINI_API_KEY is set, otherwise falls back to Vertex A
                 )
             else:  # vertex AI
                 unique_gcs_filename = f"veo_temp_output_{uuid.uuid4().hex}.mp4"
-                gcs_output_uri = f"{self.gcs_output_bucket.rstrip('/')}/{unique_gcs_filename}"
-                
+                gcs_output_uri = (
+                    f"{self.gcs_output_bucket.rstrip('/')}/{unique_gcs_filename}"
+                )
+
                 video_config = types.GenerateVideosConfig(
                     aspect_ratio=aspect_ratio,
                     output_gcs_uri=gcs_output_uri,
@@ -354,26 +356,28 @@ The generated video will be saved to the specified local path in the workspace."
         "required": ["image_file_path", "output_filename"],
     }
 
-    def __init__(self, workspace_manager: WorkspaceManager, settings: Optional[Settings] = None):
+    def __init__(
+        self, workspace_manager: WorkspaceManager, settings: Optional[Settings] = None
+    ):
         super().__init__()
         self.workspace_manager = workspace_manager
-        
+
         # Extract configuration from settings
         gcp_project_id = None
         gcp_location = None
         gcs_output_bucket = None
         google_ai_studio_api_key = None
-        
+
         if settings and settings.media_config:
             gcp_project_id = settings.media_config.gcp_project_id
             gcp_location = settings.media_config.gcp_location
             gcs_output_bucket = settings.media_config.gcs_output_bucket
             google_ai_studio_api_key = settings.media_config.google_ai_studio_api_key
-        
+
         if google_ai_studio_api_key:
             self.genai_client = genai.Client(
-                api_key=google_ai_studio_api_key.get_secret_value(), 
-                http_options={"api_version": "v1beta"}
+                api_key=google_ai_studio_api_key.get_secret_value(),
+                http_options={"api_version": "v1beta"},
             )
             self.client = self.genai_client
             self.api_type = "genai"
@@ -438,13 +442,12 @@ The generated video will be saved to the specified local path in the workspace."
 
         mime_type = SUPPORTED_IMAGE_FORMATS_MIMETYPE[image_suffix]
 
-
         try:
             if self.api_type == "genai":
                 # Google AI Studio - use image bytes directly
-                with open(local_input_image_path, 'rb') as f:
+                with open(local_input_image_path, "rb") as f:
                     image_bytes = f.read()
-                
+
                 generate_videos_kwargs = {
                     "model": self.video_model,
                     "image": types.Image(image_bytes=image_bytes, mime_type=mime_type),
@@ -456,7 +459,9 @@ The generated video will be saved to the specified local path in the workspace."
                     ),
                 }
             else:  # vertex AI
-                temp_gcs_image_filename = f"veo_temp_input_{uuid.uuid4().hex}{image_suffix}"
+                temp_gcs_image_filename = (
+                    f"veo_temp_input_{uuid.uuid4().hex}{image_suffix}"
+                )
                 temp_gcs_image_uri = (
                     f"{self.gcs_output_bucket.rstrip('/')}/{temp_gcs_image_filename}"
                 )
@@ -469,7 +474,9 @@ The generated video will be saved to the specified local path in the workspace."
 
                 generate_videos_kwargs = {
                     "model": self.video_model,
-                    "image": types.Image(gcs_uri=temp_gcs_image_uri, mime_type=mime_type),
+                    "image": types.Image(
+                        gcs_uri=temp_gcs_image_uri, mime_type=mime_type
+                    ),
                     "config": types.GenerateVideosConfig(
                         aspect_ratio=aspect_ratio,
                         output_gcs_uri=gcs_output_video_uri,
@@ -478,7 +485,7 @@ The generated video will be saved to the specified local path in the workspace."
                         person_generation=person_generation_setting,
                     ),
                 }
-                
+
             if prompt:
                 generate_videos_kwargs["prompt"] = prompt
 
@@ -487,9 +494,7 @@ The generated video will be saved to the specified local path in the workspace."
                     **generate_videos_kwargs
                 )
             else:
-                operation = self.client.models.generate_videos(
-                    **generate_videos_kwargs
-                )
+                operation = self.client.models.generate_videos(**generate_videos_kwargs)
 
             polling_interval_seconds = 15
             max_wait_time_seconds = 600
@@ -520,9 +525,13 @@ The generated video will be saved to the specified local path in the workspace."
                 self.genai_client.files.download(file=generated_video.video)
                 generated_video.video.save(str(local_output_video_path))
             else:  # vertex AI
-                actual_generated_video_gcs_uri = operation.result.generated_videos[0].video.uri
+                actual_generated_video_gcs_uri = operation.result.generated_videos[
+                    0
+                ].video.uri
                 generated_video_gcs_uri_for_cleanup = actual_generated_video_gcs_uri
-                download_gcs_file(actual_generated_video_gcs_uri, local_output_video_path)
+                download_gcs_file(
+                    actual_generated_video_gcs_uri, local_output_video_path
+                )
 
             return ToolImplOutput(
                 f"Successfully generated video from image '{relative_image_path}' and saved to '{relative_output_filename}'.",
@@ -560,6 +569,7 @@ The generated video will be saved to the specified local path in the workspace."
 
     def get_tool_start_message(self, tool_input: dict[str, Any]) -> str:
         return f"Generating video from image for file: {tool_input['output_filename']}"
+
 
 class LongVideoGenerateFromTextTool(LLMTool):
     name = "generate_long_video_from_text"
@@ -599,7 +609,9 @@ The generated video will be saved to the specified local path in the workspace."
         "required": ["prompts", "output_filename", "duration_seconds"],
     }
 
-    def __init__(self, workspace_manager: WorkspaceManager, settings: Optional[Settings] = None):
+    def __init__(
+        self, workspace_manager: WorkspaceManager, settings: Optional[Settings] = None
+    ):
         super().__init__()
         self.workspace_manager = workspace_manager
         self.settings = settings
@@ -621,7 +633,7 @@ The generated video will be saved to the specified local path in the workspace."
                 "Invalid output filename for video.",
                 {"success": False, "error": "Output filename must be .mp4"},
             )
-        
+
         if len(prompts) == 0:
             return ToolImplOutput(
                 "Error: At least one prompt is required",
@@ -637,84 +649,120 @@ The generated video will be saved to the specified local path in the workspace."
         # Create temporary directory for scene videos and frames
         temp_dir = local_output_path.parent / f"temp_{uuid.uuid4().hex}"
         temp_dir.mkdir(exist_ok=True)
-        
+
         scene_video_paths = []
-        
+
         try:
             # Calculate duration per scene
             duration_per_scene = max(5, duration_seconds // len(prompts))
             if duration_per_scene > 8:
                 duration_per_scene = 8
-            
+
             # Generate first scene from text
             first_scene_filename = "scene_0.mp4"
             first_scene_path = temp_dir / first_scene_filename
-            
+
             text_tool = VideoGenerateFromTextTool(self.workspace_manager, self.settings)
-            first_scene_result = await text_tool.run_impl({
-                "prompt": prompts[0],
-                "output_filename": str(first_scene_path.relative_to(self.workspace_manager.workspace_path(Path()))),
-                "aspect_ratio": aspect_ratio,
-                "duration_seconds": str(duration_per_scene),
-                "enhance_prompt": enhance_prompt,
-                "allow_person_generation": True,
-            })
-            
+            first_scene_result = await text_tool.run_impl(
+                {
+                    "prompt": prompts[0],
+                    "output_filename": str(
+                        first_scene_path.relative_to(
+                            self.workspace_manager.workspace_path(Path())
+                        )
+                    ),
+                    "aspect_ratio": aspect_ratio,
+                    "duration_seconds": str(duration_per_scene),
+                    "enhance_prompt": enhance_prompt,
+                    "allow_person_generation": True,
+                }
+            )
+
             if not first_scene_result.auxiliary_data.get("success", False):
                 return ToolImplOutput(
                     f"Error generating first scene: {first_scene_result.auxiliary_data.get('error', 'Unknown error')}",
                     "Failed to generate first scene.",
                     {"success": False, "error": "First scene generation failed"},
                 )
-            
+
             scene_video_paths.append(first_scene_path)
-            
+
             # Generate subsequent scenes from last frame + prompt
-            image_tool = VideoGenerateFromImageTool(self.workspace_manager, self.settings)
-            
+            image_tool = VideoGenerateFromImageTool(
+                self.workspace_manager, self.settings
+            )
+
             for i, prompt in enumerate(prompts[1:], 1):
                 # Extract last frame from previous scene
                 prev_video_path = scene_video_paths[-1]
-                last_frame_path = temp_dir / f"last_frame_{i-1}.png"
-                
+                last_frame_path = temp_dir / f"last_frame_{i - 1}.png"
+
                 # Use ffmpeg to extract last frame
                 extract_cmd = [
-                    "ffmpeg", "-i", str(prev_video_path), 
-                    "-vf", "select=eq(n\\,0)", "-q:v", "3", 
-                    "-vframes", "1", "-f", "image2", 
-                    str(last_frame_path), "-y"
+                    "ffmpeg",
+                    "-i",
+                    str(prev_video_path),
+                    "-vf",
+                    "select=eq(n\\,0)",
+                    "-q:v",
+                    "3",
+                    "-vframes",
+                    "1",
+                    "-f",
+                    "image2",
+                    str(last_frame_path),
+                    "-y",
                 ]
-                
+
                 # Actually extract the very last frame
                 extract_cmd = [
-                    "ffmpeg", "-sseof", "-1", "-i", str(prev_video_path),
-                    "-update", "1", "-q:v", "1", str(last_frame_path), "-y"
+                    "ffmpeg",
+                    "-sseof",
+                    "-1",
+                    "-i",
+                    str(prev_video_path),
+                    "-update",
+                    "1",
+                    "-q:v",
+                    "1",
+                    str(last_frame_path),
+                    "-y",
                 ]
-                
+
                 subprocess.run(extract_cmd, check=True, capture_output=True)
-                
+
                 # Generate next scene from last frame + prompt
                 scene_filename = f"scene_{i}.mp4"
                 scene_path = temp_dir / scene_filename
-                
-                scene_result = await image_tool.run_impl({
-                    "image_file_path": str(last_frame_path.relative_to(self.workspace_manager.workspace_path(Path()))),
-                    "output_filename": str(scene_path.relative_to(self.workspace_manager.workspace_path(Path()))),
-                    "prompt": prompt,
-                    "aspect_ratio": aspect_ratio,
-                    "duration_seconds": str(duration_per_scene),
-                    "allow_person_generation": True,
-                })
-                
+
+                scene_result = await image_tool.run_impl(
+                    {
+                        "image_file_path": str(
+                            last_frame_path.relative_to(
+                                self.workspace_manager.workspace_path(Path())
+                            )
+                        ),
+                        "output_filename": str(
+                            scene_path.relative_to(
+                                self.workspace_manager.workspace_path(Path())
+                            )
+                        ),
+                        "prompt": prompt,
+                        "aspect_ratio": aspect_ratio,
+                        "duration_seconds": str(duration_per_scene),
+                        "allow_person_generation": True,
+                    }
+                )
+
                 if not scene_result.auxiliary_data.get("success", False):
                     return ToolImplOutput(
                         f"Error generating scene {i}: {scene_result.auxiliary_data.get('error', 'Unknown error')}",
                         f"Failed to generate scene {i}.",
                         {"success": False, "error": f"Scene {i} generation failed"},
                     )
-                
+
                 scene_video_paths.append(scene_path)
-            
+
             # Combine all scenes into final video
             if len(scene_video_paths) == 1:
                 # Only one scene, just copy it
@@ -725,16 +773,23 @@ The generated video will be saved to the specified local path in the workspace."
                 with open(concat_file, "w") as f:
                     for video_path in scene_video_paths:
                         f.write(f"file '{video_path.absolute()}'\n")
-                
+
                 # Concatenate videos
                 concat_cmd = [
-                    "ffmpeg", "-f", "concat", "-safe", "0", 
-                    "-i", str(concat_file), "-c", "copy", 
-                    str(local_output_path), "-y"
+                    "ffmpeg",
+                    "-f",
+                    "concat",
+                    "-safe",
+                    "0",
+                    "-i",
+                    str(concat_file),
+                    "-c",
+                    "copy",
+                    str(local_output_path),
+                    "-y",
                 ]
-                
+
                 subprocess.run(concat_cmd, check=True, capture_output=True)
-            
 
             return ToolImplOutput(
                 f"Successfully generated long video with {len(prompts)} scenes and saved to '{relative_output_filename}'",
@@ -758,7 +813,9 @@ The generated video will be saved to the specified local path in the workspace."
                 try:
                     shutil.rmtree(temp_dir)
                 except Exception as e_cleanup:
-                    print(f"Warning: Failed to clean up temporary directory {temp_dir}: {e_cleanup}")
+                    print(
+                        f"Warning: Failed to clean up temporary directory {temp_dir}: {e_cleanup}"
+                    )
 
     def get_tool_start_message(self, tool_input: dict[str, Any]) -> str:
         num_scenes = len(tool_input.get("prompts", []))
@@ -804,10 +861,17 @@ The generated video will be saved to the specified local path in the workspace."
                 "description": "Whether to enhance the provided prompt for better results.",
             },
         },
-        "required": ["image_file_path", "prompts", "output_filename", "duration_seconds"],
+        "required": [
+            "image_file_path",
+            "prompts",
+            "output_filename",
+            "duration_seconds",
+        ],
     }
 
-    def __init__(self, workspace_manager: WorkspaceManager, settings: Optional[Settings] = None):
+    def __init__(
+        self, workspace_manager: WorkspaceManager, settings: Optional[Settings] = None
+    ):
         super().__init__()
         self.workspace_manager = workspace_manager
         self.settings = settings
@@ -830,7 +894,7 @@ The generated video will be saved to the specified local path in the workspace."
                 "Invalid output filename for video.",
                 {"success": False, "error": "Output filename must be .mp4"},
             )
-        
+
         if len(prompts) == 0:
             return ToolImplOutput(
                 "Error: At least one prompt is required",
@@ -846,82 +910,118 @@ The generated video will be saved to the specified local path in the workspace."
         # Create temporary directory for scene videos and frames
         temp_dir = local_output_path.parent / f"temp_{uuid.uuid4().hex}"
         temp_dir.mkdir(exist_ok=True)
-        
+
         scene_video_paths = []
-        
+
         try:
             # Calculate duration per scene
             duration_per_scene = max(5, duration_seconds // len(prompts))
             if duration_per_scene > 8:
                 duration_per_scene = 8
-            
+
             # Generate first scene from text
             first_scene_filename = "scene_0.mp4"
             first_scene_path = temp_dir / first_scene_filename
-            
-            image_tool = VideoGenerateFromImageTool(self.workspace_manager, self.settings)
-            first_scene_result = await image_tool.run_impl({
-                "image_file_path": image_file_path,
-                "prompt": prompts[0],
-                "output_filename": str(first_scene_path.relative_to(self.workspace_manager.workspace_path(Path()))),
-                "aspect_ratio": aspect_ratio,
-                "duration_seconds": str(duration_per_scene),
-                "enhance_prompt": enhance_prompt,
-                "allow_person_generation": True,
-            })
-            
+
+            image_tool = VideoGenerateFromImageTool(
+                self.workspace_manager, self.settings
+            )
+            first_scene_result = await image_tool.run_impl(
+                {
+                    "image_file_path": image_file_path,
+                    "prompt": prompts[0],
+                    "output_filename": str(
+                        first_scene_path.relative_to(
+                            self.workspace_manager.workspace_path(Path())
+                        )
+                    ),
+                    "aspect_ratio": aspect_ratio,
+                    "duration_seconds": str(duration_per_scene),
+                    "enhance_prompt": enhance_prompt,
+                    "allow_person_generation": True,
+                }
+            )
+
             if not first_scene_result.auxiliary_data.get("success", False):
                 return ToolImplOutput(
                     f"Error generating first scene: {first_scene_result.auxiliary_data.get('error', 'Unknown error')}",
                     "Failed to generate first scene.",
                     {"success": False, "error": "First scene generation failed"},
                 )
-            
+
             scene_video_paths.append(first_scene_path)
-            
+
             for i, prompt in enumerate(prompts[1:], 1):
                 # Extract last frame from previous scene
                 prev_video_path = scene_video_paths[-1]
-                last_frame_path = temp_dir / f"last_frame_{i-1}.png"
-                
+                last_frame_path = temp_dir / f"last_frame_{i - 1}.png"
+
                 # Use ffmpeg to extract last frame
                 extract_cmd = [
-                    "ffmpeg", "-i", str(prev_video_path), 
-                    "-vf", "select=eq(n\\,0)", "-q:v", "3", 
-                    "-vframes", "1", "-f", "image2", 
-                    str(last_frame_path), "-y"
+                    "ffmpeg",
+                    "-i",
+                    str(prev_video_path),
+                    "-vf",
+                    "select=eq(n\\,0)",
+                    "-q:v",
+                    "3",
+                    "-vframes",
+                    "1",
+                    "-f",
+                    "image2",
+                    str(last_frame_path),
+                    "-y",
                 ]
-                
+
                 # Actually extract the very last frame
                 extract_cmd = [
-                    "ffmpeg", "-sseof", "-1", "-i", str(prev_video_path),
-                    "-update", "1", "-q:v", "1", str(last_frame_path), "-y"
+                    "ffmpeg",
+                    "-sseof",
+                    "-1",
+                    "-i",
+                    str(prev_video_path),
+                    "-update",
+                    "1",
+                    "-q:v",
+                    "1",
+                    str(last_frame_path),
+                    "-y",
                 ]
-                
+
                 subprocess.run(extract_cmd, check=True, capture_output=True)
-                
+
                 # Generate next scene from last frame + prompt
                 scene_filename = f"scene_{i}.mp4"
                 scene_path = temp_dir / scene_filename
-                
-                scene_result = await image_tool.run_impl({
-                    "image_file_path": str(last_frame_path.relative_to(self.workspace_manager.workspace_path(Path()))),
-                    "output_filename": str(scene_path.relative_to(self.workspace_manager.workspace_path(Path()))),
-                    "prompt": prompt,
-                    "aspect_ratio": aspect_ratio,
-                    "duration_seconds": str(duration_per_scene),
-                    "allow_person_generation": True,
-                })
-                
+
+                scene_result = await image_tool.run_impl(
+                    {
+                        "image_file_path": str(
+                            last_frame_path.relative_to(
+                                self.workspace_manager.workspace_path(Path())
+                            )
+                        ),
+                        "output_filename": str(
+                            scene_path.relative_to(
+                                self.workspace_manager.workspace_path(Path())
+                            )
+                        ),
+                        "prompt": prompt,
+                        "aspect_ratio": aspect_ratio,
+                        "duration_seconds": str(duration_per_scene),
+                        "allow_person_generation": True,
+                    }
+                )
+
                 if not scene_result.auxiliary_data.get("success", False):
                     return ToolImplOutput(
                         f"Error generating scene {i}: {scene_result.auxiliary_data.get('error', 'Unknown error')}",
                         f"Failed to generate scene {i}.",
                         {"success": False, "error": f"Scene {i} generation failed"},
                     )
-                
+
                 scene_video_paths.append(scene_path)
-            
+
             # Combine all scenes into final video
             if len(scene_video_paths) == 1:
                 # Only one scene, just copy it
@@ -932,16 +1032,24 @@ The generated video will be saved to the specified local path in the workspace."
                 with open(concat_file, "w") as f:
                     for video_path in scene_video_paths:
                         f.write(f"file '{video_path.absolute()}'\n")
-                
+
                 # Concatenate videos
                 concat_cmd = [
-                    "ffmpeg", "-f", "concat", "-safe", "0", 
-                    "-i", str(concat_file), "-c", "copy", 
-                    str(local_output_path), "-y"
+                    "ffmpeg",
+                    "-f",
+                    "concat",
+                    "-safe",
+                    "0",
+                    "-i",
+                    str(concat_file),
+                    "-c",
+                    "copy",
+                    str(local_output_path),
+                    "-y",
                 ]
-                
+
                 subprocess.run(concat_cmd, check=True, capture_output=True)
-            
+
             return ToolImplOutput(
                 f"Successfully generated long video with {len(prompts)} scenes and saved to '{relative_output_filename}'",
                 f"Long video with {len(prompts)} scenes generated and saved to {relative_output_filename}",
@@ -964,7 +1072,9 @@ The generated video will be saved to the specified local path in the workspace."
                 try:
                     shutil.rmtree(temp_dir)
                 except Exception as e_cleanup:
-                    print(f"Warning: Failed to clean up temporary directory {temp_dir}: {e_cleanup}")
+                    print(
+                        f"Warning: Failed to clean up temporary directory {temp_dir}: {e_cleanup}"
+                    )
 
     def get_tool_start_message(self, tool_input: dict[str, Any]) -> str:
         num_scenes = len(tool_input.get("prompts", []))

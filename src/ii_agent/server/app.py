@@ -33,8 +33,6 @@ def create_app() -> FastAPI:
     # Store global args in app state for access in endpoints
     app.state.workspace = shared.config.workspace_root
 
-    
-
     # Include API routers
     app.include_router(upload_router)
     app.include_router(sessions_router)

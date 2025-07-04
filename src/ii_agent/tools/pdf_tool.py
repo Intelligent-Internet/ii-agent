@@ -7,7 +7,7 @@ from ii_agent.tools.base import (
     LLMTool,
     ToolImplOutput,
 )
-from ii_agent.utils import WorkspaceManager
+from ii_agent.utils.workspace_manager import WorkspaceManager
 
 
 class PdfTextExtractTool(LLMTool):

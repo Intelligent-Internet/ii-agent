@@ -2,15 +2,17 @@ from __future__ import annotations
 from typing import Dict
 
 from pydantic import (
-    BaseModel, 
+    BaseModel,
     Field,
 )
 
+from ii_agent.core.config.client_config import ClientConfig
+from ii_agent.core.config.database_config import ThirdPartyIntegrationConfig
+from ii_agent.core.config.sandbox_config import SandboxConfig
 from ii_agent.core.config.search_config import SearchConfig
 from ii_agent.core.config.media_config import MediaConfig
 from ii_agent.core.config.audio_config import AudioConfig
 from ii_agent.core.config.llm_config import LLMConfig
-
 
 
 class Settings(BaseModel):
@@ -22,7 +24,12 @@ class Settings(BaseModel):
     search_config: SearchConfig | None = Field(default=None)
     media_config: MediaConfig | None = Field(default=None)
     audio_config: AudioConfig | None = Field(default=None)
+    sandbox_config: SandboxConfig = Field(default_factory=SandboxConfig)
+    client_config: ClientConfig | None = Field(default=None)
+    third_party_integration_config: ThirdPartyIntegrationConfig | None = Field(
+        default=None
+    )
 
     model_config = {
-        'validate_assignment': True,
+        "validate_assignment": True,
     }

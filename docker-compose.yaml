@@ -13,6 +13,28 @@ services:
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
 
+  nginx:
+    build:
+      context: .
+      dockerfile: docker/nginx/Dockerfile
+    environment:
+      - PUBLIC_DOMAIN=${PUBLIC_DOMAIN}
+    ports:
+      - "${NGINX_PORT:-80}:80"
+    networks:
+      - ii
+
+  sandbox:
+    build:
+      context: .
+      dockerfile: docker/sandbox/Dockerfile
+    ports:
+      - "${SANDBOX_PORT:-17300}:17300" # Sandbox server port
+    deploy:
+      replicas: 0
+    networks:
+      - ii
+
   backend:
     build:
       context: .
@@ -25,7 +47,16 @@ services:
       - GOOGLE_APPLICATION_CREDENTIALS=/app/google-application-credentials.json
       # Static file base url
       - STATIC_FILE_BASE_URL=${STATIC_FILE_BASE_URL:-http://localhost:8000}
+      - BASE_URL=${BASE_URL}
+      - COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME}
+      - HOST_WORKSPACE_PATH=${HOME}/.ii_agent/workspace
     volumes:
       #If file doesn't exist, use a dummy file
       - ${GOOGLE_APPLICATION_CREDENTIALS:-./docker/.dummy-credentials.json}:/app/google-application-credentials.json
       - ~/.ii_agent:/.ii_agent
+      - /var/run/docker.sock:/var/run/docker.sock #ONLY WORK FOR UNIX FOR NOW
+    networks:
+      - ii
+
+networks:
+  ii:

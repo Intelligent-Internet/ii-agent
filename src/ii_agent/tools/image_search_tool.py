@@ -3,7 +3,7 @@ from ii_agent.tools.base import (
     LLMTool,
     ToolImplOutput,
 )
-from ii_agent.tools.web_search_client import create_image_search_client
+from ii_agent.tools.clients.web_search_client import create_image_search_client
 from ii_agent.core.storage.models.settings import Settings
 from typing import Any, Optional
 

@@ -7,7 +7,7 @@ from ii_agent.tools.base import (
 )
 from ii_agent.llm.message_history import MessageHistory
 from .utils import encode_image
-from ii_agent.utils import WorkspaceManager
+from ii_agent.utils.workspace_manager import WorkspaceManager
 
 
 class DisplayImageTool(LLMTool):

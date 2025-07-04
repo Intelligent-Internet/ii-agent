@@ -1,0 +1,15 @@
+fastapi
+uvicorn
+sqlalchemy
+python-dotenv
+pydantic
+pydantic-settings
+pytest
+pytest-asyncio
+httpx
+openai
+bcrypt
+python-jose[cryptography]
+python-multipart
+cryptography
+requests

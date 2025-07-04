@@ -3,6 +3,7 @@
 import { RefObject, useEffect, useRef, useCallback } from "react";
 import { cloneDeep, debounce } from "lodash";
 import { toast } from "sonner";
+import chalk from "chalk";
 
 import { AppAction, useAppContext } from "@/context/app-context";
 import { AgentEvent, TOOL, ActionStep, Message, TAB } from "@/typings/agent";
@@ -15,6 +16,7 @@ export function useAppEvents({
 }) {
   const { state, dispatch } = useAppContext();
   const messagesRef = useRef(state.messages);
+  const terminalUsernameRef = useRef<string>("");
 
   useEffect(() => {
     messagesRef.current = state.messages;
@@ -398,22 +400,37 @@ export function useAppEvents({
           break;
 
         case TOOL.BASH:
+        case TOOL.SHELL_EXEC:
+        case TOOL.SHELL_WRITE_TO_PROCESS:
+        case TOOL.SHELL_VIEW:
           safeDispatch({ type: "SET_ACTIVE_TAB", payload: TAB.TERMINAL });
           if (!showTabOnly) {
             setTimeout(() => {
-              if (!data.data?.isResult) {
-                // query
-                xtermRef?.current?.writeln(
-                  `${data.data.tool_input?.command || ""}`
-                );
-              }
-              // result
               if (data.data.result) {
                 const lines = `${data.data.result || ""}`.split("\n");
-                lines.forEach((line) => {
-                  xtermRef?.current?.writeln(line);
+                lines.forEach((line, index) => {
+                  let username = terminalUsernameRef.current
+                    ? `${terminalUsernameRef.current}`
+                    : "";
+                  if (!username) {
+                    username = `${line}`.split(" ")?.[0];
+                  }
+                  const formatLine = line?.replace(
+                    username,
+                    `${chalk.hex("#00a63e")(username)}`
+                  );
+                  if (index === 0) {
+                    xtermRef?.current?.writeln(
+                      formatLine?.replace(terminalUsernameRef.current, "")
+                    );
+                  } else if (index === lines.length - 1) {
+                    terminalUsernameRef.current = line.trim();
+                    xtermRef?.current?.write(`${formatLine} `);
+                  } else {
+                    xtermRef?.current?.writeln(formatLine);
+                  }
+                  terminalUsernameRef.current = username;
                 });
-                xtermRef?.current?.write("$ ");
               }
             }, 500);
           }

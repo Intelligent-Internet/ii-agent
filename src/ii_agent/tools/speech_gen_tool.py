@@ -2,10 +2,8 @@
 
 import os
 from pathlib import Path
-from typing import Any, Optional, List, Dict
-import base64
+from typing import Any, Optional
 import struct
-import mimetypes
 
 from google import genai
 from google.genai import types
@@ -15,18 +13,43 @@ from ii_agent.tools.base import (
     LLMTool,
     ToolImplOutput,
 )
-from ii_agent.utils import WorkspaceManager
+from ii_agent.utils.workspace_manager import WorkspaceManager
 from ii_agent.core.storage.models.settings import Settings
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
 # Available voices from the API documentation
 AVAILABLE_VOICES = [
-    "achernar", "achird", "algenib", "algieba", "alnilam", "aoede", "autonoe", 
-    "callirrhoe", "charon", "despina", "enceladus", "erinome", "fenrir", 
-    "gacrux", "iapetus", "kore", "laomedeia", "leda", "orus", "puck", 
-    "pulcherrima", "rasalgethi", "sadachbia", "sadaltager", "schedar", 
-    "sulafat", "umbriel", "vindemiatrix", "zephyr", "zubenelgenubi"
+    "achernar",
+    "achird",
+    "algenib",
+    "algieba",
+    "alnilam",
+    "aoede",
+    "autonoe",
+    "callirrhoe",
+    "charon",
+    "despina",
+    "enceladus",
+    "erinome",
+    "fenrir",
+    "gacrux",
+    "iapetus",
+    "kore",
+    "laomedeia",
+    "leda",
+    "orus",
+    "puck",
+    "pulcherrima",
+    "rasalgethi",
+    "sadachbia",
+    "sadaltager",
+    "schedar",
+    "sulafat",
+    "umbriel",
+    "vindemiatrix",
+    "zephyr",
+    "zubenelgenubi",
 ]
 
 # Voice characteristics for user reference
@@ -60,11 +83,12 @@ VOICE_CHARACTERISTICS = {
     "umbriel": "Dark, mysterious voice",
     "vindemiatrix": "Bright, enthusiastic voice",
     "zephyr": "Bright, warm voice suitable for narration",
-    "zubenelgenubi": "Balanced, neutral voice"
+    "zubenelgenubi": "Balanced, neutral voice",
 }
 
 # Available models for speech generation
 SPEECH_MODELS = ["gemini-2.5-flash-preview-tts", "gemini-2.5-pro-preview-tts"]
+
 
 def save_binary_file(file_name, data):
     f = open(file_name, "wb")
@@ -87,9 +111,19 @@ def convert_to_wav(audio_data: bytes, mime_type: str) -> bytes:
 
     header = struct.pack(
         "<4sI4s4sIHHIIHH4sI",
-        b"RIFF", chunk_size, b"WAVE", b"fmt ", 16, 1,
-        num_channels, sample_rate, byte_rate, block_align,
-        bits_per_sample, b"data", data_size
+        b"RIFF",
+        chunk_size,
+        b"WAVE",
+        b"fmt ",
+        16,
+        1,
+        num_channels,
+        sample_rate,
+        byte_rate,
+        block_align,
+        bits_per_sample,
+        b"data",
+        data_size,
     )
     return header + audio_data
 
@@ -122,49 +156,49 @@ class SingleSpeakerSpeechGenerationTool(LLMTool):
     description = f"""Generates speech audio from text using Google's Gemini TTS with a single speaker.
 The generated audio will be saved as an MP3 file in the workspace.
 
-Available voices: {', '.join(AVAILABLE_VOICES[:10])} and {len(AVAILABLE_VOICES)-10} more.
+Available voices: {", ".join(AVAILABLE_VOICES[:10])} and {len(AVAILABLE_VOICES) - 10} more.
 Supports tone and style control through natural language instructions (e.g., "Say cheerfully:", "Read with excitement:").
 Automatic language detection from input text."""
-    
+
     input_schema = {
         "type": "object",
         "properties": {
             "text": {
                 "type": "string",
-                "description": "The text to convert to speech. Can include tone/style instructions like 'Say cheerfully: Hello world!'"
+                "description": "The text to convert to speech. Can include tone/style instructions like 'Say cheerfully: Hello world!'",
             },
             "output_filename": {
                 "type": "string",
-                "description": "The desired relative path for the output MP3 audio file within the workspace (e.g., 'audio/speech.mp3'). Must end with .mp3."
+                "description": "The desired relative path for the output MP3 audio file within the workspace (e.g., 'audio/speech.mp3'). Must end with .mp3.",
             },
             "voice": {
                 "type": "string",
                 "enum": AVAILABLE_VOICES,
                 "default": "kore",
-                "description": f"The voice to use for speech generation. Available voices: {', '.join(AVAILABLE_VOICES)}"
+                "description": f"The voice to use for speech generation. Available voices: {', '.join(AVAILABLE_VOICES)}",
             },
             "model": {
                 "type": "string",
                 "enum": SPEECH_MODELS,
                 "default": "gemini-2.5-flash-preview-tts",
-                "description": "The model to use for speech generation. Flash is faster, Pro has better quality."
-            }
+                "description": "The model to use for speech generation. Flash is faster, Pro has better quality.",
+            },
         },
-        "required": ["text", "output_filename"]
+        "required": ["text", "output_filename"],
     }
 
     def __init__(self, workspace_manager: WorkspaceManager, settings: Settings):
         super().__init__()
         self.workspace_manager = workspace_manager
         self.settings = settings
-        
+
         if settings and settings.media_config:
-            self.google_ai_studio_api_key = settings.media_config.google_ai_studio_api_key
-        else:
-            raise ValueError(
-                "Required GEMINI_API_KEY for speech generation."
+            self.google_ai_studio_api_key = (
+                settings.media_config.google_ai_studio_api_key
             )
-        
+        else:
+            raise ValueError("Required GEMINI_API_KEY for speech generation.")
+
         if self.google_ai_studio_api_key:
             self.client = genai.Client(
                 http_options={"api_version": "v1beta"},
@@ -172,9 +206,7 @@ Automatic language detection from input text."""
             )
             print("Initialized Google AI Studio for speech generation")
         else:
-            raise ValueError(
-                "Required GEMINI_API_KEY for speech generation."
-            )
+            raise ValueError("Required GEMINI_API_KEY for speech generation.")
 
     async def run_impl(
         self,
@@ -185,19 +217,19 @@ Automatic language detection from input text."""
         relative_output_filename = tool_input["output_filename"]
         voice = tool_input.get("voice", "kore")
         model = tool_input.get("model", "gemini-2.5-flash-preview-tts")
-        
+
         if not relative_output_filename.lower().endswith(".mp3"):
             return ToolImplOutput(
                 "Error: output_filename must end with .mp3",
                 "Invalid output filename for audio.",
                 {"success": False, "error": "Output filename must be .mp3"},
             )
-        
+
         local_output_path = self.workspace_manager.workspace_path(
             Path(relative_output_filename)
         )
         local_output_path.parent.mkdir(parents=True, exist_ok=True)
-        
+
         try:
             # Generate speech without streaming
             response = self.client.models.generate_content(
@@ -212,9 +244,9 @@ Automatic language detection from input text."""
                             )
                         )
                     ),
-                )
+                ),
             )
-            
+
             # Extract audio data from response
             if not response.candidates or not response.candidates[0].content.parts:
                 return ToolImplOutput(
@@ -222,32 +254,36 @@ Automatic language detection from input text."""
                     "Speech generation failed.",
                     {"success": False, "error": "No audio output from API"},
                 )
-            
-        
+
             # Find the audio part
             audio_part = None
             for part in response.candidates[0].content.parts:
-                if hasattr(part, 'inline_data') and part.inline_data.mime_type.startswith('audio'):
+                if hasattr(
+                    part, "inline_data"
+                ) and part.inline_data.mime_type.startswith("audio"):
                     audio_part = part
                     break
-            
+
             if not audio_part:
                 return ToolImplOutput(
                     "Error: No audio data found in the response.",
                     "Speech generation failed.",
                     {"success": False, "error": "No audio data in response"},
                 )
-            
-            data = convert_to_wav(response.candidates[0].content.parts[0].inline_data.data, response.candidates[0].content.parts[0].inline_data.mime_type)    
-            
+
+            data = convert_to_wav(
+                response.candidates[0].content.parts[0].inline_data.data,
+                response.candidates[0].content.parts[0].inline_data.mime_type,
+            )
+
             save_binary_file(relative_output_filename, data)
-             
+
             output_url = (
                 f"http://localhost:{self.workspace_manager.file_server_port}/workspace/{relative_output_filename}"
                 if hasattr(self.workspace_manager, "file_server_port")
                 else f"(Local path: {relative_output_filename})"
             )
-            
+
             return ToolImplOutput(
                 f"Successfully generated speech and saved to '{relative_output_filename}'. Voice: {voice}. Listen at: {output_url}",
                 f"Speech generated and saved to {relative_output_filename}",
@@ -256,10 +292,10 @@ Automatic language detection from input text."""
                     "output_path": relative_output_filename,
                     "url": output_url,
                     "voice": voice,
-                    "model": model
+                    "model": model,
                 },
             )
-            
+
         except Exception as e:
             return ToolImplOutput(
                 f"Error generating speech: {str(e)}",

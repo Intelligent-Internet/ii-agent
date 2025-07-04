@@ -11,7 +11,7 @@ from ii_agent.tools.base import (
     ToolImplOutput,
 )
 
-from ii_agent.utils import WorkspaceManager
+from ii_agent.utils.workspace_manager import WorkspaceManager
 from ii_agent.llm.message_history import MessageHistory
 from ii_agent.core.storage.models.settings import Settings
 
@@ -44,28 +44,34 @@ Supported file formats: {", ".join(SUPPORTED_AUDIO_FORMATS)}"""
         "required": ["file_path"],
     }
 
-    def __init__(self, workspace_manager: WorkspaceManager, settings: Optional[Settings] = None):
+    def __init__(
+        self, workspace_manager: WorkspaceManager, settings: Optional[Settings] = None
+    ):
         super().__init__()
         self.workspace_manager = workspace_manager
-        
+
         # Extract configuration from settings
         openai_api_key = None
         azure_endpoint = None
         azure_api_version = None
-        
+
         if settings and settings.audio_config:
-            openai_api_key = settings.audio_config.openai_api_key.get_secret_value() if settings.audio_config.openai_api_key else None
+            openai_api_key = (
+                settings.audio_config.openai_api_key.get_secret_value()
+                if settings.audio_config.openai_api_key
+                else None
+            )
             azure_endpoint = settings.audio_config.azure_endpoint
             azure_api_version = settings.audio_config.azure_api_version
-            
+
         if not azure_api_version:
             azure_api_version = "2025-01-01-preview"  # Default value
-            
+
         if not openai_api_key or not azure_endpoint:
             raise ValueError(
                 "OpenAI API key and Azure endpoint must be provided in settings.audio_config"
             )
-            
+
         self.client = AzureOpenAI(
             api_key=openai_api_key,
             azure_endpoint=azure_endpoint,
@@ -168,28 +174,34 @@ Saves the output as an MP3 file in the workspace. Available voices: {", ".join(A
         "required": ["text", "output_filename"],
     }
 
-    def __init__(self, workspace_manager: WorkspaceManager, settings: Optional[Settings] = None):
+    def __init__(
+        self, workspace_manager: WorkspaceManager, settings: Optional[Settings] = None
+    ):
         super().__init__()
         self.workspace_manager = workspace_manager
-        
+
         # Extract configuration from settings
         openai_api_key = None
         azure_endpoint = None
         azure_api_version = None
-        
+
         if settings and settings.audio_config:
-            openai_api_key = settings.audio_config.openai_api_key.get_secret_value() if settings.audio_config.openai_api_key else None
+            openai_api_key = (
+                settings.audio_config.openai_api_key.get_secret_value()
+                if settings.audio_config.openai_api_key
+                else None
+            )
             azure_endpoint = settings.audio_config.azure_endpoint
             azure_api_version = settings.audio_config.azure_api_version
-            
+
         if not azure_api_version:
             azure_api_version = "2025-01-01-preview"  # Default value
-            
+
         if not openai_api_key or not azure_endpoint:
             raise ValueError(
                 "OpenAI API key and Azure endpoint must be provided in settings.audio_config"
             )
-            
+
         self.client = AzureOpenAI(
             api_key=openai_api_key,
             azure_endpoint=azure_endpoint,
