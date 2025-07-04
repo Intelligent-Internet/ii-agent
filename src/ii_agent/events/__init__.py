@@ -3,7 +3,7 @@
 from ii_agent.events.event import Event, EventSource
 from ii_agent.events.tool import ToolCallMetadata
 from ii_agent.events.action import (
-    Action, MessageAction, ToolCallAction, CompleteAction, 
+    Action, MessageAction, CompleteAction, 
     FileReadAction, FileWriteAction, FileEditAction,
     CmdRunAction, IPythonRunCellAction,
     BrowseURLAction, BrowseInteractiveAction,
@@ -24,7 +24,6 @@ __all__ = [
     # Base actions
     "Action",
     "MessageAction",
-    "ToolCallAction", 
     "CompleteAction",
     
     # Base observations

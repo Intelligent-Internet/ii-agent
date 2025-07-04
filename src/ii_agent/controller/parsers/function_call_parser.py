@@ -5,11 +5,12 @@ from typing import Any, Dict, List
 
 from ii_agent.controller.action_parser import ResponseParser, ActionParseError
 from ii_agent.events.action import (
-    Action, ToolCallAction, MessageAction, CompleteAction,
+    Action, MessageAction, CompleteAction,
     FileReadAction, FileWriteAction, FileEditAction,
     CmdRunAction, IPythonRunCellAction,
     BrowseURLAction, BrowseInteractiveAction
 )
+from ii_agent.events.action.mcp import MCPAction
 from ii_agent.events.tool import ToolCallMetadata
 from ii_agent.events.event import EventSource
 
@@ -152,12 +153,12 @@ class FunctionCallResponseParser(ResponseParser):
                 raise ActionParseError(f"Invalid arguments for {function_name}: {e}")
         else:
             # Fall back to generic tool call action
-            action = ToolCallAction(
-                tool_name=function_name,
-                tool_input=function_args,
-                tool_call_id=tool_call_id
+            action = MCPAction(
+                name=function_name,
+                arguments=function_args
             )
             action.source = EventSource.AGENT
+            action.tool_call_metadata = metadata
             return action
 
     def _parse_text_content(self, content: str) -> Action:

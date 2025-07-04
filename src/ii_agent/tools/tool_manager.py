@@ -63,15 +63,17 @@ from ii_agent.utils.constants import TOKEN_BUDGET
 from ii_agent.core.storage.models.settings import Settings
 from ii_agent.core.logger import logger
 from ii_agent.events.action import (
-    Action, ToolCallAction, MessageAction, CompleteAction,
+    Action, MessageAction, CompleteAction,
     FileReadAction, FileWriteAction, FileEditAction,
     CmdRunAction, IPythonRunCellAction,
     BrowseURLAction, BrowseInteractiveAction
 )
+from ii_agent.events.action.mcp import MCPAction
 from ii_agent.events.observation import (
-    UserMessageObservation, SystemObservation, 
+    UserMessageObservation, SystemObservation, ErrorObservation,
     FileReadObservation, FileWriteObservation, FileEditObservation,
-    CmdOutputObservation, BrowseObservation
+    CmdOutputObservation, BrowseObservation, BrowseInteractiveObservation,
+    MCPObservation, NullObservation, IPythonRunCellObservation
 )
 from ii_agent.events.event import EventSource
 
@@ -330,8 +332,8 @@ class AgentToolManager:
         """
         try:
             # Handle different action types
-            if isinstance(action, ToolCallAction):
-                return await self._handle_tool_call_action(action)
+            if isinstance(action, MCPAction):
+                return await self._handle_mcp_action(action)
             elif isinstance(action, MessageAction):
                 return await self._handle_message_action(action)
             elif isinstance(action, CompleteAction):
@@ -354,47 +356,57 @@ class AgentToolManager:
                 # Unknown action type
                 error_msg = f"Unknown action type: {type(action).__name__}"
                 logger.error(error_msg)
-                return SystemObservation(
-                    content=f"ERROR: {error_msg}",
+                return ErrorObservation(
+                    content=error_msg,
+                    error_id="unknown_action_type",
                     cause=action.id
                 )
 
         except Exception as e:
             logger.error(f"Action execution failed: {e}")
-            return SystemObservation(
-                content=f"ERROR: Action execution error: {e}",
+            return ErrorObservation(
+                content=f"Action execution error: {e}",
+                error_id="action_execution_error",
                 cause=action.id
             )
 
-    async def _handle_tool_call_action(self, action):
-        """Handle ToolCallAction by executing the tool."""
+    async def _handle_mcp_action(self, action):
+        """Handle MCPAction by executing the tool."""
         # Convert action to ToolCallParameters for compatibility
         tool_params = ToolCallParameters(
-            tool_call_id=action.tool_call_id,
-            tool_name=action.tool_name,
-            tool_input=action.tool_input
+            tool_call_id=getattr(action, 'id', ''),
+            tool_name=action.name,
+            tool_input=action.arguments
         )
 
         try:
             # Use existing run_tool method
             result = await self.run_tool(tool_params, None)  # MessageHistory not needed in new pattern
             
-            # Convert result to observation
-            return ToolResultObservation(
-                tool_name=action.tool_name,
-                tool_call_id=action.tool_call_id,
-                tool_output=result,
+            # Convert result to observation using MCPObservation for tool calls
+            observation = MCPObservation(
                 content=str(result),
-                success=True,
+                name=action.name,
+                arguments=action.arguments,
                 cause=action.id
             )
+            
+            # Transfer tool_call_metadata from action to observation (following OpenHands pattern)
+            if hasattr(action, 'tool_call_metadata') and action.tool_call_metadata:
+                observation.tool_call_metadata = action.tool_call_metadata
+                
+            return observation
         except Exception as e:
             logger.error(f"Tool execution failed: {e}")
-            return SystemObservation(
+            error_obs = ErrorObservation(
                 content=f"Tool execution error: {e}",
-                event_type="tool_error",
+                error_id="tool_execution_error",
                 cause=action.id
             )
+            # Transfer tool_call_metadata to error observation as well
+            if hasattr(action, 'tool_call_metadata') and action.tool_call_metadata:
+                error_obs.tool_call_metadata = action.tool_call_metadata
+            return error_obs
 
     async def _handle_message_action(self, action):
         """Handle MessageAction by creating a UserMessageObservation."""
@@ -407,6 +419,7 @@ class AgentToolManager:
         """Handle CompleteAction by creating a SystemObservation."""
         return SystemObservation(
             content=f"Task completed: {action.final_answer}",
+            event_type="task_completed",
             cause=action.id
         )
 
@@ -436,8 +449,9 @@ class AgentToolManager:
             )
         except Exception as e:
             logger.error(f"File read failed: {e}")
-            return SystemObservation(
-                content=f"ERROR: File read error: {e}",
+            return ErrorObservation(
+                content=f"File read error: {e}",
+                error_id="file_read_error",
                 cause=action.id
             )
 
@@ -467,8 +481,9 @@ class AgentToolManager:
             )
         except Exception as e:
             logger.error(f"File write failed: {e}")
-            return SystemObservation(
-                content=f"ERROR: File write error: {e}",
+            return ErrorObservation(
+                content=f"File write error: {e}",
+                error_id="file_write_error",
                 cause=action.id
             )
 
@@ -499,8 +514,9 @@ class AgentToolManager:
             )
         except Exception as e:
             logger.error(f"File edit failed: {e}")
-            return SystemObservation(
-                content=f"ERROR: File edit error: {e}",
+            return ErrorObservation(
+                content=f"File edit error: {e}",
+                error_id="file_edit_error",
                 cause=action.id
             )
 
@@ -527,15 +543,17 @@ class AgentToolManager:
             )
         except Exception as e:
             logger.error(f"Command execution failed: {e}")
-            return SystemObservation(
-                content=f"ERROR: Command execution error: {e}",
+            return ErrorObservation(
+                content=f"Command execution error: {e}",
+                error_id="cmd_execution_error",
                 cause=action.id
             )
 
     async def _handle_ipython_action(self, action):
         """Handle IPythonRunCellAction - not implemented yet."""
-        return SystemObservation(
-            content="ERROR: IPython execution not yet implemented in tool manager",
+        return IPythonRunCellObservation(
+            code=action.code,
+            content="IPython execution not yet implemented in tool manager",
             cause=action.id
         )
 
@@ -562,15 +580,19 @@ class AgentToolManager:
             )
         except Exception as e:
             logger.error(f"Browse URL failed: {e}")
-            return SystemObservation(
-                content=f"ERROR: Browse URL error: {e}",
+            return ErrorObservation(
+                content=f"Browse URL error: {e}",
+                error_id="browse_url_error",
                 cause=action.id
             )
 
     async def _handle_browse_interactive_action(self, action):
         """Handle BrowseInteractiveAction - delegate to browser tools."""
-        return SystemObservation(
-            content="ERROR: Interactive browsing not yet fully implemented in tool manager",
+        return BrowseInteractiveObservation(
+            browser_actions="interactive_browsing",
+            content="Interactive browsing not yet fully implemented in tool manager",
+            success=False,
+            error_message="Interactive browsing not yet fully implemented in tool manager",
             cause=action.id
         )
 

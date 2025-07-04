@@ -17,7 +17,8 @@ from ii_agent.db.manager import Events
 from ii_agent.core.logger import logger
 
 from .state import State, AgentState
-from ..events.action import Action, MessageAction, ToolCallAction, CompleteAction
+from ..events.action import Action, MessageAction, CompleteAction
+from ..events.action.mcp import MCPAction
 from ..events.observation import Observation, UserMessageObservation, SystemObservation
 from ..events.event import EventSource
 
@@ -198,7 +199,7 @@ class AgentController:
                 )
                 continue
 
-            elif isinstance(action, ToolCallAction):
+            elif isinstance(action, MCPAction):
                 # Handle tool call action
                 self.state.agent_state = AgentState.ACTING
                 
@@ -206,9 +207,9 @@ class AgentController:
                     RealtimeEvent(
                         type=EventType.TOOL_CALL,
                         content={
-                            "tool_call_id": action.tool_call_id,
-                            "tool_name": action.tool_name,
-                            "tool_input": action.tool_input,
+                            "tool_call_id": getattr(action.tool_call_metadata, 'tool_call_id', '') if hasattr(action, 'tool_call_metadata') and action.tool_call_metadata else getattr(action, 'id', ''),
+                            "tool_name": action.name,
+                            "tool_input": action.arguments,
                         },
                     )
                 )
@@ -220,16 +221,31 @@ class AgentController:
                         event_type="tool_interrupted",
                         cause=action.id
                     )
+                    # Transfer tool_call_metadata from action to observation (following OpenHands pattern)
+                    if hasattr(action, 'tool_call_metadata') and action.tool_call_metadata:
+                        tool_obs.tool_call_metadata = action.tool_call_metadata
                     self.state.add_event(tool_obs)
                     return ToolImplOutput(
                         tool_output=TOOL_RESULT_INTERRUPT_MESSAGE,
                         tool_result_message=TOOL_RESULT_INTERRUPT_MESSAGE,
                     )
-
                 # Execute tool via tool manager: Action -> Observation
                 try:
                     observation = await self.tool_manager.run_tool_action(action)
                     self.state.add_event(observation)
+                    
+                    # Send tool result to message queue for real-time updates
+                    self.message_queue.put_nowait(
+                        RealtimeEvent(
+                            type=EventType.TOOL_RESULT,
+                            content={
+                                "tool_call_id": getattr(action.tool_call_metadata, 'tool_call_id', '') if hasattr(action, 'tool_call_metadata') and action.tool_call_metadata else getattr(action, 'id', ''),
+                                "tool_name": action.name,
+                                "result": observation.content,
+                                "observation_id": observation.id,
+                            },
+                        )
+                    )
                     
                     if self.tool_manager.should_stop():
                         self.state.agent_state = AgentState.COMPLETED
@@ -247,6 +263,19 @@ class AgentController:
                         cause=action.id
                     )
                     self.state.add_event(error_obs)
+                    
+                    # Send tool error to message queue for real-time updates
+                    self.message_queue.put_nowait(
+                        RealtimeEvent(
+                            type=EventType.ERROR,
+                            content={
+                                "tool_call_id": getattr(action.tool_call_metadata, 'tool_call_id', '') if hasattr(action, 'tool_call_metadata') and action.tool_call_metadata else getattr(action, 'id', ''),
+                                "tool_name": action.name,
+                                "error": str(e),
+                                "observation_id": error_obs.id,
+                            },
+                        )
+                    )
 
         # Max turns exceeded
         agent_answer = "Agent did not complete after max turns"

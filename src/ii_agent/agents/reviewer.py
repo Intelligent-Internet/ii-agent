@@ -18,7 +18,8 @@ from ii_agent.tools import AgentToolManager
 from ii_agent.utils.workspace_manager import WorkspaceManager
 from ii_agent.db.manager import Events
 from ii_agent.controller.state import State, AgentState
-from ii_agent.events.action import Action, MessageAction, ToolCallAction, CompleteAction
+from ii_agent.events.action import Action, MessageAction, CompleteAction
+from ii_agent.events.action.mcp import MCPAction
 from ii_agent.events.event import EventSource
 from ii_agent.core.logger import logger
 
@@ -122,15 +123,14 @@ Focuses on analyzing agent work and determining next review steps.
             elif hasattr(item, 'tool_name'):  # Tool call
                 tool_calls.append(item)
         
-        # If we have tool calls, create ToolCallAction
+        # If we have tool calls, create MCPAction
         if tool_calls:
             tool_call = tool_calls[0]  # Take first tool call
-            action = ToolCallAction(
-                tool_name=tool_call.tool_name,
-                tool_input=tool_call.tool_input,
-                tool_call_id=getattr(tool_call, 'tool_call_id', ''),
+            action = MCPAction(
+                name=tool_call.tool_name,
+                arguments=tool_call.tool_input,
+                source=EventSource.AGENT
             )
-            action.source = EventSource.AGENT
             return action
         
         # Check if this looks like a completion
@@ -255,12 +255,12 @@ Please conduct a thorough review of the general agent's work and provide detaile
                     logger.info("Review completed")
                     return action.final_answer
                 
-                elif isinstance(action, ToolCallAction):
+                elif isinstance(action, MCPAction):
                     # Execute tool call
                     tool_result = await self._execute_tool_action(action)
                     
                     # Check for special completion tool
-                    if action.tool_name == "return_control_to_general_agent":
+                    if action.name == "return_control_to_general_agent":
                         # Request final summary
                         summary_instruction = "Based on your review, please provide detailed feedback to the general agent."
                         self.reviewer_agent.history.add_user_prompt(summary_instruction)
@@ -281,14 +281,14 @@ Please conduct a thorough review of the general agent's work and provide detaile
         # Review did not complete within turn limit
         return "ERROR: Review did not complete within maximum turns. The review process took too long to complete."
 
-    async def _execute_tool_action(self, action: ToolCallAction) -> str:
+    async def _execute_tool_action(self, action: MCPAction) -> str:
         """Execute a tool call action and add result to history."""
         try:
             # Create tool call object for execution
             tool_call = ToolCallParameters(
-                tool_name=action.tool_name,
-                tool_input=action.tool_input,
-                tool_call_id=action.tool_call_id
+                tool_name=action.name,
+                tool_input=action.arguments,
+                tool_call_id=action.id
             )
             
             # Execute the tool

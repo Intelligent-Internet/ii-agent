@@ -3,7 +3,7 @@
 from ii_agent.events.action.action import Action
 from ii_agent.events.action.agent import (
     AgentThinkAction, AgentFinishAction, AgentRejectAction, 
-    CompleteAction, ToolCallAction
+    CompleteAction
 )
 from ii_agent.events.action.browse import BrowseURLAction, BrowseInteractiveAction
 from ii_agent.events.action.commands import CmdRunAction, IPythonRunCellAction
@@ -21,7 +21,6 @@ __all__ = [
     "AgentFinishAction", 
     "AgentRejectAction",
     "CompleteAction",
-    "ToolCallAction",
     
     # Browser actions
     "BrowseURLAction",

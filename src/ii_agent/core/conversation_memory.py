@@ -5,7 +5,7 @@ from typing import List, Dict, Optional, Generator
 from ii_agent.core.message import Message, TextContent, ImageContent, ToolCall
 from ii_agent.events.event import Event, EventSource
 from ii_agent.events.action import (
-    Action, MessageAction, ToolCallAction, CompleteAction,
+    Action, MessageAction, CompleteAction,
     FileReadAction, FileWriteAction, FileEditAction,
     CmdRunAction, IPythonRunCellAction,
     BrowseURLAction, BrowseInteractiveAction
@@ -14,6 +14,7 @@ from ii_agent.events.observation import (
     Observation, UserMessageObservation, SystemObservation,
     FileReadObservation, FileWriteObservation, FileEditObservation
 )
+from ii_agent.events.action.mcp import MCPAction
 
 
 class ConversationMemory:
@@ -140,9 +141,11 @@ class ConversationMemory:
                 content=[TextContent(text=action.final_answer or "Task completed")]
             )]
 
-        elif isinstance(action, ToolCallAction):
-            # Generic tool call
-            return self._handle_tool_call_action(action, pending_tool_calls)
+        elif isinstance(action, MCPAction):
+            # Tool call from agent
+            self._add_tool_call_to_current_assistant_message(
+                action, pending_tool_calls
+            )
 
         elif isinstance(action, (
             FileReadAction, FileWriteAction, FileEditAction,
@@ -194,29 +197,35 @@ class ConversationMemory:
             # Regular observation (user role)
             return [Message(role="user", content=content)]
 
-    def _handle_tool_call_action(
-        self, action: ToolCallAction, pending_tool_calls: Dict[str, Message]
+    def _add_tool_call_to_current_assistant_message(
+        self, action: MCPAction, pending_tool_calls: Dict[str, Message]
     ) -> List[Message]:
-        """Handle generic tool call actions."""
-        if not action.tool_call_metadata:
-            # No metadata, treat as regular message
-            return [Message(
-                role="assistant",
-                content=[TextContent(text=f"Calling {action.tool_name}")]
-            )]
-
+        """Handle MCPAction tool calls."""
+        # Get tool call ID from metadata if available, fallback to action id
+        tool_call_id = action.id
+        if hasattr(action, 'tool_call_metadata') and action.tool_call_metadata:
+            tool_call_id = action.tool_call_metadata.tool_call_id or str(action.id)
+        
         # Create tool call object
         tool_call = ToolCall(
-            id=action.tool_call_id,
+            id=tool_call_id,
             function={
-                "name": action.tool_name,
-                "arguments": str(action.tool_input)
+                "name": action.name,
+                "arguments": str(action.arguments)
             }
         )
 
-        # Get response ID for grouping
-        response_id = getattr(action.tool_call_metadata, 'model_response', {})
-        response_id = getattr(response_id, 'id', action.tool_call_id)
+        # Get response ID for grouping - use metadata if available
+        response_id = str(action.id)
+        if hasattr(action, 'tool_call_metadata') and action.tool_call_metadata:
+            metadata = action.tool_call_metadata
+            if hasattr(metadata, 'model_response') and metadata.model_response:
+                if hasattr(metadata.model_response, 'id'):
+                    response_id = metadata.model_response.id
+                elif isinstance(metadata.model_response, dict):
+                    response_id = metadata.model_response.get('id', str(action.id))
+            elif metadata.response_id:
+                response_id = metadata.response_id
 
         # Store pending tool call
         pending_tool_calls[response_id] = Message(

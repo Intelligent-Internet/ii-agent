@@ -53,7 +53,6 @@ try breaking down the task into smaller steps. After call this tool to update or
         
         # Build messages from state for LLM
         messages = self._build_messages_from_state(state)
-        
         # Get response from LLM
         try:
             model_response, _ = self.llm.generate(
@@ -91,7 +90,8 @@ try breaking down the task into smaller steps. After call this tool to update or
         """
         # Runtime imports
         from ii_agent.events.observation import UserMessageObservation, SystemObservation
-        from ii_agent.events.action import MessageAction, ToolCallAction
+        from ii_agent.events.action import MessageAction
+        from ii_agent.events.action.mcp import MCPAction
         from ii_agent.events.event import EventSource
         from ii_agent.llm.base import ToolFormattedResult
         
@@ -109,12 +109,12 @@ try breaking down the task into smaller steps. After call this tool to update or
                 agent_turn = [TextResult(text=event.content)]
                 messages.append(agent_turn)
                 
-            elif isinstance(event, ToolCallAction):
+            elif isinstance(event, MCPAction):
                 # Tool call from agent
                 tool_call = ToolCall(
-                    tool_call_id=event.tool_call_id,
-                    tool_name=event.tool_name,
-                    tool_input=event.tool_input
+                    tool_call_id=getattr(event, 'id', ''),
+                    tool_name=event.name,
+                    tool_input=event.arguments
                 )
                 # Add to the last assistant turn or create new one
                 if messages and isinstance(messages[-1][-1], (TextResult, ToolCall)):
@@ -139,8 +139,10 @@ try breaking down the task into smaller steps. After call this tool to update or
             Action: The converted action
         """
         # Runtime imports
-        from ii_agent.events.action import ToolCallAction, MessageAction, CompleteAction
+        from ii_agent.events.action import MessageAction, CompleteAction
+        from ii_agent.events.action.mcp import MCPAction
         from ii_agent.events.event import EventSource
+        from ii_agent.events.tool import ToolCallMetadata
         
         # Check for tool calls first
         tool_calls = [item for item in model_response if isinstance(item, ToolCall)]
@@ -149,12 +151,22 @@ try breaking down the task into smaller steps. After call this tool to update or
         if tool_calls:
             # Agent wants to call a tool
             tool_call = tool_calls[0]  # Take first tool call
-            return ToolCallAction(
-                tool_name=tool_call.tool_name,
-                tool_input=tool_call.tool_input,
+            
+            # Create tool call metadata
+            metadata = ToolCallMetadata(
+                function_name=tool_call.tool_name,
                 tool_call_id=tool_call.tool_call_id,
+                model_response=model_response,  # Store the full response
+                total_calls_in_response=len(tool_calls)
+            )
+            
+            action = MCPAction(
+                name=tool_call.tool_name,
+                arguments=tool_call.tool_input,
                 source=EventSource.AGENT
             )
+            action.tool_call_metadata = metadata
+            return action
         
         elif text_results:
             # Agent provided a text response

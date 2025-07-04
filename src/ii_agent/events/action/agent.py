@@ -109,32 +109,3 @@ class CompleteAction(AgentFinishAction):
     
     def __init__(self, final_answer: str = "", **kwargs):
         super().__init__(final_answer=final_answer, **kwargs)
-
-
-class ToolCallAction(Action):
-    """Legacy ii-agent action for tool calls."""
-    
-    tool_name: str = ""
-    tool_input: dict = None
-    tool_call_id: str = ""
-    action: str = ActionType.TOOL_CALL
-    runnable: ClassVar[bool] = True
-    
-    def __post_init__(self):
-        super().__post_init__()
-        if self.tool_input is None:
-            self.tool_input = {}
-        # Set tool call metadata for this action
-        if self.tool_call_id and self.tool_name:
-            from ii_agent.events.tool import ToolCallMetadata
-            self.tool_call_metadata = ToolCallMetadata(
-                function_name=self.tool_name,
-                tool_call_id=self.tool_call_id
-            )
-    
-    @property
-    def message(self) -> str:
-        return f"Calling tool: {self.tool_name}"
-    
-    def __str__(self) -> str:
-        return f"**ToolCallAction**\nTOOL: {self.tool_name}\nID: {self.tool_call_id}"
