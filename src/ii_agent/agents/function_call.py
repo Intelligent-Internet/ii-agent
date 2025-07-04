@@ -270,7 +270,7 @@ try breaking down the task into smaller steps. After call this tool to update or
                     wrapped_thinking = ""
                     words = text_result.thinking.split()
                     for i in range(0, len(words), 8):
-                        wrapped_thinking += " ".join(words[i:i+12]) + "\n"
+                        wrapped_thinking += " ".join(words[i:i+8]) + "\n"
                     text = f"```Thinking:\n{wrapped_thinking.strip()}\n```"
                 else:
                     text = text_result.text

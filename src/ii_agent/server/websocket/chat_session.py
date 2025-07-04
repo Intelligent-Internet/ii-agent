@@ -91,11 +91,10 @@ class ChatSession:
             )
         except WebSocketDisconnect:
             logger.info("Client disconnected")
-            #if self.agent:
-                #self.agent.cancel()  # NOTE: Now we cancel the agent on disconnect, the background implementation will come later
+            if self.agent:
+                self.agent.cancel()  # NOTE: Now we cancel the agent on disconnect, the background implementation will come later
 
             # Wait for active task to complete before cleanup
-            """
             if self.active_task and not self.active_task.done():
                 try:
                     await self.active_task
@@ -104,8 +103,7 @@ class ChatSession:
                 except Exception as e:
                     logger.error(f"Error waiting for active task completion: {e}")
 
-            #self.cleanup()
-            """
+            self.cleanup()
 
     async def handshake(self):
         """Handle handshake message."""
@@ -178,8 +176,6 @@ class ChatSession:
             user_id = None  # TODO: Support user id
             settings_store = await FileSettingsStore.get_instance(self.config, user_id)
             settings = await settings_store.load()
-            from ii_agent.utils.constants import WorkSpaceMode
-            settings.sandbox_config.mode = WorkSpaceMode.DOCKER
             llm_config = settings.llm_configs.get(init_content.model_name)
             if not llm_config:
                 raise ValueError(
