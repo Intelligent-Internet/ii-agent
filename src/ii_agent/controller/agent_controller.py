@@ -134,12 +134,12 @@ class AgentController:
         logger.info(f"\n{user_input_delimiter}\n")
 
         # Add initial user message as action
-        user_observation = MessageAction(
-            message=instruction,
+        event = MessageAction(
+            content=instruction,
             files=files or [],
             source=EventSource.USER
         )
-        self.state.add_event(user_observation)
+        self.state.add_event(event)
         self.state.agent_state = AgentState.THINKING
 
         remaining_turns = self.max_turns

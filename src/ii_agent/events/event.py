@@ -19,12 +19,12 @@ class EventSource(Enum):
 class Event(BaseModel):
     """Base class for all events in the system."""
     # Core fields - using Field with alias for property-based access
-    id: Optional[int] = Field(default=None, alias='_id')
-    timestamp: Optional[str] = Field(default=None, alias='_timestamp')
-    source: Optional[str] = Field(default=None, alias='_source')
-    cause: Optional[int] = Field(default=None, alias='_cause')
-    tool_call_metadata: Optional[ToolCallMetadata] = Field(default=None, alias='_tool_call_metadata')
-    response_id: Optional[str] = Field(default=None, alias='_response_id')
+    id: Optional[int] = Field(default=None)
+    timestamp: Optional[str] = Field(default=None)
+    source: Optional[EventSource] = Field(default=None)
+    cause: Optional[int] = Field(default=None)
+    tool_call_metadata: Optional[ToolCallMetadata] = Field(default=None)
+    response_id: Optional[str] = Field(default=None)
     
     # Direct fields
     hidden: bool = False  # Whether this event should be hidden from logs/UI
@@ -42,20 +42,10 @@ class Event(BaseModel):
         
         # Set default source if not provided
         if self.source is None:
-            self.source = EventSource.ENVIRONMENT.value
+            self.source = EventSource.ENVIRONMENT
         
         return self
-    
-    @field_validator('source', mode='before')
-    @classmethod
-    def validate_source(cls, v):
-        """Validate source field."""
-        if v is None:
-            return None
-        if isinstance(v, EventSource):
-            return v.value
-        return v
-    
+     
     def set_timestamp(self, value: datetime) -> None:
         """Set timestamp from datetime object."""
         if isinstance(value, datetime):

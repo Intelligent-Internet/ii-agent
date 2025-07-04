@@ -99,7 +99,7 @@ try breaking down the task into smaller steps. After call this tool to update or
         
         # Get the most recent events and convert them to LLM format
         for event in state.history:
-            if isinstance(event, UserMessageObservation):
+            if isinstance(event, MessageAction) and event.source == EventSource.USER:
                 # User message turn
                 user_turn = [TextPrompt(text=event.message)]
                 messages.append(user_turn)
