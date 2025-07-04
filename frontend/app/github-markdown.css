@@ -880,6 +880,10 @@ html.light .markdown-body {
   border: 0;
 }
 
+.agent-thinking .markdown-body pre > code {
+  white-space: normal;
+}
+
 .markdown-body .highlight {
   margin-bottom: var(--base-size-16);
 }

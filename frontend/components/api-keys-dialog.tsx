@@ -43,7 +43,7 @@ const ApiKeysDialog = ({
   initialTab,
 }: ApiKeysDialogProps) => {
   const { state, dispatch } = useAppContext();
-  const [activeTab, setActiveTab] = useState(initialTab || "llm-config");
+  const [activeTab, setActiveTab] = useState(initialTab || "sandbox-config");
   const [selectedProvider, setSelectedProvider] = useState("anthropic");
   const [selectedModel, setSelectedModel] = useState<IModel>(
     PROVIDER_MODELS.anthropic[0]
@@ -67,6 +67,16 @@ const ApiKeysDialog = ({
       openai_api_key: string;
       azure_endpoint: string;
       azure_api_version: string;
+    };
+    third_party_integration_config: {
+      neon_db_api_key: string;
+      openai_api_key: string;
+      vercel_api_key: string;
+    };
+    sandbox_config: {
+      mode: string;
+      template_id: string;
+      sandbox_api_key: string;
     };
   }>();
   const [customModelName, setCustomModelName] = useState("");
@@ -104,6 +114,19 @@ const ApiKeysDialog = ({
     openai_api_key: "",
     azure_endpoint: "",
     azure_api_version: "",
+  });
+
+  const [thirdPartyIntegrationConfig, setThirdPartyIntegrationConfig] =
+    useState({
+      neon_db_api_key: "",
+      openai_api_key: "",
+      vercel_api_key: "",
+    });
+
+  const [sandboxConfig, setSandboxConfig] = useState({
+    mode: "local",
+    template_id: "",
+    sandbox_api_key: "",
   });
 
   const [isSaving, setIsSaving] = useState(false);
@@ -205,6 +228,25 @@ const ApiKeysDialog = ({
           azure_api_version: data.audio_config.azure_api_version || undefined,
         });
       }
+
+      if (data.third_party_integration_config) {
+        setThirdPartyIntegrationConfig({
+          neon_db_api_key:
+            data.third_party_integration_config.neon_db_api_key || undefined,
+          openai_api_key:
+            data.third_party_integration_config.openai_api_key || undefined,
+          vercel_api_key:
+            data.third_party_integration_config.vercel_api_key || undefined,
+        });
+      }
+
+      if (data.sandbox_config) {
+        setSandboxConfig({
+          mode: data.sandbox_config.mode || "local",
+          template_id: data.sandbox_config.template_id || undefined,
+          sandbox_api_key: data.sandbox_config.sandbox_api_key || undefined,
+        });
+      }
     } catch (error) {
       console.error("Error fetching settings:", error);
       onOpen();
@@ -296,6 +338,23 @@ const ApiKeysDialog = ({
     });
   };
 
+  const handleThirdPartyIntegrationConfigChange = (
+    key: string,
+    value: string
+  ) => {
+    setThirdPartyIntegrationConfig({
+      ...thirdPartyIntegrationConfig,
+      [key]: value,
+    });
+  };
+
+  const handleSandboxConfigChange = (key: string, value: string) => {
+    setSandboxConfig({
+      ...sandboxConfig,
+      [key]: value,
+    });
+  };
+
   const handleTabChange = (tab: string) => {
     setActiveTab(tab);
   };
@@ -310,6 +369,8 @@ const ApiKeysDialog = ({
         search_config: searchConfig,
         media_config: mediaConfig,
         audio_config: audioConfig,
+        third_party_integration_config: thirdPartyIntegrationConfig,
+        sandbox_config: sandboxConfig,
       };
 
       const response = await fetch(
@@ -477,7 +538,7 @@ const ApiKeysDialog = ({
   return (
     <>
       <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent className="bg-[#1e1f23] border-[#3A3B3F] text-white sm:max-w-[500px]">
+        <DialogContent className="bg-[#1e1f23] border-[#3A3B3F] text-white sm:max-w-[700px]">
           <DialogHeader>
             <DialogTitle className="text-xl font-semibold">
               Configuration
@@ -494,12 +555,76 @@ const ApiKeysDialog = ({
           ) : (
             <>
               <Tabs value={activeTab} onValueChange={handleTabChange}>
-                <TabsList className="grid grid-cols-4 mb-4 w-full">
+                <TabsList className="grid grid-cols-6 mb-4 w-full">
+                  <TabsTrigger value="sandbox-config">Sandbox</TabsTrigger>
                   <TabsTrigger value="llm-config">LLM</TabsTrigger>
                   <TabsTrigger value="search-config">Search</TabsTrigger>
                   <TabsTrigger value="media-config">Media</TabsTrigger>
                   <TabsTrigger value="audio-config">Audio</TabsTrigger>
+                  <TabsTrigger value="third-party-config">
+                    Third Party
+                  </TabsTrigger>
                 </TabsList>
+
+                <TabsContent value="sandbox-config" className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="sandbox-mode">Sandbox Mode</Label>
+                    <Select
+                      value={sandboxConfig.mode}
+                      onValueChange={(value) =>
+                        handleSandboxConfigChange("mode", value)
+                      }
+                    >
+                      <SelectTrigger className="bg-[#35363a] border-[#ffffff0f] w-full">
+                        <SelectValue placeholder="Select Sandbox Mode" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-[#35363a] border-[#ffffff0f]">
+                        <SelectItem value="local">Local</SelectItem>
+                        <SelectItem value="docker">Docker</SelectItem>
+                        <SelectItem value="e2b">E2B</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {sandboxConfig.mode === "e2b" && (
+                    <>
+                      <div className="space-y-2">
+                        <Label htmlFor="template-id">Template ID</Label>
+                        <Input
+                          id="template-id"
+                          autoComplete="off"
+                          value={sandboxConfig.template_id}
+                          onChange={(e) =>
+                            handleSandboxConfigChange(
+                              "template_id",
+                              e.target.value
+                            )
+                          }
+                          placeholder="Enter E2B Template ID"
+                          className="bg-[#35363a] border-[#ffffff0f]"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="sandbox-api-key">Sandbox API Key</Label>
+                        <Input
+                          id="sandbox-api-key"
+                          autoComplete="off"
+                          type="password"
+                          value={sandboxConfig.sandbox_api_key}
+                          onChange={(e) =>
+                            handleSandboxConfigChange(
+                              "sandbox_api_key",
+                              e.target.value
+                            )
+                          }
+                          placeholder="Enter E2B API Key"
+                          className="bg-[#35363a] border-[#ffffff0f]"
+                        />
+                      </div>
+                    </>
+                  )}
+                </TabsContent>
 
                 <TabsContent value="llm-config" className="space-y-4">
                   <div className="flex justify-between items-center">
@@ -859,6 +984,61 @@ const ApiKeysDialog = ({
                     </div>
                   )}
                 </TabsContent>
+
+                <TabsContent value="third-party-config" className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="neon-db-key">Neon DB API Key</Label>
+                    <Input
+                      id="neon-db-key"
+                      type="password"
+                      value={thirdPartyIntegrationConfig.neon_db_api_key}
+                      onChange={(e) =>
+                        handleThirdPartyIntegrationConfigChange(
+                          "neon_db_api_key",
+                          e.target.value
+                        )
+                      }
+                      placeholder="Enter Neon DB API Key"
+                      className="bg-[#35363a] border-[#ffffff0f]"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="third-party-openai-key">
+                      OpenAI API Key
+                    </Label>
+                    <Input
+                      id="third-party-openai-key"
+                      type="password"
+                      value={thirdPartyIntegrationConfig.openai_api_key}
+                      onChange={(e) =>
+                        handleThirdPartyIntegrationConfigChange(
+                          "openai_api_key",
+                          e.target.value
+                        )
+                      }
+                      placeholder="Enter OpenAI API Key"
+                      className="bg-[#35363a] border-[#ffffff0f]"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="vercel-key">Vercel API Key</Label>
+                    <Input
+                      id="vercel-key"
+                      type="password"
+                      value={thirdPartyIntegrationConfig.vercel_api_key}
+                      onChange={(e) =>
+                        handleThirdPartyIntegrationConfigChange(
+                          "vercel_api_key",
+                          e.target.value
+                        )
+                      }
+                      placeholder="Enter Vercel API Key"
+                      className="bg-[#35363a] border-[#ffffff0f]"
+                    />
+                  </div>
+                </TabsContent>
               </Tabs>
 
               <DialogFooter className="mt-6">
@@ -884,7 +1064,7 @@ const ApiKeysDialog = ({
 
       {/* Edit/Add Model Dialog */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent className="bg-[#1e1f23] border-[#3A3B3F] text-white sm:max-w-[500px]">
+        <DialogContent className="bg-[#1e1f23] border-[#3A3B3F] text-white sm:max-w-[600px]">
           <DialogHeader>
             <DialogTitle className="text-xl font-semibold">
               {editingConfig
