@@ -289,6 +289,10 @@ const ChatMessage = ({
                   state.editingMessage?.id === message.id
                     ? "w-full max-w-none"
                     : ""
+                } ${
+                  message.content?.startsWith("```Thinking:")
+                    ? "agent-thinking w-full"
+                    : ""
                 }`}
                 initial={{ scale: 0.9 }}
                 animate={{ scale: 1 }}
