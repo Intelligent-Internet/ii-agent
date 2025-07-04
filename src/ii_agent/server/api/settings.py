@@ -62,7 +62,7 @@ async def store_llm_settings(
             merged_configs = settings.llm_configs.copy()
 
             for model_name in merged_configs.keys():
-                if merged_configs[model_name].api_key is None:
+                if merged_configs[model_name].api_key is None and model_name in existing_settings.llm_configs:
                     merged_configs[model_name].api_key = existing_settings.llm_configs[model_name].api_key
             settings.llm_configs = merged_configs
 
