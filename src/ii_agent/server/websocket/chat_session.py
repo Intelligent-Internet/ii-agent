@@ -41,6 +41,7 @@ from ii_agent.prompts.system_prompt import (
 )
 from ii_agent.prompts.reviewer_system_prompt import REVIEWER_SYSTEM_PROMPT
 from ii_agent.core.logger import logger
+from ii_agent.tools.tool_manager import AgentToolManager
 
 
 class ChatSession:
@@ -678,7 +679,7 @@ Please review this feedback and implement the suggested improvements to better c
         )
 
         queue = asyncio.Queue()
-        tool_manager = get_system_tools(
+        tools = get_system_tools(
             client=client,
             workspace_manager=workspace_manager,
             message_queue=queue,
@@ -686,6 +687,8 @@ Please review this feedback and implement the suggested improvements to better c
             tool_args=tool_args,
             settings=settings,
         )
+
+        tool_manager = AgentToolManager(tools=tools)
 
         # Choose system prompt based on tool args
         system_prompt = (

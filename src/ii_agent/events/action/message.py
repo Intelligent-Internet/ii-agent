@@ -18,11 +18,7 @@ class MessageAction(Action):
     image_urls: Optional[list[str]] = None
     wait_for_response: bool = False
     action: str = ActionType.MESSAGE
-    runnable: ClassVar[bool] = False
-    security_risk: Optional[SecurityRisk] = None
-    
-    # Legacy ii-agent fields for backward compatibility
-    files: list = field(default_factory=list)
+    runnable: ClassVar[bool] = False 
     resume: bool = False
 
     @property

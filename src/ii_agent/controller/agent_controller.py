@@ -133,8 +133,8 @@ class AgentController:
         user_input_delimiter = "-" * 45 + " USER INPUT " + "-" * 45 + "\n" + instruction
         logger.info(f"\n{user_input_delimiter}\n")
 
-        # Add initial user message as observation
-        user_observation = UserMessageObservation(
+        # Add initial user message as action
+        user_observation = MessageAction(
             message=instruction,
             files=files or [],
             source=EventSource.USER
