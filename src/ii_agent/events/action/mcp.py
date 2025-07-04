@@ -1,18 +1,19 @@
 """MCP server actions for ii-agent."""
 
-from dataclasses import dataclass, field
+from __future__ import annotations
+
 from typing import Any, ClassVar, Optional
+from pydantic import Field
 
 from ii_agent.core.schema import ActionType, SecurityRisk
 from ii_agent.events.action.action import Action
 
 
-@dataclass
 class MCPAction(Action):
     """Action to interact with MCP (Model Context Protocol) servers."""
     
     name: str = ""
-    arguments: dict[str, Any] = field(default_factory=dict)
+    arguments: dict[str, Any] = Field(default_factory=dict)
     thought: str = ""
     action: str = ActionType.MCP
     runnable: ClassVar[bool] = True

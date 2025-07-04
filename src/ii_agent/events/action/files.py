@@ -1,13 +1,13 @@
 """File operation actions for ii-agent."""
 
-from dataclasses import dataclass
+from __future__ import annotations
+
 from typing import ClassVar, Optional
 
 from ii_agent.core.schema import ActionType, SecurityRisk, FileEditSource, FileReadSource
 from ii_agent.events.action.action import Action
 
 
-@dataclass
 class FileReadAction(Action):
     """Reads a file from a given path.
     
@@ -42,7 +42,6 @@ class FileReadAction(Action):
         return ret
 
 
-@dataclass 
 class FileWriteAction(Action):
     """Writes content to a file at a given path.
     
@@ -73,7 +72,6 @@ class FileWriteAction(Action):
         return ret
 
 
-@dataclass
 class FileEditAction(Action):
     """Edits a file using various commands including view, create, str_replace, and insert.
     

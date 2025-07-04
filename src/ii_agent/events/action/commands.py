@@ -1,13 +1,13 @@
 """Command execution actions for ii-agent."""
 
-from dataclasses import dataclass
+from __future__ import annotations
+
 from typing import ClassVar, Optional
 
 from ii_agent.core.schema import ActionType, ConfirmationStatus, SecurityRisk
 from ii_agent.events.action.action import Action
 
 
-@dataclass
 class CmdRunAction(Action):
     """Runs a shell command in the environment."""
     
@@ -40,7 +40,6 @@ class CmdRunAction(Action):
         return ret
 
 
-@dataclass
 class IPythonRunCellAction(Action):
     """Runs Python code in an IPython/Jupyter environment."""
     

@@ -1,13 +1,13 @@
 """Browser interaction actions for ii-agent."""
 
-from dataclasses import dataclass
+from __future__ import annotations
+
 from typing import ClassVar, Optional
 
 from ii_agent.core.schema import ActionType, SecurityRisk
 from ii_agent.events.action.action import Action
 
 
-@dataclass
 class BrowseURLAction(Action):
     """Opens and browses a web page at the specified URL."""
     
@@ -32,7 +32,6 @@ class BrowseURLAction(Action):
         return ret
 
 
-@dataclass
 class BrowseInteractiveAction(Action):
     """Performs interactive actions on a web page (click, type, scroll, etc)."""
     

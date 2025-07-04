@@ -1,14 +1,12 @@
 """File operation observations for ii-agent."""
+from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Optional
 from difflib import unified_diff
 
 from ii_agent.core.schema import ObservationType, FileEditSource
 from ii_agent.events.observation.observation import Observation
 
-
-@dataclass
 class FileReadObservation(Observation):
     """Observation from a file read operation."""
     
@@ -32,8 +30,6 @@ class FileReadObservation(Observation):
         else:
             return f"[Error reading {self.path}]: {self.error_message}"
 
-
-@dataclass
 class FileWriteObservation(Observation):
     """Observation from a file write operation."""
     
@@ -56,9 +52,7 @@ class FileWriteObservation(Observation):
             return f"[Write to {self.path} successful{size_info}]\n{self.content}"
         else:
             return f"[Error writing to {self.path}]: {self.error_message}"
-
-
-@dataclass  
+  
 class FileEditObservation(Observation):
     """Observation from a file edit operation.
     

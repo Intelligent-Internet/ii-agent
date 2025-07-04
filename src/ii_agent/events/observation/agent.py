@@ -1,13 +1,11 @@
 """Agent-specific observations for ii-agent."""
+from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
 from ii_agent.core.schema import ObservationType, AgentState
 from ii_agent.events.observation.observation import Observation
 
-
-@dataclass
 class AgentStateChangedObservation(Observation):
     """Observation when agent state changes."""
     
@@ -21,8 +19,6 @@ class AgentStateChangedObservation(Observation):
     def __str__(self) -> str:
         return f"[🤖 Agent State: {self.agent_state.value}]"
 
-
-@dataclass
 class AgentThinkObservation(Observation):
     """Observation from agent thinking/reasoning process."""
     

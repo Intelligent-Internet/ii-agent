@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import ClassVar
 
 from ii_agent.core.schema import ActionType
 from ii_agent.events.action.action import Action
 
 
-@dataclass
 class NullAction(Action):
     """Action that represents no action being taken."""
     

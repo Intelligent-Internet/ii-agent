@@ -1,12 +1,13 @@
 """Tool-related metadata classes for events."""
 
-from dataclasses import dataclass, field
-from typing import Any, Optional, Dict
+from __future__ import annotations
+
 from datetime import datetime
+from typing import Any, Optional, Dict
+from pydantic import BaseModel, Field
 
 
-@dataclass
-class LLMMetrics:
+class LLMMetrics(BaseModel):
     """Metrics for LLM usage tracking."""
     prompt_tokens: Optional[int] = None
     completion_tokens: Optional[int] = None
@@ -17,8 +18,7 @@ class LLMMetrics:
     latency_ms: Optional[float] = None
 
 
-@dataclass
-class ToolCallMetadata:
+class ToolCallMetadata(BaseModel):
     """Metadata about a tool call associated with an event.
     
     This is used to track tool calls through the event system,
@@ -35,13 +35,13 @@ class ToolCallMetadata:
     # Enhanced metadata
     response_id: Optional[str] = None  # ID of the LLM response
     request_id: Optional[str] = None  # ID of the original request
-    timestamp: Optional[datetime] = field(default_factory=datetime.now)
+    timestamp: Optional[datetime] = Field(default_factory=datetime.now)
     
     # Usage metrics
     llm_metrics: Optional[LLMMetrics] = None
     
     # Additional context
-    context: Dict[str, Any] = field(default_factory=dict)
+    context: Dict[str, Any] = Field(default_factory=dict)
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for serialization."""

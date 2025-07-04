@@ -1,12 +1,8 @@
 """Empty/null observations for ii-agent."""
-
-from dataclasses import dataclass
-
+from __future__ import annotations
 from ii_agent.core.schema import ObservationType
 from ii_agent.events.observation.observation import Observation
 
-
-@dataclass
 class NullObservation(Observation):
     """A null observation that represents no meaningful result."""
     

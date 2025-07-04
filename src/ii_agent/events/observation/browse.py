@@ -1,13 +1,11 @@
 """Browser interaction observations for ii-agent."""
+from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Optional
 
 from ii_agent.core.schema import ObservationType
 from ii_agent.events.observation.observation import Observation
 
-
-@dataclass
 class BrowseObservation(Observation):
     """Observation from browser actions (page load, interaction, etc)."""
     
@@ -37,8 +35,6 @@ class BrowseObservation(Observation):
         else:
             return header
 
-
-@dataclass
 class BrowseInteractiveObservation(Observation):
     """Observation from interactive browser actions (click, type, scroll, etc)."""
     

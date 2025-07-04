@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from typing import Any, ClassVar, Optional
+from pydantic import Field
 
 from ii_agent.core.schema import ActionType, SecurityRisk
 from ii_agent.events.action.action import Action
 
 
-@dataclass
 class MessageAction(Action):
     """Action representing a message from the agent."""
     
@@ -46,7 +45,6 @@ class MessageAction(Action):
         return ret
 
 
-@dataclass
 class SystemMessageAction(Action):
     """
     Action that represents a system message for an agent, including the system prompt

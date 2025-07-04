@@ -1,14 +1,13 @@
 """Command execution observations for ii-agent."""
+from __future__ import annotations
 
-from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
+from pydantic import BaseModel
 
 from ii_agent.core.schema import ObservationType
 from ii_agent.events.observation.observation import Observation
 
-
-@dataclass
-class CmdOutputMetadata:
+class CmdOutputMetadata(BaseModel):
     """Metadata for command execution."""
     
     command: str = ""
@@ -17,8 +16,6 @@ class CmdOutputMetadata:
     working_directory: str = ""
     timeout: Optional[float] = None
     
-
-@dataclass
 class CmdOutputObservation(Observation):
     """Observation from a shell command execution."""
     
@@ -27,13 +24,14 @@ class CmdOutputObservation(Observation):
     metadata: Optional[CmdOutputMetadata] = None
     observation: str = ObservationType.RUN
     
-    def __post_init__(self):
-        super().__post_init__()
+    def get_metadata(self) -> CmdOutputMetadata:
+        """Get or create metadata for this command output."""
         if self.metadata is None:
-            self.metadata = CmdOutputMetadata(
+            return CmdOutputMetadata(
                 command=self.command,
                 exit_code=self.exit_code
             )
+        return self.metadata
     
     @property
     def message(self) -> str:
@@ -53,13 +51,11 @@ class CmdOutputObservation(Observation):
         else:
             return header
 
-
-@dataclass
 class IPythonRunCellObservation(Observation):
     """Observation from Python code execution in IPython/Jupyter."""
     
     code: str = ""
-    image_urls: list[str] = field(default_factory=list)
+    image_urls: list[str] = []
     observation: str = ObservationType.RUN_IPYTHON
     
     @property

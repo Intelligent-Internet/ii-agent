@@ -1,12 +1,8 @@
 """Error observations for ii-agent."""
-
-from dataclasses import dataclass
-
+from __future__ import annotations
 from ii_agent.core.schema import ObservationType
 from ii_agent.events.observation.observation import Observation
 
-
-@dataclass
 class ErrorObservation(Observation):
     """Observation representing an error that occurred during execution."""
     
@@ -20,8 +16,6 @@ class ErrorObservation(Observation):
     def __str__(self) -> str:
         return f"[ERROR]: {self.content}"
 
-
-@dataclass
 class SystemObservation(Observation):
     """Observation from the system (e.g., interruptions, status changes)."""
     

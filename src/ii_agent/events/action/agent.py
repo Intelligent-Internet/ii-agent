@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import ClassVar, Optional, Any
 
 from ii_agent.core.schema import ActionType, SecurityRisk, AgentState
 from ii_agent.events.action.action import Action
 
 
-@dataclass
 class AgentThinkAction(Action):
     """Action representing agent's internal thinking/reasoning."""
     
@@ -25,7 +23,6 @@ class AgentThinkAction(Action):
         return f"**AgentThinkAction**\nTHOUGHT: {self.thought}"
 
 
-@dataclass
 class AgentFinishAction(Action):
     """Action indicating the agent has completed its task."""
     
@@ -41,7 +38,6 @@ class AgentFinishAction(Action):
         return f"**AgentFinishAction**\nFINAL_ANSWER: {self.final_answer}"
 
 
-@dataclass
 class AgentRejectAction(Action):
     """Action indicating the agent rejects or cannot complete the task."""
     
@@ -57,7 +53,6 @@ class AgentRejectAction(Action):
         return f"**AgentRejectAction**\nREASON: {self.reason}"
 
 
-@dataclass
 class AgentDelegateAction(Action):
     """Action indicating the agent delegates to another agent or system."""
     
@@ -74,7 +69,6 @@ class AgentDelegateAction(Action):
         return f"**AgentDelegateAction**\nDELEGATE_TO: {self.delegate_to}\nTASK: {self.task_description}"
 
 
-@dataclass
 class ChangeAgentStateAction(Action):
     """Action to change the agent's state."""
     
@@ -90,7 +84,6 @@ class ChangeAgentStateAction(Action):
         return f"**ChangeAgentStateAction**\nNEW_STATE: {self.agent_state}"
 
 
-@dataclass
 class RecallAction(Action):
     """Action to recall information from memory or previous context."""
     
@@ -111,7 +104,6 @@ class RecallAction(Action):
 
 
 # Legacy ii-agent actions for backward compatibility
-@dataclass
 class CompleteAction(AgentFinishAction):
     """Legacy alias for AgentFinishAction."""
     
@@ -119,7 +111,6 @@ class CompleteAction(AgentFinishAction):
         super().__init__(final_answer=final_answer, **kwargs)
 
 
-@dataclass  
 class ToolCallAction(Action):
     """Legacy ii-agent action for tool calls."""
     
