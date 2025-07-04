@@ -49,6 +49,11 @@ async def load_settings(
     settings_with_api_keys.search_config.tavily_api_key = None
     settings_with_api_keys.search_config.jina_api_key = None
     settings_with_api_keys.media_config.google_ai_studio_api_key = None
+    settings_with_api_keys.sandbox_config.sandbox_api_key = None
+    settings_with_api_keys.sandbox_config.template_id = None
+    settings_with_api_keys.third_party_integration_config.vercel_api_key = None
+    settings_with_api_keys.third_party_integration_config.openai_api_key = None
+    settings_with_api_keys.third_party_integration_config.neon_db_api_key = None
     
     return settings_with_api_keys
         

@@ -7,21 +7,26 @@ RUN apt-get update && apt-get install -y \
     procps \
     lsof \
     git \
-    net-tools \
+    tmux \
     bc \
-    unzip \
-    tmux
-
-# Install pnpm
-RUN curl -fsSL https://bun.sh/install | bash
+    net-tools \
+    unzip
 
 COPY src/ii_agent/utils/tool_client /app/ii_client
-COPY .templates /app/templates
 
 RUN pip install -r ii_client/requirements.txt
 
+RUN curl -fsSL https://bun.sh/install | bash
+RUN curl -fsSL https://code-server.dev/install.sh | sh
+
 RUN npm install -g vercel
+
+COPY .templates /app/templates
 
 RUN mkdir -p /workspace
 
-CMD ["python", "-m", "ii_client.sandbox_server", "--port", "17300" , "--cwd", "/workspace"]
+# Create a startup script to run both services
+COPY docker/sandbox/start-services.sh /app/start-services.sh
+RUN chmod +x /app/start-services.sh
+
+CMD ["cd /app && ./start-services.sh"]

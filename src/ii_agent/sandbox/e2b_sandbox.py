@@ -12,7 +12,7 @@ class E2BSandbox(BaseSandbox):
     def __init__(self, container_name: str, settings: Settings):
         super().__init__(container_name=container_name, settings=settings)
 
-    async def start(self):
+    async def create(self):
         self.sandbox = Sandbox(
             self.settings.sandbox_config.template_id,
             api_key=self.settings.sandbox_config.sandbox_api_key.get_secret_value(),
@@ -28,4 +28,10 @@ class E2BSandbox(BaseSandbox):
         pass
 
     async def connect(self):
+        pass
+
+    async def cleanup(self):
+        pass
+
+    async def start(self):
         pass
