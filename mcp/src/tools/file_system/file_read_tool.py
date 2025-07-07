@@ -1,256 +1,313 @@
 """File reading tool for reading file contents."""
 
-import os
+import base64
+import mimetypes
+import PyPDF2
+
 from pathlib import Path
 from typing import Annotated, Optional, Dict, Any
 from pydantic import Field
-from src.tools.base import BaseTool
+from src.core.workspace import WorkspaceManager
 from src.tools.constants import MAX_FILE_READ_LINES, MAX_LINE_LENGTH
-from .shared_state import get_file_tracker
+from .base import BaseFileSystemTool
+from .utils import encode_image
 
 
-DESCRIPTION = """Reads a file from the local filesystem. You can access any file directly by using this tool.
-Assume this tool is able to read all files on the machine. If the User provides a path to a file assume that path is valid. It is okay to read a file that does not exist; an error will be returned.
+DESCRIPTION = f"""Reads and returns the content of a specified file from the local filesystem. Handles text files, images (PNG, JPG, GIF, WEBP, SVG, BMP), and PDF files.
 
 Usage:
 - The file_path parameter must be an absolute path, not a relative path
-- By default, it reads up to 2000 lines starting from the beginning of the file
-- You can optionally specify a line offset and limit (especially handy for long files), but it's recommended to read the whole file by not providing these parameters
-- Any lines longer than 2000 characters will be truncated
+- For text files and PDFs: reads up to {MAX_FILE_READ_LINES} lines by default with optional offset/limit parameters
+- For images: returns base64-encoded content with MIME type information
+- For PDFs: extracts and returns readable text content (falls back to base64 if text extraction fails)
+- Any lines longer than {MAX_LINE_LENGTH} characters will be truncated
 - Results are returned using cat -n format, with line numbers starting at 1
-- This tool allows Claude Code to read images (eg PNG, JPG, etc). When reading an image file the contents are presented visually as Claude Code is a multimodal LLM.
-- For Jupyter notebooks (.ipynb files), use the NotebookRead instead
-- You have the capability to call multiple tools in a single response. It is always better to speculatively read multiple files as a batch that are potentially useful. 
-- You will regularly be asked to read screenshots. If the user provides a path to a screenshot ALWAYS use this tool to view the file at the path. This tool will work with all temporary file paths like /var/folders/123/abc/T/TemporaryItems/NSIRD_screencaptureui_ZfB1tD/Screenshot.png
 - If you read a file that exists but has empty contents you will receive a system reminder warning in place of file contents."""
 
 
-def detect_file_encoding(file_path: str) -> str:
-    """Detect file encoding using charset-normalizer or fallback methods."""
-    try:
-        # Try charset-normalizer first (recommended modern approach)
-        import charset_normalizer  # type: ignore
-        with open(file_path, 'rb') as f:
-            raw_data = f.read()
-        result = charset_normalizer.from_bytes(raw_data)
-        if result.best():
-            return str(result.best().encoding)
-    except ImportError:
-        pass
-    
-    try:
-        # Fallback to chardet if available
-        import chardet  # type: ignore
-        with open(file_path, 'rb') as f:
-            raw_data = f.read()
-        result = chardet.detect(raw_data)
-        encoding = result.get('encoding') if result else None
-        if encoding:
-            return encoding
-    except ImportError:
-        pass
-    
-    # Final fallback - try common encodings
-    common_encodings = ['utf-8', 'utf-8-sig', 'latin-1', 'cp1252', 'ascii']
-    for encoding in common_encodings:
-        try:
-            with open(file_path, 'r', encoding=encoding) as f:
-                f.read(1024)  # Test read a small chunk
-            return encoding
-        except (UnicodeDecodeError, UnicodeError):
-            continue
-    
-    # Default fallback
-    return 'utf-8'
-
-
-def format_with_line_numbers(content: str, start_line: int = 1, max_lines: Optional[int] = None, max_line_length: int = MAX_LINE_LENGTH) -> str:
-    """Format content with line numbers in cat -n style."""
-    lines = content.split('\n')
-    
-    if max_lines is not None:
-        lines = lines[:max_lines]
-    
-    formatted_lines = []
-    for i, line in enumerate(lines, start=start_line):
-        # Truncate long lines
-        if len(line) > max_line_length:
-            line = line[:max_line_length - 3] + "..."
-        
-        # Format with line number like cat -n
-        formatted_lines.append(f"     {i}\t{line}")
-    
-    return '\n'.join(formatted_lines)
-
-
-def is_binary_file(file_path: str, sample_size: int = 8192) -> bool:
-    """Check if a file appears to be binary by examining a sample."""
-    try:
-        with open(file_path, 'rb') as f:
-            sample = f.read(sample_size)
-        
-        # Check for null bytes (common in binary files)
-        if b'\x00' in sample:
-            return True
-        
-        # Check if the sample can be decoded as text
-        try:
-            sample.decode('utf-8')
-            return False
-        except UnicodeDecodeError:
-            try:
-                sample.decode('latin-1')
-                return False
-            except UnicodeDecodeError:
-                return True
-                
-    except Exception:
-        return False
-
-
-class FileReadTool(BaseTool):
+class FileReadTool(BaseFileSystemTool):
     """Tool for reading file contents with optional line range specification."""
     
     name = "Read"
     description = DESCRIPTION
     
-    def __init__(self):
-        super().__init__()
-        self._file_tracker = get_file_tracker()
+    def __init__(self, workspace_manager: WorkspaceManager):
+        super().__init__(workspace_manager)
+
+    def _detect_file_type(self, file_path: Path) -> str:
+        """Detect the type of file based on extension and MIME type."""
+        suffix = file_path.suffix.lower()
+        mime_type, _ = mimetypes.guess_type(str(file_path))
+        
+        # Check for images
+        image_extensions = {'.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp'}
+        if suffix in image_extensions or (mime_type and mime_type.startswith('image/')):
+            return 'image'
+        
+        # Check for PDF
+        if suffix == '.pdf' or mime_type == 'application/pdf':
+            return 'pdf'
+        
+        # Check for known binary extensions
+        binary_extensions = {
+            '.zip', '.tar', '.gz', '.exe', '.dll', '.so', '.class', '.jar', '.war',
+            '.7z', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.odt', '.ods',
+            '.odp', '.bin', '.dat', '.obj', '.o', '.a', '.lib', '.wasm', '.pyc', '.pyo'
+        }
+        if suffix in binary_extensions:
+            return 'binary'
+        
+        # Check if file is binary by content
+        if self._is_binary_file(file_path):
+            return 'binary'
+        
+        return 'text'
+
+    def _is_binary_file(self, file_path: Path) -> bool:
+        """Determine if a file is binary by checking its content."""
+        try:
+            with open(file_path, 'rb') as f:
+                chunk = f.read(4096)  # Read first 4KB
+                if not chunk:
+                    return False  # Empty file is not binary
+                
+                # Check for null bytes (strong binary indicator)
+                if b'\x00' in chunk:
+                    return True
+                
+                # Count non-printable characters
+                non_printable = sum(1 for byte in chunk 
+                                  if byte < 9 or (13 < byte < 32))
+                
+                # If >30% non-printable characters, consider it binary
+                return non_printable / len(chunk) > 0.3
+        except (OSError, IOError):
+            return False
+
+    def _read_text_file(self, file_path: Path, offset: Optional[int] = None, 
+                       limit: Optional[int] = None) -> Dict[str, Any]:
+        """Read a text file with optional line range."""
+        try:
+            with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
+                lines = f.readlines()
+            
+            # Remove trailing newlines from each line for processing
+            lines = [line.rstrip('\n\r') for line in lines]
+            original_line_count = len(lines)
+            
+            # Handle empty file
+            if original_line_count == 0:
+                return {
+                    'content': '[Empty file]',
+                    'is_truncated': False,
+                    'original_line_count': 0,
+                    'lines_shown': [1, 0]
+                }
+            
+            # Apply offset and limit
+            start_line = offset - 1 if offset is not None else 0 # offset starts at 1, need to subtract 1
+            effective_limit = limit if limit is not None else MAX_FILE_READ_LINES
+            end_line = min(start_line + effective_limit, original_line_count)
+            
+            # Ensure we don't go beyond array bounds
+            actual_start = min(start_line, original_line_count)
+            selected_lines = lines[actual_start:end_line]
+            
+            # Truncate long lines and format with line numbers
+            lines_truncated_in_length = False
+            formatted_lines = []
+            
+            for i, line in enumerate(selected_lines):
+                line_number = actual_start + i + 1  # 1-based line numbers
+                
+                if len(line) > MAX_LINE_LENGTH:
+                    lines_truncated_in_length = True
+                    line = line[:MAX_LINE_LENGTH] + '... [truncated]'
+                
+                formatted_lines.append(f"{line_number:6d}\t{line}")
+            
+            # Check if content was truncated
+            content_range_truncated = end_line < original_line_count
+            is_truncated = content_range_truncated or lines_truncated_in_length
+            
+            # Build content with headers if truncated
+            content_parts = []
+            if content_range_truncated:
+                content_parts.append(
+                    f"[File content truncated: showing lines {actual_start + 1}-{end_line} "
+                    f"of {original_line_count} total lines. Use offset/limit parameters to view more.]"
+                )
+            elif lines_truncated_in_length:
+                content_parts.append(
+                    f"[File content partially truncated: some lines exceeded maximum "
+                    f"length of {MAX_LINE_LENGTH} characters.]"
+                )
+            
+            content_parts.extend(formatted_lines)
+            content = '\n'.join(content_parts)
+            
+            return {
+                'content': content,
+                'is_truncated': is_truncated,
+                'original_line_count': original_line_count,
+                'lines_shown': [actual_start + 1, end_line]
+            }
+            
+        except UnicodeDecodeError:
+            return {
+                'content': f"Error: File appears to be binary or uses unsupported encoding",
+                'is_truncated': False,
+                'original_line_count': 0,
+                'lines_shown': [1, 0]
+            }
+
+    def _read_pdf_file(self, file_path: Path, offset: Optional[int] = None, 
+                       limit: Optional[int] = None) -> Dict[str, Any]:
+        """Extract text from a PDF file with optional line range."""
+        with open(file_path, 'rb') as f:
+            pdf_reader = PyPDF2.PdfReader(f)
+            
+            # Extract text from all pages
+            text_content = []
+            for page in pdf_reader.pages:
+                try:
+                    page_text = page.extract_text()
+                    if page_text.strip():  # Only add non-empty pages
+                        text_content.append(page_text.strip())
+                except Exception:
+                    # Skip pages that can't be extracted
+                    continue
+            
+            if not text_content:
+                return {
+                    'content': '[PDF contains no extractable text]',
+                    'is_truncated': False,
+                    'original_line_count': 0,
+                    'lines_shown': [1, 0]
+                }
+            
+            # Join all pages and split into lines
+            full_text = '\n\n'.join(text_content)
+            lines = full_text.split('\n')
+            original_line_count = len(lines)
+            
+            # Apply offset and limit (same logic as text files)
+            start_line = offset if offset is not None else 0
+            effective_limit = limit if limit is not None else MAX_FILE_READ_LINES
+            end_line = min(start_line + effective_limit, original_line_count)
+            
+            # Ensure we don't go beyond array bounds
+            actual_start = min(start_line, original_line_count)
+            selected_lines = lines[actual_start:end_line]
+            
+            # Format with line numbers and handle long lines
+            lines_truncated_in_length = False
+            formatted_lines = []
+            
+            for i, line in enumerate(selected_lines):
+                line_number = actual_start + i + 1  # 1-based line numbers
+                
+                if len(line) > MAX_LINE_LENGTH:
+                    lines_truncated_in_length = True
+                    line = line[:MAX_LINE_LENGTH] + '... [truncated]'
+                
+                formatted_lines.append(f"{line_number:6d}\t{line}")
+            
+            # Check if content was truncated
+            content_range_truncated = end_line < original_line_count
+            is_truncated = content_range_truncated or lines_truncated_in_length
+            
+            # Build content with headers if truncated
+            content_parts = []
+            content_parts.append("[Extracted text from PDF]")
+            
+            if content_range_truncated:
+                content_parts.append(
+                    f"[File content truncated: showing lines {actual_start + 1}-{end_line} "
+                    f"of {original_line_count} total lines. Use offset/limit parameters to view more.]"
+                )
+            elif lines_truncated_in_length:
+                content_parts.append(
+                    f"[File content partially truncated: some lines exceeded maximum "
+                    f"length of {MAX_LINE_LENGTH} characters.]"
+                )
+            
+            content_parts.extend(formatted_lines)
+            content = '\n'.join(content_parts)
+            
+            return {
+                'content': content,
+                'is_truncated': is_truncated,
+                'original_line_count': original_line_count,
+                'lines_shown': [actual_start + 1, end_line]
+            }
+
+    def _read_image_file(self, file_path: Path) -> Dict[str, Any]:
+        """Read an image and return base64 encoded content."""
+        
+        # Get MIME type
+        mime_type, _ = mimetypes.guess_type(str(file_path))
+        if not mime_type:
+            mime_type = "image/png"  # Default to PNG if type cannot be determined
+        
+        # Encode to base64
+        base64_image = encode_image(str(file_path))
+        
+        return {
+            "type": "base64",
+            "media_type": mime_type,
+            "data": base64_image,
+        }
 
     def run_impl(
         self,
         file_path: Annotated[str, Field(description="The absolute path to the file to read")],
         limit: Annotated[Optional[int], Field(description="The number of lines to read. Only provide if the file is too large to read at once.")] = None,
         offset: Annotated[Optional[int], Field(description="The line number to start reading from. Only provide if the file is too large to read at once")] = None,
-    ) -> Dict[str, Any]:
-        """Read file contents and return formatted output."""
-        
+    ):
+        """Implementation of the file reading functionality."""
         try:
-            # Convert to absolute path
-            if not os.path.isabs(file_path):
-                file_path = os.path.abspath(file_path)
+            # Convert to Path object
+            path = Path(file_path).resolve()
             
             # Check if file exists
-            if not os.path.exists(file_path):
-                return {
-                    "success": False,
-                    "error": f"File does not exist: {file_path}",
-                    "error_type": "file_not_found"
-                }
+            if not path.exists():
+                return f"Error: File not found: {file_path}"
             
             # Check if it's a directory
-            if os.path.isdir(file_path):
-                return {
-                    "success": False,
-                    "error": f"Path is a directory, not a file: {file_path}",
-                    "error_type": "is_directory"
-                }
+            if path.is_dir():
+                return f"Error: Path is a directory, not a file: {file_path}"
             
-            # Check for Jupyter notebooks
-            if file_path.endswith('.ipynb'):
-                return {
-                    "success": False,
-                    "error": "File is a Jupyter Notebook. Use the NotebookRead tool to read this file.",
-                    "error_type": "wrong_tool"
-                }
-            
-            # Handle image files and other binary files
-            if is_binary_file(file_path):
-                # For images and other binary files, we'll return a message
-                # In a real implementation, this might display the image or provide file info
-                file_size = os.path.getsize(file_path)
-                return {
-                    "success": True,
-                    "content": f"[Binary file: {os.path.basename(file_path)}, size: {file_size} bytes]",
-                    "file_path": file_path,
-                    "is_binary": True,
-                    "size_bytes": file_size
-                }
-            
-            # Set defaults for limit and offset
-            if limit is None:
-                limit = MAX_FILE_READ_LINES
-            if offset is None:
-                offset = 1
+            # ensure file is within workspace
+            if not self.workspace_manager.validate_boundary(path):
+                return f"Error: File path must be within workspace: {file_path}"
             
             # Validate parameters
-            if offset < 1:
-                offset = 1
-            if limit < 1:
-                limit = 1
+            if offset is not None and offset < 0:
+                return "Error: Offset must be a non-negative number"
             
-            # Detect file encoding
-            encoding = detect_file_encoding(file_path)
+            if limit is not None and limit <= 0:
+                return "Error: Limit must be a positive number"
             
-            try:
-                # Read the file
-                with open(file_path, 'r', encoding=encoding) as f:
-                    lines = f.readlines()
-                
-                # Mark file as read for timestamp tracking
-                self._file_tracker.mark_file_read(file_path)
-                
-                # Handle empty file
-                if not lines:
-                    return {
-                        "success": True,
-                        "content": "[WARNING: File exists but has empty contents]",
-                        "file_path": file_path,
-                        "total_lines": 0,
-                        "lines_read": 0,
-                        "start_line": offset,
-                        "encoding": encoding
-                    }
-                
-                # Apply offset and limit
-                start_idx = offset - 1  # Convert to 0-based indexing
-                end_idx = start_idx + limit
-                
-                if start_idx >= len(lines):
-                    return {
-                        "success": False,
-                        "error": f"Start line {offset} is beyond file length ({len(lines)} lines)",
-                        "error_type": "invalid_range"
-                    }
-                
-                selected_lines = lines[start_idx:end_idx]
-                
-                # Join lines and remove the final newline if present (since readlines() includes \n)
-                content = ''.join(selected_lines)
-                if content.endswith('\n'):
-                    content = content[:-1]
-                
-                # Format with line numbers
-                formatted_content = format_with_line_numbers(content, start_line=offset)
-                
-                return {
-                    "success": True,
-                    "content": formatted_content,
-                    "file_path": file_path,
-                    "total_lines": len(lines),
-                    "lines_read": len(selected_lines),
-                    "start_line": offset,
-                    "end_line": offset + len(selected_lines) - 1,
-                    "encoding": encoding
-                }
-                
-            except UnicodeDecodeError as e:
-                return {
-                    "success": False,
-                    "error": f"Failed to decode file with encoding '{encoding}': {str(e)}",
-                    "error_type": "encoding_error"
-                }
-            except Exception as e:
-                return {
-                    "success": False,
-                    "error": f"Failed to read file: {str(e)}",
-                    "error_type": "read_error"
-                }
+            # Detect file type
+            file_type = self._detect_file_type(path)
+            if file_type == 'binary':
+                return f"Cannot display content of binary file: {path}"
+            
+            elif file_type == 'text':
+                result = self._read_text_file(path, offset, limit)
+                return result['content']
+            
+            elif file_type == 'pdf':
+                result = self._read_pdf_file(path, offset, limit)
+                return result['content']
+            
+            elif file_type == 'image':
+                result = self._read_image_file(path)
+                return result
+            
+            else:
+                return f"Error: Unsupported file type: {file_type}"
                 
         except Exception as e:
-            return {
-                "success": False,
-                "error": f"Unexpected error: {str(e)}",
-                "error_type": "unexpected_error"
-            }
+            return f"Error processing file: {str(e)}"

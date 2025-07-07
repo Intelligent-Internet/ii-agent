@@ -31,15 +31,6 @@ class TodoReadTool(BaseTool):
         todos = manager.get_todos()
         
         if not todos:
-            return []
+            return "No todos found"
         
-        # Sort todos by status (in_progress first, then pending, then completed) and priority
-        status_order = {'in_progress': 0, 'pending': 1, 'completed': 2}
-        priority_order = {'high': 0, 'medium': 1, 'low': 2}
-        
-        sorted_todos = sorted(
-            todos,
-            key=lambda t: (status_order.get(t['status'], 3), priority_order.get(t['priority'], 3))
-        )
-        
-        return sorted_todos
+        return f"Remember to continue to use update and read from the todo list as you make progress. Here is the current list: {todos}"

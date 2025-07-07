@@ -1,13 +1,12 @@
 """File editing tool for making targeted edits to files."""
 
 import os
-import stat
 from pathlib import Path
-from typing import Annotated, Optional, Dict, Any, Tuple
+from glob import glob
+from typing import Annotated
 from pydantic import Field
-from src.tools.base import BaseTool
-from .shared_state import get_file_tracker
-import glob
+from src.core.workspace import WorkspaceManager
+from .base import BaseFileSystemTool
 
 
 DESCRIPTION = """Performs exact string replacements in files. 
@@ -21,135 +20,7 @@ Usage:
 - Use `replace_all` for replacing and renaming strings across the file. This parameter is useful if you want to rename a variable for instance."""
 
 
-def detect_file_encoding(file_path: str) -> str:
-    """Detect file encoding using charset-normalizer or fallback methods."""
-    try:
-        # Try charset-normalizer first (recommended modern approach)
-        import charset_normalizer  # type: ignore
-        with open(file_path, 'rb') as f:
-            raw_data = f.read()
-        result = charset_normalizer.from_bytes(raw_data)
-        if result.best():
-            return str(result.best().encoding)
-    except ImportError:
-        pass
-    
-    try:
-        # Fallback to chardet if available
-        import chardet  # type: ignore
-        with open(file_path, 'rb') as f:
-            raw_data = f.read()
-        result = chardet.detect(raw_data)
-        encoding = result.get('encoding') if result else None
-        if encoding:
-            return encoding
-    except ImportError:
-        pass
-    
-    # Final fallback - try common encodings
-    common_encodings = ['utf-8', 'utf-8-sig', 'latin-1', 'cp1252', 'ascii']
-    for encoding in common_encodings:
-        try:
-            with open(file_path, 'r', encoding=encoding) as f:
-                f.read()
-            return encoding
-        except (UnicodeDecodeError, UnicodeError):
-            continue
-    
-    # Default fallback
-    return 'utf-8'
-
-
-def detect_line_endings(file_path: str) -> str:
-    """Detect line endings in file. Returns 'CRLF', 'LF', or 'CR'."""
-    if not os.path.exists(file_path):
-        return 'LF'  # Default for new files
-    
-    try:
-        with open(file_path, 'rb') as f:
-            content = f.read()
-        
-        if b'\r\n' in content:
-            return 'CRLF'
-        elif b'\n' in content:
-            return 'LF'
-        elif b'\r' in content:
-            return 'CR'
-        else:
-            return 'LF'  # Default
-    except Exception:
-        return 'LF'
-
-
-def normalize_line_endings(text: str, line_ending_type: str) -> str:
-    """Normalize line endings in text based on detected type."""
-    # First normalize everything to LF
-    text = text.replace('\r\n', '\n').replace('\r', '\n')
-    
-    if line_ending_type == 'CRLF':
-        return text.replace('\n', '\r\n')
-    elif line_ending_type == 'CR':
-        return text.replace('\n', '\r')
-    else:  # LF
-        return text
-
-
-def get_file_snippet(original_content: str, old_string: str, new_string: str, num_context_lines: int = 4) -> Tuple[str, int]:
-    """Get a snippet of the file around the change for display purposes."""
-    if not original_content:
-        return new_string, 1
-    
-    lines = original_content.split('\n')
-    if old_string not in original_content:
-        return '\n'.join(lines[:min(10, len(lines))]), 1
-    
-    # Find the line containing the old string
-    change_line_idx = -1
-    for i, line in enumerate(lines):
-        if old_string in '\n'.join(lines[i:]):
-            # More precise: find where the old_string starts
-            remaining_text = '\n'.join(lines[i:])
-            if remaining_text.startswith(old_string) or '\n' + old_string in remaining_text:
-                change_line_idx = i
-                break
-    
-    if change_line_idx == -1:
-        change_line_idx = 0
-    
-    # Calculate snippet bounds
-    start_idx = max(0, change_line_idx - num_context_lines)
-    
-    # Apply the change to get new content
-    new_content = original_content.replace(old_string, new_string)
-    new_lines = new_content.split('\n')
-    
-    # Calculate how many lines the replacement spans
-    old_line_count = old_string.count('\n') + 1
-    new_line_count = new_string.count('\n') + 1
-    line_diff = new_line_count - old_line_count
-    
-    end_idx = min(len(new_lines), change_line_idx + num_context_lines + max(old_line_count, new_line_count))
-    
-    snippet_lines = new_lines[start_idx:end_idx]
-    snippet = '\n'.join(snippet_lines)
-    
-    return snippet, start_idx + 1  # +1 for 1-based line numbering
-
-
-def has_write_permission(file_path: str) -> bool:
-    """Check if the file/directory has write permissions."""
-    try:
-        if os.path.exists(file_path):
-            return os.access(file_path, os.W_OK)
-        else:
-            # Check parent directory for new file creation
-            parent_dir = os.path.dirname(file_path)
-            return os.access(parent_dir, os.W_OK) if os.path.exists(parent_dir) else False
-    except Exception:
-        return False
-
-
-def find_similar_file(file_path: str) -> Optional[str]:
+def find_similar_file(file_path: str) -> str | None:
     """Find similar files with different extensions."""
     try:
         base_path = os.path.splitext(file_path)[0]
@@ -171,19 +42,134 @@ def find_similar_file(file_path: str) -> Optional[str]:
         return None
 
 
-class FileEditTool(BaseTool):
+class FileEditTool(BaseFileSystemTool):
     """Tool for making targeted string replacements in files."""
     
     name = "Edit"
     description = DESCRIPTION
     
-    def __init__(self):
-        super().__init__()
-        self._file_tracker = get_file_tracker()
-    
-    def needs_permissions(self, file_path: str) -> bool:
-        """Check if this operation needs special permissions."""
-        return not has_write_permission(file_path)
+    def __init__(self, workspace_manager: WorkspaceManager):
+        super().__init__(workspace_manager)
+
+    def _validate_file_path(self, file_path: str) -> tuple[Path | None, str | None]:
+        """Validate file path and return Path object and error message if any."""
+        if not file_path:
+            return None, "File path cannot be empty"
+        
+        # Convert to Path object and resolve to absolute path
+        try:
+            file_path_obj = Path(file_path).resolve()
+        except Exception as e:
+            return None, f"Invalid file path: {e}"
+        
+        # Check if path is within workspace boundary
+        if not self.workspace_manager.validate_boundary(file_path_obj):
+            workspace_path = self.workspace_manager.get_workspace_path()
+            return None, f"File path `{file_path_obj}` is not within workspace boundary `{workspace_path}`"
+        
+        return file_path_obj, None
+
+    def _read_file_content(self, file_path: Path) -> tuple[str | None, bool, str | None]:
+        """Read file content. Returns (content, file_exists, error_message)."""
+        try:
+            if not file_path.exists():
+                return None, False, None
+            
+            if not file_path.is_file():
+                return None, True, f"Path `{file_path}` exists but is not a file"
+            
+            content = file_path.read_text(encoding='utf-8', errors='ignore')
+            # Normalize line endings to LF for consistent processing
+            content = content.replace('\r\n', '\n')
+            return content, True, None
+            
+        except PermissionError:
+            return None, True, f"Permission denied reading file `{file_path}`"
+        except UnicodeDecodeError:
+            return None, True, f"File `{file_path}` contains non-text content or unsupported encoding"
+        except Exception as e:
+            return None, True, f"Error reading file `{file_path}`: {e}"
+
+    def _write_file_content(self, file_path: Path, content: str) -> str | None:
+        """Write content to file. Returns error message if any."""
+        try:
+            # Ensure parent directories exist
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Write content to file
+            file_path.write_text(content, encoding='utf-8')
+            return None
+            
+        except PermissionError:
+            return f"Permission denied writing to file `{file_path}`"
+        except Exception as e:
+            return f"Error writing file `{file_path}`: {e}"
+
+    def _perform_replacement(self, content: str | None, old_string: str, new_string: str, 
+                           replace_all: bool, is_new_file: bool) -> tuple[str, int, int | None, str | None]:
+        """Perform string replacement. Returns (new_content, occurrences, edit_line_number, error_message)."""
+        
+        # Handle new file creation
+        if is_new_file:
+            if old_string != "":
+                return "", 0, None, "For new file creation, old_string must be empty"
+            return new_string, 1, 1, None
+        
+        # Handle existing file editing
+        if content is None:
+            return "", 0, None, "Cannot edit file: content is None"
+        
+        # Handle empty old_string for existing file
+        if old_string == "":
+            return "", 0, None, "Cannot use empty old_string for existing file (use it only for new file creation)"
+        
+        # Count occurrences
+        occurrences = content.count(old_string)
+        
+        if occurrences == 0:
+            return content, 0, None, "String to replace not found in file. Make sure the old_string exactly matches the file content, including whitespace and indentation"
+        
+        # For single replacement, ensure uniqueness
+        if not replace_all and occurrences > 1:
+            return content, occurrences, None, f"Found {occurrences} occurrences of old_string. Either provide more context to make it unique, or use replace_all=True to replace all occurrences"
+        
+        # Find the line number of the first replacement
+        edit_line_number = None
+        if occurrences > 0:
+            # Find the position of the first occurrence
+            first_occurrence_pos = content.find(old_string)
+            if first_occurrence_pos != -1:
+                # Count newlines before this position to get line number
+                edit_line_number = content[:first_occurrence_pos].count('\n') + 1
+        
+        # Perform replacement
+        if replace_all:
+            new_content = content.replace(old_string, new_string)
+        else:
+            # Replace only the first occurrence
+            new_content = content.replace(old_string, new_string, 1)
+        
+        return new_content, occurrences, edit_line_number, None
+
+    def _get_snippet_around_line(self, content: str, line_number: int, lines_before: int = 5, lines_after: int = 5) -> str:
+        """Extract a snippet of lines around a specific line number with cat -n format."""
+        lines = content.split('\n')
+        total_lines = len(lines)
+        
+        # Calculate the range
+        start_line = max(1, line_number - lines_before)
+        end_line = min(total_lines, line_number + lines_after)
+        
+        # Extract the lines (convert to 0-based indexing)
+        snippet_lines = lines[start_line - 1:end_line]
+        
+        # Format with line numbers like cat -n
+        formatted_lines = []
+        for i, line in enumerate(snippet_lines):
+            current_line_num = start_line + i
+            formatted_lines.append(f"{current_line_num:6d}\t{line}")
+        
+        return '\n'.join(formatted_lines)
 
     def run_impl(
         self,
@@ -191,186 +177,54 @@ class FileEditTool(BaseTool):
         old_string: Annotated[str, Field(description="The text to replace")],
         new_string: Annotated[str, Field(description="The text to replace it with (must be different from old_string)")],
         replace_all: Annotated[bool, Field(description="Replace all occurences of old_string (default false)", default=False)],
-    ) -> Dict[str, Any]:
+    ) -> str:
         """Execute the file edit operation."""
         
-        try:
-            # Input validation
-            if old_string == new_string:
-                return {
-                    "success": False,
-                    "error": "No changes to make: old_string and new_string are exactly the same.",
-                    "error_type": "validation_error"
-                }
-            
-            # Convert to absolute path
-            if not os.path.isabs(file_path):
-                file_path = os.path.abspath(file_path)
-            
-            # Check write permissions
-            if not has_write_permission(file_path):
-                return {
-                    "success": False,
-                    "error": "Insufficient permissions to write to this file or directory.",
-                    "error_type": "permission_denied"
-                }
-            
-            # Check if file exists for non-create operations
-            file_exists = os.path.exists(file_path)
-            
-            if file_exists and old_string == "":
-                return {
-                    "success": False,
-                    "error": "Cannot create new file - file already exists.",
-                    "error_type": "file_exists"
-                }
-            
-            # Handle file creation
-            if not file_exists and old_string == "":
-                try:
-                    # Create directory if needed
-                    os.makedirs(os.path.dirname(file_path), exist_ok=True)
-                    
-                    # Write new file
-                    with open(file_path, 'w', encoding='utf-8', newline='') as f:
-                        f.write(normalize_line_endings(new_string, 'LF'))
-                    
-                    # Update read timestamp
-                    self._file_tracker.mark_file_read(file_path)
-                    
-                    snippet, start_line = get_file_snippet("", old_string, new_string)
-                    
-                    return {
-                        "success": True,
-                        "message": f"Created new file: {file_path}",
-                        "file_path": file_path,
-                        "old_string": old_string,
-                        "new_string": new_string,
-                        "snippet": snippet,
-                        "start_line": start_line,
-                        "operation": "create"
-                    }
-                    
-                except Exception as e:
-                    return {
-                        "success": False,
-                        "error": f"Failed to create file: {str(e)}",
-                        "error_type": "file_operation"
-                    }
-            
-            # File must exist for edit operations
-            if not file_exists:
-                # Try to find a similar file with a different extension
-                similar_file = find_similar_file(file_path)
-                error_msg = "File does not exist."
-                if similar_file:
-                    error_msg += f" Did you mean {similar_file}?"
-                
-                return {
-                    "success": False,
-                    "error": error_msg,
-                    "error_type": "file_not_found",
-                    "suggested_file": similar_file
-                }
-            
-            # Check for Jupyter notebooks
-            if file_path.endswith('.ipynb'):
-                return {
-                    "success": False,
-                    "error": "File is a Jupyter Notebook. Use the NotebookEdit tool to edit this file.",
-                    "error_type": "wrong_tool"
-                }
-            
-            # Check read timestamp
-            if not self._file_tracker.was_file_read(file_path):
-                return {
-                    "success": False,
-                    "error": "File has not been read yet. Read it first before writing to it.",
-                    "error_type": "read_required"
-                }
-            
-            # Check if file was modified since last read
-            if self._file_tracker.is_file_modified_since_read(file_path):
-                return {
-                    "success": False,
-                    "error": "File has been modified since read, either by the user or by a linter. Read it again before attempting to write it.",
-                    "error_type": "file_modified"
-                }
-            
-            # Read file with proper encoding
-            encoding = detect_file_encoding(file_path)
-            line_ending_type = detect_line_endings(file_path)
-            
-            try:
-                with open(file_path, 'r', encoding=encoding) as f:
-                    original_content = f.read()
-            except Exception as e:
-                return {
-                    "success": False,
-                    "error": f"Failed to read file: {str(e)}",
-                    "error_type": "read_error"
-                }
-            
-            # Check if old_string exists in file
-            if old_string not in original_content:
-                return {
-                    "success": False,
-                    "error": "String to replace not found in file.",
-                    "error_type": "string_not_found"
-                }
-            
-            # Check for multiple matches if not replace_all
-            if not replace_all:
-                match_count = original_content.count(old_string)
-                if match_count > 1:
-                    return {
-                        "success": False,
-                        "error": f"Found {match_count} matches of the string to replace. For safety, this tool only supports replacing exactly one occurrence at a time. Add more lines of context to your edit and try again.",
-                        "error_type": "multiple_matches"
-                    }
-            
-            # Perform the replacement
-            if replace_all:
-                new_content = original_content.replace(old_string, new_string)
+        # Validate parameters
+        if old_string == new_string:
+            return "ERROR: old_string and new_string cannot be the same"
+        
+        # Validate and resolve file path
+        file_path_obj, path_error = self._validate_file_path(file_path)
+        if path_error or file_path_obj is None:
+            return f"ERROR: {path_error or 'Invalid file path'}"
+        
+        # Read current file content
+        current_content, file_exists, read_error = self._read_file_content(file_path_obj)
+        if read_error:
+            return f"ERROR: {read_error}"
+        
+        # Determine if this is a new file creation
+        is_new_file = not file_exists and old_string == ""
+        
+        # Handle case where file doesn't exist but old_string is not empty
+        if not file_exists and old_string != "":
+            return f"ERROR: File `{file_path_obj}` does not exist. To create a new file, use an empty old_string"
+        
+        # Perform the replacement
+        new_content, occurrences, edit_line_number, replacement_error = self._perform_replacement(
+            current_content, old_string, new_string, replace_all, is_new_file
+        )
+        
+        if replacement_error:
+            return f"ERROR: {replacement_error}"
+        
+        # Write the new content
+        write_error = self._write_file_content(file_path_obj, new_content)
+        if write_error:
+            return f"ERROR: {write_error}"
+        
+        # Generate success message
+        if is_new_file:
+            return f"Created new file `{file_path_obj}` with provided content."
+        else:
+            # Get snippet around the edit location
+            if edit_line_number is not None:
+                snippet = self._get_snippet_around_line(new_content, edit_line_number)
+                return f"The file {file_path_obj} has been updated. Here's the result of running `cat -n` on a snippet of the edited file:\n{snippet}\nReview the changes and make sure they are as expected. Edit the file again if necessary."
             else:
-                new_content = original_content.replace(old_string, new_string, 1)
-            
-            # Normalize line endings to match original file
-            new_content = normalize_line_endings(new_content, line_ending_type)
-            
-            # Write the file back
-            try:
-                with open(file_path, 'w', encoding=encoding, newline='') as f:
-                    f.write(new_content)
-                
-                # Update read timestamp
-                self._file_tracker.mark_file_read(file_path)
-                
-                # Generate snippet for response
-                snippet, start_line = get_file_snippet(original_content, old_string, new_string)
-                
-                return {
-                    "success": True,
-                    "message": f"Successfully updated file: {file_path}",
-                    "file_path": file_path,
-                    "old_string": old_string,
-                    "new_string": new_string,
-                    "snippet": snippet,
-                    "start_line": start_line,
-                    "operation": "replace_all" if replace_all else "replace_once",
-                    "matches_replaced": original_content.count(old_string) if replace_all else 1
-                }
-                
-            except Exception as e:
-                return {
-                    "success": False,
-                    "error": f"Failed to write file: {str(e)}",
-                    "error_type": "write_error"
-                }
-                
-        except Exception as e:
-            return {
-                "success": False,
-                "error": f"Unexpected error: {str(e)}",
-                "error_type": "unexpected_error"
-            }
+                replacement_word = "replacements" if occurrences > 1 else "replacement"
+                operation = "all occurrences" if replace_all else "first occurrence"
+                return f"Modified file `{file_path_obj}` - made {occurrences} {replacement_word} ({operation})"
+        
+        

@@ -3,7 +3,7 @@
 from typing import Annotated, List, Dict, Any
 from pydantic import Field
 from src.tools.base import BaseTool
-from src.tools.productivity.shared_state import get_todo_manager
+from .shared_state import get_todo_manager
 
 
 DESCRIPTION = """Use this tool to create and manage a structured task list for your current coding session. This helps you track progress, organize complex tasks, and demonstrate thoroughness to the user.
@@ -69,7 +69,7 @@ class TodoWriteTool(BaseTool):
 
     def run_impl(
         self,
-        todos: Annotated[List[Dict[str, Any]], Field(description="The updated todo list")],
+        todos: Annotated[List[Dict[str, Any]], Field(description="The updated todo list. Each todo should have `content`, `status` (one of 'pending', 'in_progress', 'completed'), `priority` (one of 'low', 'medium', 'high'), and `id` (starts from 1) keys.")],
     ):
         """Write/update the todo list."""
         manager = get_todo_manager()
@@ -79,14 +79,6 @@ class TodoWriteTool(BaseTool):
             manager.set_todos(todos)
             
             # Return the updated list
-            return {
-                "success": True,
-                "message": f"Todo list updated with {len(todos)} items",
-                "todos": manager.get_todos()
-            }
+            return "Todos have been modified successfully. Ensure that you continue to use the todo list to track your progress. Please proceed with the current tasks if applicable"
         except ValueError as e:
-            return {
-                "success": False,
-                "error": str(e),
-                "todos": manager.get_todos()
-            }
+            return f"Error updating todo list: {e}"

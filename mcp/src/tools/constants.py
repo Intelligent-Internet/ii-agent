@@ -1,12 +1,31 @@
 """Constants for tool configurations matching Claude Code specifications."""
 
-# File system constants
+# File system constants - PRODUCTION SECURITY LIMITS
 MAX_FILES_LS = 1000
 MAX_FILE_READ_LINES = 2000
 MAX_LINE_LENGTH = 2000
 DEFAULT_TIMEOUT_MS = 120000  # 2 minutes
 MAX_TIMEOUT_MS = 600000  # 10 minutes
 MAX_OUTPUT_CHARS = 30000
+
+# Security and performance limits
+MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024  # 100MB - prevent memory exhaustion
+MAX_CONTENT_SIZE_BYTES = 50 * 1024 * 1024  # 50MB - for content operations
+MAX_DIRECTORY_DEPTH = 20  # Prevent excessive traversal
+MAX_CONCURRENT_OPERATIONS = 5  # Limit concurrent file operations
+FILE_OPERATION_TIMEOUT = 30.0  # seconds
+ENCODING_DETECTION_SAMPLE_SIZE = 8192  # bytes to read for encoding detection
+
+# Workspace security
+ALLOWED_FILE_EXTENSIONS = {
+    '.txt', '.md', '.py', '.js', '.ts', '.tsx', '.jsx', '.json', '.xml', '.html', 
+    '.css', '.scss', '.sass', '.yml', '.yaml', '.toml', '.ini', '.cfg', '.conf',
+    '.sh', '.bash', '.zsh', '.fish', '.ps1', '.bat', '.cmd', '.sql', '.go', '.rs',
+    '.java', '.kt', '.scala', '.rb', '.php', '.swift', '.dart', '.vue', '.svelte'
+}
+
+RESTRICTED_DIRECTORIES = {'.git', '.ssh', '.aws', '.docker', 'node_modules', '__pycache__'}
+RESTRICTED_FILE_PATTERNS = {'*.key', '*.pem', '*.crt', '*.p12', '*.pfx', 'id_rsa*', 'id_dsa*'}
 
 # Search constants
 MAX_SEARCH_FILES = 1000

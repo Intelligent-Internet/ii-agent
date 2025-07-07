@@ -2,7 +2,6 @@
 
 from typing import List, Dict, Any
 from threading import Lock
-import uuid
 
 
 class TodoManager:
@@ -53,19 +52,6 @@ class TodoManager:
         
         with self._lock:
             self._todos = [todo.copy() for todo in todos]
-    
-    def add_todo(self, content: str, priority: str = 'medium', status: str = 'pending') -> Dict[str, Any]:
-        """Add a new todo item."""
-        todo = {
-            'id': str(uuid.uuid4()),
-            'content': content,
-            'status': status,
-            'priority': priority
-        }
-        
-        with self._lock:
-            self._todos.append(todo)
-            return todo.copy()
     
     def clear_todos(self) -> None:
         """Clear all todos."""

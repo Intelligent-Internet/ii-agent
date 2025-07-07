@@ -1,6 +1,3 @@
-import base64
-import requests
-
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import Literal, Tuple
@@ -323,26 +320,3 @@ def match_indent(code: str | None, code_to_match: str) -> str | None:
         return apply_indent_type(code, indent_type)
 
     return code
-
-
-def encode_image(image_path: str):
-    """Fetch/Read an image to base64."""
-
-    if image_path.startswith("http"):
-        user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36 Edg/119.0.0.0"
-        request_kwargs = {
-            "headers": {"User-Agent": user_agent},
-            "stream": True,
-        }
-
-        # Send a HTTP request to the URL
-        response = requests.get(image_path, **request_kwargs)
-        response.raise_for_status()
-
-        # Read image data directly from response content
-        image_data = response.content
-        return base64.b64encode(image_data).decode("utf-8")
-
-    # For local files, read directly into memory
-    with open(image_path, "rb") as image_file:
-        return base64.b64encode(image_file.read()).decode("utf-8")
