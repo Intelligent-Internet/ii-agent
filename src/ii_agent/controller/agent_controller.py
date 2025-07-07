@@ -19,7 +19,7 @@ from ii_agent.core.logger import logger
 from .state import State, AgentState
 from ..events.action import Action, MessageAction, CompleteAction
 from ..events.action.mcp import MCPAction
-from ..events.observation import Observation, UserMessageObservation, SystemObservation
+from ..events.observation import Observation, SystemObservation
 from ..events.event import EventSource
 
 
@@ -197,7 +197,10 @@ class AgentController:
                         content={"text": action.content},
                     )
                 )
-                continue
+                return ToolImplOutput(
+                    tool_output=action.content,
+                    tool_result_message=action.content,
+                )
 
             elif isinstance(action, MCPAction):
                 # Handle tool call action
@@ -250,6 +253,12 @@ class AgentController:
                     if self.tool_manager.should_stop():
                         self.state.agent_state = AgentState.COMPLETED
                         final_answer = self.tool_manager.get_final_answer()
+                        self.message_queue.put_nowait(
+                            RealtimeEvent(
+                                type=EventType.AGENT_RESPONSE,
+                                content={"text": final_answer},
+                            )
+                        )
                         return ToolImplOutput(
                             tool_output=final_answer,
                             tool_result_message="Task completed",

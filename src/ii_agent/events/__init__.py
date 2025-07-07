@@ -10,7 +10,7 @@ from ii_agent.events.action import (
     MCPAction
 )
 from ii_agent.events.observation import (
-    Observation, UserMessageObservation, SystemObservation,
+    Observation, SystemObservation,
     FileReadObservation, FileWriteObservation, FileEditObservation,
     MCPObservation
 )
@@ -28,7 +28,6 @@ __all__ = [
     
     # Base observations
     "Observation",
-    "UserMessageObservation", 
     "SystemObservation",
     
     # Fine-grained file actions

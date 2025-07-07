@@ -7,7 +7,6 @@ from ii_agent.events.observation.commands import CmdOutputObservation, IPythonRu
 from ii_agent.events.observation.empty import NullObservation
 from ii_agent.events.observation.error import ErrorObservation, SystemObservation
 from ii_agent.events.observation.files import FileReadObservation, FileWriteObservation, FileEditObservation
-from ii_agent.events.observation.user_message import UserMessageObservation
 from ii_agent.events.observation.mcp import MCPObservation
 
 __all__ = [
@@ -40,7 +39,4 @@ __all__ = [
     
     # MCP observations
     "MCPObservation",
-    
-    # User observations
-    "UserMessageObservation",
 ]

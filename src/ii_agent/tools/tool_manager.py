@@ -70,7 +70,7 @@ from ii_agent.events.action import (
 )
 from ii_agent.events.action.mcp import MCPAction
 from ii_agent.events.observation import (
-    UserMessageObservation, SystemObservation, ErrorObservation,
+    SystemObservation, ErrorObservation,
     FileReadObservation, FileWriteObservation, FileEditObservation,
     CmdOutputObservation, BrowseObservation, BrowseInteractiveObservation,
     MCPObservation, NullObservation, IPythonRunCellObservation
@@ -335,7 +335,7 @@ class AgentToolManager:
             if isinstance(action, MCPAction):
                 return await self._handle_mcp_action(action)
             elif isinstance(action, MessageAction):
-                return await self._handle_message_action(action)
+                raise NotImplementedError("MessageAction is not supported in tool manager")
             elif isinstance(action, CompleteAction):
                 return await self._handle_complete_action(action)
             elif isinstance(action, FileReadAction):
@@ -407,13 +407,6 @@ class AgentToolManager:
             if hasattr(action, 'tool_call_metadata') and action.tool_call_metadata:
                 error_obs.tool_call_metadata = action.tool_call_metadata
             return error_obs
-
-    async def _handle_message_action(self, action):
-        """Handle MessageAction by creating a UserMessageObservation."""
-        return UserMessageObservation(
-            content=action.content,
-            cause=action.id
-        )
 
     async def _handle_complete_action(self, action):
         """Handle CompleteAction by creating a SystemObservation."""

@@ -11,7 +11,7 @@ from ii_agent.events.action import (
     BrowseURLAction, BrowseInteractiveAction
 )
 from ii_agent.events.observation import (
-    Observation, UserMessageObservation, SystemObservation,
+    Observation, SystemObservation,
     FileReadObservation, FileWriteObservation, FileEditObservation
 )
 from ii_agent.events.action.mcp import MCPAction
@@ -273,9 +273,7 @@ class ConversationMemory:
 
     def _get_observation_content(self, observation: Observation) -> str:
         """Get text content for an observation."""
-        if isinstance(observation, UserMessageObservation):
-            return observation.message
-        elif isinstance(observation, SystemObservation):
+        if isinstance(observation, SystemObservation):
             return observation.content
         elif isinstance(observation, (
             FileReadObservation, FileWriteObservation, FileEditObservation
@@ -328,7 +326,7 @@ class ConversationMemory:
     def _has_initial_user_message(self, events: List[Event]) -> bool:
         """Check if events contain an initial user message."""
         for event in events:
-            if isinstance(event, (MessageAction, UserMessageObservation)):
+            if isinstance(event, (MessageAction)):
                 if event.source == EventSource.USER:
                     return True
         return False
