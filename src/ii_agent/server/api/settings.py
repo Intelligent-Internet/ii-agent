@@ -78,7 +78,9 @@ async def store_llm_settings(
             settings.sandbox_config.sandbox_api_key is None
             and existing_settings.sandbox_config.sandbox_api_key
         ):
+            tmp_mode = settings.sandbox_config.mode
             settings.sandbox_config = existing_settings.sandbox_config
+            settings.sandbox_config.mode = tmp_mode
         if (
             settings.third_party_integration_config is None
             and existing_settings.third_party_integration_config

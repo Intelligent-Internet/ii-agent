@@ -40,7 +40,7 @@ def get_home_directory(workspace_mode: WorkSpaceMode) -> str:
 def get_deploy_rules(workspace_mode: WorkSpaceMode) -> str:
     if workspace_mode != WorkSpaceMode.LOCAL:
         return """<deploy_rules>
-- You have access to all ports 10000-10099, you can deploy as many services as you want
+- You have access to all ports 3000-4000, you can deploy as many services as you want
 - All deployment should be run in a seperate session, and run on the foreground, do not use background process
 - If a port is already in use, you must use the next available port
 - Before all deployment, use register_deployment tool to register your service
