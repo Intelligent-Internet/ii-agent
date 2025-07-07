@@ -756,6 +756,31 @@ Please review this feedback and implement the suggested improvements to better c
         agent.session_id = session_id
         return agent
 
+    def _setup_logger(self, websocket: WebSocket) -> logging.Logger:
+        """Setup logger for the agent."""
+        logger_for_agent_logs = logging.getLogger(f"agent_logs_{id(websocket)}")
+        logger_for_agent_logs.setLevel(logging.DEBUG)
+        logger_for_agent_logs.propagate = False
+
+        # Ensure we don't duplicate handlers
+        if not logger_for_agent_logs.handlers:
+            logger_for_agent_logs.addHandler(logging.FileHandler(self.config.logs_path))
+            if not self.config.minimize_stdout_logs:
+                logger_for_agent_logs.addHandler(logging.StreamHandler())
+
+        return logger_for_agent_logs
+
+    def _create_context_manager(self, client: LLMClient, logger: logging.Logger):
+        """Create context manager based on configuration."""
+        token_counter = TokenCounter()
+
+        return LLMSummarizingContextManager(
+            client=client,
+            token_counter=token_counter,
+            logger=logger,
+            token_budget=self.config.token_budget,
+        )
+
     def _create_reviewer_agent(
         self,
         client: LLMClient,
