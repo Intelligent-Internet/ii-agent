@@ -209,7 +209,6 @@ class ReviewerController:
         if not resume:
             self.reviewer_agent.clear()
             self.interrupted = False
-            self.tool_manager.reset()
 
         # Set up initial review context
         review_instruction = f"""You are a reviewer agent tasked with evaluating the work done by a general agent. 

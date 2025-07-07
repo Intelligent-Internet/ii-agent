@@ -203,29 +203,41 @@ def get_system_tools(
             pass
         elif memory_tool == "simple":
             tools.append(SimpleMemoryTool())
+            
+        # Add complete tools based on mode
+        interactive_mode = tool_args.get("interactive_mode", True)
+        reviewer_mode = tool_args.get("reviewer_mode", False)
+        
+        if reviewer_mode:
+            if interactive_mode:
+                tools.append(ReturnControlToGeneralAgentTool())
+            else:
+                tools.append(CompleteToolReviewer())
+        else:
+            if interactive_mode:
+                tools.append(ReturnControlToUserTool())
+            else:
+                tools.append(CompleteTool())
 
     return tools
 
 
 class AgentToolManager:
     """
-    Manages the creation and execution of tools for the agent.
+    Manages the execution of tools for the agent.
 
     This class is responsible for:
-    - Initializing and managing all available tools
+    - Managing all available tools
     - Providing access to tools by name
     - Executing tools with appropriate inputs
+    - Converting actions to observations
     - Logging tool execution details
 
-    Tools include bash commands, browser interactions, file operations,
-    search capabilities, and task completion functionality.
+    The tool manager focuses solely on tool execution and does not
+    manage agent completion state, which is handled by the agent itself.
     """
 
-    def __init__(self, tools: List[LLMTool], interactive_mode: bool = True, reviewer_mode: bool = False):
-        if reviewer_mode:
-            self.complete_tool = ReturnControlToGeneralAgentTool() if interactive_mode else CompleteToolReviewer()
-        else:
-            self.complete_tool = ReturnControlToUserTool() if interactive_mode else CompleteTool()
+    def __init__(self, tools: List[LLMTool]):
         self.tools = tools
 
     def get_tool(self, tool_name: str) -> LLMTool:
@@ -286,29 +298,6 @@ class AgentToolManager:
 
         return tool_result
 
-    def should_stop(self):
-        """
-        Checks if the agent should stop based on the completion tool.
-
-        Returns:
-            bool: True if the agent should stop, False otherwise.
-        """
-        return self.complete_tool.should_stop
-
-    def get_final_answer(self):
-        """
-        Retrieves the final answer from the completion tool.
-
-        Returns:
-            str: The final answer from the completion tool.
-        """
-        return self.complete_tool.answer
-
-    def reset(self):
-        """
-        Resets the completion tool.
-        """
-        self.complete_tool.reset()
 
     def get_tools(self) -> list[LLMTool]:
         """
@@ -317,7 +306,7 @@ class AgentToolManager:
         Returns:
             list[LLMTool]: A list of all available tools.
         """
-        return self.tools + [self.complete_tool]
+        return self.tools
 
     async def handle_action(self, action):
         """
@@ -333,11 +322,7 @@ class AgentToolManager:
         try:
             # Handle different action types
             if isinstance(action, MCPAction):
-                return await self._handle_mcp_action(action)
-            elif isinstance(action, MessageAction):
-                raise NotImplementedError("MessageAction is not supported in tool manager")
-            elif isinstance(action, CompleteAction):
-                return await self._handle_complete_action(action)
+                return await self._handle_mcp_action(action) 
             elif isinstance(action, FileReadAction):
                 return await self._handle_file_read_action(action)
             elif isinstance(action, FileWriteAction):
@@ -407,14 +392,6 @@ class AgentToolManager:
             if hasattr(action, 'tool_call_metadata') and action.tool_call_metadata:
                 error_obs.tool_call_metadata = action.tool_call_metadata
             return error_obs
-
-    async def _handle_complete_action(self, action):
-        """Handle CompleteAction by creating a SystemObservation."""
-        return SystemObservation(
-            content=f"Task completed: {action.final_answer}",
-            event_type="task_completed",
-            cause=action.id
-        )
 
     async def _handle_file_read_action(self, action):
         """Handle FileReadAction by delegating to file_read tool."""
@@ -589,10 +566,3 @@ class AgentToolManager:
             cause=action.id
         )
 
-    # Legacy method for backward compatibility
-    async def run_tool_action(self, action):
-        """
-        Legacy method for backward compatibility.
-        Use handle_action instead.
-        """
-        return await self.handle_action(action)

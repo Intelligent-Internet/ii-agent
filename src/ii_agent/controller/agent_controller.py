@@ -234,7 +234,7 @@ class AgentController:
                     )
                 # Execute tool via tool manager: Action -> Observation
                 try:
-                    observation = await self.tool_manager.run_tool_action(action)
+                    observation = await self.tool_manager.handle_action(action)
                     self.state.add_event(observation)
                     
                     # Send tool result to message queue for real-time updates
@@ -250,19 +250,6 @@ class AgentController:
                         )
                     )
                     
-                    if self.tool_manager.should_stop():
-                        self.state.agent_state = AgentState.COMPLETED
-                        final_answer = self.tool_manager.get_final_answer()
-                        self.message_queue.put_nowait(
-                            RealtimeEvent(
-                                type=EventType.AGENT_RESPONSE,
-                                content={"text": final_answer},
-                            )
-                        )
-                        return ToolImplOutput(
-                            tool_output=final_answer,
-                            tool_result_message="Task completed",
-                        )
                         
                 except Exception as e:
                     logger.error(f"Tool execution failed: {e}")
