@@ -27,7 +27,7 @@ class Settings(BaseModel):
     sandbox_config: SandboxConfig = Field(default_factory=SandboxConfig)
     client_config: ClientConfig | None = Field(default=None)
     third_party_integration_config: ThirdPartyIntegrationConfig | None = Field(
-        default=None
+        default=ThirdPartyIntegrationConfig()
     )
 
     model_config = {

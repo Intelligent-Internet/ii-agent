@@ -18,11 +18,11 @@ class E2BSandbox(BaseSandbox):
             api_key=self.settings.sandbox_config.sandbox_api_key.get_secret_value(),
             timeout=3600,
         )
-        self.host_url = self.sandbox.get_host(self.settings.sandbox_config.service_port)
+        self.host_url = self.expose_port(self.settings.sandbox_config.service_port)
         self.sandbox_id = self.sandbox.sandbox_id
 
     def expose_port(self, port: int) -> str:
-        return self.sandbox.get_host(port)
+        return "https://" + self.sandbox.get_host(port)
 
     async def stop(self):
         pass
