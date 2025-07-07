@@ -41,7 +41,7 @@ dependencies = [
     "uvicorn[standard]>=0.29.0,<0.30.0",
     "youtube-transcript-api>=1.0.3",
     "docker>=7.1.0",
-    "e2b-code-interpreter>=1.5.1",
+    "e2b-code-interpreter==1.2.0b5",
     "alembic>=1.16.1",
 ]
 

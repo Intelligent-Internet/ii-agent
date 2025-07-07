@@ -1,5 +1,4 @@
 from typing import Any, Optional
-import os
 
 
 from ii_agent.core.storage.models.settings import Settings
@@ -30,9 +29,12 @@ class OpenAILLMTool(LLMTool):
     def _get_api_key(self) -> str:
         return (
             self.settings.third_party_integration_config.openai_api_key.get_secret_value()
-            if self.settings.third_party_integration_config
-            else os.getenv("OPENAI_API_KEY_TMP")
+            if self.settings.third_party_integration_config.openai_api_key
+            else None
         )
+
+    def is_available(self) -> bool:
+        return self._get_api_key() is not None
 
     async def run_impl(
         self,

@@ -5,7 +5,7 @@ from pathlib import Path
 from sqlalchemy import asc, create_engine, text
 from sqlalchemy.orm import Session as DBSession, sessionmaker
 from ii_agent.core.config.utils import load_ii_agent_config
-from ii_agent.db.models import Base, Session, Event
+from ii_agent.db.models import Session, Event
 from ii_agent.core.event import EventType, RealtimeEvent
 from ii_agent.core.config.ii_agent_config import II_AGENT_DIR
 from ii_agent.core.logger import logger
@@ -26,10 +26,16 @@ def run_migrations():
         logger.error(f"Error running migrations: {e}")
         raise
 
+
 run_migrations()
 
-engine = create_engine(load_ii_agent_config().database_url, connect_args={"check_same_thread": False})
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine, expire_on_commit=False)
+engine = create_engine(
+    load_ii_agent_config().database_url, connect_args={"check_same_thread": False}
+)
+SessionLocal = sessionmaker(
+    autocommit=False, autoflush=False, bind=engine, expire_on_commit=False
+)
+
 
 @contextmanager
 def get_db() -> Generator[DBSession, None, None]:
@@ -57,6 +63,7 @@ class SessionsTable:
         session_uuid: uuid.UUID,
         workspace_path: Path,
         device_id: Optional[str] = None,
+        sandbox_id: Optional[str] = None,
     ) -> tuple[uuid.UUID, Path]:
         """Create a new session with a UUID-based workspace directory.
 
@@ -64,6 +71,7 @@ class SessionsTable:
             session_uuid: The UUID for the session
             workspace_path: The path to the workspace directory
             device_id: Optional device identifier for the session
+            sandbox_id: Optional sandbox identifier for the session
 
         Returns:
             A tuple of (session_uuid, workspace_path)
@@ -71,7 +79,10 @@ class SessionsTable:
         # Create session in database
         with get_db() as db:
             db_session = Session(
-                id=session_uuid, workspace_dir=str(workspace_path), device_id=device_id
+                id=session_uuid,
+                workspace_dir=str(workspace_path),
+                device_id=device_id,
+                sandbox_id=sandbox_id,
             )
             db.add(db_session)
             db.flush()  # This will populate the id field
@@ -89,9 +100,7 @@ class SessionsTable:
         """
         with get_db() as db:
             return (
-                db.query(Session)
-                .filter(Session.workspace_dir == workspace_dir)
-                .first()
+                db.query(Session).filter(Session.workspace_dir == workspace_dir).first()
             )
 
     def get_session_by_id(self, session_id: uuid.UUID) -> Optional[Session]:
@@ -131,9 +140,39 @@ class SessionsTable:
                 db_session.name = name
                 db.flush()
 
+    def get_sandbox_id_by_session_id(self, session_id: uuid.UUID) -> Optional[str]:
+        """Get the sandbox_id of a session.
+
+        Args:
+            session_id: The UUID of the session to get the sandbox_id for
+
+        Returns:
+            The sandbox_id if found, None otherwise
+        """
+        with get_db() as db:
+            return (
+                db.query(Session)
+                .filter(Session.id == str(session_id))
+                .first()
+                .sandbox_id
+            )
+
+    def update_session_sandbox_id(self, session_id: uuid.UUID, sandbox_id: str) -> None:
+        """Update the sandbox_id of a session.
+
+        Args:
+            session_id: The UUID of the session to update
+            sandbox_id: The new sandbox_id for the session
+        """
+        with get_db() as db:
+            db_session = db.query(Session).filter(Session.id == str(session_id)).first()
+            if db_session:
+                db_session.sandbox_id = sandbox_id
+                db.flush()
+
     def get_sessions_by_device_id(self, device_id: str) -> List[dict]:
         """Get all sessions for a specific device ID, sorted by creation time descending.
-        
+
         Args:
             device_id: The device identifier to look up sessions for
 
@@ -148,7 +187,8 @@ class SessionsTable:
                 session.workspace_dir,
                 session.created_at,
                 session.device_id,
-                session.name
+                session.name,
+                session.sandbox_id
             FROM session
             WHERE session.device_id = :device_id
             ORDER BY session.created_at DESC
@@ -166,6 +206,7 @@ class SessionsTable:
                     "created_at": row.created_at,
                     "device_id": row.device_id,
                     "name": row.name or "",
+                    "sandbox_id": row.sandbox_id,
                 }
                 sessions.append(session_data)
 
@@ -205,9 +246,7 @@ class EventsTable:
             A list of events for the session
         """
         with get_db() as db:
-            return (
-                db.query(Event).filter(Event.session_id == str(session_id)).all()
-            )
+            return db.query(Event).filter(Event.session_id == str(session_id)).all()
 
     def delete_session_events(self, session_id: uuid.UUID) -> None:
         """Delete all events for a session.
@@ -221,7 +260,7 @@ class EventsTable:
     def delete_events_from_last_to_user_message(self, session_id: uuid.UUID) -> None:
         """Delete events from the most recent event backwards to the last user message (inclusive).
         This preserves the conversation history before the last user message.
-        
+
         Args:
             session_id: The UUID of the session to delete events for
         """
@@ -245,9 +284,7 @@ class EventsTable:
                 ).delete()
             else:
                 # If no user message found, delete all events
-                db.query(Event).filter(
-                    Event.session_id == str(session_id)
-                ).delete()
+                db.query(Event).filter(Event.session_id == str(session_id)).delete()
 
     def get_session_events_with_details(self, session_id: str) -> List[dict]:
         """Get all events for a specific session ID with session details, sorted by timestamp ascending.
