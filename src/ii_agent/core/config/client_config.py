@@ -12,3 +12,6 @@ class ClientConfig(BaseModel):
     default_shell: str = "/bin/bash"
     default_timeout: int = 600
     cwd: Optional[str] = None
+
+    def update(self, settings: "ClientConfig"):
+        pass

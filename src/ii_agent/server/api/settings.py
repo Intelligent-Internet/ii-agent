@@ -61,33 +61,7 @@ async def store_llm_settings(
 ) -> Settings:
     existing_settings = await settings_store.load()
     if existing_settings:
-        if settings.llm_configs and existing_settings.llm_configs:
-            merged_configs = settings.llm_configs.copy()
-
-            for model_name in merged_configs.keys():
-                if merged_configs[model_name].api_key is None:
-                    merged_configs[model_name].api_key = existing_settings.llm_configs[
-                        model_name
-                    ].api_key
-            settings.llm_configs = merged_configs
-
-        # Keep existing search config if not provided
-        if settings.search_config is None and existing_settings.search_config:
-            settings.search_config = existing_settings.search_config
-        if (
-            settings.sandbox_config.sandbox_api_key is None
-            and existing_settings.sandbox_config.sandbox_api_key
-        ):
-            tmp_mode = settings.sandbox_config.mode
-            settings.sandbox_config = existing_settings.sandbox_config
-            settings.sandbox_config.mode = tmp_mode
-        if (
-            settings.third_party_integration_config is None
-            and existing_settings.third_party_integration_config
-        ):
-            settings.third_party_integration_config = (
-                existing_settings.third_party_integration_config
-            )
+        settings.update(existing_settings)
 
     return settings
 
