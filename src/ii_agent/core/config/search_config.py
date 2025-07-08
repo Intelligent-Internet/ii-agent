@@ -37,11 +37,11 @@ class SearchConfig(BaseModel):
         return pydantic_encoder(api_key)
 
     def update(self, settings: "SearchConfig"):
-        if settings.firecrawl_api_key:
+        if settings.firecrawl_api_key and self.firecrawl_api_key is None:
             self.firecrawl_api_key = settings.firecrawl_api_key
-        if settings.serpapi_api_key:
+        if settings.serpapi_api_key and self.serpapi_api_key is None:
             self.serpapi_api_key = settings.serpapi_api_key
-        if settings.tavily_api_key:
+        if settings.tavily_api_key and self.tavily_api_key is None:
             self.tavily_api_key = settings.tavily_api_key
-        if settings.jina_api_key:
+        if settings.jina_api_key and self.jina_api_key is None:
             self.jina_api_key = settings.jina_api_key

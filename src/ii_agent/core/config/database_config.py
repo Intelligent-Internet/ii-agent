@@ -33,9 +33,9 @@ class ThirdPartyIntegrationConfig(BaseModel):
         return pydantic_encoder(api_key)
 
     def update(self, settings: "ThirdPartyIntegrationConfig"):
-        if settings.neon_db_api_key:
+        if settings.neon_db_api_key and self.neon_db_api_key is None:
             self.neon_db_api_key = settings.neon_db_api_key
-        if settings.openai_api_key:
+        if settings.openai_api_key and self.openai_api_key is None:
             self.openai_api_key = settings.openai_api_key
-        if settings.vercel_api_key:
+        if settings.vercel_api_key and self.vercel_api_key is None:
             self.vercel_api_key = settings.vercel_api_key

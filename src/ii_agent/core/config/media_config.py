@@ -41,11 +41,11 @@ class MediaConfig(BaseModel):
         return pydantic_encoder(api_key)
 
     def update(self, settings: "MediaConfig"):
-        if settings.gcp_project_id:
+        if settings.gcp_project_id and self.gcp_project_id is None:
             self.gcp_project_id = settings.gcp_project_id
-        if settings.gcp_location:
+        if settings.gcp_location and self.gcp_location is None:
             self.gcp_location = settings.gcp_location
-        if settings.gcs_output_bucket:
+        if settings.gcs_output_bucket and self.gcs_output_bucket is None:
             self.gcs_output_bucket = settings.gcs_output_bucket
-        if settings.google_ai_studio_api_key:
+        if settings.google_ai_studio_api_key and self.google_ai_studio_api_key is None:
             self.google_ai_studio_api_key = settings.google_ai_studio_api_key

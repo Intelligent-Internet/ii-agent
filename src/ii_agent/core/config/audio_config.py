@@ -21,9 +21,9 @@ class AudioConfig(BaseModel):
     )
 
     def update(self, settings: "AudioConfig"):
-        if settings.openai_api_key:
+        if settings.openai_api_key and self.openai_api_key is None:
             self.openai_api_key = settings.openai_api_key
-        if settings.azure_endpoint:
+        if settings.azure_endpoint and self.azure_endpoint is None:
             self.azure_endpoint = settings.azure_endpoint
-        if settings.azure_api_version:
+        if settings.azure_api_version and self.azure_api_version is None:
             self.azure_api_version = settings.azure_api_version
