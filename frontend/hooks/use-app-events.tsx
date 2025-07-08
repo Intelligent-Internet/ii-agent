@@ -20,7 +20,7 @@ export function useAppEvents({
 
   useEffect(() => {
     messagesRef.current = state.messages;
-  }, [state.messages]);
+  }, [JSON.stringify(state.messages)]);
 
   // Create a custom dispatch function that updates messagesRef immediately
   const safeDispatch = useCallback(

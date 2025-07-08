@@ -63,22 +63,6 @@ You can view the full traces of some samples here: [GAIA Benchmark Traces](https
 > - For fast and cheap, we recommend using GPT4.1 from OpenAI.
 > - Gemini 2.5 Pro is a good balance between performance and cost.
 
-## Environment
-
-You need to set up `.env` files to run frontend.
-
-**Shortcut:** Check file `.env.example` for example of `.env` file.
-
-For the frontend, create a `.env` file in the frontend directory, point to the port of your backend:
-
-```bash
-NEXT_PUBLIC_API_URL=http://localhost:8000
-NEXT_PUBLIC_BASE_URL=http://localhost:3000
-GOOGLE_API_KEY=<your_google_api_key> # Optional, for Google Drive integration
-GOOGLE_CLIENT_ID=<your_google_client_id> # Optional, for Google Drive integration
-GOOGLE_CLIENT_SECRET=<your_google_client_secret> # Optional, for Google Drive integration
-```
-
 ## Installation
 
 ### Docker Installation (Recommended)
@@ -87,73 +71,32 @@ GOOGLE_CLIENT_SECRET=<your_google_client_secret> # Optional, for Google Drive in
 2. Set up the environment as mentioned in the above step
 3. If you are using Anthropic Client run
 
+<img width="821" alt="Screenshot 2025-07-08 at 17 50 34" src="https://github.com/user-attachments/assets/094f73aa-7384-4500-a670-528853f92ae7" />
+
+
 ```
-docker compose up
+chmod +x start.sh
+./start.sh
 ```
 Our II-Agent supports popular models such as Claude, Gemini, and OpenAI. If you’d like to use a model from OpenRouter, simply configure your OpenAI endpoint with your OpenRouter API key.
 If you are using Vertex, run with these variables
 
 ```
-GOOGLE_APPLICATION_CREDENTIALS=absolute-path-to-credential docker compose up
+chmod +x start.sh
+GOOGLE_APPLICATION_CREDENTIALS=absolute-path-to-credential ./start.sh
 ```
 
-### Docker with Sandbox Installation (Experimental)
-Each Agent session will have access to a seperate Sandbox. We are still experimenting with this mode. To test, run:
-```
-COMPOSE_PROFILE=sandbox \
-./start.sh
-```
 
-### Manual Installation
 
-1. Clone the repository
-2. Set up Python environment:
+(Optional) You can fill Google API credentials to connect to google drive. Press enter to skip these steps
 
-   ```bash
-   python -m venv .venv
-   source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-   pip install -e .
-   ```
+### Runtime Environment
 
-3. Set up frontend (optional):
-   ```bash
-   cd frontend
-   npm install
-   ```
+<img width="821" alt="Screenshot 2025-07-08 at 17 48 08" src="https://github.com/user-attachments/assets/b1fb9f11-b1ef-4f62-bbea-9b67eba45322" />
 
-### Web Interface
+You can now select from a variety of models, set your API key, and configure environments—all directly from the frontend settings page—to equip your agents with powerful tools and capabilities. You can also change the agents' runtime environment. Currently, we support three runtime modes: Local, Docker, and E2B. For full-stack web application development, Docker and E2B are highly recommended, while Local Mode is best suited for lighter tasks such as basic webpage building and research.
 
-1. Start the WebSocket server:
-
-When using Anthropic client:
-
-```bash
-STATIC_FILE_BASE_URL=http://localhost:8000 python ws_server.py --port 8000
-```
-
-When using Vertex:
-
-```bash
-GOOGLE_APPLICATION_CREDENTIALS=path-to-your-credential STATIC_FILE_BASE_URL=http://localhost:8000 python ws_server.py --port 8000
-```
-
-2. Start the frontend (in a separate terminal):
-
-```bash
-cd frontend
-npm run dev
-```
-
-3. Open your browser to http://localhost:3000
-
-## Project Structure
-
-- `ws_server.py`: WebSocket server for the frontend
-- `src/ii_agent/`: Core agent implementation
-  - `agents/`: Agent implementations
-  - `llm/`: LLM client interfaces
-  - `tools/`: Tool implementations
-  - `utils/`: Utility functions
+In addition, agents come equipped with built-in NeonDB and Vercel integration, enabling seamless cloud deployment of full-stack applications using a serverless database and serverless infrastructure.
 
 ## Core Capabilities
 
@@ -165,6 +108,7 @@ II-Agent is a versatile open-source assistant built to elevate your productivity
 | Content Generation            | Blog & article drafts, lesson plans, creative prose, technical manuals, Website creations                  |
 | Data Analysis & Visualization | Cleaning, statistics, trend detection, charting, and automated report generation                           |
 | Software Development          | Code synthesis, refactoring, debugging, test‑writing, and step‑by‑step tutorials across multiple languages |
+| Dynamic Website Development |Full-stack web application creation with live hosting, framework templates, and real-time deployment     |
 | Workflow Automation           | Script generation, browser automation, file management, process optimization                               |
 | Problem Solving               | Decomposition, alternative‑path exploration, stepwise guidance, troubleshooting                            |
 

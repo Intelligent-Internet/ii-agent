@@ -26,3 +26,13 @@ class SandboxConfig(BaseModel):
             return api_key.get_secret_value()
 
         return pydantic_encoder(api_key)
+
+    def update(self, settings: "SandboxConfig"):
+        if settings.sandbox_api_key and self.sandbox_api_key is None:
+            self.sandbox_api_key = settings.sandbox_api_key
+        if settings.service_port and self.service_port is None:
+            self.service_port = settings.service_port
+        if settings.mode and self.mode is None:
+            self.mode = settings.mode
+        if settings.template_id and self.template_id is None:
+            self.template_id = settings.template_id

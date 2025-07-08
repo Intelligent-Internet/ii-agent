@@ -62,7 +62,6 @@ const QuestionInput = ({
   textareaClassName,
   placeholder,
   value,
-  setValue,
   handleKeyDown,
   handleSubmit,
   isDisabled,
@@ -74,6 +73,7 @@ const QuestionInput = ({
   const [files, setFiles] = useState<FileUploadStatus[]>([]);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isGDriveAuthLoading, setIsGDriveAuthLoading] = useState(false);
+  const [currentTextareaValue, setCurrentTextareaValue] = useState(value);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -113,12 +113,28 @@ const QuestionInput = ({
           }
         }
       } else {
-        // Original behavior for Enter key
-        handleKeyDown(e);
+        // For Enter key, get current value from textarea and pass to handleSubmit
+        e.preventDefault();
+        const currentValue = textareaRef.current?.value || "";
+        if (currentValue.trim()) {
+          handleSubmit(currentValue);
+          // Clear the textarea after submission
+          if (textareaRef.current) {
+            textareaRef.current.value = "";
+            setCurrentTextareaValue("");
+          }
+        }
       }
     } else {
-      // Pass other key events to the original handler
-      handleKeyDown(e);
+      // Pass other key events to the original handler, but modify to work with uncontrolled input
+      const modifiedEvent = {
+        ...e,
+        target: {
+          ...e.target,
+          value: textareaRef.current?.value || "",
+        },
+      } as React.KeyboardEvent<HTMLTextAreaElement>;
+      handleKeyDown(modifiedEvent);
     }
   };
 
@@ -561,6 +577,14 @@ const QuestionInput = ({
     }
   }, [state.requireClearFiles, dispatch, files]);
 
+  // Sync textarea value when parent value changes (e.g., clearing after submission)
+  useEffect(() => {
+    if (textareaRef.current && textareaRef.current.value !== value) {
+      textareaRef.current.value = value;
+      setCurrentTextareaValue(value);
+    }
+  }, [value]);
+
   return (
     <motion.div
       key="input-view"
@@ -689,8 +713,11 @@ const QuestionInput = ({
             placeholder ||
             "Enter your research query or complex question for in-depth analysis..."
           }
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
+          defaultValue={value}
+          onChange={(e) => {
+            const newValue = e.target.value;
+            setCurrentTextareaValue(newValue);
+          }}
           onKeyDown={handleKeyDownWithAutoScroll}
           onPaste={handlePaste}
           ref={textareaRef}
@@ -782,10 +809,14 @@ const QuestionInput = ({
                   variant="ghost"
                   size="icon"
                   className="hover:bg-gray-700/50 size-10 rounded-full cursor-pointer border border-[#ffffff0f] shadow-sm"
-                  onClick={handleEnhancePrompt}
+                  onClick={() => {
+                    if (handleEnhancePrompt) {
+                      handleEnhancePrompt();
+                    }
+                  }}
                   disabled={
                     state.isGeneratingPrompt ||
-                    !value.trim() ||
+                    !currentTextareaValue.trim() ||
                     isDisabled ||
                     state.isLoading ||
                     state.isUploading
@@ -815,12 +846,22 @@ const QuestionInput = ({
             ) : (
               <Button
                 disabled={
-                  !value.trim() ||
+                  !currentTextareaValue.trim() ||
                   isDisabled ||
                   state.isLoading ||
                   state.isUploading
                 }
-                onClick={() => handleSubmit(value)}
+                onClick={() => {
+                  const currentValue = textareaRef.current?.value || "";
+                  if (currentValue.trim()) {
+                    handleSubmit(currentValue);
+                    // Clear the textarea after submission
+                    if (textareaRef.current) {
+                      textareaRef.current.value = "";
+                      setCurrentTextareaValue("");
+                    }
+                  }
+                }}
                 className="cursor-pointer !border !border-red p-4 size-10 font-bold bg-gradient-skyblue-lavender rounded-full hover:scale-105 active:scale-95 transition-transform shadow-[0_4px_10px_rgba(0,0,0,0.2)]"
               >
                 <ArrowUp className="size-5" />
