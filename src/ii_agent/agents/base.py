@@ -15,7 +15,7 @@ class BaseAgent(ABC):
 
 
     @abstractmethod
-    def step(self, state) -> "Action":
+    def step(self, state) -> Action:
         pass
 
     @property

@@ -281,12 +281,14 @@ class AgentToolManager:
         log_message = f"Calling tool {tool_name} with input:\n{tool_input_str}"
         if isinstance(result, str):
             log_message += f"\nTool output: \n{result}\n\n"
-        else:
+        elif isinstance(result, list):
             result_to_log = deepcopy(result)
             for i in range(len(result_to_log)):
-                if result_to_log[i].get("type") == "image":
+                if isinstance(result_to_log[i], dict) and result_to_log[i].get("type") == "image":
                     result_to_log[i]["source"]["data"] = "[REDACTED]"
             log_message += f"\nTool output: \n{result_to_log}\n\n"
+        else:
+            log_message += f"\nTool output: \n{result}\n\n"
 
         logger.info(log_message)
 
@@ -320,8 +322,8 @@ class AgentToolManager:
         """
         if not action.runnable:
             if isinstance(action, AgentThinkAction):
-                return AgentThinkObservation("Your thought has been recorded")
-            return NullObservation('') # TODO: not any yet
+                return AgentThinkObservation(content="Your thought has been recorded")
+            return NullObservation(content='') # TODO: not any yet
 
         try:
             # Unified tool execution
@@ -349,7 +351,7 @@ class AgentToolManager:
         metadata = action.tool_call_metadata
         if metadata:
             tool_name = metadata.function_name
-        elif hasattr(action, 'name'):
+        elif hasattr(action, 'name') and action.name:
             tool_name = action.name
         else:
             error_msg = f"Action {type(action).__name__} has no tool name or metadata"

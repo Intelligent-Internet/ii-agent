@@ -210,7 +210,7 @@ class AgentController:
                     RealtimeEvent(
                         type=EventType.TOOL_CALL,
                         content={
-                            "tool_call_id": getattr(action.tool_call_metadata, 'tool_call_id', '') if hasattr(action, 'tool_call_metadata') and action.tool_call_metadata else getattr(action, 'id', ''),
+                            "tool_call_id": action.tool_call_metadata.tool_call_id if action.tool_call_metadata else action.id, #TODO: remove tool_call_id
                             "tool_name": action.name,
                             "tool_input": action.arguments,
                         },
@@ -225,8 +225,7 @@ class AgentController:
                         cause=action.id
                     )
                     # Transfer tool_call_metadata from action to observation
-                    if hasattr(action, 'tool_call_metadata') and action.tool_call_metadata:
-                        tool_obs.tool_call_metadata = action.tool_call_metadata
+                    tool_obs.tool_call_metadata = action.tool_call_metadata
                     self.state.add_event(tool_obs)
                     return ToolImplOutput(
                         tool_output=TOOL_RESULT_INTERRUPT_MESSAGE,
@@ -242,7 +241,7 @@ class AgentController:
                         RealtimeEvent(
                             type=EventType.TOOL_RESULT,
                             content={
-                                "tool_call_id": getattr(action.tool_call_metadata, 'tool_call_id', '') if hasattr(action, 'tool_call_metadata') and action.tool_call_metadata else getattr(action, 'id', ''),
+                                "tool_call_id": action.tool_call_metadata.tool_call_id if action.tool_call_metadata else action.id, #TODO: remove tool_call_id
                                 "tool_name": action.name,
                                 "result": observation.content,
                                 "observation_id": observation.id,
@@ -265,7 +264,7 @@ class AgentController:
                         RealtimeEvent(
                             type=EventType.ERROR,
                             content={
-                                "tool_call_id": getattr(action.tool_call_metadata, 'tool_call_id', '') if hasattr(action, 'tool_call_metadata') and action.tool_call_metadata else getattr(action, 'id', ''),
+                                "tool_call_id": action.tool_call_metadata.tool_call_id if action.tool_call_metadata else action.id, #TODO: remove tool_call_id
                                 "tool_name": action.name,
                                 "error": str(e),
                                 "observation_id": error_obs.id,
