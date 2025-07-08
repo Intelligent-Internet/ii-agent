@@ -24,7 +24,7 @@ class Settings(BaseModel):
     search_config: SearchConfig | None = Field(default=None)
     media_config: MediaConfig | None = Field(default=None)
     audio_config: AudioConfig | None = Field(default=None)
-    sandbox_config: SandboxConfig = Field(default_factory=SandboxConfig)
+    sandbox_config: SandboxConfig | None = Field(default=None)
     client_config: ClientConfig | None = Field(default=None)
     third_party_integration_config: ThirdPartyIntegrationConfig | None = Field(
         default=None

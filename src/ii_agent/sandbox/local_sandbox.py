@@ -8,8 +8,8 @@ from ii_agent.utils.constants import WorkSpaceMode
 class LocalSandbox(BaseSandbox):
     mode: WorkSpaceMode = WorkSpaceMode.LOCAL
 
-    def __init__(self, container_name: str, settings: Settings):
-        super().__init__(container_name=container_name, settings=settings)
+    def __init__(self, session_id: str, settings: Settings):
+        super().__init__(session_id=session_id, settings=settings)
 
     async def start(self):
         pass

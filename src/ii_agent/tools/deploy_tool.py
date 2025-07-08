@@ -58,8 +58,8 @@ class DeployTool(LLMTool):
         self.workspace_manager = workspace_manager
         self.vercel_api_key = (
             settings.third_party_integration_config.vercel_api_key.get_secret_value()
-            if settings.third_party_integration_config
-            else os.getenv("VERCEL_TOKEN")
+            if settings.third_party_integration_config.vercel_api_key
+            else None
         )
 
     async def run_impl(

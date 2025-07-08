@@ -8,7 +8,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 from pydantic import ValidationError
 
 from ii_agent.core.config.client_config import ClientConfig
-from ii_agent.llm.base import ToolCall, TextPrompt
+from ii_agent.llm.base import ToolCall
 from ii_agent.agents.base import BaseAgent
 from ii_agent.agents.reviewer import ReviewerAgent
 from ii_agent.core.event import RealtimeEvent, EventType
@@ -192,6 +192,25 @@ class ChatSession:
                 session_id=str(self.session_uuid),
                 settings=settings,
             )
+
+            device_id = self.websocket.query_params.get("device_id")
+            session_id = workspace_manager.session_id
+            # Check and create database session
+            existing_session = Sessions.get_session_by_id(session_id)
+            if existing_session:
+                logger.info(
+                    f"Found existing session {session_id} with workspace at {existing_session.workspace_dir}"
+                )
+            else:
+                # Create new session if it doesn't exist
+                Sessions.create_session(
+                    device_id=device_id,
+                    session_uuid=session_id,
+                    workspace_path=workspace_manager.root,
+                )
+                logger.info(
+                    f"Created new session {session_id} with workspace at {workspace_manager.root}"
+                )
 
             sandbox_manager = SandboxManager(
                 session_id=self.session_uuid, settings=settings
@@ -442,7 +461,7 @@ class ChatSession:
         try:
             command_parts = command.split()
             command_name = command_parts[0].lower()
-            
+
             if command_name == "/compact":
                 await self._handle_compact_command()
             elif command_name == "/help":
@@ -451,7 +470,9 @@ class ChatSession:
                 await self.send_event(
                     RealtimeEvent(
                         type=EventType.ERROR,
-                        content={"message": f"Unknown command: {command_name}. Use /help to see available commands."},
+                        content={
+                            "message": f"Unknown command: {command_name}. Use /help to see available commands."
+                        },
                     )
                 )
                 # Signal completion for unknown command
@@ -483,7 +504,9 @@ class ChatSession:
                 await self.send_event(
                     RealtimeEvent(
                         type=EventType.ERROR,
-                        content={"message": "No conversation history available to compact."},
+                        content={
+                            "message": "No conversation history available to compact."
+                        },
                     )
                 )
                 await self.send_event(
@@ -496,13 +519,15 @@ class ChatSession:
 
             # Get the full conversation history as message lists
             message_lists = self.agent.history.get_messages_for_llm()
-            
+
             # If history is empty, return early
             if not message_lists:
                 await self.send_event(
                     RealtimeEvent(
                         type=EventType.ERROR,
-                        content={"message": "No conversation history available to compact."},
+                        content={
+                            "message": "No conversation history available to compact."
+                        },
                     )
                 )
                 await self.send_event(
@@ -524,9 +549,9 @@ class ChatSession:
             # Use the context manager's new method to generate the complete summary
             summary_response = await asyncio.to_thread(
                 self.agent.history._context_manager.generate_complete_conversation_summary,
-                message_lists
+                message_lists,
             )
-            
+
             # Format the summary for display
             compact_summary = f"""## Conversation Summary
 
@@ -539,7 +564,7 @@ class ChatSession:
 
             # Clear the conversation history and start fresh with the summary
             self.agent.history.clear()
-            
+
             # Add the summary as the new conversation starting point
             summary_message = f"This session is being continued from a previous conversation that ran out of context. The conversation is summarized below:\n\n{summary_response}"
             self.agent.history.add_user_prompt(summary_message)
@@ -550,11 +575,11 @@ class ChatSession:
                     type=EventType.SYSTEM,
                     content={
                         "message": f"Conversation compacted successfully. History has been summarized and condensed. This is the summarize {compact_summary}",
-                        "summary": compact_summary
+                        "summary": compact_summary,
                     },
                 )
             )
-            
+
             # Signal that processing is complete
             await self.send_event(
                 RealtimeEvent(
@@ -589,14 +614,14 @@ class ChatSession:
 ### Command Usage
 - `/compact`: Analyzes the entire conversation history and creates a detailed summary, then clears the history and starts fresh with the summary as context. This helps when approaching token limits or when you want to preserve context while starting fresh.
 """
-        
+
         await self.send_event(
             RealtimeEvent(
                 type=EventType.SYSTEM,
                 content={"message": help_text},
             )
         )
-        
+
         # Signal that processing is complete
         await self.send_event(
             RealtimeEvent(
@@ -853,8 +878,6 @@ Please review this feedback and implement the suggested improvements to better c
         Returns:
             Configured agent instance
         """
-        device_id = websocket.query_params.get("device_id")
-        session_id = workspace_manager.session_id
 
         # Setup logging
         logger_for_agent_logs = logging.getLogger(f"agent_logs_{id(websocket)}")
@@ -866,23 +889,6 @@ Please review this feedback and implement the suggested improvements to better c
             logger_for_agent_logs.addHandler(logging.FileHandler(self.config.logs_path))
             if not self.config.minimize_stdout_logs:
                 logger_for_agent_logs.addHandler(logging.StreamHandler())
-
-        # Check and create database session
-        existing_session = Sessions.get_session_by_id(session_id)
-        if existing_session:
-            logger.info(
-                f"Found existing session {session_id} with workspace at {existing_session.workspace_dir}"
-            )
-        else:
-            # Create new session if it doesn't exist
-            Sessions.create_session(
-                device_id=device_id,
-                session_uuid=session_id,
-                workspace_path=workspace_manager.root,
-            )
-            logger.info(
-                f"Created new session {session_id} with workspace at {workspace_manager.root}"
-            )
 
         # Create context manager
         token_counter = TokenCounter()

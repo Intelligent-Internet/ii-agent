@@ -118,15 +118,20 @@ def get_system_tools(
                     terminal_client=terminal_client,
                     system_prompt_builder=system_prompt_builder,
                 ),
-                DatabaseConnection(settings=settings),
-                OpenAILLMTool(settings=settings),
+            ]
+        )
+        if settings.third_party_integration_config.vercel_api_key:
+            tools.append(
                 DeployTool(
                     terminal_client=terminal_client,
                     workspace_manager=workspace_manager,
                     settings=settings,
-                ),
-            ]
-        )
+                )
+            )
+        if settings.third_party_integration_config.neon_db_api_key:
+            tools.append(DatabaseConnection(settings=settings))
+        if settings.third_party_integration_config.openai_api_key:
+            tools.append(OpenAILLMTool(settings=settings))
 
     # Shell tools
     tools.extend(

@@ -11,11 +11,11 @@ class BaseSandbox(ABC):
     sandbox_id: str | None = None
     host_url: str | None = None
 
-    def __init__(self, container_name: str = None, settings: Settings = None):
+    def __init__(self, session_id: str = None, settings: Settings = None):
         """
         Initializes a sandbox instance.
         """
-        self.container_name = container_name
+        self.session_id = session_id
         self.settings = settings
 
     def get_host_url(self) -> str:

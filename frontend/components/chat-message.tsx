@@ -92,7 +92,7 @@ const ChatMessage = ({
     if (state.messages.length > 0 && !userHasScrolledUp) {
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
-  }, [state.messages, userHasScrolledUp]);
+  }, [state.messages?.length, userHasScrolledUp]);
 
   const handleJumpToResult = () => {
     if (processAllEventsImmediately) {
@@ -132,10 +132,10 @@ const ChatMessage = ({
       <motion.div
         className={`p-4 pt-0 w-full h-full ${
           isReplayMode && !showQuestionInput
-            ? "max-h-[calc(100vh-167px)]"
+            ? "max-h-[calc(100vh-182px)]"
             : pendingFilesCount > 0
             ? "max-h-[calc(100vh-330px)]"
-            : "max-h-[calc(100vh-264px)]"
+            : "max-h-[calc(100vh-252px)]"
         } overflow-y-auto relative`}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
@@ -288,6 +288,10 @@ const ChatMessage = ({
                 } ${
                   state.editingMessage?.id === message.id
                     ? "w-full max-w-none"
+                    : ""
+                } ${
+                  message.content?.startsWith("```Thinking:")
+                    ? "agent-thinking w-full"
                     : ""
                 }`}
                 initial={{ scale: 0.9 }}

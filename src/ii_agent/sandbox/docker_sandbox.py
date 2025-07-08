@@ -39,7 +39,7 @@ class DockerSandbox(BaseSandbox):
             config: Sandbox configuration. Default configuration used if None.
             volume_bindings: Volume mappings in {host_path: container_path} format.
         """
-        super().__init__(container_name=container_name, settings=settings)
+        super().__init__(session_id=container_name, settings=settings)
         self.config = SandboxSettings()
         self.volume_bindings = {
             load_ii_agent_config().host_workspace
@@ -56,11 +56,11 @@ class DockerSandbox(BaseSandbox):
 
     async def connect(self):
         self.host_url = (
-            f"http://{self.container_name}:{self.settings.sandbox_config.service_port}"
+            f"http://{self.session_id}:{self.settings.sandbox_config.service_port}"
         )
 
     def expose_port(self, port: int) -> str:
-        public_url = f"http://{self.container_name}-{port}.{os.getenv('BASE_URL')}"
+        public_url = f"http://{self.session_id}-{port}.{os.getenv('BASE_URL')}"
         return public_url
 
     async def create(self):
@@ -92,7 +92,7 @@ class DockerSandbox(BaseSandbox):
                 image=self.config.image,
                 hostname="sandbox",
                 host_config=host_config,
-                name=self.container_name,
+                name=self.session_id,
                 labels={
                     "com.docker.compose.project": os.getenv("COMPOSE_PROJECT_NAME")
                 },
@@ -105,7 +105,9 @@ class DockerSandbox(BaseSandbox):
             self.container_id = container["Id"]
             self.container.start()
 
-            self.host_url = f"http://{self.container_name}:{self.settings.sandbox_config.service_port}"
+            self.host_url = (
+                f"http://{self.session_id}:{self.settings.sandbox_config.service_port}"
+            )
             self.sandbox_id = self.container_id
             print(f"Container created: {self.container_id}")
         except Exception as e:

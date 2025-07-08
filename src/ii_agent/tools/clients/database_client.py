@@ -20,8 +20,8 @@ class PostgresDatabaseClient(DatabaseClient):
         self.setting = setting
         self.neon_db_api_key = (
             setting.third_party_integration_config.neon_db_api_key.get_secret_value()
-            if setting.third_party_integration_config
-            else os.getenv("NEON_API_KEY")
+            if setting.third_party_integration_config.neon_db_api_key
+            else None
         )
 
     def get_all_postgres_databases(self) -> list[str]:
