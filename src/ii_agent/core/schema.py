@@ -1,4 +1,4 @@
-"""Schema definitions for ii-agent, based on OpenHands core schema."""
+"""Schema definitions for ii-agent."""
 
 from enum import Enum
 
@@ -96,14 +96,13 @@ class FileEditSource(str, Enum):
     """Source of file edit implementation."""
     
     LLM_BASED_EDIT = "llm_based_edit"
-    OH_ACI = "oh_aci"  # OpenHands ACI (Agent-Computer Interface)
+    DEFAULT = "default"  
 
 
 class FileReadSource(str, Enum):
     """Source of file read implementation."""
     
     DEFAULT = "default"
-    OH_ACI = "oh_aci"  # OpenHands ACI
     
     
 class SecurityRisk(int, Enum):

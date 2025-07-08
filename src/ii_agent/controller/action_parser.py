@@ -19,8 +19,7 @@ class ActionParseError(Exception):
 class ResponseParser(ABC):
     """Abstract base class for parsing LLM responses into actions.
     
-    This follows the OpenHands pattern for response parsing, providing a 
-    standardized interface for converting different types of LLM responses
+    This provides a standardized interface for converting different types of LLM responses
     into structured Action objects.
     """
 

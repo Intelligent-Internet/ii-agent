@@ -23,7 +23,7 @@ class FileReadAction(Action):
     runnable: ClassVar[bool] = True
     security_risk: Optional[SecurityRisk] = SecurityRisk.LOW
     impl_source: FileReadSource = FileReadSource.DEFAULT
-    view_range: Optional[list[int]] = None  # For OpenHands compatibility
+    view_range: Optional[list[int]] = None
     
     @property 
     def message(self) -> str:
@@ -76,13 +76,13 @@ class FileEditAction(Action):
     """Edits a file using various commands including view, create, str_replace, and insert.
     
     This class supports multiple modes of operation:
-    1. OpenHands ACI mode (command-based)
+    1. Default mode (command-based)
     2. LLM-based content editing 
     
     Attributes:
         path (str): The path to the file being edited.
         
-        # OpenHands ACI mode
+        # Default mode
         command (str): The editing command ('view', 'create', 'str_replace', 'insert', 'undo_edit').
         file_text (str): Content for file creation.
         old_str (str): The string to be replaced (str_replace mode).
@@ -97,7 +97,7 @@ class FileEditAction(Action):
     
     path: str = ""
     
-    # OpenHands ACI arguments
+    # Default arguments
     command: str = ""
     file_text: Optional[str] = None
     old_str: Optional[str] = None
@@ -114,7 +114,7 @@ class FileEditAction(Action):
     action: str = ActionType.EDIT
     runnable: ClassVar[bool] = True
     security_risk: Optional[SecurityRisk] = SecurityRisk.MEDIUM
-    impl_source: FileEditSource = FileEditSource.OH_ACI
+    impl_source: FileEditSource = FileEditSource.DEFAULT
     
     @property
     def message(self) -> str:
@@ -135,7 +135,7 @@ class FileEditAction(Action):
         if self.impl_source == FileEditSource.LLM_BASED_EDIT:
             ret += f"RANGE: [L{self.start}:L{self.end}]\n"
             ret += f"CONTENT:\n```\n{self.content}\n```\n"
-        else:  # OH_ACI mode
+        else:  # Default mode
             ret += f"COMMAND: {self.command}\n"
             if self.command == "create":
                 ret += f"Created File with Text:\n```\n{self.file_text}\n```\n"

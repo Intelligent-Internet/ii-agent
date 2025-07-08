@@ -66,7 +66,7 @@ class FileEditObservation(Observation):
     prev_exist: bool = False
     old_content: Optional[str] = None
     new_content: Optional[str] = None
-    impl_source: FileEditSource = FileEditSource.OH_ACI
+    impl_source: FileEditSource = FileEditSource.DEFAULT
     diff: Optional[str] = None  # Raw diff between old and new content
     _diff_cache: Optional[str] = None  # Cached diff visualization
     observation: str = ObservationType.EDIT
@@ -125,7 +125,7 @@ class FileEditObservation(Observation):
         return self._diff_cache
     
     def __str__(self) -> str:
-        if self.impl_source == FileEditSource.OH_ACI:
+        if self.impl_source == FileEditSource.DEFAULT:
             return self.visualize_diff()
         else:
             # For LLM-based editing, use the content directly

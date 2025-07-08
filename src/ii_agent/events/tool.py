@@ -23,7 +23,6 @@ class ToolCallMetadata(BaseModel):
     
     This is used to track tool calls through the event system,
     especially important for converting events back to LLM messages.
-    Based on OpenHands' ToolCallMetadata pattern.
     """
     function_name: str  # Name of the function that was called
     tool_call_id: str  # ID of the tool call

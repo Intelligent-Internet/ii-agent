@@ -20,8 +20,7 @@ from ii_agent.events.action.mcp import MCPAction
 class ConversationMemory:
     """Processes event history into a coherent conversation for the agent.
     
-    Based on OpenHands' ConversationMemory pattern, this class converts
-    ii-agent Events (Actions and Observations) into Message objects that
+    This class converts ii-agent Events (Actions and Observations) into Message objects that
     can be sent to LLMs.
     """
 

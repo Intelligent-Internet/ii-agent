@@ -224,7 +224,7 @@ class AgentController:
                         event_type="tool_interrupted",
                         cause=action.id
                     )
-                    # Transfer tool_call_metadata from action to observation (following OpenHands pattern)
+                    # Transfer tool_call_metadata from action to observation
                     if hasattr(action, 'tool_call_metadata') and action.tool_call_metadata:
                         tool_obs.tool_call_metadata = action.tool_call_metadata
                     self.state.add_event(tool_obs)

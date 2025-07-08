@@ -167,23 +167,25 @@ try breaking down the task into smaller steps. After call this tool to update or
             )
 
             if tool_call.tool_name in [ReturnControlToUserTool.name, CompleteTool.name]:
-                return CompleteAction(
+                action = CompleteAction(
                     final_answer="Task completed",
-                    source=EventSource.AGENT
-                )
+                    source=EventSource.AGENT,
+                ) # No need to set tool_call_metadata here
+                return action
 
             elif tool_call.tool_name == MessageTool.name:
-                return MessageAction(
+                action = MessageAction(
                     content=tool_call.tool_input["text"],
-                    source=EventSource.AGENT
-                )
+                    source=EventSource.AGENT,
+                ) # No need to set tool_call_metadata here
+                return action
             
             action = MCPAction(
                 name=tool_call.tool_name,
                 arguments=tool_call.tool_input,
-                source=EventSource.AGENT
+                source=EventSource.AGENT,
+                tool_call_metadata=metadata
             )
-            action.tool_call_metadata = metadata
             return action
         
         elif text_results:
