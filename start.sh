@@ -81,9 +81,10 @@ main() {
   echo "HOST_IP: $HOST_IP"
   #export HOST_IP="CUSTOM_IP"
   #Set up backend environment variables
-  export FRONTEND_PORT=3000
-  export BACKEND_PORT=8000
-  export NGINX_PORT=8080
+  export HOST_IP=35.202.142.110
+  export FRONTEND_PORT=5000
+  export BACKEND_PORT=10000
+  export NGINX_PORT=9080
   export SANDBOX_PORT=17300
   export CODE_SERVER_PORT=9000
   #Change this if you have your own domain and reverse proxy
