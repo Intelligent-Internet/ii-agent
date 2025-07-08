@@ -141,17 +141,14 @@ const ChatMessage = ({
         animate={{ opacity: 1 }}
         transition={{ delay: 0.2, duration: 0.3 }}
       >
-        {state.messages.map((message, index) => (
-          <motion.div
+        {state.messages.map((message) => (
+          <div
             key={message.id}
             className={`mb-4 ${
               message.role === "user" ? "text-right" : "text-left"
             } ${message.role === "user" && !message.files && "mb-8"} ${
               message.isHidden ? "hidden" : ""
             }`}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 * index, duration: 0.3 }}
           >
             {message.files && message.files.length > 0 && (
               <div className="flex flex-col gap-2 mb-2">
@@ -280,7 +277,7 @@ const ChatMessage = ({
             )}
 
             {message.content && (
-              <motion.div
+              <div
                 className={`inline-block text-left rounded-lg ${
                   message.role === "user"
                     ? "bg-[#35363a] p-3 max-w-[80%] text-white border border-[#3A3B3F] shadow-sm whitespace-pre-wrap"
@@ -294,13 +291,6 @@ const ChatMessage = ({
                     ? "agent-thinking w-full"
                     : ""
                 }`}
-                initial={{ scale: 0.9 }}
-                animate={{ scale: 1 }}
-                transition={{
-                  type: "spring",
-                  stiffness: 500,
-                  damping: 30,
-                }}
               >
                 {message.role === "user" ? (
                   <div>
@@ -334,25 +324,20 @@ const ChatMessage = ({
                 ) : (
                   <Markdown>{message.content}</Markdown>
                 )}
-              </motion.div>
+              </div>
             )}
 
             {message.action && (
-              <motion.div
-                className="mt-2"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.1 * index, duration: 0.3 }}
-              >
+              <div className="mt-2">
                 <Action
                   workspaceInfo={state.workspaceInfo}
                   type={message.action.type}
                   value={message.action.data}
                   onClick={() => handleClickAction(message.action, true)}
                 />
-              </motion.div>
+              </div>
             )}
-          </motion.div>
+          </div>
         ))}
 
         {state.isLoading && (
