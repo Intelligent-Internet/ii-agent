@@ -9,7 +9,8 @@ from pydantic import ValidationError
 from ii_agent.llm.base import ToolCall
 from ii_agent.agents.base import BaseAgent
 from ii_agent.agents.reviewer import ReviewerAgent, ReviewerController
-from ii_agent.core.event import RealtimeEvent, EventType
+from ii_agent.events.event import Event, EventType
+from ii_agent.events.observation.error import ErrorObservation
 from ii_agent.core.storage.files import FileStore
 from ii_agent.core.storage.models.settings import Settings
 from ii_agent.core.storage.settings.file_settings_store import FileSettingsStore
@@ -69,7 +70,7 @@ class ChatSession:
         self.enable_reviewer = False
         self.config = config
 
-    async def send_event(self, event: RealtimeEvent):
+    async def send_event(self, event: Event):
         """Send an event to the client via WebSocket."""
         if self.websocket:
             try:
@@ -87,9 +88,9 @@ class ChatSession:
                 await self.handle_message(message_data)
         except json.JSONDecodeError:
             await self.send_event(
-                RealtimeEvent(
-                    type=EventType.ERROR,
-                    content={"message": "Invalid JSON format"},
+                ErrorObservation(
+                    content="Invalid JSON format",
+                    cause=None,
                 )
             )
         except WebSocketDisconnect:
@@ -110,14 +111,14 @@ class ChatSession:
 
     async def handshake(self):
         """Handle handshake message."""
-        await self.send_event(
-            RealtimeEvent(
-                type=EventType.CONNECTION_ESTABLISHED,
-                content={
+        await self.websocket.send_json(
+            {
+                "type": "connection_established",
+                "content": {
                     "message": "Connected to Agent WebSocket Server",
                     "workspace_path": str(self.workspace_manager.root),
                 },
-            )
+            }
         )
 
     async def handle_message(self, message_data: dict):
@@ -145,25 +146,25 @@ class ChatSession:
                 await handler(content)
             else:
                 await self.send_event(
-                    RealtimeEvent(
-                        type=EventType.ERROR,
-                        content={"message": f"Unknown message type: {msg_type}"},
+                    ErrorObservation(
+                        content=f"Unknown message type: {msg_type}",
+                        cause=None,
                     )
                 )
 
         except ValidationError as e:
             await self.send_event(
-                RealtimeEvent(
-                    type=EventType.ERROR,
-                    content={"message": f"Invalid message format: {str(e)}"},
+                ErrorObservation(
+                    content=f"Invalid message format: {str(e)}",
+                    cause=None,
                 )
             )
         except Exception as e:
             logger.error(f"Error handling message: {str(e)}")
             await self.send_event(
-                RealtimeEvent(
-                    type=EventType.ERROR,
-                    content={"message": f"Error processing request: {str(e)}"},
+                ErrorObservation(
+                    content=f"Error processing request: {str(e)}",
+                    cause=None,
                 )
             )
 
@@ -220,9 +221,9 @@ class ChatSession:
                 print("Initialized Reviewer")
 
             await self.send_event(
-                RealtimeEvent(
-                    type=EventType.AGENT_INITIALIZED,
-                    content={
+                Event.create_agent_event(
+                    EventType.AGENT_INITIALIZED,
+                    {
                         "message": "Agent initialized"
                         + (" with reviewer" if self.enable_reviewer else "")
                     },
@@ -230,16 +231,16 @@ class ChatSession:
             )
         except ValidationError as e:
             await self.send_event(
-                RealtimeEvent(
-                    type=EventType.ERROR,
-                    content={"message": f"Invalid init_agent content: {str(e)}"},
+                ErrorObservation(
+                    content=f"Invalid init_agent content: {str(e)}",
+                    cause=None,
                 )
             )
         except Exception as e:
             await self.send_event(
-                RealtimeEvent(
-                    type=EventType.ERROR,
-                    content={"message": f"Error initializing agent: {str(e)}"},
+                ErrorObservation(
+                    content=f"Error initializing agent: {str(e)}",
+                    cause=None,
                 )
             )
 
@@ -258,19 +259,19 @@ class ChatSession:
             # Check if there's an active task for this session
             if self.has_active_task():
                 await self.send_event(
-                    RealtimeEvent(
-                        type=EventType.ERROR,
-                        content={"message": "A query is already being processed"},
+                    ErrorObservation(
+                        content="A query is already being processed",
+                        cause=None,
                     )
                 )
                 return
 
             # Send acknowledgment
-            await self.send_event(
-                RealtimeEvent(
-                    type=EventType.PROCESSING,
-                    content={"message": "Processing your request..."},
-                )
+            await self.websocket.send_json(
+                {
+                    "type": "processing",
+                    "content": {"message": "Processing your request..."},
+                }
             )
 
             # Run the agent with the query in a separate task
@@ -282,32 +283,37 @@ class ChatSession:
 
         except ValidationError as e:
             await self.send_event(
-                RealtimeEvent(
-                    type=EventType.ERROR,
-                    content={"message": f"Invalid query content: {str(e)}"},
+                ErrorObservation(
+                    content=f"Invalid query content: {str(e)}",
+                    cause=None,
                 )
             )
 
     async def _handle_workspace_info(self, content: dict = None):
         """Handle workspace info request."""
         await self.send_event(
-            RealtimeEvent(
-                type=EventType.WORKSPACE_INFO,
-                content={"path": str(self.workspace_manager.root)},
-            )
+            {
+                "type": "workspace_info",
+                "content": {"path": str(self.workspace_manager.root)},
+            }
         )
 
     async def _handle_ping(self, content: dict = None):
         """Handle ping message."""
-        await self.send_event(RealtimeEvent(type=EventType.PONG, content={}))
+        await self.websocket.send_json(
+            {
+                "type": "pong",
+                "content": {},
+            }
+        )
 
     async def _handle_cancel(self, content: dict = None):
         """Handle query cancellation."""
         if not self.controller:
             await self.send_event(
-                RealtimeEvent(
-                    type=EventType.ERROR,
-                    content={"message": "No active controller for this session"},
+                ErrorObservation(
+                    content="No active controller for this session",
+                    cause=None,
                 )
             )
             return
@@ -315,11 +321,11 @@ class ChatSession:
         self.controller.cancel()
 
         # Send acknowledgment that cancellation was received
-        await self.send_event(
-            RealtimeEvent(
-                type=EventType.SYSTEM,
-                content={"message": "Query cancelled"},
-            )
+        await self.websocket.send_json(
+            {
+                "type": "system",
+                "content": {"message": "Query cancelled"},
+            }
         )
 
     async def _handle_edit_query(self, content: dict):
@@ -329,9 +335,9 @@ class ChatSession:
 
             if not self.controller:
                 await self.send_event(
-                    RealtimeEvent(
-                        type=EventType.ERROR,
-                        content={"message": "No active controller for this session"},
+                    ErrorObservation(
+                        content="No active controller for this session",
+                        cause=None,
                     )
                 )
                 return
@@ -345,47 +351,47 @@ class ChatSession:
                     Events.delete_events_from_last_to_user_message(
                         self.controller.session_id
                     )
-                    await self.send_event(
-                        RealtimeEvent(
-                            type=EventType.SYSTEM,
-                            content={
+                    await self.websocket.send_json(
+                        {
+                            "type": "system",
+                            "content": {
                                 "message": "Session history cleared from last event to last user message"
                             },
-                        )
+                        }
                     )
                 except Exception as e:
                     logger.error(f"Error deleting session events: {str(e)}")
                     await self.send_event(
-                        RealtimeEvent(
-                            type=EventType.ERROR,
-                            content={"message": f"Error clearing history: {str(e)}"},
+                        ErrorObservation(
+                            content=f"Error clearing history: {str(e)}",
+                            cause=None,
                         )
                     )
 
             # Send acknowledgment that query editing was received
-            await self.send_event(
-                RealtimeEvent(
-                    type=EventType.SYSTEM,
-                    content={"message": "Query editing mode activated"},
-                )
+            await self.websocket.send_json(
+                {
+                    "type": "system",
+                    "content": {"message": "Query editing mode activated"},
+                }
             )
 
             # Check if there's an active task for this session
             if self.has_active_task():
                 await self.send_event(
-                    RealtimeEvent(
-                        type=EventType.ERROR,
-                        content={"message": "A query is already being processed"},
+                    ErrorObservation(
+                        content="A query is already being processed",
+                        cause=None,
                     )
                 )
                 return
 
             # Send processing acknowledgment
-            await self.send_event(
-                RealtimeEvent(
-                    type=EventType.PROCESSING,
-                    content={"message": "Processing your request..."},
-                )
+            await self.websocket.send_json(
+                {
+                    "type": "processing",
+                    "content": {"message": "Processing your request..."},
+                }
             )
 
             # Run the agent with the query in a separate task
@@ -397,9 +403,9 @@ class ChatSession:
 
         except ValidationError as e:
             await self.send_event(
-                RealtimeEvent(
-                    type=EventType.ERROR,
-                    content={"message": f"Invalid edit_query content: {str(e)}"},
+                ErrorObservation(
+                    content=f"Invalid edit_query content: {str(e)}",
+                    cause=None,
                 )
             )
 
@@ -428,29 +434,29 @@ class ChatSession:
 
             if success and enhanced_prompt:
                 # Send the enhanced prompt back to the client
-                await self.send_event(
-                    RealtimeEvent(
-                        type=EventType.PROMPT_GENERATED,
-                        content={
+                await self.websocket.send_json(
+                    {
+                        "type": "prompt_generated",
+                        "content": {
                             "result": enhanced_prompt,
                             "original_request": enhance_content.text,
                         },
-                    )
+                    }
                 )
             else:
                 # Send error message
                 await self.send_event(
-                    RealtimeEvent(
-                        type=EventType.ERROR,
-                        content={"message": message},
+                    ErrorObservation(
+                        content=message,
+                        cause=None,
                     )
                 )
 
         except ValidationError as e:
             await self.send_event(
-                RealtimeEvent(
-                    type=EventType.ERROR,
-                    content={"message": f"Invalid enhance_prompt content: {str(e)}"},
+                ErrorObservation(
+                    content=f"Invalid enhance_prompt content: {str(e)}",
+                    cause=None,
                 )
             )
 
@@ -459,9 +465,9 @@ class ChatSession:
         try:
             if not self.controller:
                 await self.send_event(
-                    RealtimeEvent(
-                        type=EventType.ERROR,
-                        content={"message": "No active controller for this session"},
+                    ErrorObservation(
+                        content="No active controller for this session",
+                        cause=None,
                     )
                 )
                 return
@@ -471,9 +477,9 @@ class ChatSession:
 
             if not user_input:
                 await self.send_event(
-                    RealtimeEvent(
-                        type=EventType.ERROR,
-                        content={"message": "No user query found to review"},
+                    ErrorObservation(
+                        content="No user query found to review",
+                        cause=None,
                     )
                 )
                 return
@@ -483,9 +489,9 @@ class ChatSession:
         except Exception as e:
             logger.error(f"Error handling review request: {str(e)}")
             await self.send_event(
-                RealtimeEvent(
-                    type=EventType.ERROR,
-                    content={"message": f"Error handling review request: {str(e)}"},
+                ErrorObservation(
+                    content=f"Error handling review request: {str(e)}",
+                    cause=None,
                 )
             )
 
@@ -495,9 +501,9 @@ class ChatSession:
         """Run the agent controller asynchronously and send results back to the websocket."""
         if not self.controller:
             await self.send_event(
-                RealtimeEvent(
-                    type=EventType.ERROR,
-                    content={"message": "Controller not initialized for this session"},
+                ErrorObservation(
+                    content="Controller not initialized for this session",
+                    cause=None,
                 )
             )
             return
@@ -505,20 +511,20 @@ class ChatSession:
         try:
             # Add user message to the event queue to save to database
             self.controller.message_queue.put_nowait(
-                RealtimeEvent(type=EventType.USER_MESSAGE, content={"text": user_input})
+                MessageAction(
+                    content=user_input,
+                    source=EventSource.USER,
+                )
             )
             # Run the controller with the query using the new async method
             await self.controller.run_async(user_input, files)
 
         except Exception as e:
             logger.error(f"Error running agent: {str(e)}")
-            import traceback
-
-            traceback.print_exc()
             await self.send_event(
-                RealtimeEvent(
-                    type=EventType.ERROR,
-                    content={"message": f"Error running agent: {str(e)}"},
+                ErrorObservation(
+                    content=f"Error running agent: {str(e)}",
+                    cause=None,
                 )
             )
         finally:
@@ -547,14 +553,14 @@ class ChatSession:
                 logger.warning("No final result found from controller to review")
                 return
             # Send notification that reviewer is starting
-            await self.send_event(
-                RealtimeEvent(
-                    type=EventType.SYSTEM,
-                    content={
+            await self.websocket.send_json(
+                {
+                    "type": "system",
+                    "content": {
                         "type": "reviewer_agent",
                         "message": "Reviewer agent is analyzing the output...",
                     },
-                )
+                }
             )
 
             # Run reviewer agent
@@ -567,13 +573,13 @@ class ChatSession:
             if reviewer_feedback and reviewer_feedback.strip():
                 # Send feedback to agent for improvement
                 await self.send_event(
-                    RealtimeEvent(
-                        type=EventType.SYSTEM,
-                        content={
+                    {
+                        "type": "system",
+                        "content": {
                             "type": "reviewer_agent",
                             "message": "Applying reviewer feedback...",
                         },
-                    )
+                    }
                 )
 
                 feedback_prompt = f"""Based on the reviewer's analysis, here is the feedback for improvement:
@@ -589,9 +595,9 @@ Please review this feedback and implement the suggested improvements to better c
         except Exception as e:
             logger.error(f"Error running reviewer: {str(e)}")
             await self.send_event(
-                RealtimeEvent(
-                    type=EventType.ERROR,
-                    content={"message": f"Error running reviewer: {str(e)}"},
+                ErrorObservation(
+                    content=f"Error running reviewer: {str(e)}",
+                    cause=None,
                 )
             )
 

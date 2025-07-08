@@ -8,7 +8,7 @@ from functools import partial
 
 from fastapi import WebSocket
 from ii_agent.agents.base import BaseAgent
-from ii_agent.core.event import EventType, RealtimeEvent
+from ii_agent.events.event import EventType, Event
 from ii_agent.tools.base import ToolImplOutput
 from ii_agent.tools import AgentToolManager
 from ii_agent.utils.workspace_manager import WorkspaceManager
@@ -20,6 +20,7 @@ from .state import State, AgentState
 from ..events.action import Action, MessageAction, CompleteAction
 from ..events.action.mcp import MCPAction
 from ..events.observation import Observation, SystemObservation
+from ..events.observation.error import ErrorObservation
 from ..events.event import EventSource
 
 
@@ -82,7 +83,7 @@ class AgentController:
         try:
             while True:
                 try:
-                    message: RealtimeEvent = await self.message_queue.get()
+                    message: Event = await self.message_queue.get()
 
                     # Save all events to database if we have a session
                     if self.session_id is not None:
@@ -94,7 +95,7 @@ class AgentController:
 
                     # Only send to websocket if this is not an event from the client and websocket exists
                     if (
-                        message.type != EventType.USER_MESSAGE
+                        message.get_event_type() != EventType.USER_MESSAGE.value
                         and self.websocket is not None
                     ):
                         try:
@@ -179,9 +180,9 @@ class AgentController:
             if isinstance(action, CompleteAction):
                 self.state.agent_state = AgentState.COMPLETED
                 self.message_queue.put_nowait(
-                    RealtimeEvent(
-                        type=EventType.AGENT_RESPONSE,
-                        content={"text": action.final_answer or "Task completed"},
+                    Event.create_agent_event(
+                        EventType.AGENT_RESPONSE,
+                        {"text": action.final_answer or "Task completed"},
                     )
                 )
                 return ToolImplOutput(
@@ -192,9 +193,9 @@ class AgentController:
             elif isinstance(action, MessageAction):
                 # Handle message action - mostly for communication
                 self.message_queue.put_nowait(
-                    RealtimeEvent(
-                        type=EventType.AGENT_RESPONSE,
-                        content={"text": action.content},
+                    Event.create_agent_event(
+                        EventType.AGENT_RESPONSE,
+                        {"text": action.content},
                     )
                 )
                 return ToolImplOutput(
@@ -207,14 +208,7 @@ class AgentController:
                 self.state.agent_state = AgentState.ACTING
                 
                 self.message_queue.put_nowait(
-                    RealtimeEvent(
-                        type=EventType.TOOL_CALL,
-                        content={
-                            "tool_call_id": action.tool_call_metadata.tool_call_id if action.tool_call_metadata else action.id, #TODO: remove tool_call_id
-                            "tool_name": action.name,
-                            "tool_input": action.arguments,
-                        },
-                    )
+                    action
                 )
 
                 if self.interrupted:
@@ -238,15 +232,7 @@ class AgentController:
                     
                     # Send tool result to message queue for real-time updates
                     self.message_queue.put_nowait(
-                        RealtimeEvent(
-                            type=EventType.TOOL_RESULT,
-                            content={
-                                "tool_call_id": action.tool_call_metadata.tool_call_id if action.tool_call_metadata else action.id, #TODO: remove tool_call_id
-                                "tool_name": action.name,
-                                "result": observation.content,
-                                "observation_id": observation.id,
-                            },
-                        )
+                        observation
                     )
                     
                         
@@ -261,14 +247,9 @@ class AgentController:
                     
                     # Send tool error to message queue for real-time updates
                     self.message_queue.put_nowait(
-                        RealtimeEvent(
-                            type=EventType.ERROR,
-                            content={
-                                "tool_call_id": action.tool_call_metadata.tool_call_id if action.tool_call_metadata else action.id, #TODO: remove tool_call_id
-                                "tool_name": action.name,
-                                "error": str(e),
-                                "observation_id": error_obs.id,
-                            },
+                        ErrorObservation(
+                            content=f"Tool '{action.name}' failed: {str(e)}",
+                            cause=action.id,
                         )
                     )
 
@@ -276,7 +257,7 @@ class AgentController:
         agent_answer = "Agent did not complete after max turns"
         self.state.agent_state = AgentState.ERROR
         self.message_queue.put_nowait(
-            RealtimeEvent(type=EventType.AGENT_RESPONSE, content={"text": agent_answer})
+            Event.create_agent_event(EventType.AGENT_RESPONSE, {"text": agent_answer})
         )
         return ToolImplOutput(
             tool_output=agent_answer, tool_result_message=agent_answer

@@ -58,7 +58,7 @@ from ii_agent.llm.context_manager.llm_summarizing import LLMSummarizingContextMa
 from ii_agent.llm.token_counter import TokenCounter
 from ii_agent.utils.constants import DEFAULT_MODEL, TOKEN_BUDGET, UPLOAD_FOLDER_NAME
 from ii_agent.db.manager import Sessions, get_db
-from ii_agent.core.event import RealtimeEvent, EventType
+from ii_agent.events.event import Event, EventSource
 from ii_agent.tools.youtube_transcript_tool import YoutubeTranscriptTool
 from ii_agent.tools.tool_manager import AgentToolManager
 
@@ -304,8 +304,7 @@ async def answer_single_question(
         WebSearchTool(),
         VisitWebpageTool(),
         StrReplaceEditorTool(
-            workspace_manager=workspace_manager, message_queue=message_queue
-        ),
+            workspace_manager=workspace_manager),
         BashTool(workspace_root=workspace_path, require_confirmation=False),
         BrowserNavigationTool(browser=browser),
         BrowserRestartTool(browser=browser),
@@ -371,8 +370,9 @@ Run verification steps if that's needed, you must make sure you find the correct
     try:
         # Add user message to the event queue to save to database
         await message_queue.put(
-            RealtimeEvent(
-                type=EventType.USER_MESSAGE, content={"text": augmented_question}
+            MessageAction(
+                content=augmented_question,
+                source=EventSource.USER,
             )
         )
 

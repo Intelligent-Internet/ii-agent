@@ -9,7 +9,7 @@ from datetime import datetime
 
 from fastapi import WebSocket
 from ii_agent.agents.base import BaseAgent
-from ii_agent.core.event import EventType, RealtimeEvent
+from ii_agent.events.event import EventType, Event
 from ii_agent.llm.base import LLMClient, TextResult, ToolCallParameters
 from ii_agent.llm.context_manager.base import ContextManager
 from ii_agent.llm.message_history import MessageHistory

@@ -6,7 +6,7 @@ from sqlalchemy import asc, create_engine, text
 from sqlalchemy.orm import Session as DBSession, sessionmaker
 from ii_agent.core.config.utils import load_ii_agent_config
 from ii_agent.db.models import Base, Session, Event
-from ii_agent.core.event import EventType, RealtimeEvent
+from ii_agent.events.event import EventType, Event as EventClass
 from ii_agent.core.config.ii_agent_config import II_AGENT_DIR
 from ii_agent.core.logger import logger
 
@@ -175,7 +175,7 @@ class SessionsTable:
 class EventsTable:
     """Table class for event operations following Open WebUI pattern."""
 
-    def save_event(self, session_id: uuid.UUID, event: RealtimeEvent) -> uuid.UUID:
+    def save_event(self, session_id: uuid.UUID, event: EventClass) -> uuid.UUID:
         """Save an event to the database.
 
         Args:
@@ -188,7 +188,7 @@ class EventsTable:
         with get_db() as db:
             db_event = Event(
                 session_id=session_id,
-                event_type=event.type.value,
+                event_type=event.get_event_type(),
                 event_payload=event.model_dump(),
             )
             db.add(db_event)

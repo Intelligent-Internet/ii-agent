@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 from datetime import datetime
 from enum import Enum
-from typing import Any, Optional
+from typing import Any, Optional, Dict, Union
 from pydantic import BaseModel, Field, field_validator, computed_field, model_validator
 
 from .tool import ToolCallMetadata
@@ -28,7 +28,7 @@ class Event(BaseModel):
     
     # Direct fields
     hidden: bool = False  # Whether this event should be hidden from logs/UI
-    
+
     @model_validator(mode='after')
     def ensure_defaults(self) -> 'Event':
         """Post-initialization to ensure consistent state."""

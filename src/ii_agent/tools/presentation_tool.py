@@ -1,5 +1,5 @@
 import asyncio
-from ii_agent.core.event import EventType, RealtimeEvent
+from ii_agent.events.event import EventType, Event
 from ii_agent.llm.context_manager.base import ContextManager
 from ii_agent.tools.image_search_tool import ImageSearchTool
 from ii_agent.tools.base import LLMTool
@@ -318,9 +318,9 @@ action = init
             self.history.add_tool_call_result(tool_call, tool_result)
 
             self.message_queue.put_nowait(
-                RealtimeEvent(
-                    type=EventType.TOOL_RESULT,
-                    content={
+                Event.create_system_event(
+                    EventType.TOOL_RESULT,
+                    {
                         "tool_call_id": tool_call.tool_call_id,
                         "tool_name": tool_call.tool_name,
                         "result": tool_result,

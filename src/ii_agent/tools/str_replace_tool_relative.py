@@ -14,7 +14,7 @@ from ii_agent.tools.base import (
     ToolImplOutput,
 )
 from ii_agent.llm.base import ToolCallParameters
-from ii_agent.core.event import EventType, RealtimeEvent
+from ii_agent.events.event import EventType, Event
 from asyncio import Queue
 from typing import Any, Literal, Optional, get_args
 import logging
@@ -187,28 +187,12 @@ Notes for using the `str_replace` command:\n
         workspace_manager: WorkspaceManager,
         ignore_indentation_for_str_replace: bool = False,
         expand_tabs: bool = False,
-        message_queue: Queue | None = None,
     ):
         super().__init__()
         self.workspace_manager = workspace_manager
         self.ignore_indentation_for_str_replace = ignore_indentation_for_str_replace
         self.expand_tabs = expand_tabs
         self._file_history = defaultdict(list)
-        self.message_queue = message_queue
-
-    def _send_file_update(self, path: Path, content: str):
-        """Send file content update through message queue if available."""
-        if self.message_queue:
-            self.message_queue.put_nowait(
-                RealtimeEvent(
-                    type=EventType.FILE_EDIT,
-                    content={
-                        "path": str(self.workspace_manager.relative_path(path)),
-                        "content": content,
-                        "total_lines": len(content.splitlines()),
-                    },
-                )
-            )
 
     async def run_impl(
         self,
@@ -452,7 +436,6 @@ Notes for using the `str_replace` command:\n
 
         self._file_history[path].append(content)  # Save old content for undo
         path.write_text(new_content_str)
-        self._send_file_update(path, new_content_str)  # Send update after write
 
         # Create a snippet of the edited section
         start_line = max(0, match_start - SNIPPET_LINES)
@@ -499,7 +482,6 @@ Notes for using the `str_replace` command:\n
                 new_content = new_str
                 self._file_history[path].append(content)  # Save old content for undo
                 path.write_text(new_content)
-                self._send_file_update(path, new_content)  # Send update after write
                 # Prepare the success message
                 rel_path = self.workspace_manager.relative_path(path)
                 success_msg = f"The file {rel_path} has been edited. "
@@ -537,7 +519,6 @@ Notes for using the `str_replace` command:\n
         new_content = content.replace(old_str, new_str)
         self._file_history[path].append(content)  # Save old content for undo
         path.write_text(new_content)
-        self._send_file_update(path, new_content)  # Send update after write
 
         # Create a snippet of the edited section
         replacement_line = content.split(old_str)[0].count("\n")
@@ -595,7 +576,6 @@ Notes for using the `str_replace` command:\n
 
         self.write_file(path, new_file_text)
         self._file_history[path].append(file_text)
-        self._send_file_update(path, new_file_text)  # Send update after write
 
         rel_path = self.workspace_manager.relative_path(path)
         success_msg = f"The file {rel_path} has been edited. "
@@ -621,7 +601,6 @@ Notes for using the `str_replace` command:\n
 
         old_text = self._file_history[path].pop()
         self.write_file(path, old_text)
-        self._send_file_update(path, old_text)  # Send update after undo
 
         rel_path = self.workspace_manager.relative_path(path)
         formatted_file = self._make_output(
@@ -649,7 +628,6 @@ Notes for using the `str_replace` command:\n
         """Write the content of a file to a given path; raise a ToolError if an error occurs."""
         try:
             path.write_text(file)
-            self._send_file_update(path, file)  # Send update after write
         except Exception as e:
             rel_path = self.workspace_manager.relative_path(path)
             raise ToolError(

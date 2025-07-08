@@ -24,15 +24,6 @@ class MessageAction(Action):
     def message(self) -> str:
         return self.content
 
-    @property
-    def images_urls(self) -> Optional[list[str]]:
-        """Deprecated alias for backward compatibility."""
-        return self.image_urls
-
-    @images_urls.setter
-    def images_urls(self, value: Optional[list[str]]) -> None:
-        self.image_urls = value
-
     def __str__(self) -> str:
         ret = f"**MessageAction** (source={self.source})\n"
         ret += f"CONTENT: {self.content}"
