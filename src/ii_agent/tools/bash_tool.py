@@ -15,7 +15,6 @@ import pexpect
 import re
 from abc import ABC, abstractmethod
 
-from ii_agent.llm.message_history import MessageHistory
 from ii_agent.tools.base import LLMTool, ToolImplOutput
 
 
@@ -251,7 +250,6 @@ Run commands in a bash shell
     async def run_impl(
         self,
         tool_input: Dict[str, Any],
-        message_history: Optional[MessageHistory] = None,
     ) -> ToolImplOutput:
         """Execute a bash command and return its output.
 

@@ -2,7 +2,6 @@ from typing import Any, Optional
 from ii_agent.browser.browser import Browser
 from ii_agent.tools.base import ToolImplOutput
 from ii_agent.tools.browser_tools import BrowserTool, utils
-from ii_agent.llm.message_history import MessageHistory
 
 
 class BrowserViewTool(BrowserTool):
@@ -16,8 +15,7 @@ class BrowserViewTool(BrowserTool):
     async def _run(
         self,
         tool_input: dict[str, Any],
-        message_history: Optional[MessageHistory] = None,
-    ) -> ToolImplOutput:
+            ) -> ToolImplOutput:
         try:
             state = await self.browser.update_state()
 

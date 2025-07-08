@@ -5,7 +5,6 @@ from ii_agent.tools.base import (
     LLMTool,
     ToolImplOutput,
 )
-from ii_agent.llm.message_history import MessageHistory
 from .utils import encode_image
 from ii_agent.utils import WorkspaceManager
 
@@ -30,8 +29,7 @@ class DisplayImageTool(LLMTool):
     async def run_impl(
         self,
         tool_input: dict[str, Any],
-        message_history: Optional[MessageHistory] = None,
-    ) -> ToolImplOutput:
+            ) -> ToolImplOutput:
         image_path = tool_input["image_path"]
 
         if not isinstance(image_path, str):

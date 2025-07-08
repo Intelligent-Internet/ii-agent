@@ -3,7 +3,6 @@ from ii_agent.tools.base import (
     ToolImplOutput,
 )
 from typing import Any, Optional
-from ii_agent.llm.message_history import MessageHistory
 import yt_dlp
 import aiohttp
 import asyncio
@@ -33,8 +32,7 @@ class YoutubeTranscriptTool(LLMTool):
     async def run_impl(
         self,
         tool_input: dict[str, Any],
-        message_history: Optional[MessageHistory] = None,
-    ) -> ToolImplOutput:
+            ) -> ToolImplOutput:
         url = tool_input["url"]
         try:
             ydl_opts = {

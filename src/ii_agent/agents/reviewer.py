@@ -12,7 +12,6 @@ from ii_agent.agents.base import BaseAgent
 from ii_agent.events.event import EventType, Event
 from ii_agent.llm.base import LLMClient, TextResult, ToolCallParameters
 from ii_agent.llm.context_manager.base import ContextManager
-from ii_agent.llm.message_history import MessageHistory
 from ii_agent.tools.base import ToolImplOutput, LLMTool
 from ii_agent.tools import AgentToolManager
 from ii_agent.utils.workspace_manager import WorkspaceManager
@@ -56,7 +55,7 @@ Focuses on analyzing agent work and determining next review steps.
         self.client = client
         self.max_output_tokens = max_output_tokens_per_turn
         self.max_turns = max_turns
-        self.history = MessageHistory(context_manager)
+        self.history = []  # Simple list to store conversation history
         self.context_manager = context_manager
         self.session_id = session_id
         self.message_queue = message_queue
@@ -78,8 +77,8 @@ Focuses on analyzing agent work and determining next review steps.
         Returns:
             Action: The next action to take in the review process
         """
-        # Get current messages for LLM context
-        current_messages = self.history.get_messages_for_llm()
+        # Get current messages for LLM context (simplified for reviewer)
+        current_messages = self.history
         
         # Apply truncation if needed for context limits
         truncated_messages = self.context_manager.apply_truncation_if_needed(current_messages)
@@ -226,7 +225,8 @@ Here is the workspace directory of the general agent's execution:
 Please conduct a thorough review of the general agent's work and provide detailed feedback.
 """
         
-        self.reviewer_agent.history.add_user_prompt(review_instruction)
+        # Add user prompt to simple history (simplified for reviewer)
+        self.reviewer_agent.history.append({"role": "user", "content": review_instruction})
         
         # Create state for the review process
         state = State(
@@ -262,7 +262,7 @@ Please conduct a thorough review of the general agent's work and provide detaile
                     if action.name == "return_control_to_general_agent":
                         # Request final summary
                         summary_instruction = "Based on your review, please provide detailed feedback to the general agent."
-                        self.reviewer_agent.history.add_user_prompt(summary_instruction)
+                        self.reviewer_agent.history.append({"role": "user", "content": summary_instruction})
                         
                         # Get final summary action
                         final_action = await self.reviewer_agent.step(state)
@@ -291,10 +291,10 @@ Please conduct a thorough review of the general agent's work and provide detaile
             )
             
             # Execute the tool
-            tool_result = await self.tool_manager.run_tool(tool_call, self.reviewer_agent.history)
+            tool_result = await self.tool_manager.run_tool(tool_call)
             
-            # Add result to history
-            self.reviewer_agent.history.add_tool_call_result(tool_call, tool_result)
+            # Add result to simple history
+            self.reviewer_agent.history.append({"role": "assistant", "content": tool_result})
             
             return tool_result
             

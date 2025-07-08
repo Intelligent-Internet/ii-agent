@@ -12,7 +12,6 @@ import json
 import logging
 from typing import Any, Dict, List, Optional, TypedDict
 
-from ii_agent.llm.message_history import MessageHistory
 from ii_agent.tools.base import (
     LLMTool,
     ToolImplOutput,
@@ -231,8 +230,7 @@ You should:
     async def run_impl(
         self,
         tool_input: Dict[str, Any],
-        message_history: Optional[MessageHistory] = None,
-    ) -> ToolImplOutput:
+            ) -> ToolImplOutput:
         """Run the sequential thinking tool.
 
         Args:

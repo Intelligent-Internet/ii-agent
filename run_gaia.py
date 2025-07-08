@@ -25,7 +25,6 @@ from ii_agent.db.models import Session, Event
 from ii_agent.agents.function_call import FunctionCallAgent
 from ii_agent.controller.agent_controller import AgentController
 from ii_agent.browser.browser import Browser
-from ii_agent.llm.message_history import MessageHistory
 from ii_agent.prompts.gaia_system_prompt import GAIA_SYSTEM_PROMPT
 from ii_agent.tools.bash_tool import BashTool
 from ii_agent.tools.browser_tools import (
@@ -59,6 +58,7 @@ from ii_agent.llm.token_counter import TokenCounter
 from ii_agent.utils.constants import DEFAULT_MODEL, TOKEN_BUDGET, UPLOAD_FOLDER_NAME
 from ii_agent.db.manager import Sessions, get_db
 from ii_agent.events.event import Event, EventSource
+from ii_agent.events.action import MessageAction
 from ii_agent.tools.youtube_transcript_tool import YoutubeTranscriptTool
 from ii_agent.tools.tool_manager import AgentToolManager
 
@@ -329,7 +329,6 @@ async def answer_single_question(
     tool_manager = AgentToolManager(tools=tools)
 
     system_prompt = GAIA_SYSTEM_PROMPT
-    init_history = MessageHistory(context_manager)
 
     # Create thin agent (only for state->action conversion)
     thin_agent = FunctionCallAgent(
@@ -338,7 +337,6 @@ async def answer_single_question(
         tools=[],  # No tools - agent only converts state to action
         workspace_manager=workspace_manager,
         message_queue=message_queue,
-        init_history=init_history,
         max_output_tokens_per_turn=32768,
         max_turns=200,
         session_id=session_id,  # Pass the session_id from database manager

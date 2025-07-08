@@ -4,7 +4,6 @@ from typing import Any, Optional
 from ii_agent.browser.browser import Browser
 from ii_agent.tools.base import ToolImplOutput
 from ii_agent.tools.browser_tools import BrowserTool, utils
-from ii_agent.llm.message_history import MessageHistory
 
 
 class BrowserClickTool(BrowserTool):
@@ -31,8 +30,7 @@ class BrowserClickTool(BrowserTool):
     async def _run(
         self,
         tool_input: dict[str, Any],
-        message_history: Optional[MessageHistory] = None,
-    ) -> ToolImplOutput:
+            ) -> ToolImplOutput:
         try:
             coordinate_x = tool_input.get("coordinate_x")
             coordinate_y = tool_input.get("coordinate_y")

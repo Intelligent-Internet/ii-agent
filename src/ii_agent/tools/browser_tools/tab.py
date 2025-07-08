@@ -4,7 +4,6 @@ from typing import Any, Optional
 from ii_agent.browser.browser import Browser
 from ii_agent.tools.base import ToolImplOutput
 from ii_agent.tools.browser_tools import BrowserTool, utils
-from ii_agent.llm.message_history import MessageHistory
 
 
 class BrowserSwitchTabTool(BrowserTool):
@@ -27,8 +26,7 @@ class BrowserSwitchTabTool(BrowserTool):
     async def _run(
         self,
         tool_input: dict[str, Any],
-        message_history: Optional[MessageHistory] = None,
-    ) -> ToolImplOutput:
+            ) -> ToolImplOutput:
         try:
             index = int(tool_input["index"])
             await self.browser.switch_to_tab(index)
@@ -53,8 +51,7 @@ class BrowserOpenNewTabTool(BrowserTool):
     async def _run(
         self,
         tool_input: dict[str, Any],
-        message_history: Optional[MessageHistory] = None,
-    ) -> ToolImplOutput:
+            ) -> ToolImplOutput:
         try:
             await self.browser.create_new_tab()
             await asyncio.sleep(0.5)

@@ -5,7 +5,6 @@ from ii_agent.tools.browser_tools import BrowserTool, utils
 from ii_agent.browser.browser import Browser
 from ii_agent.browser.utils import is_pdf_url
 from ii_agent.tools.base import ToolImplOutput
-from ii_agent.llm.message_history import MessageHistory
 
 
 class BrowserScrollDownTool(BrowserTool):
@@ -19,8 +18,7 @@ class BrowserScrollDownTool(BrowserTool):
     async def _run(
         self,
         tool_input: dict[str, Any],
-        message_history: Optional[MessageHistory] = None,
-    ) -> ToolImplOutput:
+            ) -> ToolImplOutput:
         try:
             page = await self.browser.get_current_page()
             state = self.browser.get_state()
@@ -54,8 +52,7 @@ class BrowserScrollUpTool(BrowserTool):
     async def _run(
         self,
         tool_input: dict[str, Any],
-        message_history: Optional[MessageHistory] = None,
-    ) -> ToolImplOutput:
+            ) -> ToolImplOutput:
         try:
             page = await self.browser.get_current_page()
             state = self.browser.get_state()

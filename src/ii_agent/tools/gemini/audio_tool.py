@@ -1,6 +1,5 @@
 from typing import Any, Optional
 from google.genai import types
-from ii_agent.llm.message_history import MessageHistory
 from ii_agent.tools.base import ToolImplOutput
 from ii_agent.tools.gemini import GeminiTool
 from ii_agent.utils import WorkspaceManager
@@ -28,8 +27,7 @@ class AudioTranscribeTool(GeminiTool):
     async def run_impl(
         self,
         tool_input: dict[str, Any],
-        message_history: Optional[MessageHistory] = None,
-    ) -> ToolImplOutput:
+            ) -> ToolImplOutput:
         file_path = tool_input["file_path"]
         query = "Provide a transcription of the audio"
 
@@ -90,8 +88,7 @@ Provide one query at a time. Supported formats: {", ".join(SUPPORTED_FORMATS)}
     async def run_impl(
         self,
         tool_input: dict[str, Any],
-        message_history: Optional[MessageHistory] = None,
-    ) -> ToolImplOutput:
+            ) -> ToolImplOutput:
         file_path = tool_input["file_path"]
         query = tool_input["query"]
         abs_path = str(self.workspace_manager.workspace_path(file_path))

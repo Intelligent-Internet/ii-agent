@@ -1,7 +1,6 @@
 """Tool for indicating task completion."""
 
 from typing import Any, Optional
-from ii_agent.llm.message_history import MessageHistory
 from ii_agent.tools.base import LLMTool, ToolImplOutput
 
 
@@ -35,8 +34,7 @@ class CompleteTool(LLMTool):
     async def run_impl(
         self,
         tool_input: dict[str, Any],
-        message_history: Optional[MessageHistory] = None,
-    ) -> ToolImplOutput:
+            ) -> ToolImplOutput:
         assert tool_input["answer"], "Model returned empty answer"
         self.answer = tool_input["answer"]
         return ToolImplOutput("Task completed", "Task completed")
@@ -77,8 +75,7 @@ This tool signals a handoff point, indicating that further action is expected fr
     async def run_impl(
         self,
         tool_input: dict[str, Any],
-        message_history: Optional[MessageHistory] = None,
-    ) -> ToolImplOutput:
+            ) -> ToolImplOutput:
         self.answer = "Task completed"
         return ToolImplOutput("Task completed", "Task completed")
 
@@ -117,8 +114,7 @@ class CompleteToolReviewer(LLMTool):
     async def run_impl(
         self,
         tool_input: dict[str, Any],
-        message_history: Optional[MessageHistory] = None,
-    ) -> ToolImplOutput:
+            ) -> ToolImplOutput:
         assert tool_input["answer"], "Model returned empty answer"
         self.answer = tool_input["answer"]
         return ToolImplOutput(self.answer, "Reviewer completed")
@@ -156,8 +152,7 @@ This tool signals a handoff point, indicating that further action is expected fr
     async def run_impl(
         self,
         tool_input: dict[str, Any],
-        message_history: Optional[MessageHistory] = None,
-    ) -> ToolImplOutput:
+            ) -> ToolImplOutput:
         return ToolImplOutput("Reviewer completed - handover control to general agent", "Reviewer completed - handover control to general agent")
 
     def get_tool_start_message(self, tool_input: dict[str, Any]) -> str:

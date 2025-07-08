@@ -8,7 +8,7 @@ from ii_agent.llm.context_manager.llm_summarizing import LLMSummarizingContextMa
 from ii_agent.llm.token_counter import TokenCounter
 from ii_agent.tools.image_search_tool import ImageSearchTool
 from ii_agent.tools.base import LLMTool
-from ii_agent.llm.message_history import ToolCallParameters
+from ii_agent.llm.base import ToolCallParameters
 from ii_agent.tools.memory.compactify_memory import CompactifyMemoryTool
 from ii_agent.tools.memory.simple_memory import SimpleMemoryTool
 from ii_agent.tools.slide_deck_tool import SlideDeckInitTool, SlideDeckCompleteTool
@@ -27,7 +27,6 @@ from ii_agent.tools.complete_tool import (
 from ii_agent.tools.bash_tool import create_bash_tool, create_docker_bash_tool
 from ii_agent.browser.browser import Browser
 from ii_agent.utils import WorkspaceManager
-from ii_agent.llm.message_history import MessageHistory
 from ii_agent.tools.browser_tools import (
     BrowserNavigationTool,
     BrowserRestartTool,
@@ -113,9 +112,7 @@ def get_system_tools(
         WebSearchTool(settings=settings),
         VisitWebpageTool(settings=settings),
         StaticDeployTool(workspace_manager=workspace_manager),
-        StrReplaceEditorTool(
-            workspace_manager=workspace_manager, message_queue=message_queue
-        ),
+        StrReplaceEditorTool(workspace_manager=workspace_manager),
         bash_tool,
         ListHtmlLinksTool(workspace_manager=workspace_manager),
         SlideDeckInitTool(
@@ -259,13 +256,12 @@ class AgentToolManager:
         except StopIteration:
             raise ValueError(f"Tool with name {tool_name} not found")
 
-    async def run_tool(self, tool_params: ToolCallParameters, history: MessageHistory):
+    async def run_tool(self, tool_params: ToolCallParameters):
         """
         Executes a llm tool asynchronously.
 
         Args:
             tool_params (ToolCallParameters): The tool parameters.
-            history (MessageHistory): The history of the conversation.
         Returns:
             ToolResult: The result of the tool execution.
         """
@@ -274,7 +270,7 @@ class AgentToolManager:
         tool_input = tool_params.tool_input
         logger.info(f"Running tool: {tool_name}")
         logger.info(f"Tool input: {tool_input}")
-        result = await llm_tool.run_async(tool_input, history)
+        result = await llm_tool.run_async(tool_input)
 
         tool_input_str = "\n".join([f" - {k}: {v}" for k, v in tool_input.items()])
 
@@ -373,7 +369,7 @@ class AgentToolManager:
         # Execute the tool
         try:
             tool = self.get_tool(tool_name)
-            result = await tool.run_impl(tool_input, None)
+            result = await tool.run_impl(tool_input)
             
             # Create appropriate observation based on action type
             if isinstance(action, MCPAction):

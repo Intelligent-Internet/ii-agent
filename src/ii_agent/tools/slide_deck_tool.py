@@ -1,7 +1,6 @@
 from typing import Any, Optional
 import subprocess
 import os
-from ii_agent.llm.message_history import MessageHistory
 from ii_agent.tools.base import LLMTool, ToolImplOutput
 from ii_agent.utils.workspace_manager import WorkspaceManager
 
@@ -22,8 +21,7 @@ class SlideDeckInitTool(LLMTool):
     async def run_impl(
         self,
         tool_input: dict[str, Any],
-        message_history: Optional[MessageHistory] = None,
-    ) -> ToolImplOutput:
+            ) -> ToolImplOutput:
         try:
             # Create the presentation directory if it doesn't exist
             presentation_dir = f"{self.workspace_manager.root}/presentation"
@@ -109,8 +107,7 @@ class SlideDeckCompleteTool(LLMTool):
     async def run_impl(
         self,
         tool_input: dict[str, Any],
-        message_history: Optional[MessageHistory] = None,
-    ) -> ToolImplOutput:
+            ) -> ToolImplOutput:
         slide_paths = tool_input["slide_paths"]
         for slide_path in slide_paths:
             # Normalize path by removing ./ prefix if present

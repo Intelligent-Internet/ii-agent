@@ -1,4 +1,3 @@
-from ii_agent.llm.message_history import MessageHistory
 from ii_agent.tools.base import (
     LLMTool,
     ToolImplOutput,
@@ -32,7 +31,6 @@ class ImageSearchTool(LLMTool):
     async def run_impl(
         self,
         tool_input: dict[str, Any],
-        message_history: Optional[MessageHistory] = None,
     ) -> ToolImplOutput:
         query = tool_input["query"]
         try:

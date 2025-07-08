@@ -7,12 +7,56 @@ from ii_agent.utils import WorkspaceManager
 from ii_agent.tools.bash_tool import create_bash_tool
 from ii_agent.tools.str_replace_tool_relative import StrReplaceEditorTool
 
-from ii_agent.llm.message_history import MessageHistory
 from ii_agent.tools.base import ToolImplOutput
 
 from typing import Any, Optional
 
-from copy import deepcopy
+# Simple Message classes for internal conversation management
+class SimpleMessage:
+    def __init__(self, content, role="user"):
+        self.content = content
+        self.role = role
+
+class SimpleHistory:
+    def __init__(self):
+        self.messages = []
+    
+    def add_user_prompt(self, content):
+        self.messages.append(SimpleMessage(content, "user"))
+    
+    def add_assistant_turn(self, response):
+        # Extract text from response for simple storage
+        if isinstance(response, list):
+            text_content = ""
+            for item in response:
+                if hasattr(item, 'text'):
+                    text_content += item.text
+            self.messages.append(SimpleMessage(text_content, "assistant"))
+        else:
+            self.messages.append(SimpleMessage(str(response), "assistant"))
+    
+    def get_messages_for_llm(self):
+        return [{"role": msg.role, "content": msg.content} for msg in self.messages]
+    
+    def get_pending_tool_calls(self):
+        # Simplified - always return empty for now
+        return []
+    
+    def get_last_assistant_text_response(self):
+        for msg in reversed(self.messages):
+            if msg.role == "assistant":
+                return msg.content
+        return None
+    
+    def truncate(self):
+        # Keep only last 10 messages for simplicity
+        if len(self.messages) > 10:
+            self.messages = self.messages[-10:]
+    
+    def add_tool_call_result(self, tool_call, result):
+        # Add tool result to history
+        self.messages.append(SimpleMessage(f"Tool {tool_call.tool_name} result: {result}", "assistant"))
+
 
 
 class PresentationTool(LLMTool):
@@ -190,20 +234,19 @@ action = init
         image_search_tool = ImageSearchTool()
         if image_search_tool.is_available():
             self.tools.append(image_search_tool)
-        self.history = MessageHistory(context_manager=context_manager)
+        self.history = SimpleHistory()
         self.tool_params = [tool.get_tool_param() for tool in self.tools]
         self.max_turns = 200
 
     async def run_impl(
         self,
         tool_input: dict[str, Any],
-        message_history: Optional[MessageHistory] = None,
     ) -> ToolImplOutput:
         action = tool_input["action"]
         description = tool_input["description"]
 
         if action == "init":
-            self.history = MessageHistory()
+            self.history = SimpleHistory()
 
             # Clone the reveal.js repository to the specified path
             clone_result = await self.bash_tool.run_impl(
@@ -289,9 +332,9 @@ action = init
             assert len(pending_tool_calls) == 1
             tool_call = pending_tool_calls[0]
             self.message_queue.put_nowait(
-                RealtimeEvent(
-                    type=EventType.TOOL_CALL,
-                    content={
+                Event.create_system_event(
+                    EventType.TOOL_CALL,
+                    {
                         "tool_call_id": tool_call.tool_call_id,
                         "tool_name": tool_call.tool_name,
                         "tool_input": tool_call.tool_input,
@@ -307,7 +350,7 @@ action = init
                 ) from exc
 
             # Execute the tool
-            result = tool.run(tool_call.tool_input, deepcopy(self.history))
+            result = tool.run(tool_call.tool_input)
 
             # Handle both string results and tuples
             if isinstance(result, tuple):
