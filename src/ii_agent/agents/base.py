@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 from ii_agent.llm.base import LLMClient
 from ii_agent.core.config.agent_config import AgentConfig
 from ii_agent.core.logger import logger
+from ii_agent.events.action import Action
 
 class BaseAgent(ABC):
     def __init__(

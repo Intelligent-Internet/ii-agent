@@ -105,7 +105,7 @@ try breaking down the task into smaller steps. After call this tool to update or
         for event in state.history:
             if isinstance(event, MessageAction) and event.source == EventSource.USER:
                 # User message turn
-                user_turn = [TextPrompt(text=event.message)]
+                user_turn = [TextPrompt(text=event.content)]
                 messages.append(user_turn)
                 
             elif isinstance(event, MessageAction) and event.source == EventSource.AGENT:

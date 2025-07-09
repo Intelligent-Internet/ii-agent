@@ -1,0 +1,11 @@
+from pydantic import BaseModel, Field
+
+
+class CLIConfig(BaseModel):
+    """Configuration for CLI-specific settings."""
+
+    vi_mode: bool = Field(default=False)
+    multiline_input: bool = Field(default=False)
+    confirmation_mode: bool = Field(default=False)
+
+    model_config = {'extra': 'forbid'}

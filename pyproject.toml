@@ -54,6 +54,9 @@ gaia = [
     "uvicorn[standard]>=0.29.0",
 ]
 
+[project.scripts]
+ii-agent = "ii_agent.cli.main:main"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

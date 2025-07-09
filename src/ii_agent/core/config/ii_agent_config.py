@@ -4,6 +4,7 @@ from pydantic import Field, computed_field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from ii_agent.utils.constants import TOKEN_BUDGET
 from pathlib import Path
+from ii_agent.core.config.cli_config import CLIConfig
 
 # Constants
 MAX_OUTPUT_TOKENS_PER_TURN = 32000
@@ -14,11 +15,12 @@ II_AGENT_DIR = Path(__file__).parent.parent.parent
 
 class IIAgentConfig(BaseSettings):
     """
-    Configuration for the IIAgent.
+    Configuration for the IIAgent. It is applied to the entire application.
 
     Attributes:
         file_store: The type of file store to use.
         file_store_path: The path to the file store.
+        cli: CLI-specific settings.
     """
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
@@ -31,6 +33,8 @@ class IIAgentConfig(BaseSettings):
     max_turns: int = MAX_TURNS
     token_budget: int = TOKEN_BUDGET
     database_url: Optional[str] = None
+    
+    cli: CLIConfig = Field(default_factory=CLIConfig)
 
     @model_validator(mode='after')
     def set_database_url(self) -> "IIAgentConfig":
