@@ -13,8 +13,7 @@ from ii_agent.tools.base import (
     ToolImplOutput,
 )
 from ii_agent.llm.base import ToolCallParameters
-from ii_agent.events.event import EventType, Event
-from asyncio import Queue
+from ii_agent.events.event import Event
 from typing import Any, Literal, Optional, get_args
 import logging
 

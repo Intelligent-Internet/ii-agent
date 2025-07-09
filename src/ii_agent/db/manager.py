@@ -6,7 +6,7 @@ from sqlalchemy import asc, create_engine, text
 from sqlalchemy.orm import Session as DBSession, sessionmaker
 from ii_agent.core.config.utils import load_ii_agent_config
 from ii_agent.db.models import Base, Session, Event
-from ii_agent.events.event import EventType, Event as EventClass
+from ii_agent.events.event import Event as EventClass, EventSource
 from ii_agent.core.config.ii_agent_config import II_AGENT_DIR
 from ii_agent.core.logger import logger
 
@@ -231,7 +231,7 @@ class EventsTable:
                 db.query(Event)
                 .filter(
                     Event.session_id == str(session_id),
-                    Event.event_type == EventType.USER_MESSAGE.value,
+                    Event.event_type == EventSource.USER.value,
                 )
                 .order_by(Event.timestamp.desc())
                 .first()

@@ -9,7 +9,7 @@ from pydantic import ValidationError
 from ii_agent.llm.base import ToolCall
 from ii_agent.agents.base import BaseAgent
 from ii_agent.agents.reviewer import ReviewerAgent, ReviewerController
-from ii_agent.events.event import Event, EventType
+from ii_agent.events.event import Event
 from ii_agent.events.observation.error import ErrorObservation
 from ii_agent.core.storage.files import FileStore
 from ii_agent.core.storage.models.settings import Settings
@@ -219,14 +219,13 @@ class ChatSession:
                 )
                 print("Initialized Reviewer")
 
-            await self.send_event(
-                Event.create_agent_event(
-                    EventType.AGENT_INITIALIZED,
-                    {
-                        "message": "Agent initialized"
-                        + (" with reviewer" if self.enable_reviewer else "")
+            await self.websocket.send_json(
+                {
+                    "type": "system",
+                    "content": {
+                        "message": "Agent initialized" + (" with reviewer" if self.enable_reviewer else "")
                     },
-                )
+                }
             )
         except ValidationError as e:
             await self.send_event(

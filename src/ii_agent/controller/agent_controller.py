@@ -8,7 +8,7 @@ from functools import partial
 
 from fastapi import WebSocket
 from ii_agent.agents.base import BaseAgent
-from ii_agent.events.event import EventType, Event
+from ii_agent.events.event import Event
 from ii_agent.tools.base import ToolImplOutput
 from ii_agent.tools import AgentToolManager
 from ii_agent.utils.workspace_manager import WorkspaceManager
@@ -95,7 +95,7 @@ class AgentController:
 
                     # Only send to websocket if this is not an event from the client and websocket exists
                     if (
-                        message.get_event_type() != EventType.USER_MESSAGE.value
+                        message.source != EventSource.USER
                         and self.websocket is not None
                     ):
                         try:
@@ -180,10 +180,7 @@ class AgentController:
             if isinstance(action, CompleteAction):
                 self.state.agent_state = AgentState.COMPLETED
                 self.message_queue.put_nowait(
-                    Event.create_agent_event(
-                        EventType.AGENT_RESPONSE,
-                        {"text": action.final_answer or "Task completed"},
-                    )
+                    action
                 )
                 return ToolImplOutput(
                     tool_output=action.final_answer or "Task completed",
@@ -193,10 +190,7 @@ class AgentController:
             elif isinstance(action, MessageAction):
                 # Handle message action - mostly for communication
                 self.message_queue.put_nowait(
-                    Event.create_agent_event(
-                        EventType.AGENT_RESPONSE,
-                        {"text": action.content},
-                    )
+                    action
                 )
                 return ToolImplOutput(
                     tool_output=action.content,
@@ -257,7 +251,10 @@ class AgentController:
         agent_answer = "Agent did not complete after max turns"
         self.state.agent_state = AgentState.ERROR
         self.message_queue.put_nowait(
-            Event.create_agent_event(EventType.AGENT_RESPONSE, {"text": agent_answer})
+            MessageAction(
+                content=agent_answer,
+                source=EventSource.AGENT
+            )
         )
         return ToolImplOutput(
             tool_output=agent_answer, tool_result_message=agent_answer
