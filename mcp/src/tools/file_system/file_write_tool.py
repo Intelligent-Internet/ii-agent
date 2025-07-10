@@ -1,13 +1,10 @@
 """File writing tool for creating and overwriting files."""
 
-import os
 from pathlib import Path
-
-from typing import Annotated, Optional, Dict, Any
+from typing import Annotated
 from pydantic import Field
 from src.core.workspace import WorkspaceManager
-from src.tools.constants import MAX_LINE_LENGTH
-from .base import BaseFileSystemTool
+from .base import BaseFileSystemTool, FileSystemValidationError
 
 
 DESCRIPTION = """Writes a file to the local filesystem.
@@ -31,27 +28,19 @@ class FileWriteTool(BaseFileSystemTool):
 
     def run_impl(
         self,
-        file_path: Annotated[str, Field(description="The absolute path to the file to write (must be absolute, not relative)")],
+        file_path: Annotated[str, Field(description="The absolute path to the file to write")],
         content: Annotated[str, Field(description="The content to write to the file")],
     ) -> str:
         """Execute the file write operation."""
         
         try:
-            # Convert to Path object for clean handling
-            path = Path(file_path)
-            
-            # Validate that the path is absolute
-            if not path.is_absolute():
-                return f"Error: File path must be absolute: {file_path}"
-            
-            # Validate that the path is within the workspace boundary
-            if not self.workspace_manager.validate_boundary(path):
-                workspace_path = self.workspace_manager.get_workspace_path()
-                return f"Error: File path must be within the workspace directory ({workspace_path}): {file_path}"
+            self.validate_path(file_path)
+
+            path = Path(file_path).resolve()
             
             # Check if path exists and is a directory
             if path.exists() and path.is_dir():
-                return f"Error: Path is a directory, not a file: {file_path}"
+                return f"ERROR: Path is a directory, not a file: {file_path}"
             
             # Create parent directories if they don't exist
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -67,12 +56,6 @@ class FileWriteTool(BaseFileSystemTool):
                 return f"Successfully created and wrote to new file: {file_path}"
             else:
                 return f"Successfully overwrote file: {file_path}"
-                
-        except PermissionError:
-            return f"Error: Permission denied when writing to file: {file_path}"
-        except OSError as e:
-            return f"Error: OS error when writing to file {file_path}: {str(e)}"
-        except Exception as e:
-            return f"Error: Unexpected error when writing to file {file_path}: {str(e)}"
         
-        
+        except (FileSystemValidationError) as e:
+            return f"ERROR: {e}"

@@ -1,16 +1,16 @@
 """Content search tool using regular expressions."""
 
-import os
 import subprocess
 import re
+
 from pathlib import Path
-from typing import Annotated, Dict, List, Optional, Union
+from typing import Annotated, Dict, List, Optional
 from pydantic import Field
 from src.core.workspace import WorkspaceManager
-from .base import BaseFileSystemTool
+from src.tools.file_system.base import BaseFileSystemTool, FileSystemValidationError
 
 
-DESCRIPTION = """
+DESCRIPTION = """\
 - Fast content search tool that works with any codebase size
 - Searches file contents using regular expressions
 - Supports full regex syntax (eg. "log.*Error", "function\\s+\\w+", etc.)
@@ -20,9 +20,60 @@ DESCRIPTION = """
 - If you need to identify/count the number of matches within files, use the Bash tool with `rg` (ripgrep) directly. Do NOT use `grep`.
 - When you are doing an open ended search that may require multiple rounds of globbing and grepping, use the Agent tool instead
 """
-
 MAX_GLOB_RESULTS = 100
+COMMAND_TIMEOUT = 30
 
+
+class GrepToolError(Exception):
+    """Custom exception for grep tool errors."""
+    pass
+
+def run_ripgrep(pattern: str, search_path: Path, include: Optional[str] = None) -> List[Dict[str, str]]:
+    """Execute ripgrep command and parse results."""
+    try:
+        # Build ripgrep command
+        cmd = ['rg', '--line-number', '--no-heading', '--color=never']
+        
+        # Add include pattern if specified
+        if include:
+            cmd.extend(['--glob', include])
+        
+        # Add the pattern and search path (convert Path to string for subprocess)
+        cmd.extend([pattern, str(search_path)])
+        
+        # Execute ripgrep
+        result = subprocess.run(cmd, 
+                                capture_output=True, 
+                                text=True, 
+                                timeout=COMMAND_TIMEOUT)
+        
+        if result.returncode == 1:
+            # No matches found
+            return []
+        elif result.returncode != 0:
+            # Error occurred
+            raise subprocess.CalledProcessError(result.returncode, cmd, result.stderr)
+        
+        # Parse the output
+        matches = []
+        for line in result.stdout.strip().split('\n'):
+            if not line:
+                continue
+            
+            # ripgrep output format: file:line_number:content
+            parts = line.split(':', 2)
+            matches.append({
+                'file_path': parts[0],
+                'line_number': parts[1],
+                'content': parts[2]
+            })
+        
+        return matches
+        
+    except subprocess.TimeoutExpired:
+        raise GrepToolError("Search operation timed out")
+    except subprocess.CalledProcessError as e:
+        raise GrepToolError(f"Ripgrep command failed: {e.stderr.strip()}")
 
 class GrepTool(BaseFileSystemTool):
     """Tool for searching file contents using regular expressions."""
@@ -41,124 +92,7 @@ class GrepTool(BaseFileSystemTool):
         except re.error:
             return False
 
-    def _is_ripgrep_available(self) -> bool:
-        """Check if ripgrep (rg) command is available."""
-        try:
-            result = subprocess.run(['rg', '--version'], 
-                                    capture_output=True, 
-                                    text=True, 
-                                    timeout=5)
-            return result.returncode == 0
-        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
-            return False
-
-    def _run_ripgrep(self, pattern: str, search_path: Path, include: Optional[str] = None) -> List[Dict[str, Union[str, int]]]:
-        """Execute ripgrep command and parse results."""
-        try:
-            # Build ripgrep command
-            cmd = ['rg', '--line-number', '--no-heading', '--color=never']
-            
-            # Add include pattern if specified
-            if include:
-                cmd.extend(['--glob', include])
-            
-            # Add the pattern and search path (convert Path to string for subprocess)
-            cmd.extend([pattern, str(search_path)])
-            
-            # Execute ripgrep
-            result = subprocess.run(cmd, 
-                                    capture_output=True, 
-                                    text=True, 
-                                    timeout=30)
-            
-            if result.returncode == 1:
-                # No matches found
-                return []
-            elif result.returncode != 0:
-                # Error occurred
-                raise subprocess.CalledProcessError(result.returncode, cmd, result.stderr)
-            
-            # Parse the output
-            matches = []
-            for line in result.stdout.strip().split('\n'):
-                if not line:
-                    continue
-                
-                # ripgrep output format: file:line_number:content
-                parts = line.split(':', 2)
-                if len(parts) >= 3:
-                    file_path = parts[0]
-                    line_number = int(parts[1])
-                    content = parts[2]
-                    
-                    matches.append({
-                        'file_path': file_path,
-                        'line_number': line_number,
-                        'content': content
-                    })
-            
-            return matches
-            
-        except subprocess.TimeoutExpired:
-            raise Exception("Search operation timed out")
-        except subprocess.CalledProcessError as e:
-            raise Exception(f"Ripgrep command failed: {e.stderr.strip()}")
-        except Exception as e:
-            raise Exception(f"Error running ripgrep: {str(e)}")
-
-    def _fallback_search(self, pattern: str, search_path: Path, include: Optional[str] = None) -> List[Dict[str, Union[str, int]]]:
-        """Fallback search implementation using Python when ripgrep is not available."""
-        try:
-            regex = re.compile(pattern, re.IGNORECASE)
-        except re.error as e:
-            raise Exception(f"Invalid regular expression: {e}")
-        
-        matches = []
-        
-        try:
-            # Determine file pattern
-            if include:
-                # Convert glob pattern to pathlib format
-                if include.startswith('**/'):
-                    glob_pattern = include
-                elif include.startswith('*.'):
-                    glob_pattern = f"**/{include}"
-                else:
-                    glob_pattern = f"**/*{include}*" if '*' not in include else include
-            else:
-                glob_pattern = "**/*"
-            
-            # Find files matching the pattern
-            for file_path in search_path.glob(glob_pattern):
-                if not file_path.is_file():
-                    continue
-                    
-                try:
-                    # Read file and search for pattern
-                    with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-                        for line_num, line in enumerate(f, 1):
-                            if regex.search(line):
-                                # Convert to relative path
-                                rel_path = file_path.relative_to(search_path)
-                                matches.append({
-                                    'file_path': str(rel_path),
-                                    'line_number': line_num,
-                                    'content': line.rstrip('\n\r')
-                                })
-                                
-                                # Limit results to prevent memory issues
-                                if len(matches) >= MAX_GLOB_RESULTS * 10:
-                                    return matches
-                except (UnicodeDecodeError, PermissionError, OSError):
-                    # Skip files that can't be read
-                    continue
-            
-            return matches
-            
-        except Exception as e:
-            raise Exception(f"Error during fallback search: {str(e)}")
-
-    def _format_results(self, matches: List[Dict[str, Union[str, int]]], pattern: str, search_path: Path, include: Optional[str] = None) -> str:
+    def _format_results(self, matches: List[Dict[str, str]], pattern: str, search_path: Path, include: Optional[str] = None) -> str:
         """Format search results for display."""
         if not matches:
             search_desc = f"pattern \"{pattern}\" in {search_path}"
@@ -223,47 +157,29 @@ class GrepTool(BaseFileSystemTool):
 
     def run_impl(
         self,
-        pattern: Annotated[str, Field(description="The regular expression pattern to search for in file contents")],
-        path: Annotated[Optional[str], Field(description="The directory to search in. Defaults to the current working directory.")] = None,
-        include: Annotated[Optional[str], Field(description="File pattern to include in the search (e.g. \"*.js\", \"*.{ts,tsx}\")")] = None,
+        pattern: Annotated[str, Field(description="The regular expression pattern to search for within file contents")],
+        path: Annotated[Optional[str], Field(description="The absolute path to the directory to search within. If omitted, searches the current working directory")] = None,
+        include: Annotated[Optional[str], Field(description="A glob pattern to filter which files are searched. If omitted, searches all files")] = None,
     ) -> str:
         """
         Search for pattern in files using ripgrep.
         """
-
-        workspace_path = self.workspace_manager.get_workspace_path()
         
         # Validate the regex pattern
         if not self._validate_regex_pattern(pattern):
             return f"ERROR: Invalid regular expression pattern: {pattern}"
         
-        # Determine search directory using Path
-        if path is None:
-            search_dir = workspace_path
-        else:
-            # Convert to Path object and resolve to absolute path
-            search_dir = Path(path).resolve()
-
-            # Check if path is in workspace
-            if not self.workspace_manager.validate_boundary(search_dir):
-                return f"ERROR: Path `{search_dir}` is not in workspace boundary `{workspace_path}`"
-            
-            # Verify the directory exists using Path methods
-            if not search_dir.exists():
-                return f"ERROR: Directory `{search_dir}` does not exist"
-            
-            if not search_dir.is_dir():
-                return f"ERROR: Path `{search_dir}` is not a directory"
-        
         try:
-            # Try ripgrep first, fallback to Python implementation
-            if self._is_ripgrep_available():
-                matches = self._run_ripgrep(pattern, search_dir, include)
+            # Determine search directory using Path
+            if path is None:
+                search_dir = self.workspace_manager.get_workspace_path()
             else:
-                matches = self._fallback_search(pattern, search_dir, include)
+                self.validate_existing_directory_path(path)
+                search_dir = Path(path).resolve()
             
+            matches = run_ripgrep(pattern, search_dir, include)
+
             # Format and return results
             return self._format_results(matches, pattern, search_dir, include)
-            
-        except Exception as e:
-            return f"ERROR: Search failed: {str(e)}"
+        except (FileSystemValidationError, GrepToolError) as e:
+            return f"ERROR: {e}"

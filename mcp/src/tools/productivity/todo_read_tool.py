@@ -19,6 +19,11 @@ Usage:
 - Use this information to track progress and plan next steps
 - If no todos exist yet, an empty list will be returned"""
 
+
+EMPTY_MESSAGE = "No todos found"
+SUCCESS_MESSAGE = "Remember to continue to use update and read from the todo list as you make progress. Here is the current list: {todos}"
+
+
 class TodoReadTool(BaseTool):
     """Tool for reading the current to-do list for the session."""
     
@@ -31,6 +36,6 @@ class TodoReadTool(BaseTool):
         todos = manager.get_todos()
         
         if not todos:
-            return "No todos found"
+            return EMPTY_MESSAGE
         
-        return f"Remember to continue to use update and read from the todo list as you make progress. Here is the current list: {todos}"
+        return SUCCESS_MESSAGE.format(todos=todos)

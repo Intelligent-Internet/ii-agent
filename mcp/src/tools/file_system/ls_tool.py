@@ -2,12 +2,12 @@
 
 import os
 import fnmatch
-import time
+
 from pathlib import Path
-from typing import Annotated, Optional, List, Dict, Any, NamedTuple
+from typing import Annotated, Optional, List, NamedTuple
 from pydantic import Field
 from src.core.workspace import WorkspaceManager
-from .base import BaseFileSystemTool
+from src.tools.file_system.base import BaseFileSystemTool, FileSystemValidationError
 
 
 DESCRIPTION = """Lists files and directories in a given path. The path parameter must be an absolute path, not a relative path. You can optionally provide an array of glob patterns to ignore with the ignore parameter. You should generally prefer the Glob and Grep tools, if you know which directories to search."""
@@ -61,7 +61,7 @@ class LSTool(BaseFileSystemTool):
         # Check custom ignore patterns
         if ignore_patterns:
             for pattern in ignore_patterns:
-                if fnmatch.fnmatch(str(path), pattern) or fnmatch.fnmatch(path.name, pattern):
+                if fnmatch.fnmatch(path.name, pattern):
                     return True
                     
         return False
@@ -223,72 +223,46 @@ class LSTool(BaseFileSystemTool):
             Formatted directory tree as string
         """
 
-        workspace_path = self.workspace_manager.get_workspace_path()
-        
-        # Convert to Path object and resolve to absolute path
-        target_path = Path(path).resolve()
-
-        # Check if path is in workspace
-        if not self.workspace_manager.validate_boundary(target_path):
-            return f"ERROR: Path `{target_path}` is not in workspace boundary `{workspace_path}`"
-            
-        # Check if path exists
-        if not target_path.exists():
-            return f"ERROR: Directory `{target_path}` does not exist"
-            
-        # Check if path is a directory
-        if not target_path.is_dir():
-            return f"ERROR: Path `{target_path}` is not a directory"
-
         try:
-            # Get the current working directory for restoration
-            original_cwd = Path.cwd()
+            self.validate_existing_directory_path(path)
             
-            # Change to the target directory temporarily
-            os.chdir(target_path)
+            target_path = Path(path).resolve()
+
+            # List directory contents
+            file_paths = self._list_directory(target_path, target_path, ignore)
             
-            try:
-                # List directory contents
-                file_paths = self._list_directory(target_path, target_path, ignore)
-                
-                # Check if directory is empty
-                if not file_paths:
-                    return f"Directory {target_path} is empty."
-                
-                # Check if we hit the limit
-                is_truncated = len(file_paths) > MAX_FILES
-                if is_truncated:
-                    file_paths = file_paths[:MAX_FILES]
-                
-                # Sort file paths (directories first, then alphabetically)
-                def sort_key(p: str) -> tuple:
-                    # Remove trailing slash for comparison
-                    clean_path = p.rstrip(os.sep)
-                    # Check if it's a directory by looking for trailing slash in original
-                    is_dir = p.endswith(os.sep)
-                    # Return tuple for sorting: (not is_dir, lowercase path)
-                    # not is_dir so directories (True -> False -> 0) come before files (False -> True -> 1)
-                    return (not is_dir, clean_path.lower())
-                
-                file_paths.sort(key=sort_key)
-                
-                # Create tree structure
-                tree = self._create_file_tree(file_paths)
-                
-                # Generate formatted output
-                result = ""
-                if is_truncated:
-                    result += TRUNCATED_MESSAGE
-                
-                result += self._print_tree(tree)
-                
-                return result.rstrip()  # Remove trailing newline
-                
-            finally:
-                # Always restore the original working directory
-                os.chdir(original_cwd)
-                
-        except (OSError, PermissionError) as e:
-            return f"ERROR: Unable to access directory `{target_path}`: {str(e)}"
+            # Check if directory is empty
+            if not file_paths:
+                return f"Directory {target_path} is empty."
+            
+            # Check if we hit the limit
+            is_truncated = len(file_paths) > MAX_FILES
+            if is_truncated:
+                file_paths = file_paths[:MAX_FILES]
+            
+            # Sort file paths (directories first, then alphabetically)
+            def sort_key(p: str) -> tuple:
+                # Remove trailing slash for comparison
+                clean_path = p.rstrip(os.sep)
+                # Check if it's a directory by looking for trailing slash in original
+                is_dir = p.endswith(os.sep)
+                # Return tuple for sorting: (not is_dir, lowercase path)
+                # not is_dir so directories (True -> False -> 0) come before files (False -> True -> 1)
+                return (not is_dir, clean_path.lower())
+            
+            file_paths.sort(key=sort_key)
+            
+            # Create tree structure
+            tree = self._create_file_tree(file_paths)
+            
+            # Generate formatted output
+            result = ""
+            if is_truncated:
+                result += TRUNCATED_MESSAGE
+            
+            result += self._print_tree(tree)
+            
+            return result.rstrip()
         
-        
+        except (FileSystemValidationError) as e:
+            return f"ERROR: {e}"
