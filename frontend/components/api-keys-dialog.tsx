@@ -296,6 +296,7 @@ const ApiKeysDialog = ({
           ...llmConfig,
           [getModelKey(model)]: {
             ...llmConfig[getModelKey(model)],
+            api_type: model.provider,
             model: model.model_name,
             cot_model: isCotModels.some((m) => model.model_name?.includes(m)),
           },
@@ -1101,12 +1102,14 @@ const ApiKeysDialog = ({
                 <Label htmlFor="model-name">Model Name</Label>
                 <Select
                   value={selectedModel.model_name}
-                  onValueChange={(value) =>
-                    handleModelChange({
-                      model_name: value,
-                      provider: selectedModel.provider,
-                    })
-                  }
+                  onValueChange={(value) => {
+                    const model = PROVIDER_MODELS[
+                      selectedProvider as keyof typeof PROVIDER_MODELS
+                    ].find((m) => m.model_name === value);
+                    if (model) {
+                      handleModelChange(model);
+                    }
+                  }}
                 >
                   <SelectTrigger className="bg-[#35363a] border-[#ffffff0f] w-full">
                     <SelectValue placeholder="Select Model" />
