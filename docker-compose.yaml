@@ -42,6 +42,7 @@ services:
     init: true # Needed for the browser use
     ports:
       - "${BACKEND_PORT:-8000}:8000"
+      - "${CODE_SERVER_PORT:-9000}:${CODE_SERVER_PORT:-9000}"
     environment:
       #Path of mounted file in docker
       - GOOGLE_APPLICATION_CREDENTIALS=/app/google-application-credentials.json
