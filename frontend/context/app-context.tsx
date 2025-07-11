@@ -34,6 +34,7 @@ interface AppState {
   wsConnectionState: WebSocketConnectionState;
   isAgentInitialized: boolean;
   requireClearFiles: boolean;
+  vscodeUrl: string;
 }
 
 // Define action types
@@ -70,7 +71,8 @@ export type AppAction =
         data: Record<string, unknown>;
         workspacePath?: string;
       };
-    };
+    }
+  | { type: "SET_VSCODE_URL"; payload: string };
 
 // Initial state
 const initialState: AppState = {
@@ -101,6 +103,7 @@ const initialState: AppState = {
   availableModels: [],
   isAgentInitialized: false,
   requireClearFiles: false,
+  vscodeUrl: "",
 };
 
 // Create the context
@@ -179,6 +182,8 @@ function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, isAgentInitialized: action.payload };
     case "SET_REQUIRE_CLEAR_FILES":
       return { ...state, requireClearFiles: action.payload };
+    case "SET_VSCODE_URL":
+      return { ...state, vscodeUrl: action.payload };
 
     default:
       return state;
