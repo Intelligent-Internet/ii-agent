@@ -72,10 +72,6 @@ export const PROVIDER_MODELS: { [key: string]: IModel[] } = {
   ],
   gemini: [
     {
-      model_name: "gemini-pro",
-      provider: "gemini",
-    },
-    {
       model_name: "gemini-1.5-pro",
       provider: "gemini",
     },
@@ -112,10 +108,6 @@ export const PROVIDER_MODELS: { [key: string]: IModel[] } = {
     {
       model_name: "claude-3-7-sonnet@20250219",
       provider: "anthropic",
-    },
-    {
-      model_name: "gemini-pro",
-      provider: "gemini",
     },
     {
       model_name: "gemini-1.5-pro",
