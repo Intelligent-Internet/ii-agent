@@ -55,6 +55,10 @@ export function useAppEvents({
       switch (data.type) {
         case AgentEvent.AGENT_INITIALIZED:
           safeDispatch({ type: "SET_AGENT_INITIALIZED", payload: true });
+          safeDispatch({
+            type: "SET_VSCODE_URL",
+            payload: data.content.vscode_url as string,
+          });
           break;
 
         case AgentEvent.SYSTEM:

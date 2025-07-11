@@ -175,7 +175,12 @@ export default function HomeContent() {
       return;
     }
 
-    const url = `http://${sessionId}-9000.${process.env.NEXT_PUBLIC_VSCODE_URL}`;
+    // const url = `http://${sessionId}-9000.${process.env.NEXT_PUBLIC_VSCODE_URL}`;
+    if (!state.vscodeUrl) {
+      toast.error("VS Code URL not available. Please try again.");
+      return;
+    }
+    const url = state.vscodeUrl;
     window.open(url, "_blank");
   };
 

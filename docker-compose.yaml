@@ -42,6 +42,7 @@ services:
     init: true # Needed for the browser use
     ports:
       - "${BACKEND_PORT:-8000}:8000"
+      - "${CODE_SERVER_PORT:-9000}:${CODE_SERVER_PORT:-9000}"
     environment:
       #Path of mounted file in docker
       - GOOGLE_APPLICATION_CREDENTIALS=/app/google-application-credentials.json
@@ -50,6 +51,7 @@ services:
       - BASE_URL=${BASE_URL}
       - COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME}
       - HOST_WORKSPACE_PATH=${HOME}/.ii_agent/workspace
+      - CODE_SERVER_PORT=${CODE_SERVER_PORT:-9000}
     volumes:
       #If file doesn't exist, use a dummy file
       - ${GOOGLE_APPLICATION_CREDENTIALS:-./docker/.dummy-credentials.json}:/app/google-application-credentials.json
