@@ -60,6 +60,10 @@ class IIAgentConfig(BaseSettings):
     def logs_path(self) -> str:
         return os.path.join(self.file_store_path, "logs")
 
+    @property
+    def code_server_port(self) -> int:
+        return int(os.getenv("CODE_SERVER_PORT", 9000))
+
     @field_validator("file_store_path")
     def expand_path(cls, v):
         if v.startswith("~"):
