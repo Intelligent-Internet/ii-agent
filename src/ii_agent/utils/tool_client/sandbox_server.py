@@ -10,6 +10,8 @@ import uvicorn
 
 from .server.str_replace_server import create_app as create_str_replace_app
 from .server.terminal_server import create_app as create_terminal_app
+from .server.filesystem_server import create_app as create_filesystem_app
+from .server.todo_server import create_app as create_todo_app
 
 logger = logging.getLogger(__name__)
 
@@ -64,9 +66,21 @@ class CombinedSandboxServer:
             allowed_origins=allowed_origins,
         )
 
+        filesystem_app = create_filesystem_app(
+            workspace_path=cwd or "/workspace",
+            allowed_origins=allowed_origins,
+            cwd=cwd,
+        )
+
+        todo_app = create_todo_app(
+            allowed_origins=allowed_origins,
+        )
+
         # Mount the sub-applications
         self.app.mount("/api/str_replace", str_replace_app)
         self.app.mount("/api/terminal", terminal_app)
+        self.app.mount("/api/filesystem", filesystem_app)
+        self.app.mount("/api/todo", todo_app)
 
         # Setup main routes
         self._setup_routes()
@@ -86,6 +100,8 @@ class CombinedSandboxServer:
                 "services": {
                     "str_replace": "available at /api/str_replace/",
                     "terminal": "available at /api/terminal/",
+                    "filesystem": "available at /api/filesystem/",
+                    "todo": "available at /api/todo/",
                 },
             }
 
@@ -123,6 +139,29 @@ class CombinedSandboxServer:
                             "/api/terminal/shell_wait",
                             "/api/terminal/shell_write_to_process",
                             "/api/terminal/shell_kill_process",
+                        ],
+                    },
+                    "filesystem": {
+                        "description": "File system operations",
+                        "base_path": "/api/filesystem",
+                        "endpoints": [
+                            "/api/filesystem/health",
+                            "/api/filesystem/read_file",
+                            "/api/filesystem/edit_file",
+                            "/api/filesystem/write_file",
+                            "/api/filesystem/multi_edit",
+                            "/api/filesystem/ls",
+                            "/api/filesystem/glob",
+                            "/api/filesystem/grep",
+                        ],
+                    },
+                    "todo": {
+                        "description": "Todo operations",
+                        "base_path": "/api/todo",
+                        "endpoints": [
+                            "/api/todo/health",
+                            "/api/todo/todo_read",
+                            "/api/todo/todo_write",
                         ],
                     },
                 },
@@ -227,6 +266,7 @@ def main():
     logger.info(f"Starting Combined Sandbox Server on {args.host}:{args.port}")
     logger.info("String replace operations available at /api/str_replace/")
     logger.info("Terminal operations available at /api/terminal/")
+    logger.info("File system operations available at /api/filesystem/")
     server.run(host=args.host, port=args.port)
 
 

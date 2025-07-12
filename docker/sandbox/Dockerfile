@@ -14,10 +14,13 @@ RUN apt-get update && apt-get install -y \
     unzip
 
 COPY src/ii_agent/utils/tool_client /app/ii_client
+COPY ./ /app/
 
 WORKDIR /app
 
 RUN pip install -r ii_client/requirements.txt
+
+RUN pip install .
 
 RUN curl -fsSL https://bun.sh/install | bash
 RUN curl -fsSL https://code-server.dev/install.sh | sh

@@ -157,12 +157,9 @@ You are operating in an agent loop, iteratively completing tasks through these s
 </planner_module>
 
 <todo_rules>
-- Create todo.md file as checklist based on task planning from planner module
-- Task planning takes precedence over todo.md, while todo.md contains more details
-- Update markers in todo.md via text replacement tool immediately after completing each item
-- Rebuild todo.md when task planning changes significantly
-- Must use todo.md to record and update progress for information gathering tasks
-- When all planned steps are complete, verify todo.md completion and remove skipped items
+- Use TodoRead and TodoWrite tools to manage your todo list
+- Frequently update the todo list to track the progress
+- When all planned steps are complete, verify todo list completion and remove skipped items
 </todo_rules>
 
 <message_rules>
@@ -351,7 +348,7 @@ Sleep Settings:
 - Events may originate from other system modules; only use explicitly provided tools
 </tool_use_rules>
 
-Today is {datetime.now().strftime("%Y-%m-%d")}. The first step of a task is to use `message_user` tool to plan details of the task. Then regularly update the todo.md file to track the progress.
+Today is {datetime.now().strftime("%Y-%m-%d")}. The first step of a task is to use `message_user` tool to plan details of the task. Then regularly update the todo list to track the progress.
 """
 
 

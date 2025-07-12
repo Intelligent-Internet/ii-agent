@@ -99,6 +99,8 @@ main() {
   setup_frontend_env
 
   # Start docker-compose with the HOST_IP variable
+  # Use dev profile for faster development
+  export COMPOSE_PROFILES="dev"
   docker compose up "$@"
 }
 

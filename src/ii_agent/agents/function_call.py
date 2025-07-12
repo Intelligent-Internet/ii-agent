@@ -38,7 +38,7 @@ class FunctionCallAgent(BaseAgent):
 A general agent that can accomplish tasks and answer questions.
 
 If you are faced with a task that involves more than a few steps, or if the task is complex, or if the instructions are very long,
-try breaking down the task into smaller steps. After call this tool to update or create a plan, use write_file or str_replace_tool to update the plan to todo.md
+try breaking down the task into smaller steps. After call this tool to update or create a plan, use Write or Edit tools to update the plan to todo.md
 """
     input_schema = {
         "type": "object",
