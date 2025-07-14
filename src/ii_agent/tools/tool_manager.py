@@ -61,12 +61,12 @@ from ii_agent.tools.deep_research_tool import DeepResearchTool
 from ii_agent.tools.list_html_links_tool import ListHtmlLinksTool
 from ii_agent.utils.constants import TOKEN_BUDGET
 from ii_agent.core.storage.models.settings import Settings
+from ii_agent.core.logger import logger
 
 
 def get_system_tools(
     client: LLMClient,
     workspace_manager: WorkspaceManager,
-    message_queue: asyncio.Queue,
     settings: Settings,
     container_id: Optional[str] = None,
     tool_args: Dict[str, Any] = None,
@@ -87,11 +87,9 @@ def get_system_tools(
             ask_user_permission=ask_user_permission, cwd=workspace_manager.root
         )
 
-    logger = logging.getLogger("presentation_context_manager")
     context_manager = LLMSummarizingContextManager(
         client=client,
         token_counter=TokenCounter(),
-        logger=logger,
         token_budget=TOKEN_BUDGET,
     )
 
@@ -101,7 +99,7 @@ def get_system_tools(
         VisitWebpageTool(settings=settings),
         StaticDeployTool(workspace_manager=workspace_manager),
         StrReplaceEditorTool(
-            workspace_manager=workspace_manager, message_queue=message_queue
+            workspace_manager=workspace_manager
         ),
         bash_tool,
         ListHtmlLinksTool(workspace_manager=workspace_manager),
@@ -121,8 +119,8 @@ def get_system_tools(
     if tool_args:
         if tool_args.get("sequential_thinking", False):
             tools.append(SequentialThinkingTool())
-        if tool_args.get("deep_research", False):
-            tools.append(DeepResearchTool())
+        # if tool_args.get("deep_research", False):
+        #     tools.append(DeepResearchTool())
         if tool_args.get("pdf", False):
             tools.append(PdfTextExtractTool(workspace_manager=workspace_manager))
         if tool_args.get("media_generation", False):
@@ -209,7 +207,6 @@ class AgentToolManager:
     """
 
     def __init__(self, tools: List[LLMTool], logger_for_agent_logs: logging.Logger, interactive_mode: bool = True, reviewer_mode: bool = False):
-        self.logger_for_agent_logs = logger_for_agent_logs
         if reviewer_mode:
             self.complete_tool = ReturnControlToGeneralAgentTool() if interactive_mode else CompleteToolReviewer()
         else:
@@ -248,8 +245,8 @@ class AgentToolManager:
         llm_tool = self.get_tool(tool_params.tool_name)
         tool_name = tool_params.tool_name
         tool_input = tool_params.tool_input
-        self.logger_for_agent_logs.info(f"Running tool: {tool_name}")
-        self.logger_for_agent_logs.info(f"Tool input: {tool_input}")
+        logger.debug(f"Running tool: {tool_name}")
+        logger.debug(f"Tool input: {tool_input}")
         result = await llm_tool.run_async(tool_input, history)
 
         tool_input_str = "\n".join([f" - {k}: {v}" for k, v in tool_input.items()])
@@ -264,7 +261,7 @@ class AgentToolManager:
                     result_to_log[i]["source"]["data"] = "[REDACTED]"
             log_message += f"\nTool output: \n{result_to_log}\n\n"
 
-        self.logger_for_agent_logs.info(log_message)
+        logger.debug(log_message)
 
         # Handle both ToolResult objects and tuples
         if isinstance(result, tuple):

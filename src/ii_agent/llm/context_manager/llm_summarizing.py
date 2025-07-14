@@ -1,10 +1,10 @@
-import logging
+
 from ii_agent.llm.base import GeneralContentBlock, TextPrompt, TextResult, AnthropicThinkingBlock, AnthropicRedactedThinkingBlock
 from ii_agent.llm.context_manager.base import ContextManager
 from ii_agent.llm.token_counter import TokenCounter
 from ii_agent.llm.base import LLMClient
 from ii_agent.utils.constants import TOKEN_BUDGET, SUMMARY_MAX_TOKENS
-
+from ii_agent.core.logger import logger
 
 class LLMSummarizingContextManager(ContextManager):
     """A context manager that summarizes forgotten events using LLM.
@@ -18,7 +18,6 @@ class LLMSummarizingContextManager(ContextManager):
         self,
         client: LLMClient,
         token_counter: TokenCounter,
-        logger: logging.Logger,
         token_budget: int = TOKEN_BUDGET,
         max_size: int = 100,
         max_event_length: int = 10_000,
@@ -26,7 +25,7 @@ class LLMSummarizingContextManager(ContextManager):
         if max_size < 1:
             raise ValueError(f"max_size ({max_size}) cannot be non-positive")
 
-        super().__init__(token_counter, logger, token_budget)
+        super().__init__(token_counter, token_budget)
         self.client = client
         self.max_size = max_size
         self.keep_first = 1
@@ -107,7 +106,7 @@ class LLMSummarizingContextManager(ContextManager):
 
         
         if len(events_to_summarize) <= 1: # If there is only one event to summarize, don't summarize
-            self.logger.info(
+            logger.info(
                 "No events to summarize, returning original message lists"
             )
             return message_lists
@@ -122,7 +121,7 @@ class LLMSummarizingContextManager(ContextManager):
         condensed_messages.append(summary_message)
         condensed_messages.extend(events_to_keep)
         
-        self.logger.info(
+        logger.info(
             f"Condensed {len(message_lists)} message lists to {len(condensed_messages)} "
             f"(kept {self.keep_first} head + 1 summary + {len(events_to_keep)} from last TextPrompt onwards)"
         )
@@ -179,7 +178,7 @@ class LLMSummarizingContextManager(ContextManager):
         if events_from_tail > 0:
             condensed_messages.extend(message_lists[-events_from_tail:])
 
-        self.logger.info(
+        logger.info(
             f"Condensed {len(message_lists)} message lists to {len(condensed_messages)} "
             f"(kept {len(head)} head + 1 summary + {events_from_tail} tail)"
         )
@@ -262,12 +261,12 @@ CURRENT_STATE: Last flip: Heads, Haiku count: 15/20
                 if isinstance(message, TextResult):
                     summary += message.text
 
-            self.logger.info(
+            logger.info(
                 f"Generated summary for {len(forgotten_events)} forgotten events"
             )
 
         except Exception as e:
-            self.logger.error(f"Failed to generate summary: {e}")
+            logger.error(f"Failed to generate summary: {e}")
             summary = f"Failed to summarize {len(forgotten_events)} events due to error: {str(e)}"
 
         return summary

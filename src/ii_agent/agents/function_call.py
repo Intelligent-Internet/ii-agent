@@ -6,9 +6,9 @@ from functools import partial
 
 from typing import List
 from fastapi import WebSocket
-from ii_agent.agents.base import BaseAgent
+from ii_agent.controller.agent import Agent
 from ii_agent.core.event import EventType, RealtimeEvent
-from ii_agent.llm.base import LLMClient, TextResult, ToolCallParameters, ToolParam
+from ii_agent.llm.base import LLMClient, TextResult, ToolCallParameters, ToolParam, AssistantContentBlock
 from ii_agent.llm.message_history import MessageHistory
 from ii_agent.tools.base import ToolImplOutput, LLMTool
 from ii_agent.tools.utils import encode_image
@@ -34,7 +34,6 @@ class FunctionCallAgent(Agent):
         self,
         llm: LLMClient,
         config: AgentConfig,
-        system_prompt: str,
         tools: List[ToolParam],
     ):
         """Initialize the agent.
@@ -42,11 +41,9 @@ class FunctionCallAgent(Agent):
         Args:
             llm: The LLM client to use
             config: The configuration for the agent
-            system_prompt: The system prompt to use
             tools: List of tools to use
         """
         super().__init__(llm, config)
-        self.system_prompt = system_prompt
         self.tools = tools
 
     def step(self, state: MessageHistory) -> list[AssistantContentBlock]:
@@ -54,7 +51,7 @@ class FunctionCallAgent(Agent):
             messages=state.get_messages_for_llm(),
             max_tokens=self.config.max_tokens_per_turn,
             tools=self.tools,
-            system_prompt=self.system_prompt,
+            system_prompt=self.config.system_prompt,
             temperature=self.config.temperature,
         )
         return model_response

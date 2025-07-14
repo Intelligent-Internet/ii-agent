@@ -15,6 +15,7 @@ from ii_agent.tools.utils import encode_image
 from ii_agent.tools import AgentToolManager
 from ii_agent.utils.constants import COMPLETE_MESSAGE
 from ii_agent.utils.workspace_manager import WorkspaceManager
+from ii_agent.core.logger import logger
 
 TOOL_RESULT_INTERRUPT_MESSAGE = "Tool execution interrupted by user."
 AGENT_INTERRUPT_MESSAGE = "Agent interrupted by user."
@@ -29,43 +30,34 @@ AGENT_INTERRUPT_FAKE_MODEL_RSP = (
 class AgentController:
     def __init__(
         self,
-        system_prompt: str,
         agent: Agent,
         tools: List[LLMTool],
         init_history: MessageHistory,
         workspace_manager: WorkspaceManager,
         event_stream: EventStream,
-        logger_for_agent_logs: logging.Logger,
-        max_output_tokens_per_turn: int = 8192,
         max_turns: int = 200,
         interactive_mode: bool = True,
     ):
         """Initialize the agent.
 
         Args:
-            system_prompt: The system prompt to use
             agent: The agent to use
             tools: List of tools to use
             init_history: Initial history to use
             workspace_manager: Workspace manager for file operations
             event_stream: Event stream for publishing events
-            logger_for_agent_logs: Logger for agent logs
-            max_output_tokens_per_turn: Maximum tokens per turn
             max_turns: Maximum number of turns
             interactive_mode: Whether to use interactive mode
         """
         super().__init__()
         self.workspace_manager = workspace_manager
-        self.system_prompt = system_prompt
         self.agent = agent
         self.tool_manager = AgentToolManager(
             tools=tools,
-            logger_for_agent_logs=logger_for_agent_logs,
+            logger_for_agent_logs=logger,
             interactive_mode=interactive_mode,
         )
 
-        self.logger_for_agent_logs = logger_for_agent_logs
-        self.max_output_tokens = max_output_tokens_per_turn
         self.max_turns = max_turns
 
         self.interrupted = False
@@ -92,9 +84,6 @@ class AgentController:
         instruction = tool_input["instruction"]
         files = tool_input["files"]
 
-        user_input_delimiter = "-" * 45 + " USER INPUT " + "-" * 45 + "\n" + instruction
-        self.logger_for_agent_logs.info(f"\n{user_input_delimiter}\n")
-
         # Add instruction to dialog before getting model response
         image_blocks = []
         if files:
@@ -103,7 +92,7 @@ class AgentController:
             for file in files:
                 relative_path = self.workspace_manager.relative_path(file)
                 instruction += f" - {relative_path}\n"
-                self.logger_for_agent_logs.info(f"Attached file: {relative_path}")
+                logger.info(f"Attached file: {relative_path}")
 
             # Then process images for image blocks
             for file in files:
@@ -132,8 +121,6 @@ class AgentController:
             self.history.truncate()
             remaining_turns -= 1
 
-            delimiter = "-" * 45 + " NEW TURN " + "-" * 45
-            self.logger_for_agent_logs.info(f"\n{delimiter}\n")
 
             # Get tool parameters for available tools
             all_tool_params = self._validate_tool_parameters()
@@ -146,11 +133,11 @@ class AgentController:
                     tool_result_message=AGENT_INTERRUPT_MESSAGE,
                 )
 
-            self.logger_for_agent_logs.info(
+            logger.info(
                 f"(Current token count: {self.history.count_tokens()})\n"
             )
             loop = asyncio.get_event_loop()
-            model_response, _ = await loop.run_in_executor(
+            model_response = await loop.run_in_executor(
                 None,
                 partial(
                     self.agent.step,
@@ -169,7 +156,7 @@ class AgentController:
 
             if len(pending_tool_calls) == 0:
                 # No tools were called, so assume the task is complete
-                self.logger_for_agent_logs.info("[no tools were called]")
+                logger.info("[no tools were called]")
                 self.event_stream.add_event(
                     RealtimeEvent(
                         type=EventType.AGENT_RESPONSE,
@@ -204,7 +191,7 @@ class AgentController:
             ]
             if len(text_results) > 0:
                 text_result = text_results[0]
-                self.logger_for_agent_logs.info(
+                logger.info(
                     f"Top-level agent planning next step: {text_result.text}\n",
                 )
 
@@ -270,7 +257,7 @@ class AgentController:
         }
         if orientation_instruction:
             tool_input["orientation_instruction"] = orientation_instruction
-        return await self.run_async(tool_input, self.history)
+        return await self.run_impl(tool_input, self.history)
 
     def run_agent(
         self,
@@ -305,7 +292,7 @@ class AgentController:
     def cancel(self):
         """Cancel the agent execution."""
         self.interrupted = True
-        self.logger_for_agent_logs.info("Agent cancellation requested")
+        logger.info("Agent cancellation requested")
 
     def add_tool_call_result(self, tool_call: ToolCallParameters, tool_result: str):
         """Add a tool call result to the history and send it to the message queue."""
