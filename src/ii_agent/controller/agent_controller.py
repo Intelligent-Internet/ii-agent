@@ -5,14 +5,13 @@ import uuid
 from functools import partial
 
 from typing import List
-from fastapi import WebSocket
 from ii_agent.controller.agent import Agent
 from ii_agent.core.event import EventType, RealtimeEvent
+from ii_agent.core.event_stream import EventStream
 from ii_agent.llm.base import LLMClient, TextResult, ToolCallParameters
 from ii_agent.llm.message_history import MessageHistory
 from ii_agent.tools.base import ToolImplOutput, LLMTool
 from ii_agent.tools.utils import encode_image
-from ii_agent.db.manager import Events
 from ii_agent.tools import AgentToolManager
 from ii_agent.utils.constants import COMPLETE_MESSAGE
 from ii_agent.utils.workspace_manager import WorkspaceManager
@@ -28,8 +27,6 @@ AGENT_INTERRUPT_FAKE_MODEL_RSP = (
 
 
 class AgentController:
-    websocket: Optional[WebSocket]
-
     def __init__(
         self,
         system_prompt: str,
@@ -37,28 +34,25 @@ class AgentController:
         tools: List[LLMTool],
         init_history: MessageHistory,
         workspace_manager: WorkspaceManager,
-        message_queue: asyncio.Queue,
+        event_stream: EventStream,
         logger_for_agent_logs: logging.Logger,
         max_output_tokens_per_turn: int = 8192,
         max_turns: int = 200,
-        websocket: Optional[WebSocket] = None,
-        session_id: Optional[uuid.UUID] = None,
         interactive_mode: bool = True,
     ):
         """Initialize the agent.
 
         Args:
             system_prompt: The system prompt to use
-            client: The LLM client to use
+            agent: The agent to use
             tools: List of tools to use
-            message_queue: Message queue for real-time communication
+            init_history: Initial history to use
+            workspace_manager: Workspace manager for file operations
+            event_stream: Event stream for publishing events
             logger_for_agent_logs: Logger for agent logs
             max_output_tokens_per_turn: Maximum tokens per turn
             max_turns: Maximum number of turns
-            websocket: Optional WebSocket for real-time communication
-            session_id: UUID of the session this agent belongs to
             interactive_mode: Whether to use interactive mode
-            init_history: Optional initial history to use
         """
         super().__init__()
         self.workspace_manager = workspace_manager
@@ -76,52 +70,8 @@ class AgentController:
 
         self.interrupted = False
         self.history = init_history
-        self.session_id = session_id
+        self.event_stream = event_stream
 
-        # Initialize database manager
-        self.message_queue = message_queue
-        self.websocket = websocket
-
-    async def _process_messages(self):
-        try:
-            while True:
-                try:
-                    message: RealtimeEvent = await self.message_queue.get()
-
-                    # Save all events to database if we have a session
-                    if self.session_id is not None:
-                        Events.save_event(self.session_id, message)
-                    else:
-                        self.logger_for_agent_logs.info(
-                            f"No session ID, skipping event: {message}"
-                        )
-
-                    # Only send to websocket if this is not an event from the client and websocket exists
-                    if (
-                        message.type != EventType.USER_MESSAGE
-                        and self.websocket is not None
-                    ):
-                        try:
-                            await self.websocket.send_json(message.model_dump())
-                        except Exception as e:
-                            # If websocket send fails, just log it and continue processing
-                            self.logger_for_agent_logs.warning(
-                                f"Failed to send message to websocket: {str(e)}"
-                            )
-                            # Set websocket to None to prevent further attempts
-                            self.websocket = None
-
-                    self.message_queue.task_done()
-                except asyncio.CancelledError:
-                    break
-                except Exception as e:
-                    self.logger_for_agent_logs.error(
-                        f"Error processing WebSocket message: {str(e)}"
-                    )
-        except asyncio.CancelledError:
-            self.logger_for_agent_logs.info("Message processor stopped")
-        except Exception as e:
-            self.logger_for_agent_logs.error(f"Error in message processor: {str(e)}")
 
     def _validate_tool_parameters(self):
         """Validate tool parameters and check for duplicates."""
@@ -133,9 +83,6 @@ class AgentController:
                 raise ValueError(f"Tool {sorted_names[i]} is duplicated")
         return tool_params
 
-    def start_message_processing(self):
-        """Start processing the message queue."""
-        return asyncio.create_task(self._process_messages())
 
     async def run_impl(
         self,
@@ -223,7 +170,7 @@ class AgentController:
             if len(pending_tool_calls) == 0:
                 # No tools were called, so assume the task is complete
                 self.logger_for_agent_logs.info("[no tools were called]")
-                self.message_queue.put_nowait(
+                self.event_stream.add_event(
                     RealtimeEvent(
                         type=EventType.AGENT_RESPONSE,
                         content={"text": "Task completed"},
@@ -241,7 +188,7 @@ class AgentController:
 
             tool_call = pending_tool_calls[0]
 
-            self.message_queue.put_nowait(
+            self.event_stream.add_event(
                 RealtimeEvent(
                     type=EventType.TOOL_CALL,
                     content={
@@ -283,7 +230,7 @@ class AgentController:
                 )
 
         agent_answer = "Agent did not complete after max turns"
-        self.message_queue.put_nowait(
+        self.event_stream.add_event(
             RealtimeEvent(type=EventType.AGENT_RESPONSE, content={"text": agent_answer})
         )
         return ToolImplOutput(
@@ -364,7 +311,7 @@ class AgentController:
         """Add a tool call result to the history and send it to the message queue."""
         self.history.add_tool_call_result(tool_call, tool_result)
 
-        self.message_queue.put_nowait(
+        self.event_stream.add_event(
             RealtimeEvent(
                 type=EventType.TOOL_RESULT,
                 content={
@@ -383,7 +330,7 @@ class AgentController:
         else:
             rsp_type = EventType.AGENT_RESPONSE
 
-        self.message_queue.put_nowait(
+        self.event_stream.add_event(
             RealtimeEvent(
                 type=rsp_type,
                 content={"text": text},
