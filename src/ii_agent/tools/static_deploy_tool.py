@@ -32,7 +32,7 @@ class StaticDeployTool(LLMTool):
         self.workspace_manager = workspace_manager
         # TODO: this is a hack to get the base URL for the static files
         # TODO: we should use a proper URL for the static files
-        default_base_url = f"file://{workspace_manager.root.parent.parent.absolute()}"
+        default_base_url = f"file://{workspace_manager.root.absolute()}"
         self.base_url = os.getenv("STATIC_FILE_BASE_URL", default_base_url)
 
     async def run_impl(
@@ -63,7 +63,7 @@ class StaticDeployTool(LLMTool):
         rel_path = ws_path.relative_to(self.workspace_manager.root)
 
         # Construct the public URL using the base URL and connection UUID
-        public_url = f"{self.base_url}/workspace/{connection_uuid}/{rel_path}"
+        public_url = f"{self.base_url}/{rel_path}"
 
         return ToolImplOutput(
             public_url,

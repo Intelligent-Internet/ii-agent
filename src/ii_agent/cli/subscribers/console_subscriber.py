@@ -131,8 +131,8 @@ class ConsoleSubscriber:
         if tool_input:
             for key, value in tool_input.items():
                 # Truncate long values
-                if isinstance(value, str) and len(value) > 100:
-                    value = value[:100] + "..."
+                if isinstance(value, str) and len(value) > 10000:
+                    value = value[:10000] + "..."
                 print(f"  {key}: {value}")
         
         print("-" * 30)
@@ -143,8 +143,8 @@ class ConsoleSubscriber:
         print("-" * 30)
         
         # Truncate long results in minimal mode
-        if len(result) > 200:
-            result = result[:200] + "\n... (truncated)"
+        if len(result) > 10000:
+            result = result[:10000] + "\n... (truncated)"
         
         print(result)
         print("-" * 30)
