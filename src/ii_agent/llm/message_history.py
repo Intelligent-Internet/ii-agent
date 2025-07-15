@@ -152,20 +152,9 @@ class MessageHistory:
 
     def add_assistant_turn(self, messages: list[AssistantContentBlock]):
         """Adds an assistant turn (text response and/or tool calls)."""
-        messages_with_one_tool_call = []
-        has_tool_call = False
-        for message in messages:
-            if isinstance(message, ToolCall) and not has_tool_call:
-                has_tool_call = True
-                messages_with_one_tool_call.append(message)
-            elif isinstance(message, ToolCall) and has_tool_call:
-                print(
-                    "WARNING: Multiple tool calls in one turn are not supported, selecting the first tool call"
-                )
-            else:
-                messages_with_one_tool_call.append(message)
+        # Allow multiple tool calls per turn for parallel execution
         self._message_lists.append(
-            cast(list[GeneralContentBlock], messages_with_one_tool_call)
+            cast(list[GeneralContentBlock], messages)
         )
 
     def get_messages_for_llm(self) -> LLMMessages:  # TODO: change name to get_messages

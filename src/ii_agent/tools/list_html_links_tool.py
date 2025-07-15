@@ -27,6 +27,10 @@ class ListHtmlLinksTool(LLMTool):
         "required": ["path"],
     }
 
+    def is_read_only(self) -> bool:
+        """Listing HTML links is read-only - it only reads file content."""
+        return True
+
     def __init__(self, workspace_manager: WorkspaceManager):
         super().__init__()
         self.workspace_manager = workspace_manager

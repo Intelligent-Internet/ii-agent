@@ -29,6 +29,10 @@ class VisitWebpageTool(LLMTool):
     }
     output_type = "string"
 
+    def is_read_only(self) -> bool:
+        """Visiting webpages is read-only - it only retrieves content."""
+        return True
+
     def __init__(self, settings: Optional[Settings] = None, max_output_length: int = VISIT_WEB_PAGE_MAX_OUTPUT_LENGTH):
         self.max_output_length = max_output_length
         self.visit_client = create_visit_client(settings=settings, max_output_length=max_output_length)

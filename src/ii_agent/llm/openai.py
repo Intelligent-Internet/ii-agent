@@ -96,76 +96,77 @@ class OpenAIDirectClient(LLMClient):
                 system_prompt_applied = True
 
         for idx, message_list in enumerate(messages):
-            if len(message_list) > 1:
-                raise ValueError("Only one entry per message supported for openai")
-            internal_message = message_list[0]
+            # Determine the role for this message turn
+            role = "user" if isinstance(message_list[0], (TextPrompt, ToolFormattedResult)) else "assistant"
             
-            current_message_text = ""
-            is_user_prompt = False
-
-            if str(type(internal_message)) == str(TextPrompt):
-                internal_message = cast(TextPrompt, internal_message)
-                current_message_text = internal_message.text
-                is_user_prompt = True
-                role = "user"
-            elif str(type(internal_message)) == str(TextResult):
-                internal_message = cast(TextResult, internal_message)
-                # For TextResult (assistant), content is handled differently by OpenAI API
-                message_content_obj = {"type": "text", "text": internal_message.text}
-                openai_message = {"role": "assistant", "content": [message_content_obj]}
-                openai_messages.append(openai_message)
-                continue # Move to next message in outer loop
-            elif str(type(internal_message)) == str(ToolCall):
-                internal_message = cast(ToolCall, internal_message)
-                # Ensure arguments are stringified JSON for the OpenAI API call
-                try:
-                    arguments_str = json.dumps(internal_message.tool_input)
-                except TypeError as e:
-                    logger.error(f"Failed to serialize tool_input to JSON string for tool '{internal_message.tool_name}': {internal_message.tool_input}. Error: {str(e)}")
-                    # Decide how to handle: skip this message, or raise, or send with potentially malformed args? For now, let's raise.
-                    raise ValueError(f"Cannot serialize tool arguments for {internal_message.tool_name}: {str(e)}") from e
+            if role == "user":
+                # Handle user messages (TextPrompt and ToolFormattedResult)
+                user_content = []
+                user_text = ""
                 
-                tool_call_payload = {
-                    "type": "function",
-                    "id": internal_message.tool_call_id,
-                    "function": {
-                        "name": internal_message.tool_name,
-                        "arguments": arguments_str, # Use the JSON string
-                    },
-                }
-                openai_message = {
-                    "role": "assistant",
-                    "tool_calls": [tool_call_payload],
-                    # Content is implicitly None or omitted by not setting it
-                }
-                openai_messages.append(openai_message)
-                continue # Move to next message in outer loop
-            elif str(type(internal_message)) == str(ToolFormattedResult):
-                internal_message = cast(ToolFormattedResult, internal_message)
-                openai_message = {
-                    "role": "tool",
-                    "tool_call_id": internal_message.tool_call_id,
-                    "content": internal_message.tool_output,
-                }
-                openai_messages.append(openai_message)
-                continue # Move to next message in outer loop
-            else:
-                print(
-                    f"Unknown message type: {type(internal_message)}, expected one of {str(TextPrompt)}, {str(TextResult)}, {str(ToolCall)}, {str(ToolFormattedResult)}"
-                )
-                raise ValueError(f"Unknown message type: {type(internal_message)}")
-
-            # This part now only applies to TextPrompt (user messages)
-            if is_user_prompt:
-                final_text_for_user_message = current_message_text
-                # If cot_model is True, system_prompt is not None, and it hasn't been applied yet (i.e., this is the first user message opportunity)
-                if self.cot_model and system_prompt and not system_prompt_applied:
-                    final_text_for_user_message = f"{system_prompt}\n\n{current_message_text}"
-                    system_prompt_applied = True # Mark as applied
+                for internal_message in message_list:
+                    if str(type(internal_message)) == str(TextPrompt):
+                        internal_message = cast(TextPrompt, internal_message)
+                        user_text = internal_message.text
+                        
+                        # Apply system prompt for COT models if needed
+                        if self.cot_model and system_prompt and not system_prompt_applied:
+                            user_text = f"{system_prompt}\n\n{user_text}"
+                            system_prompt_applied = True
+                    
+                    elif str(type(internal_message)) == str(ToolFormattedResult):
+                        internal_message = cast(ToolFormattedResult, internal_message)
+                        # Tool results are handled as separate tool role messages in OpenAI
+                        tool_result_message = {
+                            "role": "tool",
+                            "tool_call_id": internal_message.tool_call_id,
+                            "content": internal_message.tool_output,
+                        }
+                        openai_messages.append(tool_result_message)
+                        continue
                 
-                message_content_obj = {"type": "text", "text": final_text_for_user_message}
-                openai_message = {"role": role, "content": [message_content_obj]}
-                openai_messages.append(openai_message)
+                # Add user text message if present
+                if user_text:
+                    user_content.append({"type": "text", "text": user_text})
+                    openai_messages.append({"role": "user", "content": user_content})
+                
+            elif role == "assistant":
+                # Handle assistant messages (TextResult and ToolCall)
+                assistant_content = []
+                tool_calls = []
+                
+                for internal_message in message_list:
+                    if str(type(internal_message)) == str(TextResult):
+                        internal_message = cast(TextResult, internal_message)
+                        assistant_content.append({"type": "text", "text": internal_message.text})
+                    
+                    elif str(type(internal_message)) == str(ToolCall):
+                        internal_message = cast(ToolCall, internal_message)
+                        # Serialize tool input to JSON
+                        try:
+                            arguments_str = json.dumps(internal_message.tool_input)
+                        except TypeError as e:
+                            logger.error(f"Failed to serialize tool_input to JSON string for tool '{internal_message.tool_name}': {internal_message.tool_input}. Error: {str(e)}")
+                            raise ValueError(f"Cannot serialize tool arguments for {internal_message.tool_name}: {str(e)}") from e
+                        
+                        tool_call_payload = {
+                            "type": "function",
+                            "id": internal_message.tool_call_id,
+                            "function": {
+                                "name": internal_message.tool_name,
+                                "arguments": arguments_str,
+                            },
+                        }
+                        tool_calls.append(tool_call_payload)
+                
+                # Create assistant message
+                assistant_message = {"role": "assistant"}
+                if assistant_content:
+                    assistant_message["content"] = assistant_content
+                if tool_calls:
+                    assistant_message["tool_calls"] = tool_calls
+                
+                openai_messages.append(assistant_message)
 
         # If cot_model is True and system_prompt was provided but not applied (e.g., no user messages found, though unlikely for an agent)
         if self.cot_model and system_prompt and not system_prompt_applied:
@@ -247,17 +248,20 @@ class OpenAIDirectClient(LLMClient):
         tool_calls = openai_response_message.tool_calls
         content = openai_response_message.content
 
-        # Exactly one of tool_calls or content should be present
-        if tool_calls and content:
-            raise ValueError("Only one of tool_calls or content should be present")
-        elif not tool_calls and not content:
+        # Handle both tool_calls and content (text can accompany tool calls)
+        if not tool_calls and not content:
             raise ValueError("Either tool_calls or content should be present")
 
+        # Handle text content first (if present)
+        if content:
+            internal_messages.append(TextResult(text=content))
+        
+        # Handle tool calls (if present)
         if tool_calls:
             available_tool_names = {t.name for t in tools} # Get set of known tool names
             logger.info(f"Model returned {len(tool_calls)} tool_calls. Available tools: {available_tool_names}")
             
-            processed_tool_call = False
+            processed_tool_calls = 0
             for tool_call_data in tool_calls:
                 tool_name_from_model = tool_call_data.function.name
                 if tool_name_from_model and tool_name_from_model in available_tool_names:
@@ -288,19 +292,15 @@ class OpenAIDirectClient(LLMClient):
                             tool_call_id=tool_call_data.id,
                         )
                     )
-                    processed_tool_call = True
-                    logger.info(f"Successfully processed and selected tool call: {tool_name_from_model}")
-                    break # Processed the first valid and available tool call
+                    processed_tool_calls += 1
+                    logger.info(f"Successfully processed tool call: {tool_name_from_model}")
                 else:
                     logger.warning(f"Skipping tool call with unknown or placeholder name: '{tool_name_from_model}'. Not in available tools: {available_tool_names}")
             
-            if not processed_tool_call:
+            if processed_tool_calls == 0:
                 logger.warning("No valid and available tool calls found after filtering.")
-
-        elif content:
-            internal_messages.append(TextResult(text=content))
-        else:
-            raise ValueError(f"Unknown message type: {openai_response_message}")
+            else:
+                logger.info(f"Successfully processed {processed_tool_calls} tool calls")
 
         assert response.usage is not None
         message_metadata = {

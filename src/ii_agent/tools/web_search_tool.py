@@ -20,6 +20,10 @@ class WebSearchTool(LLMTool):
     }
     output_type = "string"
 
+    def is_read_only(self) -> bool:
+        """Web search is read-only - it only retrieves information."""
+        return True
+
     def __init__(self, settings: Optional[Settings] = None, max_results=5, **kwargs):
         self.max_results = max_results
         self.web_search_client = create_search_client(settings=settings, max_results=max_results, **kwargs)

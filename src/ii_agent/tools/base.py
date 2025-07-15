@@ -46,6 +46,18 @@ class LLMTool(ABC):
         """Whether the tool wants to stop the current agentic run."""
         return False
 
+    def is_read_only(self) -> bool:
+        """Whether this tool only reads data and has no side effects.
+        
+        Read-only tools can be executed concurrently for better performance.
+        Non-read-only tools (those that write files, execute commands, etc.)
+        must be executed serially to avoid conflicts.
+        
+        Returns:
+            True if the tool is read-only, False otherwise.
+        """
+        return False
+
     # Final is here to indicate that subclasses should override run_impl(), not
     # run(). There may be a reason in the future to override run() itself, and
     # if such a reason comes up, this @final decorator can be removed.

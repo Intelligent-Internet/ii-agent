@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import Any, Optional
+from typing import Any, Optional, AsyncGenerator
 import uuid
 from functools import partial
 
@@ -15,6 +15,7 @@ from ii_agent.tools.utils import encode_image
 from ii_agent.tools import AgentToolManager
 from ii_agent.utils.constants import COMPLETE_MESSAGE
 from ii_agent.utils.workspace_manager import WorkspaceManager
+from ii_agent.utils.concurrent_execution import should_run_concurrently, run_tools_concurrently, run_tools_serially
 from ii_agent.core.logger import logger
 
 TOOL_RESULT_INTERRUPT_MESSAGE = "Tool execution interrupted by user."
@@ -168,23 +169,7 @@ class AgentController:
                     tool_result_message="Task completed",
                 )
 
-            if len(pending_tool_calls) > 1:
-                raise ValueError("Only one tool call per turn is supported")
-
-            assert len(pending_tool_calls) == 1
-
-            tool_call = pending_tool_calls[0]
-
-            self.event_stream.add_event(
-                RealtimeEvent(
-                    type=EventType.TOOL_CALL,
-                    content={
-                        "tool_call_id": tool_call.tool_call_id,
-                        "tool_name": tool_call.tool_name,
-                        "tool_input": tool_call.tool_input,
-                    },
-                )
-            )
+            # Handle tool calls - single or multiple
 
             text_results = [
                 item for item in model_response if isinstance(item, TextResult)
@@ -195,18 +180,58 @@ class AgentController:
                     f"Top-level agent planning next step: {text_result.text}\n",
                 )
 
-            # Handle tool call by the agent
+            # Check for interruption before tool execution
             if self.interrupted:
                 # Handle interruption during tool execution
-                self.add_tool_call_result(tool_call, TOOL_RESULT_INTERRUPT_MESSAGE)
+                for tool_call in pending_tool_calls:
+                    self.add_tool_call_result(tool_call, TOOL_RESULT_INTERRUPT_MESSAGE)
                 self.add_fake_assistant_turn(TOOL_CALL_INTERRUPT_FAKE_MODEL_RSP)
                 return ToolImplOutput(
                     tool_output=TOOL_RESULT_INTERRUPT_MESSAGE,
                     tool_result_message=TOOL_RESULT_INTERRUPT_MESSAGE,
                 )
-            tool_result = await self.tool_manager.run_tool(tool_call, self.history)
-
-            self.add_tool_call_result(tool_call, tool_result)
+            
+            # Execute tools - either concurrently or serially based on read-only status
+            if len(pending_tool_calls) == 1:
+                # Single tool call - execute normally
+                tool_call = pending_tool_calls[0]
+                
+                self.event_stream.add_event(
+                    RealtimeEvent(
+                        type=EventType.TOOL_CALL,
+                        content={
+                            "tool_call_id": tool_call.tool_call_id,
+                            "tool_name": tool_call.tool_name,
+                            "tool_input": tool_call.tool_input,
+                        },
+                    )
+                )
+                
+                tool_result = await self.tool_manager.run_tool(tool_call, self.history)
+                self.add_tool_call_result(tool_call, tool_result)
+            else:
+                # Multiple tool calls - execute based on read-only status
+                logger.info(f"Executing {len(pending_tool_calls)} tools")
+                
+                # Send events for all tool calls
+                for tool_call in pending_tool_calls:
+                    self.event_stream.add_event(
+                        RealtimeEvent(
+                            type=EventType.TOOL_CALL,
+                            content={
+                                "tool_call_id": tool_call.tool_call_id,
+                                "tool_name": tool_call.tool_name,
+                                "tool_input": tool_call.tool_input,
+                            },
+                        )
+                    )
+                
+                # Execute tools in batch
+                tool_results = await self.tool_manager.run_tools_batch(pending_tool_calls, self.history)
+                
+                # Add all results to history in order
+                for tool_call, tool_result in zip(pending_tool_calls, tool_results):
+                    self.add_tool_call_result(tool_call, tool_result)
             if self.tool_manager.should_stop():
                 # Add a fake model response, so the next turn is the user's
                 # turn in case they want to resume

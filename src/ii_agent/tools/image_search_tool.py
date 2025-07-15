@@ -20,6 +20,10 @@ class ImageSearchTool(LLMTool):
     }
     output_type = "array"
 
+    def is_read_only(self) -> bool:
+        """Image search is read-only - it only retrieves information."""
+        return True
+
     def __init__(self, settings: Optional[Settings] = None, max_results=5, **kwargs):
         self.max_results = max_results
         self.image_search_client = create_image_search_client(

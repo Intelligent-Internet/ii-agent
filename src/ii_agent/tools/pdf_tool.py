@@ -24,6 +24,10 @@ class PdfTextExtractTool(LLMTool):
         "required": ["file_path"],
     }
 
+    def is_read_only(self) -> bool:
+        """PDF text extraction is read-only - it only reads file content."""
+        return True
+
     def __init__(
         self, workspace_manager: WorkspaceManager, max_output_length: int = 15000
     ):
