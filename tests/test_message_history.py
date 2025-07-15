@@ -5,33 +5,33 @@ from ii_agent.llm.base import (
     ToolCall,
     ToolFormattedResult,
 )
-from ii_agent.llm.message_history import MessageHistory
+from ii_agent.controller.state import State
 
 
 @pytest.fixture
-def message_history():
-    return MessageHistory(
+def state():
+    return State(
         context_manager=None
     )  # Context manager not needed for these tests
 
 
 class TestToolCallIntegrity:
-    def test_ensure_tool_call_integrity_empty_list(self, message_history):
+    def test_ensure_tool_call_integrity_empty_list(self, state):
         """Test that empty message list is handled correctly."""
-        result = MessageHistory._ensure_tool_call_integrity([])
+        result = State._ensure_tool_call_integrity([])
         assert result == []
 
-    def test_ensure_tool_call_integrity_no_tool_calls(self, message_history):
+    def test_ensure_tool_call_integrity_no_tool_calls(self, state):
         """Test that messages without tool calls are unchanged."""
         messages = [
             [TextPrompt(text="Hello")],
             [TextResult(text="Hi there")],
             [TextPrompt(text="How are you?")],
         ]
-        result = MessageHistory._ensure_tool_call_integrity(messages)
+        result = State._ensure_tool_call_integrity(messages)
         assert result == messages
 
-    def test_ensure_tool_call_integrity_matched_tool_calls(self, message_history):
+    def test_ensure_tool_call_integrity_matched_tool_calls(self, state):
         """Test that matched tool calls and results are preserved."""
         messages = [
             [TextPrompt(text="Run ls")],
@@ -45,10 +45,10 @@ class TestToolCallIntegrity:
             ],
             [TextResult(text="Here are your files")],
         ]
-        result = MessageHistory._ensure_tool_call_integrity(messages)
+        result = State._ensure_tool_call_integrity(messages)
         assert result == messages
 
-    def test_ensure_tool_call_integrity_unmatched_tool_calls(self, message_history):
+    def test_ensure_tool_call_integrity_unmatched_tool_calls(self, state):
         """Test that unmatched tool calls are removed."""
         messages = [
             [TextPrompt(text="Run commands")],
@@ -63,7 +63,7 @@ class TestToolCallIntegrity:
             ],  # Only one result
             [TextResult(text="Done")],
         ]
-        result = MessageHistory._ensure_tool_call_integrity(messages)
+        result = State._ensure_tool_call_integrity(messages)
         expected = [
             [TextPrompt(text="Run commands")],
             [ToolCall(tool_call_id="123", tool_name="ls", tool_input="{}")],
@@ -76,7 +76,7 @@ class TestToolCallIntegrity:
         ]
         assert result == expected
 
-    def test_ensure_tool_call_integrity_unmatched_results(self, message_history):
+    def test_ensure_tool_call_integrity_unmatched_results(self, state):
         """Test that unmatched tool results are removed."""
         messages = [
             [TextPrompt(text="Run ls")],
@@ -91,7 +91,7 @@ class TestToolCallIntegrity:
             ],
             [TextResult(text="Done")],
         ]
-        result = MessageHistory._ensure_tool_call_integrity(messages)
+        result = State._ensure_tool_call_integrity(messages)
         expected = [
             [TextPrompt(text="Run ls")],
             [ToolCall(tool_call_id="123", tool_name="ls", tool_input="{}")],

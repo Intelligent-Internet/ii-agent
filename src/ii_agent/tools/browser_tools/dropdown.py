@@ -4,7 +4,7 @@ from typing import Any, Optional
 from ii_agent.browser.browser import Browser
 from ii_agent.tools.base import ToolImplOutput
 from ii_agent.tools.browser_tools import BrowserTool, utils
-from ii_agent.llm.message_history import MessageHistory
+from ii_agent.controller.state import State
 
 
 class BrowserGetSelectOptionsTool(BrowserTool):
@@ -27,7 +27,7 @@ class BrowserGetSelectOptionsTool(BrowserTool):
     async def _run(
         self,
         tool_input: dict[str, Any],
-        message_history: Optional[MessageHistory] = None,
+        state: Optional[State] = None,
     ) -> ToolImplOutput:
         try:
             index = int(tool_input["index"])
@@ -115,7 +115,7 @@ class BrowserSelectDropdownOptionTool(BrowserTool):
     async def _run(
         self,
         tool_input: dict[str, Any],
-        message_history: Optional[MessageHistory] = None,
+        state: Optional[State] = None,
     ) -> ToolImplOutput:
         try:
             index = int(tool_input["index"])

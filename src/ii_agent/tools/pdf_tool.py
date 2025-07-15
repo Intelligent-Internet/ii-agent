@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import Any, Optional
 import pymupdf
 
-from ii_agent.llm.message_history import MessageHistory
+from ii_agent.controller.state import State
 from ii_agent.tools.base import (
     LLMTool,
     ToolImplOutput,
@@ -38,7 +38,7 @@ class PdfTextExtractTool(LLMTool):
     async def run_impl(
         self,
         tool_input: dict[str, Any],
-        message_history: Optional[MessageHistory] = None,
+        state: Optional[State] = None,
     ) -> ToolImplOutput:
         relative_file_path = tool_input["file_path"]
         # Ensure the path is treated as relative to the workspace root

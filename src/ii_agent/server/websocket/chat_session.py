@@ -27,7 +27,7 @@ from ii_agent.server.models.messages import (
 )
 from ii_agent.core.config.ii_agent_config import IIAgentConfig
 from ii_agent.llm.base import LLMClient
-from ii_agent.llm.message_history import MessageHistory
+from ii_agent.controller.state import State
 from ii_agent.agents.function_call import FunctionCallAgent
 from ii_agent.llm.context_manager.llm_summarizing import LLMSummarizingContextManager
 from ii_agent.llm.token_counter import TokenCounter
@@ -731,7 +731,7 @@ Please review this feedback and implement the suggested improvements to better c
         )
 
         # try to get history from file store
-        init_history = MessageHistory(context_manager)
+        init_history = State(context_manager)
         try:
             init_history.restore_from_session(str(session_id), file_store)
 

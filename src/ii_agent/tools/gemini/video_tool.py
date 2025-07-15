@@ -1,6 +1,6 @@
 from typing import Any, Optional
 from google.genai import types
-from ii_agent.llm.message_history import MessageHistory
+from ii_agent.controller.state import State
 from ii_agent.tools.base import ToolImplOutput
 from ii_agent.tools.gemini import GeminiTool
 from ii_agent.utils import WorkspaceManager
@@ -40,7 +40,7 @@ Provide one query at a time.
     async def run_impl(
         self,
         tool_input: dict[str, Any],
-        message_history: Optional[MessageHistory] = None,
+        state: Optional[State] = None,
     ) -> ToolImplOutput:
         url = tool_input["url"]
         query = tool_input["query"]

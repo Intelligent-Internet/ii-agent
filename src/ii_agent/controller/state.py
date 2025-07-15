@@ -22,7 +22,7 @@ from ii_agent.llm.base import (
 from ii_agent.llm.context_manager.base import ContextManager
 
 
-class MessageHistory:
+class State:
     """Stores the sequence of messages in a dialog."""
 
     def __init__(self, context_manager: ContextManager):
@@ -264,7 +264,7 @@ class MessageHistory:
 
     def set_message_list(self, message_list: list[list[GeneralContentBlock]]):
         """Sets the message list and ensures tool call integrity."""
-        self._message_lists = MessageHistory._ensure_tool_call_integrity(message_list)
+        self._message_lists = State._ensure_tool_call_integrity(message_list)
 
     def count_tokens(self):
         """Counts the tokens in the message list."""

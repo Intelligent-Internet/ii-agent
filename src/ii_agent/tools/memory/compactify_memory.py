@@ -1,6 +1,6 @@
 from typing import Any
 from ii_agent.llm.context_manager.base import ContextManager
-from ii_agent.llm.message_history import MessageHistory
+from ii_agent.controller.state import State
 from ii_agent.tools.base import LLMTool, ToolImplOutput
 
 
@@ -23,18 +23,18 @@ class CompactifyMemoryTool(LLMTool):
         self.context_manager = context_manager
 
     async def run_impl(
-        self, tool_input: dict[str, Any], message_history: MessageHistory | None = None
+        self, tool_input: dict[str, Any], state: State | None = None
     ) -> ToolImplOutput:
-        if not message_history:
+        if not state:
             return ToolImplOutput(
                 "Message history is required to compactify memory.",
                 "Message history is required to compactify memory.",
                 auxiliary_data={"success": False},
             )
         truncated = self.context_manager.apply_truncation(
-            message_history.get_messages_for_llm()
+            state.get_messages_for_llm()
         )
-        message_history.set_message_list(truncated)
+        state.set_message_list(truncated)
 
         return ToolImplOutput(
             "Memory compactified.",

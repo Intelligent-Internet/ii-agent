@@ -8,7 +8,7 @@ import asyncio
 from pathlib import Path
 from collections import defaultdict
 from ii_agent.utils import match_indent, match_indent_by_first_line, WorkspaceManager
-from ii_agent.llm.message_history import MessageHistory
+from ii_agent.controller.state import State
 from ii_agent.tools.base import (
     LLMTool,
     ToolImplOutput,
@@ -195,7 +195,7 @@ Notes for using the `str_replace` command:\n
     async def run_impl(
         self,
         tool_input: dict[str, Any],
-        message_history: Optional[MessageHistory] = None,
+        state: Optional[State] = None,
     ) -> ExtendedToolImplOutput:
         command = tool_input["command"]
         path = tool_input["path"]

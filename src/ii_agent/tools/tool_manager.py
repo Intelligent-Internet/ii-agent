@@ -8,7 +8,7 @@ from ii_agent.llm.context_manager.llm_summarizing import LLMSummarizingContextMa
 from ii_agent.llm.token_counter import TokenCounter
 from ii_agent.tools.image_search_tool import ImageSearchTool
 from ii_agent.tools.base import LLMTool
-from ii_agent.llm.message_history import ToolCallParameters
+from ii_agent.controller.state import ToolCallParameters
 from ii_agent.tools.memory.compactify_memory import CompactifyMemoryTool
 from ii_agent.tools.memory.simple_memory import SimpleMemoryTool
 from ii_agent.tools.slide_deck_tool import SlideDeckInitTool, SlideDeckCompleteTool
@@ -27,7 +27,7 @@ from ii_agent.tools.complete_tool import (
 from ii_agent.tools.bash_tool import create_bash_tool, create_docker_bash_tool
 from ii_agent.browser.browser import Browser
 from ii_agent.utils import WorkspaceManager
-from ii_agent.llm.message_history import MessageHistory
+from ii_agent.controller.state import State
 from ii_agent.utils.concurrent_execution import should_run_concurrently, run_tools_concurrently, run_tools_serially
 from ii_agent.tools.browser_tools import (
     BrowserNavigationTool,
@@ -233,13 +233,13 @@ class AgentToolManager:
         except StopIteration:
             raise ValueError(f"Tool with name {tool_name} not found")
 
-    async def run_tool(self, tool_params: ToolCallParameters, history: MessageHistory):
+    async def run_tool(self, tool_params: ToolCallParameters, history: State):
         """
         Executes a llm tool asynchronously.
 
         Args:
             tool_params (ToolCallParameters): The tool parameters.
-            history (MessageHistory): The history of the conversation.
+            history (State): The history of the conversation.
         Returns:
             ToolResult: The result of the tool execution.
         """
@@ -272,7 +272,7 @@ class AgentToolManager:
 
         return tool_result
 
-    async def run_tools_batch(self, tool_calls: List[ToolCallParameters], history: MessageHistory) -> List[str]:
+    async def run_tools_batch(self, tool_calls: List[ToolCallParameters], history: State) -> List[str]:
         """
         Execute multiple tools either concurrently or serially based on their read-only status.
         
@@ -299,7 +299,7 @@ class AgentToolManager:
             logger.info(f"Running {len(tool_calls)} tools serially (contains non-read-only tools)")
             return await self._run_tools_serially(tool_calls, history)
     
-    async def _run_tools_concurrently(self, tool_calls: List[ToolCallParameters], history: MessageHistory) -> List[str]:
+    async def _run_tools_concurrently(self, tool_calls: List[ToolCallParameters], history: State) -> List[str]:
         """Execute tools concurrently and return results in order."""
         
         # Create tasks for each tool with proper concurrency limits
@@ -338,7 +338,7 @@ class AgentToolManager:
         
         return final_results
     
-    async def _run_tools_serially(self, tool_calls: List[ToolCallParameters], history: MessageHistory) -> List[str]:
+    async def _run_tools_serially(self, tool_calls: List[ToolCallParameters], history: State) -> List[str]:
         """Execute tools serially and return results in order."""
         results = []
         for tool_call in tool_calls:

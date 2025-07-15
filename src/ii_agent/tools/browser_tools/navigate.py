@@ -5,7 +5,7 @@ from playwright.async_api import TimeoutError
 from ii_agent.browser.browser import Browser
 from ii_agent.tools.base import ToolImplOutput
 from ii_agent.tools.browser_tools import BrowserTool, utils
-from ii_agent.llm.message_history import MessageHistory
+from ii_agent.controller.state import State
 
 
 class BrowserNavigationTool(BrowserTool):
@@ -28,7 +28,7 @@ class BrowserNavigationTool(BrowserTool):
     async def _run(
         self,
         tool_input: dict[str, Any],
-        message_history: Optional[MessageHistory] = None,
+        state: Optional[State] = None,
     ) -> ToolImplOutput:
         try:
             url = tool_input["url"]
@@ -75,7 +75,7 @@ class BrowserRestartTool(BrowserTool):
     async def _run(
         self,
         tool_input: dict[str, Any],
-        message_history: Optional[MessageHistory] = None,
+        state: Optional[State] = None,
     ) -> ToolImplOutput:
         try:
             url = tool_input["url"]

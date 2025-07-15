@@ -107,7 +107,7 @@ def convert_message_to_json(
     return message_json
 
 
-def convert_message_history_to_json(
+def convert_state_to_json(
     messages: LLMMessages, hide_base64_image: bool = False
 ) -> list[list[dict]]:
     """Convert a LLMMessages object to a JSON object.

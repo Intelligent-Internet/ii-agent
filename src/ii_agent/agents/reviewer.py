@@ -12,7 +12,7 @@ from ii_agent.controller.agent import Agent
 from ii_agent.core.event import EventType, RealtimeEvent
 from ii_agent.llm.base import LLMClient, TextResult, ToolCallParameters
 from ii_agent.llm.context_manager.base import ContextManager
-from ii_agent.llm.message_history import MessageHistory
+from ii_agent.controller.state import State
 from ii_agent.tools.base import ToolImplOutput, LLMTool
 from ii_agent.tools import AgentToolManager
 from ii_agent.utils.workspace_manager import WorkspaceManager
@@ -79,7 +79,7 @@ This agent conducts thorough reviews with emphasis on:
         self.max_turns = max_turns
 
         self.interrupted = False
-        self.history = MessageHistory(context_manager)
+        self.history = State(context_manager)
         self.context_manager = context_manager
         self.session_id = session_id
 
@@ -136,7 +136,7 @@ This agent conducts thorough reviews with emphasis on:
     async def run_impl(
         self,
         tool_input: dict[str, Any],
-        message_history: Optional[MessageHistory] = None,
+        state: Optional[State] = None,
     ) -> ToolImplOutput:
         task = tool_input["task"]
         workspace_dir = tool_input["workspace_dir"]

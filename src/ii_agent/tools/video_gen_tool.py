@@ -18,7 +18,7 @@ except ImportError:
     HAS_GCS = False
 
 from ii_agent.tools.base import (
-    MessageHistory,
+    State,
     LLMTool,
     ToolImplOutput,
 )
@@ -197,7 +197,7 @@ Uses Google AI Studio if GEMINI_API_KEY is set, otherwise falls back to Vertex A
     async def run_impl(
         self,
         tool_input: dict[str, Any],
-        message_history: Optional[MessageHistory] = None,
+        state: Optional[State] = None,
     ) -> ToolImplOutput:
         prompt = tool_input["prompt"]
         relative_output_filename = tool_input["output_filename"]
@@ -396,7 +396,7 @@ The generated video will be saved to the specified local path in the workspace."
     async def run_impl(
         self,
         tool_input: dict[str, Any],
-        message_history: Optional[MessageHistory] = None,
+        state: Optional[State] = None,
     ) -> ToolImplOutput:
         relative_image_path = tool_input["image_file_path"]
         relative_output_filename = tool_input["output_filename"]
@@ -607,7 +607,7 @@ The generated video will be saved to the specified local path in the workspace."
     async def run_impl(
         self,
         tool_input: dict[str, Any],
-        message_history: Optional[MessageHistory] = None,
+        state: Optional[State] = None,
     ) -> ToolImplOutput:
         prompts = tool_input["prompts"]
         relative_output_filename = tool_input["output_filename"]
@@ -815,7 +815,7 @@ The generated video will be saved to the specified local path in the workspace."
     async def run_impl(
         self,
         tool_input: dict[str, Any],
-        message_history: Optional[MessageHistory] = None,
+        state: Optional[State] = None,
     ) -> ToolImplOutput:
         image_file_path = tool_input["image_file_path"]
         prompts = tool_input["prompts"]

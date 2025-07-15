@@ -20,7 +20,7 @@ from ii_agent.controller.agent_controller import AgentController
 from ii_agent.controller.agent import Agent
 from ii_agent.agents.function_call import FunctionCallAgent
 from ii_agent.llm import get_client
-from ii_agent.llm.message_history import MessageHistory
+from ii_agent.controller.state import State
 from ii_agent.llm.context_manager.llm_summarizing import LLMSummarizingContextManager
 from ii_agent.core.storage.settings.file_settings_store import FileSettingsStore
 from ii_agent.llm.token_counter import TokenCounter
@@ -94,13 +94,13 @@ class CLIApp:
         )
         
         # Create message history
-        message_history = MessageHistory(context_manager)
+        state = State(context_manager)
         
         # Create agent controller
         self.agent_controller = AgentController(
             agent=agent,
             tools=tools,
-            init_history=message_history,
+            init_history=state,
             workspace_manager=self.workspace_manager,
             event_stream=self.event_stream,
             interactive_mode=True,
@@ -259,7 +259,7 @@ class CLIApp:
             
             # Restore message history
             if self.agent_controller and "history" in session_data:
-                # You'll need to implement history restoration based on your MessageHistory class
+                # You'll need to implement history restoration based on your State class
                 pass
             
             print(f"Session '{session_name}' loaded")
@@ -285,7 +285,7 @@ class CLIApp:
             }
             
             if self.agent_controller:
-                # You'll need to implement history serialization based on your MessageHistory class
+                # You'll need to implement history serialization based on your State class
                 pass
             
             with open(session_file, 'w') as f:

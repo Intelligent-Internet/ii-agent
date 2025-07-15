@@ -6,7 +6,7 @@ from ii_agent.tools.base import (
     ToolImplOutput,
 )
 from ii_agent.browser.browser import Browser
-from ii_agent.llm.message_history import MessageHistory
+from ii_agent.controller.state import State
 
 
 def get_event_loop():
@@ -27,17 +27,17 @@ class BrowserTool(LLMTool):
     async def _run(
         self,
         tool_input: dict[str, Any],
-        message_history: Optional[MessageHistory] = None,
+        state: Optional[State] = None,
     ) -> ToolImplOutput:
         raise NotImplementedError("Subclasses must implement this method")
 
     async def run_impl(
         self,
         tool_input: dict[str, Any],
-        message_history: Optional[MessageHistory] = None,
+        state: Optional[State] = None,
     ) -> ToolImplOutput:
         try:
-            return await self._run(tool_input, message_history)
+            return await self._run(tool_input, state)
         except Exception as e:
             error_msg = f"Browser operation failed: {type(e).__name__}: {str(e)}"
             if hasattr(self, 'name'):

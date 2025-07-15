@@ -1,5 +1,5 @@
 from typing import Any, Optional
-from ii_agent.llm.message_history import MessageHistory
+from ii_agent.controller.state import State
 from ii_agent.tools.base import LLMTool, ToolImplOutput
 
 
@@ -30,7 +30,7 @@ Send a message to the user. Use this tool to communicate effectively in a variet
     async def run_impl(
         self,
         tool_input: dict[str, Any],
-        message_history: Optional[MessageHistory] = None,
+        state: Optional[State] = None,
     ) -> ToolImplOutput:
         assert tool_input["text"], "Model returned empty message"
         msg = "Sent message to user"

@@ -11,7 +11,7 @@ from google import genai
 from google.genai import types
 
 from ii_agent.tools.base import (
-    MessageHistory,
+    State,
     LLMTool,
     ToolImplOutput,
 )
@@ -179,7 +179,7 @@ Automatic language detection from input text."""
     async def run_impl(
         self,
         tool_input: dict[str, Any],
-        message_history: Optional[MessageHistory] = None,
+        state: Optional[State] = None,
     ) -> ToolImplOutput:
         text = tool_input["text"]
         relative_output_filename = tool_input["output_filename"]

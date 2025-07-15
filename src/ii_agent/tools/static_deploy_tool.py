@@ -6,7 +6,7 @@ from ii_agent.tools.base import (
     ToolImplOutput,
     LLMTool,
 )
-from ii_agent.llm.message_history import MessageHistory
+from ii_agent.controller.state import State
 from ii_agent.utils import WorkspaceManager
 
 
@@ -38,7 +38,7 @@ class StaticDeployTool(LLMTool):
     async def run_impl(
         self,
         tool_input: dict[str, Any],
-        message_history: Optional[MessageHistory] = None,
+        state: Optional[State] = None,
     ) -> ToolImplOutput:
         file_path = tool_input["file_path"]
         ws_path = self.workspace_manager.workspace_path(Path(file_path))

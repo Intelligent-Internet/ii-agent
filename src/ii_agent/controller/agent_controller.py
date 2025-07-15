@@ -9,7 +9,7 @@ from ii_agent.controller.agent import Agent
 from ii_agent.core.event import EventType, RealtimeEvent
 from ii_agent.core.event_stream import EventStream
 from ii_agent.llm.base import LLMClient, TextResult, ToolCallParameters
-from ii_agent.llm.message_history import MessageHistory
+from ii_agent.controller.state import State
 from ii_agent.tools.base import ToolImplOutput, LLMTool
 from ii_agent.tools.utils import encode_image
 from ii_agent.tools import AgentToolManager
@@ -33,7 +33,7 @@ class AgentController:
         self,
         agent: Agent,
         tools: List[LLMTool],
-        init_history: MessageHistory,
+        init_history: State,
         workspace_manager: WorkspaceManager,
         event_stream: EventStream,
         max_turns: int = 200,
@@ -80,7 +80,7 @@ class AgentController:
     async def run_impl(
         self,
         tool_input: dict[str, Any],
-        message_history: Optional[MessageHistory] = None,
+        state: Optional[State] = None,
     ) -> ToolImplOutput:
         instruction = tool_input["instruction"]
         files = tool_input["files"]

@@ -12,7 +12,7 @@ import json
 import logging
 from typing import Any, Dict, List, Optional, TypedDict
 
-from ii_agent.llm.message_history import MessageHistory
+from ii_agent.controller.state import State
 from ii_agent.tools.base import (
     LLMTool,
     ToolImplOutput,
@@ -231,13 +231,13 @@ You should:
     async def run_impl(
         self,
         tool_input: Dict[str, Any],
-        message_history: Optional[MessageHistory] = None,
+        state: Optional[State] = None,
     ) -> ToolImplOutput:
         """Run the sequential thinking tool.
 
         Args:
             tool_input: The input data for the tool
-            message_history: Optional dialog messages
+            state: Optional dialog messages
 
         Returns:
             Tool output with the result

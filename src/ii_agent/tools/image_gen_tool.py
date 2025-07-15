@@ -21,7 +21,7 @@ except ImportError:
 
 from PIL import Image
 
-from ii_agent.tools.base import MessageHistory, LLMTool, ToolImplOutput
+from ii_agent.tools.base import State, LLMTool, ToolImplOutput
 from ii_agent.utils import WorkspaceManager
 from ii_agent.core.storage.models.settings import Settings
 
@@ -251,7 +251,7 @@ The generated image will be saved to the specified local path in the workspace a
     async def run_impl(
         self,
         tool_input: dict[str, Any],
-        message_history: Optional[MessageHistory] = None,
+        state: Optional[State] = None,
     ) -> ToolImplOutput:
         """Generate an image based on the provided text prompt."""
         try:

@@ -15,7 +15,7 @@ import pexpect
 import re
 from abc import ABC, abstractmethod
 
-from ii_agent.llm.message_history import MessageHistory
+from ii_agent.controller.state import State
 from ii_agent.tools.base import LLMTool, ToolImplOutput
 
 
@@ -251,13 +251,13 @@ Run commands in a bash shell
     async def run_impl(
         self,
         tool_input: Dict[str, Any],
-        message_history: Optional[MessageHistory] = None,
+        state: Optional[State] = None,
     ) -> ToolImplOutput:
         """Execute a bash command and return its output.
 
         Args:
             tool_input: Dictionary containing the command to execute
-            message_history: Optional dialog messages for context
+            state: Optional dialog messages for context
 
         Returns:
             ToolImplOutput containing the command output

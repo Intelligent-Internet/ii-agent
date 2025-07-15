@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any, Optional, Set
 from urllib.parse import urlparse
 
-from ii_agent.llm.message_history import MessageHistory  # Or DialogMessages
+from ii_agent.controller.state import State  # Or DialogMessages
 from ii_agent.tools.base import LLMTool, ToolImplOutput
 from ii_agent.utils import WorkspaceManager
 
@@ -66,7 +66,7 @@ class ListHtmlLinksTool(LLMTool):
     async def run_impl(
         self,
         tool_input: dict[str, Any],
-        message_history: Optional[MessageHistory] = None,
+        state: Optional[State] = None,
     ) -> ToolImplOutput:
         relative_path_str = tool_input["path"]
         ws_path = self.workspace_manager.workspace_path(Path(relative_path_str))

@@ -12,7 +12,7 @@ from ii_agent.tools.base import (
 )
 
 from ii_agent.utils import WorkspaceManager
-from ii_agent.llm.message_history import MessageHistory
+from ii_agent.controller.state import State
 from ii_agent.core.storage.models.settings import Settings
 
 SUPPORTED_AUDIO_FORMATS = [
@@ -76,7 +76,7 @@ Supported file formats: {", ".join(SUPPORTED_AUDIO_FORMATS)}"""
     async def run_impl(
         self,
         tool_input: dict[str, Any],
-        message_history: Optional[MessageHistory] = None,
+        state: Optional[State] = None,
     ) -> ToolImplOutput:
         relative_file_path = tool_input["file_path"]
         full_file_path = self.workspace_manager.workspace_path(Path(relative_file_path))
@@ -220,7 +220,7 @@ Saves the output as an MP3 file in the workspace. Available voices: {", ".join(A
     async def run_impl(
         self,
         tool_input: dict[str, Any],
-        message_history: Optional[MessageHistory] = None,
+        state: Optional[State] = None,
     ) -> ToolImplOutput:
         print("Initializing AudioGenerateTool $$$$$")
         text_to_speak = tool_input["text"]

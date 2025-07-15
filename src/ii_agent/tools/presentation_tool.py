@@ -7,7 +7,7 @@ from ii_agent.utils import WorkspaceManager
 from ii_agent.tools.bash_tool import create_bash_tool
 from ii_agent.tools.str_replace_tool_relative import StrReplaceEditorTool
 
-from ii_agent.llm.message_history import MessageHistory
+from ii_agent.controller.state import State
 from ii_agent.tools.base import ToolImplOutput
 
 from typing import Any, Optional
@@ -190,20 +190,20 @@ action = init
         image_search_tool = ImageSearchTool()
         if image_search_tool.is_available():
             self.tools.append(image_search_tool)
-        self.history = MessageHistory(context_manager=context_manager)
+        self.history = State(context_manager=context_manager)
         self.tool_params = [tool.get_tool_param() for tool in self.tools]
         self.max_turns = 200
 
     async def run_impl(
         self,
         tool_input: dict[str, Any],
-        message_history: Optional[MessageHistory] = None,
+        state: Optional[State] = None,
     ) -> ToolImplOutput:
         action = tool_input["action"]
         description = tool_input["description"]
 
         if action == "init":
-            self.history = MessageHistory()
+            self.history = State()
 
             # Clone the reveal.js repository to the specified path
             clone_result = await self.bash_tool.run_impl(

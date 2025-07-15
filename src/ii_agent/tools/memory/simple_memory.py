@@ -1,5 +1,5 @@
 from typing import Any, Optional, Dict
-from ii_agent.llm.message_history import MessageHistory
+from ii_agent.controller.state import State
 from ii_agent.tools.base import LLMTool, ToolImplOutput
 
 
@@ -95,7 +95,7 @@ class SimpleMemoryTool(LLMTool):
     async def run_impl(
         self,
         tool_input: Dict[str, Any],
-        message_history: Optional[MessageHistory] = None,
+        state: Optional[State] = None,
     ) -> ToolImplOutput:
         action = tool_input.get("action")
         content = tool_input.get("content", "")

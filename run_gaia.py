@@ -24,7 +24,7 @@ import asyncio
 from ii_agent.db.models import Session, Event
 from ii_agent.agents.function_call import FunctionCallAgent
 from ii_agent.browser.browser import Browser
-from ii_agent.llm.message_history import MessageHistory
+from ii_agent.controller.state import State
 from ii_agent.prompts.gaia_system_prompt import GAIA_SYSTEM_PROMPT
 from ii_agent.tools.bash_tool import BashTool
 from ii_agent.tools.browser_tools import (
@@ -325,7 +325,7 @@ async def answer_single_question(
     ]
 
     system_prompt = GAIA_SYSTEM_PROMPT
-    init_history = MessageHistory(context_manager)
+    init_history = State(context_manager)
 
     # Create agent instance for this question
     agent = FunctionCallAgent(

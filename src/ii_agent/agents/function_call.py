@@ -9,7 +9,7 @@ from fastapi import WebSocket
 from ii_agent.controller.agent import Agent
 from ii_agent.core.event import EventType, RealtimeEvent
 from ii_agent.llm.base import LLMClient, TextResult, ToolCallParameters, ToolParam, AssistantContentBlock
-from ii_agent.llm.message_history import MessageHistory
+from ii_agent.controller.state import State
 from ii_agent.tools.base import ToolImplOutput, LLMTool
 from ii_agent.tools.utils import encode_image
 from ii_agent.db.manager import Events
@@ -46,7 +46,7 @@ class FunctionCallAgent(Agent):
         super().__init__(llm, config)
         self.tools = tools
 
-    def step(self, state: MessageHistory) -> list[AssistantContentBlock]:
+    def step(self, state: State) -> list[AssistantContentBlock]:
         model_response, _ = self.llm.generate(
             messages=state.get_messages_for_llm(),
             max_tokens=self.config.max_tokens_per_turn,

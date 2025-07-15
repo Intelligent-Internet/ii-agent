@@ -10,7 +10,7 @@ from typing_extensions import final
 from ii_agent.llm.base import (
     ToolParam,
 )
-from ii_agent.llm.message_history import MessageHistory
+from ii_agent.controller.state import State
 
 ToolInputSchema = dict[str, Any]
 
@@ -65,20 +65,20 @@ class LLMTool(ABC):
     async def run_async(
         self,
         tool_input: dict[str, Any],
-        message_history: Optional[MessageHistory] = None,
+        state: Optional[State] = None,
     ) -> str | list[dict[str, Any]]:
         """Run the tool asynchronously.
 
         Args:
             tool_input: The input to the tool.
-            message_history: The dialog messages so far, if available. The tool
+            state: The dialog messages so far, if available. The tool
                 is allowed to modify this object, so the caller should make a copy
                 if that's not desired. The dialog messages should not contain
                 pending tool calls. They should end where it's the user's turn.
         """
         try:
             self._validate_tool_input(tool_input)
-            result = await self.run_impl(tool_input, message_history)
+            result = await self.run_impl(tool_input, state)
             tool_output = result.tool_output
         except jsonschema.ValidationError as exc:
             tool_output = "Invalid tool input: " + exc.message
@@ -91,17 +91,17 @@ class LLMTool(ABC):
     def run(
         self,
         tool_input: dict[str, Any],
-        message_history: Optional[MessageHistory] = None,
+        state: Optional[State] = None,
     ) -> str | list[dict[str, Any]]:
         """Run the tool synchronously.
 
         Args:
             tool_input: The input to the tool.
-            message_history: The dialog messages so far, if available. The tool
+            state: The dialog messages so far, if available. The tool
                 is allowed to modify this object, so the caller should make a copy
                 if that's not desired. The dialog messages should not contain
         """
-        return asyncio.run(self.run_async(tool_input, message_history))
+        return asyncio.run(self.run_async(tool_input, state))
 
     def get_tool_start_message(self, tool_input: ToolInputSchema) -> str:
         """Return a user-friendly message to be shown to the model when the tool is called."""
@@ -111,7 +111,7 @@ class LLMTool(ABC):
     async def run_impl(
         self,
         tool_input: dict[str, Any],
-        message_history: Optional[MessageHistory] = None,
+        state: Optional[State] = None,
     ) -> ToolImplOutput:
         """Subclasses should implement this.
 
