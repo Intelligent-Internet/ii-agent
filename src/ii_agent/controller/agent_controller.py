@@ -17,6 +17,7 @@ from ii_agent.utils.constants import COMPLETE_MESSAGE
 from ii_agent.utils.workspace_manager import WorkspaceManager
 from ii_agent.utils.concurrent_execution import should_run_concurrently, run_tools_concurrently, run_tools_serially
 from ii_agent.core.logger import logger
+from ii_agent.llm.context_manager.base import ContextManager
 
 TOOL_RESULT_INTERRUPT_MESSAGE = "Tool execution interrupted by user."
 AGENT_INTERRUPT_MESSAGE = "Agent interrupted by user."
@@ -36,6 +37,7 @@ class AgentController:
         init_history: State,
         workspace_manager: WorkspaceManager,
         event_stream: EventStream,
+        context_manager: ContextManager,
         max_turns: int = 200,
         interactive_mode: bool = True,
     ):
@@ -47,6 +49,7 @@ class AgentController:
             init_history: Initial history to use
             workspace_manager: Workspace manager for file operations
             event_stream: Event stream for publishing events
+            context_manager: Context manager for token counting and truncation
             max_turns: Maximum number of turns
             interactive_mode: Whether to use interactive mode
         """
@@ -64,6 +67,7 @@ class AgentController:
         self.interrupted = False
         self.history = init_history
         self.event_stream = event_stream
+        self.context_manager = context_manager
 
 
     def _validate_tool_parameters(self):
@@ -119,7 +123,7 @@ class AgentController:
 
         remaining_turns = self.max_turns
         while remaining_turns > 0:
-            self.history.truncate()
+            self.truncate_history()
             remaining_turns -= 1
 
 
@@ -135,7 +139,7 @@ class AgentController:
                 )
 
             logger.info(
-                f"(Current token count: {self.history.count_tokens()})\n"
+                f"(Current token count: {self.count_tokens()})\n"
             )
             loop = asyncio.get_event_loop()
             model_response = await loop.run_in_executor(
@@ -348,3 +352,14 @@ class AgentController:
                 content={"text": text},
             )
         )
+
+    def count_tokens(self) -> int:
+        """Count the tokens in the current message history."""
+        return self.context_manager.count_tokens(self.history.get_messages_for_llm())
+
+    def truncate_history(self) -> None:
+        """Remove oldest messages when context window limit is exceeded."""
+        truncated_messages_for_llm = self.context_manager.apply_truncation_if_needed(
+            self.history.get_messages_for_llm()
+        )
+        self.history.set_message_list(truncated_messages_for_llm)

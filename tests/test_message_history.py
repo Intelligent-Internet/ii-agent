@@ -10,9 +10,7 @@ from ii_agent.controller.state import State
 
 @pytest.fixture
 def state():
-    return State(
-        context_manager=None
-    )  # Context manager not needed for these tests
+    return State()  # Context manager not needed for these tests
 
 
 class TestToolCallIntegrity:

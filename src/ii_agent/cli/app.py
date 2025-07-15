@@ -94,7 +94,7 @@ class CLIApp:
         )
         
         # Create message history
-        state = State(context_manager)
+        state = State()
         
         # Create agent controller
         self.agent_controller = AgentController(
@@ -103,6 +103,7 @@ class CLIApp:
             init_history=state,
             workspace_manager=self.workspace_manager,
             event_stream=self.event_stream,
+            context_manager=context_manager,
             interactive_mode=True,
         )
         

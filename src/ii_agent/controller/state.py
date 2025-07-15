@@ -5,7 +5,7 @@ import json
 
 from typing import Optional, cast, Any
 
-from pydantic import TypeAdapter
+from pydantic import TypeAdapter, BaseModel, Field
 from ii_agent.core.storage.files import FileStore
 from ii_agent.core.storage.locations import get_conversation_agent_history_filename
 from ii_agent.llm.base import (
@@ -19,18 +19,13 @@ from ii_agent.llm.base import (
     ToolFormattedResult,
     ImageBlock,
 )
-from ii_agent.llm.context_manager.base import ContextManager
 
 
-class State:
-    """Stores the sequence of messages in a dialog."""
+class State(BaseModel):
+    """Represents the current state of an agent."""
 
-    def __init__(self, context_manager: ContextManager):
-        self._context_manager = context_manager
-        self._message_lists: list[list[GeneralContentBlock]] = []
-        self._last_user_prompt_index: int | None = (
-            None  # Track the last user prompt index
-        )
+    message_lists: list[list[GeneralContentBlock]] = Field(default_factory=list)
+    last_user_prompt_index: int | None = None
 
     @classmethod
     def _ensure_tool_call_integrity(
@@ -113,14 +108,14 @@ class State:
         try:
             encoded = file_store.read(get_conversation_agent_history_filename(session_id))
             pickled = base64.b64decode(encoded)
-            self._message_lists = pickle.loads(pickled) 
+            self.message_lists = pickle.loads(pickled) 
         except FileNotFoundError:
             raise FileNotFoundError(
                 f"Could not restore history from file for session id: {session_id}"
             )
 
     def save_to_session(self, session_id: str, file_store: FileStore):
-        pickled = pickle.dumps(self._message_lists)
+        pickled = pickle.dumps(self.message_lists)
         encoded = base64.b64encode(pickled).decode('utf-8')
 
         try:
@@ -140,7 +135,7 @@ class State:
         user_turn.append(TextPrompt(text=prompt))
         self.add_user_turn(user_turn)
         # Mark this as the last user prompt position
-        self._last_user_prompt_index = len(self._message_lists) - 1
+        self.last_user_prompt_index = len(self.message_lists) - 1
 
     def add_user_turn(self, messages: list[GeneralContentBlock]):
         """Adds a user turn (prompts and/or tool results)."""
@@ -148,23 +143,23 @@ class State:
         for msg in messages:
             if not isinstance(msg, (TextPrompt, ToolFormattedResult, ImageBlock)):
                 raise TypeError(f"Invalid message type for user turn: {type(msg)}")
-        self._message_lists.append(messages)
+        self.message_lists.append(messages)
 
     def add_assistant_turn(self, messages: list[AssistantContentBlock]):
         """Adds an assistant turn (text response and/or tool calls)."""
         # Allow multiple tool calls per turn for parallel execution
-        self._message_lists.append(
+        self.message_lists.append(
             cast(list[GeneralContentBlock], messages)
         )
 
     def get_messages_for_llm(self) -> LLMMessages:  # TODO: change name to get_messages
         """Returns messages formatted for the LLM client."""
         # Return a copy to prevent modification
-        return list(self._message_lists)
+        return list(self.message_lists)
 
     def get_pending_tool_calls(self) -> list[ToolCallParameters]:
         """Returns tool calls from the last assistant turn, if any."""
-        last_turn = self._message_lists[-1]
+        last_turn = self.message_lists[-1]
         tool_calls = []
         for message in last_turn:
             if isinstance(message, ToolCall):
@@ -185,7 +180,7 @@ class State:
         self, parameters: list[ToolCallParameters], results: list[str]
     ):
         """Add the result of a tool call to the dialog."""
-        self._message_lists.append(
+        self.message_lists.append(
             [
                 ToolFormattedResult(
                     tool_call_id=params.tool_call_id,
@@ -198,10 +193,10 @@ class State:
 
     def get_last_assistant_text_response(self) -> Optional[str]:  # TODO:: remove get
         """Returns the text part of the last assistant response, if any."""
-        if not self._message_lists:
+        if not self.message_lists:
             return None  # No assistant response yet or not the last turn
 
-        last_turn = self._message_lists[-1]
+        last_turn = self.message_lists[-1]
         for message in reversed(last_turn):  # Check from end
             if isinstance(message, TextResult):
                 return message.text
@@ -209,31 +204,31 @@ class State:
 
     def clear(self):
         """Removes all messages."""
-        self._message_lists = []
-        self._last_user_prompt_index = None
+        self.message_lists = []
+        self.last_user_prompt_index = None
 
     def clear_from_last_to_user_message(self):
         """Clears messages from the last turn backwards to the last user prompt (inclusive).
         This preserves the conversation history before the last user prompt.
         """
-        if not self._message_lists or self._last_user_prompt_index is None:
+        if not self.message_lists or self.last_user_prompt_index is None:
             return
 
         # Keep messages up to and excluding the last user prompt
-        self._message_lists = self._message_lists[: self._last_user_prompt_index]
+        self.message_lists = self.message_lists[: self.last_user_prompt_index]
         # Reset the last user prompt index since we've cleared after it
-        self._last_user_prompt_index = None
+        self.last_user_prompt_index = None
 
     def __len__(self) -> int:
         """Returns the number of turns."""
-        return len(self._message_lists)
+        return len(self.message_lists)
 
     def __str__(self) -> str:
         """JSON representation of the history."""
         try:
             json_serializable = [
                 [message.to_dict() for message in message_list]
-                for message_list in self._message_lists
+                for message_list in self.message_lists
             ]
             return json.dumps(json_serializable, indent=2)
         except Exception as e:
@@ -255,7 +250,7 @@ class State:
             json_serializable = truncate_strings(
                 [
                     [message.to_dict() for message in message_list]
-                    for message_list in self._message_lists
+                    for message_list in self.message_lists
                 ]
             )
             return json.dumps(json_serializable, indent=2)
@@ -264,16 +259,5 @@ class State:
 
     def set_message_list(self, message_list: list[list[GeneralContentBlock]]):
         """Sets the message list and ensures tool call integrity."""
-        self._message_lists = State._ensure_tool_call_integrity(message_list)
+        self.message_lists = State._ensure_tool_call_integrity(message_list)
 
-    def count_tokens(self):
-        """Counts the tokens in the message list."""
-        return self._context_manager.count_tokens(self.get_messages_for_llm())
-
-    def truncate(self) -> None:
-        """Remove oldest messages when context window limit is exceeded."""
-        truncated_messages_for_llm = self._context_manager.apply_truncation_if_needed(
-            self.get_messages_for_llm()
-        )
-
-        self.set_message_list(truncated_messages_for_llm)
