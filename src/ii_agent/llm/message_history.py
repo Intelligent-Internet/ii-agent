@@ -137,7 +137,7 @@ class MessageHistory:
             for img_block in image_blocks:
                 user_turn.append(ImageBlock(type="image", source=img_block["source"]))
 
-        user_turn.append(TextPrompt(prompt))
+        user_turn.append(TextPrompt(text=prompt))
         self.add_user_turn(user_turn)
         # Mark this as the last user prompt position
         self._last_user_prompt_index = len(self._message_lists) - 1

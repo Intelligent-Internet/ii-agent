@@ -1,12 +1,7 @@
 from abc import ABC, abstractmethod
 import json
-from dataclasses import dataclass
 from typing import Any, Tuple
-from dataclasses_json import DataClassJsonMixin
-from anthropic.types import (
-    ThinkingBlock as AnthropicThinkingBlock,
-    RedactedThinkingBlock as AnthropicRedactedThinkingBlock,
-)
+from pydantic import BaseModel
 from typing import Literal
 
 
@@ -15,15 +10,13 @@ import logging
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
 
-@dataclass
-class ToolCallParameters:
+class ToolCallParameters(BaseModel):
     tool_call_id: str
     tool_name: str
     tool_input: Any
 
 
-@dataclass
-class ToolParam(DataClassJsonMixin):
+class ToolParam(BaseModel):
     """Internal representation of LLM tool."""
 
     name: str
@@ -31,8 +24,7 @@ class ToolParam(DataClassJsonMixin):
     input_schema: dict[str, Any]
 
 
-@dataclass
-class ToolCall(DataClassJsonMixin):
+class ToolCall(BaseModel):
     """Internal representation of LLM-generated tool call."""
 
     tool_call_id: str
@@ -43,8 +35,7 @@ class ToolCall(DataClassJsonMixin):
         return f"{self.tool_name} with input: {self.tool_input}"
 
 
-@dataclass
-class ToolResult(DataClassJsonMixin):
+class ToolResult(BaseModel):
     """Internal representation of LLM tool result."""
 
     tool_call_id: str
@@ -52,8 +43,7 @@ class ToolResult(DataClassJsonMixin):
     tool_output: Any
 
 
-@dataclass
-class ToolFormattedResult(DataClassJsonMixin):
+class ToolFormattedResult(BaseModel):
     """Internal representation of formatted LLM tool result."""
 
     tool_call_id: str
@@ -83,16 +73,15 @@ class ToolFormattedResult(DataClassJsonMixin):
             return f"Name: {self.tool_name}\nOutput: {self.tool_output}"
 
 
-@dataclass
-class TextPrompt(DataClassJsonMixin):
+class TextPrompt(BaseModel):
     """Internal representation of user-generated text prompt."""
 
     text: str
+    type: Literal["text_prompt"] = "text_prompt"
 
 
-@dataclass
-class ImageBlock(DataClassJsonMixin):
-    type: Literal["image"]
+class ImageBlock(BaseModel):
+    type: Literal["image"] = "image"
     source: dict[str, Any]
 
     def __str__(self) -> str:
@@ -107,15 +96,30 @@ class ImageBlock(DataClassJsonMixin):
             return f"[Image attached - {media_type}, source: {source_type}]"
 
 
-@dataclass
-class TextResult(DataClassJsonMixin):
+class TextResult(BaseModel):
     """Internal representation of LLM-generated text result."""
 
     text: str
+    type: Literal["text_result"] = "text_result"
+
+
+class RedactedThinkingBlock(BaseModel):
+    """Internal representation of redacted thinking block."""
+    
+    data: str
+    type: Literal["redacted_thinking"] = "redacted_thinking"
+
+
+class ThinkingBlock(BaseModel):
+    """Internal representation of thinking block."""
+    
+    signature: str
+    thinking: str
+    type: Literal["thinking"] = "thinking"
 
 
 AssistantContentBlock = (
-    TextResult | ToolCall | AnthropicRedactedThinkingBlock | AnthropicThinkingBlock
+    TextResult | ToolCall | RedactedThinkingBlock | ThinkingBlock
 )
 UserContentBlock = TextPrompt | ToolFormattedResult | ImageBlock
 GeneralContentBlock = UserContentBlock | AssistantContentBlock

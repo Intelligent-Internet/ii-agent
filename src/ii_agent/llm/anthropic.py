@@ -52,6 +52,8 @@ from ii_agent.llm.base import (
     UserContentBlock,
     recursively_remove_invoke_tag,
     ImageBlock,
+    ThinkingBlock,
+    RedactedThinkingBlock,
 )
 
 
@@ -151,12 +153,21 @@ class AnthropicDirectClient(LLMClient):
                         tool_use_id=message.tool_call_id,
                         content=message.tool_output,
                     )
-                elif str(type(message)) == str(AnthropicRedactedThinkingBlock):
-                    message = cast(AnthropicRedactedThinkingBlock, message)
-                    message_content = message
-                elif str(type(message)) == str(AnthropicThinkingBlock):
-                    message = cast(AnthropicThinkingBlock, message)
-                    message_content = message
+                elif str(type(message)) == str(RedactedThinkingBlock):
+                    message = cast(RedactedThinkingBlock, message)
+                    # Convert to Anthropic format for API call
+                    message_content = AnthropicRedactedThinkingBlock(
+                        type="redacted_thinking",
+                        data=message.data
+                    )
+                elif str(type(message)) == str(ThinkingBlock):
+                    message = cast(ThinkingBlock, message)
+                    # Convert to Anthropic format for API call
+                    message_content = AnthropicThinkingBlock(
+                        type="thinking",
+                        thinking=message.thinking,
+                        signature=message.signature
+                    )
                 else:
                     print(
                         f"Unknown message type: {type(message)}, expected one of {str(TextPrompt)}, {str(TextResult)}, {str(ToolCall)}, {str(ToolFormattedResult)}"
@@ -262,10 +273,18 @@ class AnthropicDirectClient(LLMClient):
                 message = cast(AnthropicTextBlock, message)
                 internal_messages.append(TextResult(text=message.text))
             elif str(type(message)) == str(AnthropicRedactedThinkingBlock):
-                internal_messages.append(message)
+                # Convert Anthropic response back to internal format
+                message = cast(AnthropicRedactedThinkingBlock, message)
+                internal_messages.append(RedactedThinkingBlock(
+                    data=message.data
+                ))
             elif str(type(message)) == str(AnthropicThinkingBlock):
+                # Convert Anthropic response back to internal format
                 message = cast(AnthropicThinkingBlock, message)
-                internal_messages.append(message)
+                internal_messages.append(ThinkingBlock(
+                    thinking=message.thinking,
+                    signature=message.signature
+                ))
             elif str(type(message)) == str(AnthropicToolUseBlock):
                 message = cast(AnthropicToolUseBlock, message)
                 internal_messages.append(

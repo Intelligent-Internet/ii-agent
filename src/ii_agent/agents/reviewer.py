@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime
 
 from fastapi import WebSocket
-from ii_agent.agents.base import BaseAgent
+from ii_agent.controller.agent import Agent
 from ii_agent.core.event import EventType, RealtimeEvent
 from ii_agent.llm.base import LLMClient, TextResult, ToolCallParameters
 from ii_agent.llm.context_manager.base import ContextManager
@@ -19,7 +19,7 @@ from ii_agent.utils.workspace_manager import WorkspaceManager
 from ii_agent.db.manager import Events
 
 
-class ReviewerAgent(BaseAgent):
+class ReviewerAgent(Agent):
     name = "reviewer_agent"
     description = """\
 A comprehensive reviewer agent that evaluates and reviews the results/websites/slides created by general agent, 

@@ -1,5 +1,5 @@
 
-from ii_agent.llm.base import GeneralContentBlock, TextPrompt, TextResult, AnthropicThinkingBlock, AnthropicRedactedThinkingBlock
+from ii_agent.llm.base import GeneralContentBlock, TextPrompt, TextResult, ThinkingBlock, RedactedThinkingBlock
 from ii_agent.llm.context_manager.base import ContextManager
 from ii_agent.llm.token_counter import TokenCounter
 from ii_agent.llm.base import LLMClient
@@ -45,9 +45,9 @@ class LLMSummarizingContextManager(ContextManager):
                 parts.append(f"USER: {message.text}")
             elif isinstance(message, TextResult):
                 parts.append(f"ASSISTANT: {message.text}")
-            elif isinstance(message, AnthropicThinkingBlock):
+            elif isinstance(message, ThinkingBlock):
                 parts.append(f"ASSISTANT: {message.thinking}")
-            elif isinstance(message, AnthropicRedactedThinkingBlock):
+            elif isinstance(message, RedactedThinkingBlock):
                 continue
             else:
                 parts.append(f"{type(message).__name__}: {str(message)}")
@@ -63,7 +63,7 @@ class LLMSummarizingContextManager(ContextManager):
         """Check if any message lists contain ThinkingBlock or RedactedThinkingBlock."""
         for message_list in message_lists:
             for message in message_list:
-                if isinstance(message, (AnthropicThinkingBlock, AnthropicRedactedThinkingBlock)):
+                if isinstance(message, (ThinkingBlock, RedactedThinkingBlock)):
                     return True
         return False
 

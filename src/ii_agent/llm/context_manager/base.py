@@ -9,12 +9,10 @@ from ii_agent.llm.base import (
     ToolCall,
     ToolFormattedResult,
     ImageBlock,
+    RedactedThinkingBlock,
+    ThinkingBlock,
 )
 from ii_agent.llm.token_counter import TokenCounter
-from ii_agent.llm.base import (
-    AnthropicRedactedThinkingBlock,
-    AnthropicThinkingBlock,
-)
 from ii_agent.utils.constants import TOKEN_BUDGET
 
 
@@ -63,9 +61,9 @@ class ContextManager(ABC):
                     # Typical image tokens range from 85-1700+ depending on size and detail
                     # Using a conservative estimate of 1000 tokens per image
                     total_tokens += 1000
-                elif isinstance(message, AnthropicRedactedThinkingBlock):
+                elif isinstance(message, RedactedThinkingBlock):
                     pass  # Always 0 tokens
-                elif isinstance(message, AnthropicThinkingBlock):
+                elif isinstance(message, ThinkingBlock):
                     # Only count thinking if it's in the very last message list
                     if is_last_turn:
                         total_tokens += self.token_counter.count_tokens(

@@ -6,10 +6,8 @@ from ii_agent.llm.base import (
     ToolCall,
     ToolFormattedResult,
     ImageBlock,
-)
-from anthropic.types import (
-    ThinkingBlock as AnthropicThinkingBlock,
-    RedactedThinkingBlock as AnthropicRedactedThinkingBlock,
+    ThinkingBlock,
+    RedactedThinkingBlock,
 )
 from copy import deepcopy
 
@@ -81,12 +79,12 @@ def convert_message_to_json(
             )
         else:
             message_json["tool_output"] = message.tool_output
-    elif str(type(message)) == str(AnthropicRedactedThinkingBlock):
+    elif str(type(message)) == str(RedactedThinkingBlock):
         message_json = {
             "type": "redacted_thinking",
             "content": message.data,
         }
-    elif str(type(message)) == str(AnthropicThinkingBlock):
+    elif str(type(message)) == str(ThinkingBlock):
         message_json = {
             "type": "thinking",
             "thinking": message.thinking,
