@@ -15,6 +15,8 @@ from ii_agent.core.config.ii_agent_config import IIAgentConfig
 from ii_agent.core.config.agent_config import AgentConfig
 from ii_agent.core.config.llm_config import LLMConfig
 from ii_agent.cli.subscribers.console_subscriber import ConsoleSubscriber
+from ii_agent.cli.input.rich_prompt import create_rich_prompt, SlashCommandCompleter
+from ii_agent.cli.commands.command_handler import CommandHandler
 from ii_agent.core.event_stream import AsyncEventStream
 from ii_agent.controller.agent_controller import AgentController
 from ii_agent.controller.agent import Agent
@@ -48,6 +50,16 @@ class CLIApp:
         
         # Subscribe to events
         self.event_stream.subscribe(self.console_subscriber.handle_event)
+        
+        # Create command handler first
+        self.command_handler = CommandHandler(self.console_subscriber.console)
+        
+        # Create rich prompt with command descriptions
+        self.rich_prompt = create_rich_prompt(workspace_path, self.console_subscriber.console)
+        
+        # Update the completer with actual command descriptions
+        self.rich_prompt.commands = self.command_handler.get_command_descriptions()
+        self.rich_prompt.completer = SlashCommandCompleter(self.rich_prompt.commands)
         
         # Agent controller will be created when needed
         self.agent_controller: Optional[AgentController] = None
@@ -129,14 +141,36 @@ class CLIApp:
             
             while True:
                 try:
-                    # Get user input
-                    user_input = input("\n👤 You: ").strip()
-                    
-                    if user_input.lower() in ['exit', 'quit', 'bye']:
-                        break
+                    # Get user input using rich prompt
+                    user_input = await self.rich_prompt.get_input()
                     
                     if not user_input:
                         continue
+                    
+                    # Check if it's a slash command
+                    if self.command_handler.is_command(user_input):
+                        # Create command context
+                        command_context = {
+                            'app': self,
+                            'agent_controller': self.agent_controller,
+                            'workspace_manager': self.workspace_manager,
+                            'session_name': session_name,
+                            'should_exit': False
+                        }
+                        
+                        # Execute command
+                        result = await self.command_handler.execute_command(user_input, command_context)
+                        
+                        # Check if we should exit
+                        if command_context.get('should_exit', False) or result == "EXIT_COMMAND":
+                            break
+                        
+                        # Continue to next iteration for commands
+                        continue
+                    
+                    # Handle regular conversation input
+                    if user_input.lower() in ['exit', 'quit', 'bye']:
+                        break
                     
                     # Run agent
                     await self.agent_controller.run_agent_async(
@@ -150,7 +184,7 @@ class CLIApp:
                         self._save_session(session_name)
                 
                 except KeyboardInterrupt:
-                    print("\n⚠️ Interrupted by user")
+                    self.console_subscriber.console.print("\n⚠️ [yellow]Interrupted by user[/yellow]")
                     self.agent_controller.cancel()
                     continue
                 except EOFError:
@@ -299,3 +333,6 @@ class CLIApp:
         """Clean up resources."""
         if self.event_stream:
             self.event_stream.clear_subscribers()
+        
+        if self.rich_prompt:
+            self.rich_prompt.cleanup()
