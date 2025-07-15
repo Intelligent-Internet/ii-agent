@@ -3,7 +3,7 @@ from pydantic import Field
 from src.tools.shell.terminal_manager import BaseShellManager
 
 class ShellKill:
-    name = "shell_kill"
+    name = "shell_kill_session"
     description = "Kill a shell session."
 
     def __init__(self, BaseShellManager: BaseShellManager) -> None:

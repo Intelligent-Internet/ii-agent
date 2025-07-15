@@ -3,7 +3,7 @@ from src.tools.shell import ShellView
 
 class ShellList:
     name = "shell_list_sessions"
-    description = "List all shell sessions and their states."
+    description = "List all available shell sessions"
 
     def __init__(self, BaseShellManager: BaseShellManager) -> None:
         self.shell_manager = BaseShellManager
