@@ -61,7 +61,6 @@ class RichPrompt:
         self.commands = {
             '/help': 'Show available commands and usage information',
             '/exit': 'Exit the application',
-            '/quit': 'Exit the application',
             '/clear': 'Clear conversation history and free up context',
             '/compact': 'Truncate context to save memory',
         }

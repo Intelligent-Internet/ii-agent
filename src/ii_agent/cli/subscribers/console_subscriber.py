@@ -186,7 +186,7 @@ class ConsoleSubscriber:
         if not self.minimal:
             welcome_panel = Panel(
                 "🚀 [bold blue]Intelligent Internet Agent - CLI[/bold blue]\n\n"
-                "• Type [bold]/exit[/bold] or [bold]/quit[/bold] to end the session\n"
+                "• Type [bold]/exit[/bold] to end the session\n"
                 "• Type [bold]/help[/bold] for available commands\n"
                 "• Use [bold]Ctrl+C[/bold] to interrupt the agent\n"
                 "• Type [bold]/clear[/bold] to clear conversation history\n"

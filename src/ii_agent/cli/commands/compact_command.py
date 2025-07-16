@@ -15,7 +15,7 @@ from .base_command import BaseCommand
 
 
 class CompactCommand(BaseCommand):
-    """Command to compact/truncate conversation context."""
+    """Command to compact conversation context."""
     
     @property
     def name(self) -> str:
@@ -122,7 +122,6 @@ class CompactCommand(BaseCommand):
             "The /compact command intelligently reduces conversation context to save memory.\n\n"
             "Usage:\n"
             "  /compact    - Compact context with confirmation\n"
-            "  /truncate   - Alias for /compact\n\n"
             "What happens during compacting:\n"
             "• Recent messages are kept in full detail\n"
             "• Older messages are summarized or compressed\n"

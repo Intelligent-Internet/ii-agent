@@ -1,28 +1,24 @@
 import asyncio
-import logging
-from typing import Any, Optional, AsyncGenerator
-import uuid
+from typing import Any, Optional, List
 from functools import partial
 
-from typing import List
 from ii_agent.controller.agent import Agent
 from ii_agent.core.event import EventType, RealtimeEvent
 from ii_agent.core.event_stream import EventStream
-from ii_agent.llm.base import LLMClient, TextResult, ToolCallParameters
+from ii_agent.llm.base import TextResult, ToolCallParameters
 from ii_agent.controller.state import State
 from ii_agent.tools.base import ToolImplOutput, LLMTool
 from ii_agent.tools.utils import encode_image
 from ii_agent.tools import AgentToolManager
 from ii_agent.utils.constants import COMPLETE_MESSAGE
 from ii_agent.utils.workspace_manager import WorkspaceManager
-from ii_agent.utils.concurrent_execution import should_run_concurrently, run_tools_concurrently, run_tools_serially
 from ii_agent.core.logger import logger
 from ii_agent.llm.context_manager.base import ContextManager
 
-TOOL_RESULT_INTERRUPT_MESSAGE = "Tool execution interrupted by user."
+TOOL_RESULT_INTERRUPT_MESSAGE = "[Request interrupted by user for tool use]"
 AGENT_INTERRUPT_MESSAGE = "Agent interrupted by user."
 TOOL_CALL_INTERRUPT_FAKE_MODEL_RSP = (
-    "Tool execution interrupted by user. You can resume by providing a new instruction."
+    "[Request interrupted by user for tool use]"
 )
 AGENT_INTERRUPT_FAKE_MODEL_RSP = (
     "Agent interrupted by user. You can resume by providing a new instruction."
@@ -72,7 +68,7 @@ class AgentController:
 
     def _validate_tool_parameters(self):
         """Validate tool parameters and check for duplicates."""
-        tool_params = [tool.get_tool_param() for tool in self.tool_manager.get_tools()]
+        tool_params = [tool.get_tool_param() for tool in self.tool_manager.tools]
         tool_names = [param.name for param in tool_params]
         sorted_names = sorted(tool_names)
         for i in range(len(sorted_names) - 1):
@@ -97,7 +93,7 @@ class AgentController:
             for file in files:
                 relative_path = self.workspace_manager.relative_path(file)
                 instruction += f" - {relative_path}\n"
-                logger.info(f"Attached file: {relative_path}")
+                logger.debug(f"Attached file: {relative_path}")
 
             # Then process images for image blocks
             for file in files:
@@ -161,7 +157,7 @@ class AgentController:
                 item for item in model_response if isinstance(item, TextResult)
             ]
             for text_result in text_results:
-                logger.info(
+                logger.debug(
                     f"Top-level agent planning next step: {text_result.text}\n",
                 )
                 # Emit event for each TextResult to be displayed in console
@@ -177,7 +173,7 @@ class AgentController:
 
             if len(pending_tool_calls) == 0:
                 # No tools were called, so assume the task is complete
-                logger.info("[no tools were called]")
+                logger.debug("[no tools were called]")
                 # Only emit "Task completed" if there were no text results
                 if not text_results:
                     self.event_stream.add_event(
@@ -202,11 +198,11 @@ class AgentController:
                     tool_result_message=TOOL_RESULT_INTERRUPT_MESSAGE,
                 )
             
-            # Execute tools - either concurrently or serially based on read-only status
-            if len(pending_tool_calls) == 1:
-                # Single tool call - execute normally
-                tool_call = pending_tool_calls[0]
-                
+            # Execute all tool calls using batch approach
+            logger.debug(f"Executing {len(pending_tool_calls)} tool(s)")
+            
+            # Send events for all tool calls
+            for tool_call in pending_tool_calls:
                 self.event_stream.add_event(
                     RealtimeEvent(
                         type=EventType.TOOL_CALL,
@@ -217,40 +213,13 @@ class AgentController:
                         },
                     )
                 )
-                
-                tool_result = await self.tool_manager.run_tool(tool_call, self.history)
+            
+            # Execute tools in batch (handles both single and multiple tools)
+            tool_results = await self.tool_manager.run_tools_batch(pending_tool_calls, self.history)
+            
+            # Add all results to history in order
+            for tool_call, tool_result in zip(pending_tool_calls, tool_results):
                 self.add_tool_call_result(tool_call, tool_result)
-            else:
-                # Multiple tool calls - execute based on read-only status
-                logger.info(f"Executing {len(pending_tool_calls)} tools")
-                
-                # Send events for all tool calls
-                for tool_call in pending_tool_calls:
-                    self.event_stream.add_event(
-                        RealtimeEvent(
-                            type=EventType.TOOL_CALL,
-                            content={
-                                "tool_call_id": tool_call.tool_call_id,
-                                "tool_name": tool_call.tool_name,
-                                "tool_input": tool_call.tool_input,
-                            },
-                        )
-                    )
-                
-                # Execute tools in batch
-                tool_results = await self.tool_manager.run_tools_batch(pending_tool_calls, self.history)
-                
-                # Add all results to history in order
-                for tool_call, tool_result in zip(pending_tool_calls, tool_results):
-                    self.add_tool_call_result(tool_call, tool_result)
-            if self.tool_manager.should_stop():
-                # Add a fake model response, so the next turn is the user's
-                # turn in case they want to resume
-                self.add_fake_assistant_turn(self.tool_manager.get_final_answer())
-                return ToolImplOutput(
-                    tool_output=self.tool_manager.get_final_answer(),
-                    tool_result_message="Task completed",
-                )
 
         agent_answer = "Agent did not complete after max turns"
         self.event_stream.add_event(
@@ -269,7 +238,7 @@ class AgentController:
         files: list[str] | None = None,
         resume: bool = False,
         orientation_instruction: str | None = None,
-    ) -> str:
+    ) -> ToolImplOutput:
         """Start a new agent run asynchronously.
 
         Args:
@@ -282,7 +251,6 @@ class AgentController:
         Returns:
             The result from the agent execution.
         """
-        self.tool_manager.reset()
         if not resume:
             self.history.clear()
             self.interrupted = False
@@ -301,7 +269,7 @@ class AgentController:
         files: list[str] | None = None,
         resume: bool = False,
         orientation_instruction: str | None = None,
-    ) -> str:
+    ) -> ToolImplOutput:
         """Start a new agent run synchronously.
 
         Args:
@@ -328,7 +296,7 @@ class AgentController:
     def cancel(self):
         """Cancel the agent execution."""
         self.interrupted = True
-        logger.info("Agent cancellation requested")
+        logger.debug("Agent cancellation requested")
 
     def add_tool_call_result(self, tool_call: ToolCallParameters, tool_result: str):
         """Add a tool call result to the history and send it to the message queue."""

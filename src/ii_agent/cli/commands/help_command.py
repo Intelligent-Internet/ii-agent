@@ -39,10 +39,6 @@ class HelpCommand(BaseCommand):
         for name, command in command_handler.get_all_commands().items():
             help_table.add_row(f"/{name}", command.description)
         
-        # Add aliases
-        help_table.add_row("/quit", "Alias for /exit")
-        help_table.add_row("/truncate", "Alias for /compact")
-        
         self.console.print(help_table)
         
         # Show usage tips

@@ -17,12 +17,6 @@ from ii_agent.tools.visit_webpage_tool import VisitWebpageTool
 from ii_agent.tools.str_replace_tool_relative import StrReplaceEditorTool
 from ii_agent.tools.static_deploy_tool import StaticDeployTool
 from ii_agent.tools.sequential_thinking_tool import SequentialThinkingTool
-from ii_agent.tools.complete_tool import (
-    CompleteTool, 
-    ReturnControlToUserTool, 
-    CompleteToolReviewer, 
-    ReturnControlToGeneralAgentTool
-)
 from ii_agent.tools.bash_tool import create_bash_tool, create_docker_bash_tool
 from ii_agent.browser.browser import Browser
 from ii_agent.utils import WorkspaceManager
@@ -206,10 +200,6 @@ class AgentToolManager:
     """
 
     def __init__(self, tools: List[LLMTool], logger_for_agent_logs: logging.Logger, interactive_mode: bool = True, reviewer_mode: bool = False):
-        if reviewer_mode:
-            self.complete_tool = ReturnControlToGeneralAgentTool() if interactive_mode else CompleteToolReviewer()
-        else:
-            self.complete_tool = ReturnControlToUserTool() if interactive_mode else CompleteTool()
         self.tools = tools
 
     def get_tool(self, tool_name: str) -> LLMTool:
@@ -349,35 +339,9 @@ class AgentToolManager:
                 results.append(error_msg)
         return results
 
-    def should_stop(self):
+    def get_tools(self) -> List[LLMTool]:
         """
-        Checks if the agent should stop based on the completion tool.
+        Returns the list of tools.
+        """
+        return self.tools
 
-        Returns:
-            bool: True if the agent should stop, False otherwise.
-        """
-        return self.complete_tool.should_stop
-
-    def get_final_answer(self):
-        """
-        Retrieves the final answer from the completion tool.
-
-        Returns:
-            str: The final answer from the completion tool.
-        """
-        return self.complete_tool.answer
-
-    def reset(self):
-        """
-        Resets the completion tool.
-        """
-        self.complete_tool.reset()
-
-    def get_tools(self) -> list[LLMTool]:
-        """
-        Retrieves a list of all available tools.
-
-        Returns:
-            list[LLMTool]: A list of all available tools.
-        """
-        return self.tools + [self.complete_tool]

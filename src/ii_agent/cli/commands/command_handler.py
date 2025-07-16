@@ -118,9 +118,5 @@ class CommandHandler:
         descriptions = {}
         for name, command in self.commands.items():
             descriptions[f'/{name}'] = command.description
-        
-        # Add aliases
-        descriptions['/quit'] = descriptions['/exit']
-        descriptions['/truncate'] = descriptions['/compact']
-        
+         
         return descriptions

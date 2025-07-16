@@ -71,7 +71,6 @@ class ExitCommand(BaseCommand):
             "The /exit command terminates the CLI session.\n\n"
             "Usage:\n"
             "  /exit    - Exit the application with confirmation\n"
-            "  /quit    - Alias for /exit\n\n"
             "The command will ask for confirmation before exiting to prevent\n"
             "accidental termination of your session.\n\n"
             "Alternative ways to exit:\n"
