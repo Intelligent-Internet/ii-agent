@@ -346,6 +346,48 @@ class ConsoleSubscriber:
         """Display token usage information."""
         self._token_display.display_usage(token_count, cached_tokens)
     
+    def render_conversation_history(self, history) -> None:
+        """Render conversation history using the same formatting as real-time messages."""
+        from rich.text import Text
+        
+        if not history or len(history.message_lists) == 0:
+            return
+        
+        self.console.print()
+        self.console.print("📜 [bold cyan]Previous Conversation History:[/bold cyan]")
+        self.console.print("─" * 80)
+        
+        # Display each turn in the conversation using existing formatting methods
+        for turn in history.message_lists:
+            for message in turn:
+                self._render_message(message)
+        
+        self.console.print("─" * 80)
+        self.console.print("📍 [dim]Continuing from here...[/dim]")
+        self.console.print()
+    
+    def _render_message(self, message) -> None:
+        """Render a single message using the same formatting as real-time display."""
+        from rich.text import Text
+        
+        if hasattr(message, 'text'):
+            # User message or text result
+            if hasattr(message, 'type') and message.type == 'text_prompt':
+                # User input - use same formatting as _print_user_input
+                user_text = Text()
+                user_text.append("👤 You: ", style="bold blue")
+                user_text.append(message.text, style="white")
+                self.console.print(user_text)
+            elif hasattr(message, 'type') and message.type == 'text_result':
+                # Agent response - use same formatting as _print_response
+                self._print_response(message.text)
+        elif hasattr(message, 'tool_name') and hasattr(message, 'tool_input'):
+            # Tool call - use same formatting as _print_tool_call
+            self._print_tool_call(message.tool_name, message.tool_input)
+        elif hasattr(message, 'tool_output'):
+            # Tool result - use same formatting as _print_tool_result
+            self._print_tool_result(message.tool_name if hasattr(message, 'tool_name') else "Unknown", message.tool_output)
+    
     def cleanup(self) -> None:
         """Clean up resources."""
         # Clean up spinner if active

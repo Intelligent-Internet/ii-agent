@@ -31,6 +31,7 @@ from ii_agent.tools import get_system_tools
 from ii_agent.core.logger import logger
 from ii_agent.prompts.system_prompt import SYSTEM_PROMPT
 from ii_agent.utils.constants import TOKEN_BUDGET
+from ii_agent.cli.state_persistence import StateManager, restore_agent_state, restore_configs
 
 
 class CLIApp:
@@ -40,6 +41,8 @@ class CLIApp:
         self.config = config
         self.llm_config = llm_config
         self.workspace_manager = WorkspaceManager(Path(workspace_path))
+        # Create state manager
+        self.state_manager = StateManager(Path(workspace_path))
         # Create event stream
         self.event_stream = AsyncEventStream(logger=logger)
         
@@ -60,7 +63,7 @@ class CLIApp:
         # Agent controller will be created when needed
         self.agent_controller: Optional[AgentController] = None
         
-    async def initialize_agent(self) -> None:
+    async def initialize_agent(self, continue_from_state: bool = False) -> None:
         """Initialize the agent controller."""
         if self.agent_controller is not None:
             return
@@ -68,6 +71,24 @@ class CLIApp:
         settings_store = await FileSettingsStore.get_instance(self.config, None)
         settings = await settings_store.load()
 
+        # Load saved state if --continue flag is used
+        saved_state_data = None
+        if continue_from_state:
+            saved_state_data = self.state_manager.load_state()
+            if saved_state_data:
+                self.console_subscriber.console.print("🔄 [cyan]Continuing from previous state...[/cyan]")
+                # Update configurations from saved state if available
+                config_data, llm_config_data = restore_configs(saved_state_data)
+                if config_data:
+                    for key, value in config_data.items():
+                        if hasattr(self.config, key):
+                            setattr(self.config, key, value)
+                if llm_config_data:
+                    for key, value in llm_config_data.items():
+                        if hasattr(self.llm_config, key):
+                            setattr(self.llm_config, key, value)
+            else:
+                self.console_subscriber.console.print("⚠️ [yellow]No saved state found, starting fresh...[/yellow]")
         
         # Create LLM client based on configuration
         llm_client = get_client(self.llm_config)
@@ -101,8 +122,11 @@ class CLIApp:
             token_budget=TOKEN_BUDGET,  # Default token budget
         )
         
-        # Create message history
-        state = State()
+        # Create message history - restore from saved state if available
+        if saved_state_data:
+            state = restore_agent_state(saved_state_data)
+        else:
+            state = State()
         
         # Create agent controller
         self.agent_controller = AgentController(
@@ -118,15 +142,20 @@ class CLIApp:
         # Print configuration info
         self.console_subscriber.print_config_info(self.llm_config)
         self.console_subscriber.print_workspace_info(str(self.workspace_manager.root))
+        
+        # Show previous conversation history if continuing from state
+        if continue_from_state and saved_state_data:
+            self.console_subscriber.render_conversation_history(self.agent_controller.history)
     
     async def run_interactive_mode(
         self, 
         session_name: Optional[str] = None,
-        resume: bool = False
+        resume: bool = False,
+        continue_from_state: bool = False
     ) -> int:
         """Run interactive chat mode."""
         try:
-            await self.initialize_agent()
+            await self.initialize_agent(continue_from_state)
             
             self.console_subscriber.print_welcome()
             self.console_subscriber.print_session_info(session_name)
@@ -186,6 +215,9 @@ class CLIApp:
                     continue
                 except EOFError:
                     break
+            
+            # Save state before exit (always save so it can be restored with --continue)
+            self._save_state_on_exit(True)
             
             self.console_subscriber.print_goodbye()
             return 0
@@ -275,6 +307,34 @@ class CLIApp:
             
         except Exception as e:
             logger.error(f"Error saving session: {e}")
+    
+    def _save_state_on_exit(self, should_save: bool) -> None:
+        """Save agent state when exiting if requested."""
+        if not should_save or not self.agent_controller:
+            return
+            
+        try:
+            # Get the current state from agent controller
+            current_state = self.agent_controller.history  # Access the state directly
+            
+            # Only save if there's conversation history
+            if len(current_state.message_lists) == 0:
+                return
+            
+            # Save the complete state
+            self.state_manager.save_state(
+                agent_state=current_state,
+                config=self.config,
+                llm_config=self.llm_config,
+                workspace_path=str(self.workspace_manager.root),
+                session_name=None  # For --continue, we don't use session names
+            )
+            
+            self.console_subscriber.console.print("💾 [green]State saved for next --continue[/green]")
+            
+        except Exception as e:
+            logger.error(f"Error saving state on exit: {e}")
+            self.console_subscriber.console.print(f"⚠️ [yellow]Failed to save state: {e}[/yellow]")
     
     def cleanup(self) -> None:
         """Clean up resources."""

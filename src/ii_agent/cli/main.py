@@ -63,6 +63,12 @@ def create_parser() -> argparse.ArgumentParser:
         "-r", 
         action="store_true", 
         help="Resume from previous session"
+    )
+    chat_parser.add_argument(
+        "--continue", 
+        "-cont", 
+        action="store_true", 
+        help="Continue from last saved agent state in current directory"
     ) 
     
     # Config command
@@ -168,7 +174,8 @@ async def main_async() -> int:
         if args.command == "chat":
             return await app.run_interactive_mode(
                 session_name=args.session,
-                resume=args.resume
+                resume=args.resume,
+                continue_from_state=getattr(args, 'continue', False)
             )
         else:
             print(f"Unknown command: {args.command}")
