@@ -156,32 +156,39 @@ class AgentController:
             # Add the raw response to the canonical history
             self.history.add_assistant_turn(model_response)
 
+            # Process all TextResult blocks first
+            text_results = [
+                item for item in model_response if isinstance(item, TextResult)
+            ]
+            for text_result in text_results:
+                logger.info(
+                    f"Top-level agent planning next step: {text_result.text}\n",
+                )
+                # Emit event for each TextResult to be displayed in console
+                self.event_stream.add_event(
+                    RealtimeEvent(
+                        type=EventType.AGENT_RESPONSE,
+                        content={"text": text_result.text},
+                    )
+                )
+
             # Handle tool calls
             pending_tool_calls = self.history.get_pending_tool_calls()
 
             if len(pending_tool_calls) == 0:
                 # No tools were called, so assume the task is complete
                 logger.info("[no tools were called]")
-                self.event_stream.add_event(
-                    RealtimeEvent(
-                        type=EventType.AGENT_RESPONSE,
-                        content={"text": "Task completed"},
+                # Only emit "Task completed" if there were no text results
+                if not text_results:
+                    self.event_stream.add_event(
+                        RealtimeEvent(
+                            type=EventType.AGENT_RESPONSE,
+                            content={"text": "Task completed"},
+                        )
                     )
-                )
                 return ToolImplOutput(
-                    tool_output=self.history.get_last_assistant_text_response(),
+                    tool_output=self.history.get_last_assistant_text_response() or "Task completed",
                     tool_result_message="Task completed",
-                )
-
-            # Handle tool calls - single or multiple
-
-            text_results = [
-                item for item in model_response if isinstance(item, TextResult)
-            ]
-            if len(text_results) > 0:
-                text_result = text_results[0]
-                logger.info(
-                    f"Top-level agent planning next step: {text_result.text}\n",
                 )
 
             # Check for interruption before tool execution

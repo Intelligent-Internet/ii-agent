@@ -17,7 +17,6 @@ from ii_agent.tools.visit_webpage_tool import VisitWebpageTool
 from ii_agent.tools.str_replace_tool_relative import StrReplaceEditorTool
 from ii_agent.tools.static_deploy_tool import StaticDeployTool
 from ii_agent.tools.sequential_thinking_tool import SequentialThinkingTool
-from ii_agent.tools.message_tool import MessageTool
 from ii_agent.tools.complete_tool import (
     CompleteTool, 
     ReturnControlToUserTool, 
@@ -95,7 +94,6 @@ def get_system_tools(
     )
 
     tools = [
-        MessageTool(),
         WebSearchTool(settings=settings),
         VisitWebpageTool(settings=settings),
         StaticDeployTool(workspace_manager=workspace_manager),
