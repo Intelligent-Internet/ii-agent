@@ -21,6 +21,8 @@ from rich import print as rich_print
 
 from ii_agent.core.event import RealtimeEvent, EventType
 from ii_agent.core.config.llm_config import LLMConfig
+from ii_agent.cli.components.spinner import AnimatedSpinner
+from ii_agent.cli.components.token_usage import TokenUsageDisplay
 
 
 class ConsoleSubscriber:
@@ -33,6 +35,8 @@ class ConsoleSubscriber:
         self._thinking_indicator = False
         self.console = Console()
         self._progress: Optional[Progress] = None
+        self._spinner: Optional[AnimatedSpinner] = None
+        self._token_display = TokenUsageDisplay(self.console)
         
     def handle_event(self, event: RealtimeEvent) -> None:
         """Handle an event by outputting to console."""
@@ -56,6 +60,10 @@ class ConsoleSubscriber:
         """Handle agent thinking event."""
         if not self._thinking_indicator:
             if not self.minimal:
+                # Use animated spinner instead of static text
+                self._spinner = AnimatedSpinner(self.console, "Thinking")
+                self._spinner.start()
+            else:
                 self.console.print("🤔 [cyan]Agent is thinking...[/cyan]")
             self._thinking_indicator = True
     
@@ -113,64 +121,123 @@ class ConsoleSubscriber:
         content = event.content
         error_msg = content.get("error", "Unknown error")
         
-        self.console.print(Panel(f"❌ Error: {error_msg}", style="red"))
+        # Simple error format with clean prefix
+        from rich.text import Text
+        error_text = Text()
+        error_text.append("  ⎿ ", style="red")
+        error_text.append(f"Error: {error_msg}", style="red")
+        self.console.print(error_text)
     
     def _handle_processing_event(self, event: RealtimeEvent) -> None:
         """Handle processing event."""
         content = event.content
         message = content.get("message", "Processing...")
-        self.console.print(f"⏳ [cyan]{message}[/cyan]")
+        
+        if not self.minimal:
+            # Use animated spinner for processing
+            if self._spinner:
+                self._spinner.stop()
+            self._spinner = AnimatedSpinner(self.console, message)
+            self._spinner.start()
+        else:
+            self.console.print(f"⏳ [cyan]{message}[/cyan]")
     
     def _print_status(self, message: str) -> None:
         """Print status message."""
         self.console.print(message)
     
     def _print_response(self, text: str) -> None:
-        """Print agent response."""
+        """Print agent response with clean formatting."""
         # Clear any status indicators
         self._clear_thinking_indicator()
         
         if not self.minimal:
-            # Check if text contains code blocks or structured content
+            # Use simple prefix instead of heavy frames
+            from rich.text import Text
+            from rich.markdown import Markdown
+            
+            # Add spacing before agent response
+            self.console.print()
+            
+            # Create clean response with agent icon
+            response_text = Text()
+            response_text.append("🤖 Agent: ", style="green")
+            
+            # Check if text contains code blocks
             if "```" in text:
-                # Use Markdown rendering for code blocks
-                self.console.print(Panel(Markdown(text), title="🤖 Agent Response", style="green"))
+                # For code blocks, just add the text and let Rich handle markdown
+                response_text.append(text)
+                self.console.print(response_text)
             else:
-                self.console.print(Panel(text, title="🤖 Agent Response", style="green"))
+                response_text.append(text, style="white")
+                self.console.print(response_text)
         else:
-            self.console.print(f"🤖 [green]{text}[/green]")
+            self.console.print()
+            self.console.print(f"🤖 Agent: [white]{text}[/white]")
     
     def _print_tool_call(self, tool_name: str, tool_input: Dict[str, Any]) -> None:
-        """Print detailed tool call information."""
-        table = Table(title=f"🔧 Tool Call: {tool_name}", style="blue")
-        table.add_column("Parameter", style="cyan")
-        table.add_column("Value", style="white")
+        """Print clean tool call information."""
+        from rich.text import Text
         
+        # Simple clean format without heavy tables
+        tool_text = Text()
+        tool_text.append("  🔧 ", style="blue")
+        tool_text.append(f"Using {tool_name}", style="blue bold")
+        
+        # Show key parameters if they exist
         if tool_input:
+            key_params = []
             for key, value in tool_input.items():
-                # Truncate long values
-                if isinstance(value, str) and len(value) > 200:
-                    value = value[:200] + "..."
-                table.add_row(key, str(value))
+                if isinstance(value, str) and len(value) > 50:
+                    value = value[:50] + "..."
+                key_params.append(f"{key}: {value}")
+            
+            if key_params:
+                tool_text.append(f" ({', '.join(key_params[:2])})", style="dim")
         
-        self.console.print(table)
+        self.console.print(tool_text)
     
     def _print_tool_result(self, tool_name: str, result: str) -> None:
-        """Print tool result."""
+        """Print tool result with clean formatting."""
+        from rich.text import Text
+        
         # Truncate long results
         if len(result) > 1000:
             result = result[:1000] + "\n... (truncated)"
         
-        # Try to detect if result contains code or structured data
-        if any(marker in result for marker in ["{", "[", "<", "def ", "class ", "import "]):
-            try:
-                # Try to syntax highlight if it looks like code
-                syntax = Syntax(result, "python", theme="monokai", line_numbers=True)
-                self.console.print(Panel(syntax, title=f"✅ Tool Result: {tool_name}", style="green"))
-            except Exception:
-                self.console.print(Panel(result, title=f"✅ Tool Result: {tool_name}", style="green"))
-        else:
-            self.console.print(Panel(result, title=f"✅ Tool Result: {tool_name}", style="green"))
+        # Don't show the completed line - just show the result with proper formatting
+        if result.strip():
+            # Print connector
+            connector = Text()
+            connector.append("  ⎿ ", style="dim")
+            self.console.print(connector)
+            
+            # Enhanced code detection and syntax highlighting
+            code_indicators = [
+                "{", "[", "<", "def ", "class ", "import ", "function", "const ", "let ", "var ",
+                "#!/", "<?php", "<html", "SELECT", "CREATE", "INSERT", "UPDATE", "DELETE"
+            ]
+            
+            if any(marker in result for marker in code_indicators):
+                # Try to detect language and show with syntax highlighting
+                language = self._detect_language(result)
+                try:
+                    syntax = Syntax(result, language, theme="monokai", line_numbers=False)
+                    # Indent the code block slightly
+                    from rich.panel import Panel
+                    code_panel = Panel(syntax, border_style="dim", padding=(0, 1))
+                    self.console.print(code_panel)
+                except Exception:
+                    # Simple indented text fallback
+                    indented_result = "\n".join(f"    {line}" for line in result.split("\n"))
+                    self.console.print(indented_result, style="dim")
+            else:
+                # Simple indented text
+                indented_result = "\n".join(f"    {line}" for line in result.split("\n"))
+                self.console.print(indented_result, style="dim")
+        
+        # Add spacing after tool result
+        self.console.print()
     
     def _print_error(self, message: str) -> None:
         """Print error message."""
@@ -179,6 +246,9 @@ class ConsoleSubscriber:
     def _clear_thinking_indicator(self) -> None:
         """Clear the thinking indicator."""
         if self._thinking_indicator:
+            if self._spinner:
+                self._spinner.stop()
+                self._spinner = None
             self._thinking_indicator = False
     
     def print_welcome(self) -> None:
@@ -253,3 +323,32 @@ class ConsoleSubscriber:
                 style="yellow"
             )
             self.console.print(workspace_panel)
+    
+    def _detect_language(self, code: str) -> str:
+        """Detect programming language from code content."""
+        # Simple language detection based on content
+        if "def " in code or "import " in code or "class " in code:
+            return "python"
+        elif "function" in code or "const " in code or "let " in code:
+            return "javascript"
+        elif "<?php" in code:
+            return "php"
+        elif "<html" in code or "<div" in code:
+            return "html"
+        elif "SELECT" in code or "CREATE" in code or "INSERT" in code:
+            return "sql"
+        elif "{" in code and "}" in code:
+            return "json"
+        else:
+            return "text"
+    
+    def display_token_usage(self, token_count: int, cached_tokens: Optional[int] = None) -> None:
+        """Display token usage information."""
+        self._token_display.display_usage(token_count, cached_tokens)
+    
+    def cleanup(self) -> None:
+        """Clean up resources."""
+        # Clean up spinner if active
+        if self._spinner:
+            self._spinner.stop()
+            self._spinner = None

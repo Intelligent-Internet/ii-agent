@@ -283,3 +283,7 @@ class CLIApp:
         
         if self.rich_prompt:
             self.rich_prompt.cleanup()
+        
+        # Clean up console subscriber resources
+        if self.console_subscriber:
+            self.console_subscriber.cleanup()

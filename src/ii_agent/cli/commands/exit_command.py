@@ -36,12 +36,14 @@ class ExitCommand(BaseCommand):
         self.console.print(confirm_panel)
         
         try:
-            # Get confirmation using async prompt
-            session = PromptSession()
-            response = await session.prompt_async(
-                HTML('<ansigreen>Continue with exit? (y/N): </ansigreen>')
-            )
-            confirmed = response.strip().lower() in ['y', 'yes']
+            # Get confirmation using simple input
+            import sys
+            sys.stdout.write("Continue with exit? (y/N): ")
+            sys.stdout.flush()
+            
+            # Read directly from stdin
+            response = sys.stdin.readline().strip().lower()
+            confirmed = response in ['y', 'yes']
             
             if confirmed:
                 # Show goodbye message

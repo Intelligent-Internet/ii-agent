@@ -10,7 +10,7 @@ from typing import Optional, List, Dict, Any, Callable
 from pathlib import Path
 
 from prompt_toolkit import PromptSession
-from prompt_toolkit.completion import Completer, Completion
+from prompt_toolkit.completion import Completer, Completion, merge_completers
 from prompt_toolkit.document import Document
 from prompt_toolkit.formatted_text import HTML
 from prompt_toolkit.shortcuts import confirm
@@ -22,6 +22,8 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
 from rich.table import Table
+
+from ii_agent.cli.components.file_path_completer import MentionCompleter
 
 
 class SlashCommandCompleter(Completer):
@@ -61,10 +63,14 @@ class RichPrompt:
         # Get commands from command handler or use defaults
         self.commands = self._get_commands()
         
-        # Create completer
-        self.completer = SlashCommandCompleter(self.commands)
+        # Create completers
+        self.slash_completer = SlashCommandCompleter(self.commands)
+        self.mention_completer = MentionCompleter(workspace_path, self.commands)
         
-        # Setup prompt session
+        # Merge completers
+        self.completer = merge_completers([self.slash_completer, self.mention_completer])
+        
+        # Setup prompt session with enhanced styling
         self.style = Style.from_dict({
             'prompt': '#FFD700 bold',
             'input': '#FFFFFF',
@@ -72,13 +78,30 @@ class RichPrompt:
             'completion-menu.completion.current': 'bg:#00aaaa #000000',
             'completion-menu.meta.completion': 'bg:#999999 #000000',
             'completion-menu.meta.completion.current': 'bg:#aaaaaa #000000',
+            'paste-indicator': '#FFA500 bold',
+            'multiline-hint': '#87CEEB',
+            'file-completion': 'bg:#4a4a4a fg:#ffffff',
         })
+        
+        # Create key bindings for enhanced functionality
+        bindings = KeyBindings()
+        
+        @bindings.add('c-m')  # Ctrl+M (Enter)
+        def _(event):
+            """Handle regular enter."""
+            event.app.exit(result=event.app.current_buffer.text)
+        
+        @bindings.add('escape', 'enter')  # Alt+Enter
+        def _(event):
+            """Handle alt+enter for multiline."""
+            event.app.exit(result=event.app.current_buffer.text + '\n')
         
         self.session = PromptSession(
             style=self.style,
             completer=self.completer,
             complete_while_typing=True,
             vi_mode=False,  # Can be made configurable
+            key_bindings=bindings,
         )
         
         # Setup history file
@@ -140,12 +163,16 @@ class RichPrompt:
             self._save_history()
     
     async def get_input(self, prompt_text: str = "👤 You: ") -> str:
-        """Get user input with enhanced prompt."""
+        """Get user input with enhanced prompt and paste detection."""
         try:
             user_input = await self.session.prompt_async(
                 HTML(f'<prompt>{prompt_text}</prompt>'),
                 multiline=False,
             )
+            
+            # Check for paste detection (multiple lines or large text)
+            if user_input and ('\n' in user_input or len(user_input) > 200):
+                return await self._handle_paste_input(user_input)
             
             if user_input.strip():
                 self._add_to_history(user_input.strip())
@@ -156,8 +183,19 @@ class RichPrompt:
             return "/exit"
     
     async def get_multiline_input(self, prompt_text: str = "👤 You: ") -> str:
-        """Get multiline user input."""
+        """Get multiline user input with enhanced handling."""
         try:
+            # Show multiline input hint
+            hint_panel = Panel(
+                "💡 [dim]Multiline mode enabled[/dim]\n\n"
+                "• Press Alt+Enter or Ctrl+Enter to submit\n"
+                "• Use Escape to cancel\n"
+                "• Type normally for multiline input",
+                title="Multiline Input",
+                style="blue"
+            )
+            self.console.print(hint_panel)
+            
             user_input = await self.session.prompt_async(
                 HTML(f'<prompt>{prompt_text}</prompt>'),
                 multiline=True,
@@ -171,7 +209,7 @@ class RichPrompt:
         except (EOFError, KeyboardInterrupt):
             return "/exit"
     
-    def get_confirmation(self, message: str, default: bool = True) -> bool:
+    async def get_confirmation(self, message: str, default: bool = True) -> bool:
         """Get confirmation from user with Rich styling."""
         try:
             # Create a styled confirmation panel
@@ -182,12 +220,16 @@ class RichPrompt:
             )
             self.console.print(confirmation_panel)
             
-            # Use prompt_toolkit's confirm function
-            result = confirm(
-                HTML(f'<prompt>Continue? ({"Y/n" if default else "y/N"}): </prompt>'),
-                default=default
+            # Use async prompt instead of confirm
+            response = await self.session.prompt_async(
+                HTML(f'<prompt>Continue? ({"Y/n" if default else "y/N"}): </prompt>')
             )
-            return result
+            
+            # Handle response
+            if not response.strip():
+                return default
+            
+            return response.strip().lower() in ['y', 'yes']
             
         except (EOFError, KeyboardInterrupt):
             return False
@@ -267,18 +309,44 @@ class RichPrompt:
         
         self.console.print(help_table)
         
-        # Also show usage tips
+        # Enhanced usage tips
         tips_panel = Panel(
             "💡 [bold]Tips:[/bold]\n\n"
             "• Use Tab for command completion\n"
             "• Commands are case-sensitive\n"
+            "• Type [bold]@filename[/bold] to autocomplete file paths\n"
             "• Type your message normally for conversation\n"
             "• Use Ctrl+C to interrupt or exit\n"
-            "• Command history is saved between sessions",
+            "• Command history is saved between sessions\n"
+            "• Paste detection for multiline input\n"
+            "• Alt+Enter for multiline mode",
             title="Usage Tips",
             style="blue"
         )
         self.console.print(tips_panel)
+    
+    async def _handle_paste_input(self, pasted_text: str) -> str:
+        """Handle pasted text input with confirmation."""
+        # Count lines in pasted text
+        line_count = pasted_text.count('\n') + 1
+        
+        # Show paste confirmation
+        paste_panel = Panel(
+            f"📋 [yellow]Pasted text detected![/yellow]\n\n"
+            f"Lines: {line_count}\n"
+            f"Characters: {len(pasted_text)}\n\n"
+            f"Preview: {pasted_text[:100]}{'...' if len(pasted_text) > 100 else ''}",
+            title="Paste Detection",
+            style="yellow"
+        )
+        self.console.print(paste_panel)
+        
+        # Get confirmation
+        if await self.get_confirmation("Use this pasted text as input?", default=True):
+            self._add_to_history(pasted_text)
+            return pasted_text
+        else:
+            return "/exit"
     
     def cleanup(self) -> None:
         """Clean up resources."""
