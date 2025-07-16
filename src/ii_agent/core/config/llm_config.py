@@ -15,15 +15,23 @@ class LLMConfig(BaseModel):
     
     Attributes:
         model: The model to use.
-        api_key: The API key to use.
-        base_url: The base URL for the API. This is necessary for local LLMs.
-        num_retries: The number of retries to use.
-        max_message_chars: The maximum number of characters in a message.
+        api_key: The API key to use. (optional)
+        base_url: The base URL for the API. This is necessary for local LLMs. (optional)
+        num_retries: The number of retries to use. (optional)
+        max_message_chars: The maximum number of characters in a message. (optional)
+        temperature: The temperature to use. (optional)
+        vertex_region: The region to use for Vertex AI. (optional)
+        vertex_project_id: The project ID to use for Vertex AI. (optional)
+        api_type: The type of API to use.
+        thinking_tokens: The number of tokens to use for thinking. (optional)
+        azure_endpoint: The endpoint to use for Azure. (optional)
+        azure_api_version: The API version to use for Azure. (optional)
+        cot_model: Whether cot model or not. (optional)
     """
     model: str = Field(default=DEFAULT_MODEL)
     api_key: SecretStr | None = Field(default=None)
     base_url: str | None = Field(default=None)
-    max_retries: int = Field(default=3)
+    max_retries: int = Field(default=10)
     max_message_chars: int = Field(default=30_000)
     temperature: float = Field(default=0.0)
     vertex_region: str | None = Field(default=None)

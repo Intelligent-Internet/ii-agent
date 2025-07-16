@@ -63,42 +63,7 @@ def create_parser() -> argparse.ArgumentParser:
         "-r", 
         action="store_true", 
         help="Resume from previous session"
-    )
-    
-    # Run command (single instruction)
-    run_parser = subparsers.add_parser(
-        "run", 
-        help="Execute a single instruction"
-    )
-    run_parser.add_argument(
-        "instruction", 
-        nargs="?", 
-        help="Instruction to execute"
-    )
-    run_parser.add_argument(
-        "--file", 
-        "-f", 
-        type=str, 
-        help="Read instruction from file"
-    )
-    run_parser.add_argument(
-        "--attach", 
-        "-a", 
-        nargs="*", 
-        help="Attach files to the instruction"
-    )
-    run_parser.add_argument(
-        "--output", 
-        "-o", 
-        type=str, 
-        help="Output file for results"
-    )
-    run_parser.add_argument(
-        "--format", 
-        choices=["text", "json", "markdown"], 
-        default="text", 
-        help="Output format"
-    )
+    ) 
     
     # Config command
     config_parser = subparsers.add_parser(
@@ -149,30 +114,12 @@ def create_parser() -> argparse.ArgumentParser:
         nargs="*", 
         help="Specific tools to enable"
     )
-    parser.add_argument(
-        "--vertex-region",
-        type=str,
-        help="Google Cloud Vertex AI region (e.g., us-east5)"
-    )
-    parser.add_argument(
-        "--vertex-project-id",
-        type=str,
-        help="Google Cloud Vertex AI project ID"
-    )
     
     return parser
 
 
 def validate_args(args: argparse.Namespace) -> None:
     """Validate command-line arguments."""
-    if args.command == "run":
-        if not args.instruction and not args.file:
-            print("Error: Either instruction or --file must be provided for 'run' command")
-            sys.exit(1)
-        
-        if args.instruction and args.file:
-            print("Error: Cannot specify both instruction and --file")
-            sys.exit(1)
     
     if args.workspace:
         workspace_path = Path(args.workspace)
@@ -209,8 +156,6 @@ async def main_async() -> int:
             workspace=args.workspace,
             model=args.llm_model,
             temperature=args.temperature,
-            vertex_region=getattr(args, 'vertex_region', None),
-            vertex_project_id=getattr(args, 'vertex_project_id', None)
         )
         
         # Handle config command
@@ -224,14 +169,6 @@ async def main_async() -> int:
             return await app.run_interactive_mode(
                 session_name=args.session,
                 resume=args.resume
-            )
-        elif args.command == "run":
-            return await app.run_single_instruction(
-                instruction=args.instruction,
-                file_path=args.file,
-                attachments=args.attach or [],
-                output_file=args.output,
-                output_format=args.format
             )
         else:
             print(f"Unknown command: {args.command}")

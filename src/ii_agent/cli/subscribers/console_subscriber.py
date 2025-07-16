@@ -190,7 +190,8 @@ class ConsoleSubscriber:
                 "• Type [bold]/help[/bold] for available commands\n"
                 "• Use [bold]Ctrl+C[/bold] to interrupt the agent\n"
                 "• Type [bold]/clear[/bold] to clear conversation history\n"
-                "• Type [bold]/compact[/bold] to truncate context",
+                "• Type [bold]/compact[/bold] to truncate context\n"
+                "• Type [bold]/settings[/bold] to configure LLM settings",
                 title="Welcome",
                 style="cyan"
             )
@@ -227,16 +228,11 @@ class ConsoleSubscriber:
             config_items = []
             
             # Common LLM config attributes
-            if hasattr(config, 'model_name') and config.model_name:
-                config_items.append(("Model", config.model_name))
-            if hasattr(config, 'provider') and config.provider:
-                config_items.append(("Provider", config.provider))
-            if hasattr(config, 'temperature') and config.temperature is not None:
-                config_items.append(("Temperature", str(config.temperature)))
-            if hasattr(config, 'max_tokens') and config.max_tokens:
-                config_items.append(("Max Tokens", str(config.max_tokens)))
-            if hasattr(config, 'api_base') and config.api_base:
-                config_items.append(("API Base", config.api_base))
+            config_items.append(("Model", config.model))
+            config_items.append(("Provider", config.api_type.value))
+            config_items.append(("Temperature", str(config.temperature)))
+            config_items.append(("Max Tokens", str(config.max_message_chars)))
+             
             
             # Display formatted config items
             if config_items:

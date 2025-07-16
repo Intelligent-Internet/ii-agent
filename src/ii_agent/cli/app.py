@@ -54,12 +54,8 @@ class CLIApp:
         # Create command handler first
         self.command_handler = CommandHandler(self.console_subscriber.console)
         
-        # Create rich prompt with command descriptions
-        self.rich_prompt = create_rich_prompt(workspace_path, self.console_subscriber.console)
-        
-        # Update the completer with actual command descriptions
-        self.rich_prompt.commands = self.command_handler.get_command_descriptions()
-        self.rich_prompt.completer = SlashCommandCompleter(self.rich_prompt.commands)
+        # Create rich prompt with command handler
+        self.rich_prompt = create_rich_prompt(workspace_path, self.console_subscriber.console, self.command_handler)
         
         # Agent controller will be created when needed
         self.agent_controller: Optional[AgentController] = None
@@ -152,6 +148,7 @@ class CLIApp:
                         # Create command context
                         command_context = {
                             'app': self,
+                            'config': self.config,
                             'agent_controller': self.agent_controller,
                             'workspace_manager': self.workspace_manager,
                             'session_name': session_name,
@@ -199,57 +196,7 @@ class CLIApp:
             import traceback
             traceback.print_exc()
             return 1
-    
-    async def run_single_instruction(
-        self,
-        instruction: Optional[str] = None,
-        file_path: Optional[str] = None,
-        attachments: List[str] = None,
-        output_file: Optional[str] = None,
-        output_format: str = "text"
-    ) -> int:
-        """Run a single instruction."""
-        try:
-            await self.initialize_agent()
-            
-            # Get instruction
-            if file_path:
-                instruction = self._read_instruction_from_file(file_path)
-            
-            if not instruction:
-                print("Error: No instruction provided")
-                return 1
-            
-            # Process attachments
-            processed_attachments = []
-            if attachments:
-                for attachment in attachments:
-                    attachment_path = Path(attachment)
-                    if attachment_path.exists():
-                        processed_attachments.append(str(attachment_path.resolve()))
-                    else:
-                        print(f"Warning: Attachment not found: {attachment}")
-            
-            # Run agent
-            result = await self.agent_controller.run_agent_async(
-                instruction=instruction,
-                files=processed_attachments,
-                resume=False
-            )
-            
-            # Handle output
-            if output_file:
-                self._save_output(result, output_file, output_format)
-            
-            return 0
-            
-        except Exception as e:
-            logger.error(f"Error running instruction: {e}")
-            if self.config.debug:
-                import traceback
-                traceback.print_exc()
-            return 1
-    
+     
     def _read_instruction_from_file(self, file_path: str) -> str:
         """Read instruction from file."""
         try:

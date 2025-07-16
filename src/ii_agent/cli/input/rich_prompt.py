@@ -51,19 +51,15 @@ class SlashCommandCompleter(Completer):
 class RichPrompt:
     """Rich interactive prompt with command completion and enhanced UX."""
     
-    def __init__(self, workspace_path: str, console: Console):
+    def __init__(self, workspace_path: str, console: Console, command_handler=None):
         self.workspace_path = workspace_path
         self.console = console
         self.history: List[str] = []
         self.history_index = 0
+        self.command_handler = command_handler
         
-        # Define available slash commands
-        self.commands = {
-            '/help': 'Show available commands and usage information',
-            '/exit': 'Exit the application',
-            '/clear': 'Clear conversation history and free up context',
-            '/compact': 'Truncate context to save memory',
-        }
+        # Get commands from command handler or use defaults
+        self.commands = self._get_commands()
         
         # Create completer
         self.completer = SlashCommandCompleter(self.commands)
@@ -91,6 +87,27 @@ class RichPrompt:
         
         # Load history
         self._load_history()
+    
+    def _get_commands(self) -> Dict[str, str]:
+        """Get available commands from command handler or use defaults."""
+        if self.command_handler:
+            return self.command_handler.get_command_descriptions()
+        else:
+            # Fallback to hardcoded commands
+            return {
+                '/help': 'Show available commands and usage information',
+                '/exit': 'Exit the application',
+                '/clear': 'Clear conversation history and free up context',
+                '/compact': 'Truncate context to save memory',
+                '/settings': 'Configure LLM settings and application preferences',
+            }
+    
+    def update_commands(self, command_handler=None) -> None:
+        """Update available commands dynamically."""
+        if command_handler:
+            self.command_handler = command_handler
+        self.commands = self._get_commands()
+        self.completer = SlashCommandCompleter(self.commands)
     
     def _load_history(self) -> None:
         """Load command history from file."""
@@ -268,6 +285,6 @@ class RichPrompt:
         self._save_history()
 
 
-def create_rich_prompt(workspace_path: str, console: Console) -> RichPrompt:
+def create_rich_prompt(workspace_path: str, console: Console, command_handler=None) -> RichPrompt:
     """Create a rich prompt instance."""
-    return RichPrompt(workspace_path, console)
+    return RichPrompt(workspace_path, console, command_handler)

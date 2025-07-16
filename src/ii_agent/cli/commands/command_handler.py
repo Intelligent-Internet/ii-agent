@@ -27,12 +27,14 @@ class CommandHandler:
         from .exit_command import ExitCommand
         from .clear_command import ClearCommand
         from .compact_command import CompactCommand
+        from .settings_command import SettingsCommand
         
         default_commands = [
             HelpCommand(self.console),
             ExitCommand(self.console),
             ClearCommand(self.console),
             CompactCommand(self.console),
+            SettingsCommand(self.console),
         ]
         
         for command in default_commands:
@@ -85,13 +87,7 @@ class CommandHandler:
         
         if not command_name:
             return None
-        
-        # Handle aliases
-        if command_name == 'quit':
-            command_name = 'exit'
-        elif command_name == 'truncate':
-            command_name = 'compact'
-        
+         
         command = self.get_command(command_name)
         if not command:
             self.console.print(f"[red]Unknown command: /{command_name}[/red]")
