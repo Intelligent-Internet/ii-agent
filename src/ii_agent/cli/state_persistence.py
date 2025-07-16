@@ -8,6 +8,7 @@ including conversation history, configuration, and workspace context.
 import json
 import pickle
 import base64
+import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, Any
@@ -23,7 +24,10 @@ class StateManager:
     
     def __init__(self, workspace_path: Path):
         self.workspace_path = workspace_path
-        self.state_file_path = workspace_path / ".ii-agent-state.json"
+        self.ii_agent_dir = workspace_path / ".ii_agent"
+        self.ii_agent_dir.mkdir(exist_ok=True)
+        self.state_file_path = self.ii_agent_dir / f"{uuid.uuid4().hex}.jsonl"
+        self.current_state_link = self.ii_agent_dir / "current_state.json"
     
     def save_state(
         self, 
@@ -33,8 +37,11 @@ class StateManager:
         workspace_path: str,
         session_name: Optional[str] = None
     ) -> None:
-        """Save the complete agent state to file."""
+        """Save the complete agent state to JSONL file."""
         try:
+            # Generate a new unique filename for this session
+            self.state_file_path = self.ii_agent_dir / f"{uuid.uuid4().hex}.jsonl"
+            
             # Serialize the agent state (message history)
             pickled_state = pickle.dumps(agent_state.message_lists)
             encoded_state = base64.b64encode(pickled_state).decode('utf-8')
@@ -63,9 +70,17 @@ class StateManager:
                 }
             }
             
-            # Write to file
+            # Write to JSONL file (one JSON object per line)
             with open(self.state_file_path, 'w') as f:
-                json.dump(state_data, f, indent=2)
+                f.write(json.dumps(state_data) + '\n')
+            
+            # Update current state pointer
+            current_state_info = {
+                "current_state_file": self.state_file_path.name,
+                "last_updated": datetime.now().isoformat()
+            }
+            with open(self.current_state_link, 'w') as f:
+                json.dump(current_state_info, f, indent=2)
                 
             logger.info(f"State saved to {self.state_file_path}")
             
@@ -74,13 +89,24 @@ class StateManager:
             raise
     
     def load_state(self) -> Optional[Dict[str, Any]]:
-        """Load the saved agent state from file."""
+        """Load the saved agent state from current state pointer."""
         try:
-            if not self.state_file_path.exists():
+            # First, check if current_state.json exists
+            if not self.current_state_link.exists():
+                return None
+            
+            # Read the current state pointer
+            with open(self.current_state_link, 'r') as f:
+                current_state_info = json.load(f)
+            
+            # Get the actual state file
+            state_file = self.ii_agent_dir / current_state_info["current_state_file"]
+            if not state_file.exists():
                 return None
                 
-            with open(self.state_file_path, 'r') as f:
-                state_data = json.load(f)
+            # Read the JSONL file (should have one line)
+            with open(state_file, 'r') as f:
+                state_data = json.loads(f.readline().strip())
             
             # Validate version compatibility
             if state_data.get("version") != "1.0":
@@ -93,7 +119,7 @@ class StateManager:
                 message_lists = pickle.loads(pickled_state)
                 state_data["agent_state"]["message_lists"] = message_lists
             
-            logger.info(f"State loaded from {self.state_file_path}")
+            logger.info(f"State loaded from {state_file}")
             return state_data
             
         except Exception as e:
@@ -101,26 +127,41 @@ class StateManager:
             return None
     
     def clear_state(self) -> None:
-        """Remove the saved state file."""
+        """Remove the saved state files."""
         try:
-            if self.state_file_path.exists():
-                self.state_file_path.unlink()
-                logger.info(f"State file {self.state_file_path} removed")
+            # Remove current state pointer
+            if self.current_state_link.exists():
+                self.current_state_link.unlink()
+                logger.info(f"Current state pointer {self.current_state_link} removed")
+            
+            # Remove all .jsonl files in the directory
+            for jsonl_file in self.ii_agent_dir.glob("*.jsonl"):
+                jsonl_file.unlink()
+                logger.info(f"State file {jsonl_file} removed")
         except Exception as e:
             logger.error(f"Error clearing state: {e}")
     
     def has_saved_state(self) -> bool:
         """Check if there's a saved state file."""
-        return self.state_file_path.exists()
+        return self.current_state_link.exists()
     
     def get_state_info(self) -> Optional[Dict[str, Any]]:
         """Get basic info about the saved state without loading it."""
         try:
-            if not self.state_file_path.exists():
+            if not self.current_state_link.exists():
+                return None
+            
+            # Read current state pointer
+            with open(self.current_state_link, 'r') as f:
+                current_state_info = json.load(f)
+            
+            # Read the actual state file
+            state_file = self.ii_agent_dir / current_state_info["current_state_file"]
+            if not state_file.exists():
                 return None
                 
-            with open(self.state_file_path, 'r') as f:
-                state_data = json.load(f)
+            with open(state_file, 'r') as f:
+                state_data = json.loads(f.readline().strip())
             
             return {
                 "timestamp": state_data.get("timestamp"),
