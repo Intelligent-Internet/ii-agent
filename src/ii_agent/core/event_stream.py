@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from abc import ABC, abstractmethod
-from typing import Callable, List, Set
+from typing import Callable, Set
 from threading import Lock
 
 from ii_agent.core.event import RealtimeEvent

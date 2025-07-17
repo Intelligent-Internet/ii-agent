@@ -2,10 +2,8 @@
 
 import os
 from pathlib import Path
-from typing import Any, Optional, List, Dict
-import base64
+from typing import Any, Optional
 import struct
-import mimetypes
 
 from google import genai
 from google.genai import types

@@ -7,7 +7,7 @@ inspired by the reference implementation.
 
 import time
 import random
-from typing import Optional, List
+from typing import Optional
 from threading import Thread, Event
 from rich.console import Console
 from rich.text import Text

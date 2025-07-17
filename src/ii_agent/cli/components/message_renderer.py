@@ -5,15 +5,13 @@ This module provides components for rendering different types of messages
 with better structure and formatting.
 """
 
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any
 from enum import Enum
 from rich.console import Console
 from rich.panel import Panel
-from rich.text import Text
 from rich.table import Table
 from rich.syntax import Syntax
 from rich.markdown import Markdown
-from rich.columns import Columns
 
 
 class MessageType(Enum):

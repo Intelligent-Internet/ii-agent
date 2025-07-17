@@ -8,7 +8,6 @@ This example shows how to:
 4. Handle events through the abstraction layer
 """
 
-import asyncio
 import logging
 import uuid
 from typing import Optional

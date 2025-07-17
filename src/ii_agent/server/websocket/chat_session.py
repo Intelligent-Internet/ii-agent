@@ -2,12 +2,11 @@ import asyncio
 import json
 import logging
 import uuid
-from typing import Optional, Dict, Any, TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING
 
 from fastapi import WebSocket, WebSocketDisconnect
 from pydantic import ValidationError
 
-from ii_agent.agents.function_call import FunctionCallAgent
 from ii_agent.controller.agent_controller import AgentController
 from ii_agent.core.event import RealtimeEvent, EventType
 from ii_agent.core.config.ii_agent_config import IIAgentConfig

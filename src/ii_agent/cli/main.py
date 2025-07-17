@@ -7,9 +7,7 @@ This module provides the command-line interface for interacting with the AgentCo
 import argparse
 import asyncio
 import sys
-import os
 from pathlib import Path
-from typing import Optional, List
 
 from ii_agent.cli.app import CLIApp
 from ii_agent.cli.config import setup_cli_config

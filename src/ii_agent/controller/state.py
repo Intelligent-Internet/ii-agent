@@ -1,11 +1,10 @@
-from pydantic.json import pydantic_encoder
 import pickle
 import base64
 import json
 
 from typing import Optional, cast, Any
 
-from pydantic import TypeAdapter, BaseModel, Field
+from pydantic import BaseModel, Field
 from ii_agent.core.storage.files import FileStore
 from ii_agent.core.storage.locations import get_conversation_agent_history_filename
 from ii_agent.llm.base import (

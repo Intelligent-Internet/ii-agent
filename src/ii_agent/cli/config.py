@@ -4,9 +4,7 @@ Configuration management for CLI.
 This module handles loading, saving, and managing CLI configuration options.
 """
 
-import asyncio
 import os
-from pathlib import Path
 from typing import Optional
 
 from ii_agent.core.config.ii_agent_config import IIAgentConfig

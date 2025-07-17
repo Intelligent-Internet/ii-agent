@@ -1,4 +1,3 @@
-from enum import Enum
 from pydantic import BaseModel, Field, SecretStr, field_serializer, SerializationInfo
 from pydantic.json import pydantic_encoder
 

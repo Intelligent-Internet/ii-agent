@@ -4,9 +4,8 @@ File path autocompletion for CLI.
 This module provides file path autocompletion when typing @file_path syntax.
 """
 
-import os
 from pathlib import Path
-from typing import List, Optional, Iterator
+from typing import List, Iterator
 from prompt_toolkit.completion import Completer, Completion
 from prompt_toolkit.document import Document
 

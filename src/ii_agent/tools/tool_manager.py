@@ -1,8 +1,7 @@
-import os
 import asyncio
 import logging
 from copy import deepcopy
-from typing import Optional, List, Dict, Any, AsyncGenerator
+from typing import Optional, List, Dict, Any
 from ii_agent.llm.base import LLMClient
 from ii_agent.llm.context_manager.llm_summarizing import LLMSummarizingContextManager
 from ii_agent.llm.token_counter import TokenCounter
@@ -21,7 +20,7 @@ from ii_agent.tools.bash_tool import create_bash_tool, create_docker_bash_tool
 from ii_agent.browser.browser import Browser
 from ii_agent.utils import WorkspaceManager
 from ii_agent.controller.state import State
-from ii_agent.utils.concurrent_execution import should_run_concurrently, run_tools_concurrently, run_tools_serially
+from ii_agent.utils.concurrent_execution import should_run_concurrently
 from ii_agent.tools.browser_tools import (
     BrowserNavigationTool,
     BrowserRestartTool,

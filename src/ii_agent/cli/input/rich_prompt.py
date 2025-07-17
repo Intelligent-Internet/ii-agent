@@ -5,22 +5,18 @@ This module provides a rich interactive prompt system with command completion,
 syntax highlighting, and improved user experience.
 """
 
-import asyncio
-from typing import Optional, List, Dict, Any, Callable
+from typing import Optional, List, Dict
 from pathlib import Path
 
 from prompt_toolkit import PromptSession
 from prompt_toolkit.completion import Completer, Completion, merge_completers
 from prompt_toolkit.document import Document
 from prompt_toolkit.formatted_text import HTML
-from prompt_toolkit.shortcuts import confirm
 from prompt_toolkit.styles import Style
 from prompt_toolkit.key_binding import KeyBindings
-from prompt_toolkit.application import Application
 
 from rich.console import Console
 from rich.panel import Panel
-from rich.text import Text
 from rich.table import Table
 
 from ii_agent.cli.components.file_path_completer import MentionCompleter

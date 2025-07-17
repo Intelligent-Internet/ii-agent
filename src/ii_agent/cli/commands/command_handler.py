@@ -5,7 +5,6 @@ This module provides the main command handler that processes and executes
 slash commands in the CLI.
 """
 
-import asyncio
 from typing import Dict, Optional, Any
 from rich.console import Console
 

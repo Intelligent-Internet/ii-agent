@@ -7,8 +7,6 @@ with a Rich confirmation dialog.
 
 from typing import Optional, Any, Dict
 from rich.panel import Panel
-from prompt_toolkit import PromptSession
-from prompt_toolkit.formatted_text import HTML
 
 from .base_command import BaseCommand
 

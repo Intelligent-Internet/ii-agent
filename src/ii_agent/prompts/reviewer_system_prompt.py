@@ -1,5 +1,4 @@
 from datetime import datetime
-import platform
 
 
 REVIEWER_SYSTEM_PROMPT = f"""\

@@ -7,19 +7,17 @@ the AgentController with event stream for CLI usage.
 
 import asyncio
 import json
-import uuid
 from pathlib import Path
-from typing import Optional, List, Dict, Any
+from typing import Optional
 
 from ii_agent.core.config.ii_agent_config import IIAgentConfig
 from ii_agent.core.config.agent_config import AgentConfig
 from ii_agent.core.config.llm_config import LLMConfig
 from ii_agent.cli.subscribers.console_subscriber import ConsoleSubscriber
-from ii_agent.cli.input.rich_prompt import create_rich_prompt, SlashCommandCompleter
+from ii_agent.cli.input.rich_prompt import create_rich_prompt
 from ii_agent.cli.commands.command_handler import CommandHandler
 from ii_agent.core.event_stream import AsyncEventStream
 from ii_agent.controller.agent_controller import AgentController
-from ii_agent.controller.agent import Agent
 from ii_agent.agents.function_call import FunctionCallAgent
 from ii_agent.llm import get_client
 from ii_agent.controller.state import State

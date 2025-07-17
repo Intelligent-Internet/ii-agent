@@ -1,8 +1,7 @@
 # src/ii_agent/tools/image_generate_tool.py
 
-import os
 from pathlib import Path
-from typing import Any, Optional, Union, Literal
+from typing import Any, Optional, Union
 from io import BytesIO
 from enum import Enum
 

@@ -5,7 +5,6 @@ from typing import Dict, Optional
 from fastapi import WebSocket
 
 from ii_agent.core.config.ii_agent_config import IIAgentConfig
-from ii_agent.core.storage.files import FileStore
 from ii_agent.server.services.session_service import SessionService
 from ii_agent.server.websocket.chat_session import ChatSession
 

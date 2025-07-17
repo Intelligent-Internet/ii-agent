@@ -1,7 +1,6 @@
 """LLM client for Anthropic models."""
 
 import json
-import os
 import random
 import time
 from typing import Any, Tuple, cast

@@ -5,9 +5,7 @@ This module provides interactive configuration setup for first-time users
 and runtime settings management, similar to OpenHands approach.
 """
 
-import asyncio
 import os
-from typing import Optional
 
 from prompt_toolkit import PromptSession, print_formatted_text
 from prompt_toolkit.completion import FuzzyWordCompleter

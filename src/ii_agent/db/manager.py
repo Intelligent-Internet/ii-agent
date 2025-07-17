@@ -5,7 +5,7 @@ from pathlib import Path
 from sqlalchemy import asc, create_engine, text
 from sqlalchemy.orm import Session as DBSession, sessionmaker
 from ii_agent.core.config.utils import load_ii_agent_config
-from ii_agent.db.models import Base, Session, Event
+from ii_agent.db.models import Session, Event
 from ii_agent.core.event import EventType, RealtimeEvent
 from ii_agent.core.config.ii_agent_config import II_AGENT_DIR
 from ii_agent.core.logger import logger

@@ -1,21 +1,8 @@
-import asyncio
-import logging
-from typing import Any, Optional
-import uuid
-from functools import partial
 
 from typing import List
-from fastapi import WebSocket
 from ii_agent.controller.agent import Agent
-from ii_agent.core.event import EventType, RealtimeEvent
-from ii_agent.llm.base import LLMClient, TextResult, ToolCallParameters, ToolParam, AssistantContentBlock
+from ii_agent.llm.base import LLMClient, ToolParam, AssistantContentBlock
 from ii_agent.controller.state import State
-from ii_agent.tools.base import ToolImplOutput, LLMTool
-from ii_agent.tools.utils import encode_image
-from ii_agent.db.manager import Events
-from ii_agent.tools import AgentToolManager
-from ii_agent.utils.constants import COMPLETE_MESSAGE
-from ii_agent.utils.workspace_manager import WorkspaceManager
 from ii_agent.core.config.agent_config import AgentConfig
 
 TOOL_RESULT_INTERRUPT_MESSAGE = "Tool execution interrupted by user."

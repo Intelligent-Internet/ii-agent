@@ -1,6 +1,5 @@
 """Agent service for managing agent lifecycle."""
 
-import asyncio
 import logging
 import uuid
 from typing import Dict, Any, Optional, Tuple
@@ -14,11 +13,9 @@ from ii_agent.core.config.agent_config import AgentConfig
 from ii_agent.core.config.ii_agent_config import IIAgentConfig
 from ii_agent.core.event_stream import AsyncEventStream
 from ii_agent.core.storage.files import FileStore
-from ii_agent.core.storage.models.settings import Settings
 from ii_agent.core.storage.settings.file_settings_store import FileSettingsStore
 from ii_agent.db.manager import Sessions
 from ii_agent.llm import get_client
-from ii_agent.llm.base import LLMClient
 from ii_agent.llm.context_manager.llm_summarizing import LLMSummarizingContextManager
 from ii_agent.llm.token_counter import TokenCounter
 from ii_agent.prompts.system_prompt import SYSTEM_PROMPT, SYSTEM_PROMPT_WITH_SEQ_THINKING

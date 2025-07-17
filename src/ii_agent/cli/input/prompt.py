@@ -4,7 +4,6 @@ Interactive prompt handling for CLI.
 This module provides utilities for handling user input in interactive mode.
 """
 
-import sys
 from typing import Optional, List, Callable
 
 

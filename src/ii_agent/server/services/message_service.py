@@ -8,7 +8,6 @@ from pydantic import ValidationError
 
 from ii_agent.core.config.ii_agent_config import IIAgentConfig
 from ii_agent.core.event import EventType, RealtimeEvent
-from ii_agent.core.storage.models.settings import Settings
 from ii_agent.core.storage.settings.file_settings_store import FileSettingsStore
 from ii_agent.db.manager import Sessions, Events
 from ii_agent.llm import get_client

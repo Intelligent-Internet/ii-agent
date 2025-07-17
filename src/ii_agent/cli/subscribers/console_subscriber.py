@@ -4,20 +4,15 @@ Console subscriber for CLI output.
 This module provides real-time console output for agent events.
 """
 
-import sys
-import time
 from typing import Optional, Dict, Any
 from threading import Lock
 
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
-from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.progress import Progress
 from rich.table import Table
 from rich.syntax import Syntax
-from rich.markdown import Markdown
-from rich.rule import Rule
-from rich import print as rich_print
 
 from ii_agent.core.event import RealtimeEvent, EventType
 from ii_agent.core.config.llm_config import LLMConfig
@@ -122,7 +117,6 @@ class ConsoleSubscriber:
         error_msg = content.get("error", "Unknown error")
         
         # Simple error format with clean prefix
-        from rich.text import Text
         error_text = Text()
         error_text.append("  ⎿ ", style="red")
         error_text.append(f"Error: {error_msg}", style="red")
@@ -154,7 +148,6 @@ class ConsoleSubscriber:
         if not self.minimal:
             # Use simple prefix instead of heavy frames
             from rich.text import Text
-            from rich.markdown import Markdown
             
             # Add spacing before agent response
             self.console.print()
@@ -177,7 +170,6 @@ class ConsoleSubscriber:
     
     def _print_tool_call(self, tool_name: str, tool_input: Dict[str, Any]) -> None:
         """Print clean tool call information."""
-        from rich.text import Text
         
         # Simple clean format without heavy tables
         tool_text = Text()
@@ -199,7 +191,6 @@ class ConsoleSubscriber:
     
     def _print_tool_result(self, tool_name: str, result: str) -> None:
         """Print tool result with clean formatting."""
-        from rich.text import Text
         
         # Truncate long results
         if len(result) > 1000:
@@ -348,7 +339,6 @@ class ConsoleSubscriber:
     
     def render_conversation_history(self, history) -> None:
         """Render conversation history using the same formatting as real-time messages."""
-        from rich.text import Text
         
         if not history or len(history.message_lists) == 0:
             return
@@ -368,7 +358,6 @@ class ConsoleSubscriber:
     
     def _render_message(self, message) -> None:
         """Render a single message using the same formatting as real-time display."""
-        from rich.text import Text
         
         if hasattr(message, 'text'):
             # User message or text result

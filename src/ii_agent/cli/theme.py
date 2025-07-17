@@ -5,7 +5,7 @@ This module provides a consistent theming system similar to anon-kode-main
 for professional CLI appearance.
 """
 
-from typing import Dict, Any, Optional
+from typing import Dict, Optional
 from dataclasses import dataclass
 from enum import Enum
 
