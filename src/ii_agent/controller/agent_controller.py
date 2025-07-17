@@ -59,7 +59,7 @@ class AgentController:
         )
 
         self.max_turns = max_turns
-
+        self.interactive_mode = interactive_mode
         self.interrupted = False
         self.history = init_history
         self.event_stream = event_stream
@@ -134,9 +134,20 @@ class AgentController:
                     tool_result_message=AGENT_INTERRUPT_MESSAGE,
                 )
 
-            logger.info(
-                f"(Current token count: {self.count_tokens()})\n"
+            # Only show token count in debug mode, not in interactive CLI
+            if not self.interactive_mode:
+                logger.info(
+                    f"(Current token count: {self.count_tokens()})\n"
+                )
+            
+            # Emit thinking event before model response
+            self.event_stream.add_event(
+                RealtimeEvent(
+                    type=EventType.AGENT_THINKING,
+                    content={}
+                )
             )
+            
             loop = asyncio.get_event_loop()
             model_response = await loop.run_in_executor(
                 None,
