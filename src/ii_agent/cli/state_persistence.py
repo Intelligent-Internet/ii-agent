@@ -6,8 +6,6 @@ including conversation history, configuration, and workspace context.
 """
 
 import json
-import pickle
-import base64
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -17,17 +15,40 @@ from ii_agent.core.config.ii_agent_config import IIAgentConfig
 from ii_agent.core.config.llm_config import LLMConfig
 from ii_agent.controller.state import State
 from ii_agent.core.logger import logger
+from ii_agent.core.storage.local import LocalFileStore
+from ii_agent.core.storage.locations import get_conversation_metadata_filename
 
 
 class StateManager:
     """Manages saving and loading of agent state for --continue functionality."""
     
-    def __init__(self, workspace_path: Path):
-        self.workspace_path = workspace_path
+    def __init__(self, workspace_path: Path, continue_session: bool = False):
+        self.workspace_path = str(workspace_path)
         self.ii_agent_dir = workspace_path / ".ii_agent"
         self.ii_agent_dir.mkdir(exist_ok=True)
-        self.state_file_path = self.ii_agent_dir / f"{uuid.uuid4().hex}.jsonl"
         self.current_state_link = self.ii_agent_dir / "current_state.json"
+        # Use the global file store location
+        self.file_store = LocalFileStore("~/.ii_agent")
+        
+        # Determine session ID based on whether we're continuing or starting fresh
+        if continue_session and self.current_state_link.exists():
+            try:
+                with open(self.current_state_link, 'r') as f:
+                    current_state_info = json.load(f)
+                existing_session_id = current_state_info.get("current_session_id")
+                if existing_session_id:
+                    self.session_id = existing_session_id
+                    logger.info(f"Continuing with existing session: {self.session_id}")
+                else:
+                    self.session_id = uuid.uuid4().hex
+                    logger.info(f"No valid session found, creating new session: {self.session_id}")
+            except Exception as e:
+                logger.warning(f"Error reading existing session, creating new one: {e}")
+                self.session_id = uuid.uuid4().hex
+        else:
+            self.session_id = uuid.uuid4().hex
+            if not continue_session:
+                logger.info(f"Starting new session: {self.session_id}")
     
     def save_state(
         self, 
@@ -37,24 +58,20 @@ class StateManager:
         workspace_path: str,
         session_name: Optional[str] = None
     ) -> None:
-        """Save the complete agent state to JSONL file."""
+        """Save state and metadata using the new JSON format."""
         try:
-            # Generate a new unique filename for this session
-            self.state_file_path = self.ii_agent_dir / f"{uuid.uuid4().hex}.jsonl"
+            # Save core state using State's save_to_session method
+            agent_state.save_to_session(self.session_id, self.file_store)
             
-            # Serialize the agent state (message history)
-            pickled_state = pickle.dumps(agent_state.message_lists)
-            encoded_state = base64.b64encode(pickled_state).decode('utf-8')
-            
-            # Create state data structure
-            state_data = {
-                "version": "1.0",
+            # Save metadata separately
+            metadata = {
+                "version": "2.0",
                 "timestamp": datetime.now().isoformat(),
+                "session_id": self.session_id,
                 "workspace_path": str(workspace_path),
                 "session_name": session_name,
                 "agent_state": {
-                    "message_lists": encoded_state,
-                    "last_user_prompt_index": agent_state.last_user_prompt_index
+                    "message_count": len(agent_state.message_lists)
                 },
                 "config": {
                     "max_output_tokens_per_turn": config.max_output_tokens_per_turn,
@@ -70,19 +87,19 @@ class StateManager:
                 }
             }
             
-            # Write to JSONL file (one JSON object per line)
-            with open(self.state_file_path, 'w') as f:
-                f.write(json.dumps(state_data) + '\n')
+            metadata_filename = get_conversation_metadata_filename(self.session_id)
+            self.file_store.write(metadata_filename, json.dumps(metadata, indent=2, ensure_ascii=False))
             
             # Update current state pointer
             current_state_info = {
-                "current_state_file": self.state_file_path.name,
+                "current_session_id": self.session_id,
+                "workspace_path": self.workspace_path,
                 "last_updated": datetime.now().isoformat()
             }
             with open(self.current_state_link, 'w') as f:
                 json.dump(current_state_info, f, indent=2)
                 
-            logger.info(f"State saved to {self.state_file_path}")
+            logger.info(f"State saved for session {self.session_id}")
             
         except Exception as e:
             logger.error(f"Error saving state: {e}")
@@ -99,32 +116,40 @@ class StateManager:
             with open(self.current_state_link, 'r') as f:
                 current_state_info = json.load(f)
             
-            # Get the actual state file
-            state_file = self.ii_agent_dir / current_state_info["current_state_file"]
-            if not state_file.exists():
+            session_id = current_state_info.get("current_session_id")
+            workspace_path = current_state_info.get("workspace_path")
+            
+            if not session_id:
                 return None
+            
+            # Create a new State object and restore from session
+            state = State()
+            state.restore_from_session(session_id, self.file_store)
+            
+            # Load metadata
+            metadata_filename = get_conversation_metadata_filename(session_id)
+            metadata_json = self.file_store.read(metadata_filename)
+            metadata = json.loads(metadata_json)
+            
+            # Combine state and metadata into return format
+            return {
+                "version": metadata.get("version", "2.0"),
+                "timestamp": metadata.get("timestamp"),
+                "workspace_path": metadata.get("workspace_path"),
+                "session_name": metadata.get("session_name"),
+                "session_id": metadata.get("session_id"),
+                "agent_state": {
+                    "message_lists": state.message_lists,
+                    "last_user_prompt_index": state.last_user_prompt_index
+                },
+                "config": metadata.get("config", {}),
+                "llm_config": metadata.get("llm_config", {})
+            }
                 
-            # Read the JSONL file (should have one line)
-            with open(state_file, 'r') as f:
-                state_data = json.loads(f.readline().strip())
-            
-            # Validate version compatibility
-            if state_data.get("version") != "1.0":
-                logger.warning(f"State version {state_data.get('version')} may not be compatible")
-            
-            # Decode agent state
-            if "agent_state" in state_data and "message_lists" in state_data["agent_state"]:
-                encoded_state = state_data["agent_state"]["message_lists"]
-                pickled_state = base64.b64decode(encoded_state)
-                message_lists = pickle.loads(pickled_state)
-                state_data["agent_state"]["message_lists"] = message_lists
-            
-            logger.info(f"State loaded from {state_file}")
-            return state_data
-            
         except Exception as e:
             logger.error(f"Error loading state: {e}")
             return None
+    
     
     def clear_state(self) -> None:
         """Remove the saved state files."""
@@ -133,11 +158,6 @@ class StateManager:
             if self.current_state_link.exists():
                 self.current_state_link.unlink()
                 logger.info(f"Current state pointer {self.current_state_link} removed")
-            
-            # Remove all .jsonl files in the directory
-            for jsonl_file in self.ii_agent_dir.glob("*.jsonl"):
-                jsonl_file.unlink()
-                logger.info(f"State file {jsonl_file} removed")
         except Exception as e:
             logger.error(f"Error clearing state: {e}")
     
@@ -155,21 +175,29 @@ class StateManager:
             with open(self.current_state_link, 'r') as f:
                 current_state_info = json.load(f)
             
-            # Read the actual state file
-            state_file = self.ii_agent_dir / current_state_info["current_state_file"]
-            if not state_file.exists():
-                return None
-                
-            with open(state_file, 'r') as f:
-                state_data = json.loads(f.readline().strip())
+            session_id = current_state_info.get("current_session_id")
+            workspace_path = current_state_info.get("workspace_path")
             
-            return {
-                "timestamp": state_data.get("timestamp"),
-                "session_name": state_data.get("session_name"),
-                "workspace_path": state_data.get("workspace_path"),
-                "version": state_data.get("version"),
-                "message_count": len(state_data.get("agent_state", {}).get("message_lists", []))
-            }
+            if not session_id:
+                return None
+            
+            # Read metadata file
+            metadata_filename = get_conversation_metadata_filename(session_id)
+            try:
+                metadata_json = self.file_store.read(metadata_filename)
+                metadata = json.loads(metadata_json)
+                
+                return {
+                    "timestamp": metadata.get("timestamp"),
+                    "session_name": metadata.get("session_name"),
+                    "workspace_path": metadata.get("workspace_path"),
+                    "version": metadata.get("version", "2.0"),
+                    "session_id": metadata.get("session_id"),
+                    "message_count": metadata.get("agent_state", {}).get("message_count", 0)
+                }
+            except FileNotFoundError:
+                return None
+            
         except Exception as e:
             logger.error(f"Error getting state info: {e}")
             return None

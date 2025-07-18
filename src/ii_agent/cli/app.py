@@ -39,8 +39,9 @@ class CLIApp:
         self.config = config
         self.llm_config = llm_config
         self.workspace_manager = WorkspaceManager(Path(workspace_path))
-        # Create state manager
-        self.state_manager = StateManager(Path(workspace_path))
+        # Create state manager - we'll update it with continue_session later
+        self.state_manager = None
+        self.workspace_path = workspace_path
         # Create event stream
         self.event_stream = AsyncEventStream(logger=logger)
         
@@ -65,6 +66,10 @@ class CLIApp:
         """Initialize the agent controller."""
         if self.agent_controller is not None:
             return
+
+        # Create state manager now that we know if we're continuing
+        if self.state_manager is None:
+            self.state_manager = StateManager(Path(self.workspace_path), continue_session=continue_from_state)
 
         settings_store = await FileSettingsStore.get_instance(self.config, None)
         settings = await settings_store.load()
@@ -308,7 +313,7 @@ class CLIApp:
     
     def _save_state_on_exit(self, should_save: bool) -> None:
         """Save agent state when exiting if requested."""
-        if not should_save or not self.agent_controller:
+        if not should_save or not self.agent_controller or not self.state_manager:
             return
             
         try:

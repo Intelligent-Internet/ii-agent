@@ -1,6 +1,5 @@
-import pickle
-import base64
 import json
+from pathlib import Path
 
 from typing import Optional, cast, Any
 
@@ -105,20 +104,27 @@ class State(BaseModel):
     def restore_from_session(self, session_id: str, file_store: FileStore):
         """Restores the message history from the file store."""
         try:
-            encoded = file_store.read(get_conversation_agent_history_filename(session_id))
-            pickled = base64.b64decode(encoded)
-            self.message_lists = pickle.loads(pickled) 
+            filename = get_conversation_agent_history_filename(session_id)
+            json_data = file_store.read(filename)
+            state_dict = json.loads(json_data)
+            
+            # Use Pydantic's model_validate to restore the entire state
+            restored_state = State.model_validate(state_dict)
+            self.message_lists = restored_state.message_lists
+            self.last_user_prompt_index = restored_state.last_user_prompt_index
         except FileNotFoundError:
             raise FileNotFoundError(
                 f"Could not restore history from file for session id: {session_id}"
             )
 
     def save_to_session(self, session_id: str, file_store: FileStore):
-        pickled = pickle.dumps(self.message_lists)
-        encoded = base64.b64encode(pickled).decode('utf-8')
-
+        """Save only core state as JSON"""
+        filename = get_conversation_agent_history_filename(session_id)
+        
         try:
-            file_store.write(get_conversation_agent_history_filename(session_id), encoded)
+            # Use Pydantic's model_dump to serialize the entire state
+            json_data = json.dumps(self.model_dump(), indent=2, ensure_ascii=False)
+            file_store.write(filename, json_data)
         except Exception as e:
             raise Exception(f"Error saving message history to session: {e}")
 
@@ -225,11 +231,7 @@ class State(BaseModel):
     def __str__(self) -> str:
         """JSON representation of the history."""
         try:
-            json_serializable = [
-                [message.to_dict() for message in message_list]
-                for message_list in self.message_lists
-            ]
-            return json.dumps(json_serializable, indent=2)
+            return json.dumps(self.model_dump(), indent=2, ensure_ascii=False)
         except Exception as e:
             return f"[Error serializing history: {e}]"
 
@@ -246,13 +248,10 @@ class State(BaseModel):
             return obj
 
         try:
-            json_serializable = truncate_strings(
-                [
-                    [message.to_dict() for message in message_list]
-                    for message_list in self.message_lists
-                ]
-            )
-            return json.dumps(json_serializable, indent=2)
+            # Use model_dump to serialize then truncate
+            serialized_data = self.model_dump()
+            truncated_data = truncate_strings(serialized_data)
+            return json.dumps(truncated_data, indent=2, ensure_ascii=False)
         except Exception as e:
             return f"[Error serializing summary: {e}]"
 
