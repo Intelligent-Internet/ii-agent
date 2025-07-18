@@ -36,10 +36,11 @@ from ii_agent.utils.constants import TOKEN_BUDGET
 class CLIApp:
     """Main CLI application class."""
     
-    def __init__(self, config: IIAgentConfig, llm_config: LLMConfig, workspace_path: str, minimal: bool = False):
+    def __init__(self, config: IIAgentConfig, llm_config: LLMConfig, workspace_path: str, minimal: bool = False, mcp_config: Optional[dict] = None):
         self.config = config
         self.llm_config = llm_config
         self.workspace_manager = WorkspaceManager(Path(workspace_path))
+        self.mcp_config = mcp_config
         # Create event stream
         self.event_stream = AsyncEventStream(logger=logger)
         
@@ -80,10 +81,11 @@ class CLIApp:
         
         
         # Get system tools
-        tools = get_system_tools(
+        tools = await get_system_tools(
             client=llm_client,
             settings=settings,
             workspace_manager=self.workspace_manager,
+            mcp_config=self.mcp_config,
         )
 
         agent = FunctionCallAgent(

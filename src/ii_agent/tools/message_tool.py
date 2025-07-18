@@ -7,13 +7,27 @@ class MessageTool(LLMTool):
     name = "message_user"
 
     description = """\
-Send a message to the user. Use this tool to communicate effectively in a variety of scenarios, including:
-* Sharing your current thoughts or reasoning process
-* Asking clarifying or follow-up questions
-* Acknowledging receipt of messages
-* Providing real-time progress updates
-* Reporting completion of tasks or milestones
-* Explaining changes in strategy, unexpected behavior, or encountered issues"""
+Send a message to the user. Use this tool to communicate with users in various scenarios:
+
+<Communication Types>
+- Progress updates and status reports
+- Task completion notifications with deliverables
+- Clarifying questions or requests for additional information
+- Acknowledgment of user messages
+- Explanations of strategy changes or issues encountered
+- Sharing reasoning or thought processes
+</Communication Types>
+
+<Usage Guidelines>
+- Always respond immediately to new user messages before other operations
+- Initial replies should be brief acknowledgments without detailed solutions
+- Use "notify" mode for non-blocking progress updates
+- Use "ask" mode only when user input is essential - this blocks execution
+- Include relevant files as attachments since users may lack filesystem access
+- Always message users with final results before task completion
+- Follow questions with `return_control_to_user` tool to transfer control back
+</Usage Guidelines>
+"""
     
     input_schema = {
         "type": "object",

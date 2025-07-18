@@ -56,14 +56,17 @@ from ii_agent.tools.list_html_links_tool import ListHtmlLinksTool
 from ii_agent.utils.constants import TOKEN_BUDGET
 from ii_agent.core.storage.models.settings import Settings
 from ii_agent.core.logger import logger
+from ii_agent.mcp.server import create_mcp
+from ii_agent.tools.mcp_tool import MCPTool
 
 
-def get_system_tools(
+async def get_system_tools(
     client: LLMClient,
     workspace_manager: WorkspaceManager,
     settings: Settings,
     container_id: Optional[str] = None,
     tool_args: Dict[str, Any] = None,
+    mcp_config: Optional[dict] = None,
 ) -> list[LLMTool]:
     """
     Retrieves a list of all system tools.
@@ -90,19 +93,19 @@ def get_system_tools(
     tools = [
         WebSearchTool(settings=settings),
         VisitWebpageTool(settings=settings),
-        StaticDeployTool(workspace_manager=workspace_manager),
-        StrReplaceEditorTool(
-            workspace_manager=workspace_manager
-        ),
-        bash_tool,
-        ListHtmlLinksTool(workspace_manager=workspace_manager),
-        SlideDeckInitTool(
-            workspace_manager=workspace_manager,
-        ),
-        SlideDeckCompleteTool(
-            workspace_manager=workspace_manager,
-        ),
-        DisplayImageTool(workspace_manager=workspace_manager),
+        # StaticDeployTool(workspace_manager=workspace_manager),
+        # StrReplaceEditorTool(
+        #     workspace_manager=workspace_manager
+        # ),
+        # bash_tool,
+        # ListHtmlLinksTool(workspace_manager=workspace_manager),
+        # SlideDeckInitTool(
+        #     workspace_manager=workspace_manager,
+        # ),
+        # SlideDeckCompleteTool(
+        #     workspace_manager=workspace_manager,
+        # ),
+        # DisplayImageTool(workspace_manager=workspace_manager),
     ]
     image_search_tool = ImageSearchTool(settings=settings)
     if image_search_tool.is_available():
@@ -181,6 +184,31 @@ def get_system_tools(
             pass
         elif memory_tool == "simple":
             tools.append(SimpleMemoryTool())
+
+    from ii_agent.tools.web_dev_tool import FullStackInitTool
+    tools.append(FullStackInitTool(workspace_manager=workspace_manager))
+
+    # MCP tools
+    import uuid
+    from fastmcp import Client
+
+    session_id = f"ii-agent-{str(uuid.uuid4())}"
+    print("ID: ", session_id)
+    mcp_default = create_mcp(workspace_dir=str(workspace_manager.root), session_id=session_id)
+    mcp_client_default = Client(mcp_default)
+    async with mcp_client_default:
+        mcp_tools_default = await mcp_client_default.list_tools()
+        for tool in mcp_tools_default:
+            tools.append(MCPTool(tool.name, tool.description, tool.inputSchema, mcp_client_default))
+
+    # Add MCP tools from mcp_config
+    if mcp_config:
+        mcp_custom = Client(mcp_config)
+        async with mcp_custom:
+            mcp_tools_custom = await mcp_custom.list_tools()
+            for tool in mcp_tools_custom:
+                print("Adding MCP tool: ", tool.name)
+                tools.append(MCPTool(tool.name, tool.description, tool.inputSchema, mcp_custom))
 
     return tools
 

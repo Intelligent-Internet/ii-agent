@@ -6,6 +6,7 @@ This module provides the command-line interface for interacting with the AgentCo
 
 import argparse
 import asyncio
+import json
 import sys
 import os
 from pathlib import Path
@@ -36,6 +37,11 @@ def create_parser() -> argparse.ArgumentParser:
         "-c", 
         type=str, 
         help="Configuration file path"
+    )
+    parser.add_argument(
+        "--mcp-config",
+        type=str,
+        help="MCP configuration file path"
     )
     parser.add_argument(
         "--minimal", 
@@ -161,9 +167,14 @@ async def main_async() -> int:
         # Handle config command
         if args.command == "config":
             return await handle_config_command(args, config, llm_config)
+
+        if args.mcp_config:
+            mcp_config = json.load(open(args.mcp_config))
+            assert "mcpServers" in mcp_config, "mcpServers not found in MCP config"
+            print(mcp_config)
         
         # Create and run CLI app
-        app = CLIApp(config, llm_config, workspace_path, minimal=args.minimal)
+        app = CLIApp(config, llm_config, workspace_path, minimal=args.minimal, mcp_config=mcp_config)
         
         if args.command == "chat":
             return await app.run_interactive_mode(
