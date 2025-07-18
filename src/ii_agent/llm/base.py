@@ -10,12 +10,6 @@ import logging
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
 
-class ToolCallParameters(BaseModel):
-    tool_call_id: str
-    tool_name: str
-    tool_input: Any
-
-
 class ToolParam(BaseModel):
     """Internal representation of LLM tool."""
 

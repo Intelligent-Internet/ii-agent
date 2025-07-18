@@ -1,136 +1,77 @@
 from abc import ABC, abstractmethod
-import asyncio
-from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any, Callable, Literal, List
+from pydantic import BaseModel
+from enum import Enum
 
-import jsonschema
-from anthropic import BadRequestError
-from typing_extensions import final
+class TextContent(BaseModel):
+    type: Literal["text"]
+    text: str
 
-from ii_agent.llm.base import (
-    ToolParam,
-)
-from ii_agent.controller.state import State
+class ImageContent(BaseModel):
+    type: Literal["image"]
+    data: str # base64 encoded image data
+    mimeType: str # e.g. "image/png"
 
-ToolInputSchema = dict[str, Any]
+class ToolResult(BaseModel):
+    """Result of tool execution"""
+    llm_content: str | List[TextContent | ImageContent]
+    user_display_content: str
 
+class ToolConfirmationOutcome(Enum):
+    """Possible outcomes from tool confirmation dialog."""
+    PROCEED_ONCE = "proceed_once"
+    PROCEED_ALWAYS = "proceed_always"
+    DO_OTHER = "do_other"
 
-@dataclass
-class ToolImplOutput:
-    """Output from an LLM tool implementation.
+class ToolConfirmationDetails(BaseModel):
+    type: Literal["edit", "bash", "mcp"]
+    message: str
+    on_confirm_callback: Callable[[ToolConfirmationOutcome], None] | None = None
 
-    Attributes:
-        tool_output: The main output string or list of dicts that will be shown to the model.
-        tool_result_message: A description of what the tool did, for logging purposes.
-        auxiliary_data: Additional data that the tool wants to pass along for logging only.
-    """
-
-    tool_output: list[dict[str, Any]] | str
-    tool_result_message: str
-    auxiliary_data: dict[str, Any] = field(default_factory=dict)
-
-
-class LLMTool(ABC):
-    """A tool that fits into the standard LLM tool-calling paradigm.
-
-    An LLM tool can be called by supplying the parameters specified in its
-    input_schema, and returns a string that is then shown to the model.
-    """
-
-    name: str
-    description: str
-    input_schema: ToolInputSchema
-
-    @property
-    def should_stop(self) -> bool:
-        """Whether the tool wants to stop the current agentic run."""
-        return False
+class BaseTool(ABC):
+    def __init__(
+        self,
+        name: str,
+        description: str,
+        input_schema: dict[str, Any],
+        display_name: str | None = None,
+    ):
+        """Initialize a tool with its metadata and configuration.
+        
+        Args:
+            name: The unique identifier for the tool used in function calls.
+            description: A detailed description of what the tool does and when to use it.
+            input_schema: JSON schema defining the tool's input parameters and validation rules.
+            display_name: Human-readable name for UI display. Defaults to the tool name if not provided.
+        """
+        self.name = name
+        self.description = description
+        self.input_schema = input_schema
+        self.display_name = display_name if display_name else name
 
     def is_read_only(self) -> bool:
-        """Whether this tool only reads data and has no side effects.
+        """Determine if this tool only performs read operations without side effects.
         
-        Read-only tools can be executed concurrently for better performance.
-        Non-read-only tools (those that write files, execute commands, etc.)
-        must be executed serially to avoid conflicts.
+        Read-only tools can be safely executed concurrently for better performance,
+        while non-read-only tools (those that write files, execute commands, modify
+        state, or make external API calls) must be executed serially to avoid 
+        conflicts and ensure data consistency.
+        
+        Override this method in subclasses to return True for tools that only
+        read or query information without making any changes.
         
         Returns:
-            True if the tool is read-only, False otherwise.
+            bool: True if the tool is read-only, False otherwise. Defaults to False
+                  for safety unless explicitly overridden.
         """
         return False
 
-    # Final is here to indicate that subclasses should override run_impl(), not
-    # run(). There may be a reason in the future to override run() itself, and
-    # if such a reason comes up, this @final decorator can be removed.
-    @final
-    async def run_async(
-        self,
-        tool_input: dict[str, Any],
-        state: Optional[State] = None,
-    ) -> str | list[dict[str, Any]]:
-        """Run the tool asynchronously.
-
-        Args:
-            tool_input: The input to the tool.
-            state: The dialog messages so far, if available. The tool
-                is allowed to modify this object, so the caller should make a copy
-                if that's not desired. The dialog messages should not contain
-                pending tool calls. They should end where it's the user's turn.
-        """
-        try:
-            self._validate_tool_input(tool_input)
-            result = await self.run_impl(tool_input, state)
-            tool_output = result.tool_output
-        except jsonschema.ValidationError as exc:
-            tool_output = "Invalid tool input: " + exc.message
-        except BadRequestError as exc:
-            raise RuntimeError("Bad request: " + exc.message)
-
-        return tool_output
-
-    @final
-    def run(
-        self,
-        tool_input: dict[str, Any],
-        state: Optional[State] = None,
-    ) -> str | list[dict[str, Any]]:
-        """Run the tool synchronously.
-
-        Args:
-            tool_input: The input to the tool.
-            state: The dialog messages so far, if available. The tool
-                is allowed to modify this object, so the caller should make a copy
-                if that's not desired. The dialog messages should not contain
-        """
-        return asyncio.run(self.run_async(tool_input, state))
-
-    def get_tool_start_message(self, tool_input: ToolInputSchema) -> str:
-        """Return a user-friendly message to be shown to the model when the tool is called."""
-        return f"Calling tool '{self.name}'"
-
     @abstractmethod
-    async def run_impl(
-        self,
-        tool_input: dict[str, Any],
-        state: Optional[State] = None,
-    ) -> ToolImplOutput:
-        """Subclasses should implement this.
-
-        Returns:
-            A ToolImplOutput containing the output string, description, and any auxiliary data.
-        """
+    def should_confirm_execute(self, tool_input: dict[str, Any]) -> ToolConfirmationDetails | bool:
+        """Whether the tool should be confirmed by the user before execution."""
         raise NotImplementedError()
 
-    def get_tool_param(self) -> ToolParam:
-        return ToolParam(
-            name=self.name,
-            description=self.description,
-            input_schema=self.input_schema,
-        )
-
-    def _validate_tool_input(self, tool_input: dict[str, Any]):
-        """Validates the tool input.
-
-        Raises:
-            jsonschema.ValidationError: If the tool input is invalid.
-        """
-        jsonschema.validate(instance=tool_input, schema=self.input_schema)
+    @abstractmethod
+    async def execute(self, tool_input: dict[str, Any]) -> ToolResult:
+        """Execute the tool with the given input."""
+        raise NotImplementedError()

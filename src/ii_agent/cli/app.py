@@ -30,6 +30,8 @@ from ii_agent.core.logger import logger
 from ii_agent.prompts.system_prompt import SYSTEM_PROMPT
 from ii_agent.utils.constants import TOKEN_BUDGET
 from ii_agent.cli.state_persistence import StateManager, restore_agent_state, restore_configs
+from ii_agent.tools import AgentToolManager
+from ii_agent.llm.base import ToolParam
 
 
 class CLIApp:
@@ -110,12 +112,20 @@ class CLIApp:
             workspace_manager=self.workspace_manager,
         )
 
-        agent = FunctionCallAgent(
-            llm_client, 
-            agent_config,
-            tools
+        tool_manager = AgentToolManager(
+            tools=tools,
+            logger_for_agent_logs=logger,
+            interactive_mode=True,
         )
-        
+
+        if self.config.mcp_config:
+            await tool_manager.register_mcp_tools(self.config.mcp_config)
+
+        agent = FunctionCallAgent(
+            llm=llm_client, 
+            config=agent_config,
+            tools=[ToolParam(name=tool.name, description=tool.description, input_schema=tool.input_schema) for tool in tool_manager.get_tools()]
+        )
         
         # Create context manager
         token_counter = TokenCounter()
@@ -134,7 +144,7 @@ class CLIApp:
         # Create agent controller
         self.agent_controller = AgentController(
             agent=agent,
-            tools=tools,
+            tool_manager=tool_manager,
             init_history=state,
             workspace_manager=self.workspace_manager,
             event_stream=self.event_stream,
@@ -202,6 +212,8 @@ class CLIApp:
                         break
                     
                     # Run agent
+                    if self.agent_controller is None:
+                        raise RuntimeError("Agent controller not initialized")
                     await self.agent_controller.run_agent_async(
                         instruction=user_input,
                         files=None,
@@ -214,7 +226,8 @@ class CLIApp:
                 
                 except KeyboardInterrupt:
                     self.console_subscriber.console.print("\n⚠️ [yellow]Interrupted by user[/yellow]")
-                    self.agent_controller.cancel()
+                    if self.agent_controller is not None:
+                        self.agent_controller.cancel()
                     continue
                 except EOFError:
                     break

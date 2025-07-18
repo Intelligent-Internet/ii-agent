@@ -1,15 +1,14 @@
 import asyncio
-from typing import Any, Optional, List
+from typing import Any, Optional
 from functools import partial
 
 from ii_agent.controller.agent import Agent
 from ii_agent.core.event import EventType, RealtimeEvent
 from ii_agent.core.event_stream import EventStream
-from ii_agent.llm.base import TextResult, ToolCallParameters
+from ii_agent.llm.base import TextResult
 from ii_agent.controller.state import State
-from ii_agent.tools.base import ToolImplOutput, LLMTool
 from ii_agent.tools.utils import encode_image
-from ii_agent.tools import AgentToolManager
+from ii_agent.tools import AgentToolManager, ToolCallParameters, ToolResult
 from ii_agent.utils.constants import COMPLETE_MESSAGE
 from ii_agent.utils.workspace_manager import WorkspaceManager
 from ii_agent.core.logger import logger
@@ -29,7 +28,7 @@ class AgentController:
     def __init__(
         self,
         agent: Agent,
-        tools: List[LLMTool],
+        tool_manager: AgentToolManager,
         init_history: State,
         workspace_manager: WorkspaceManager,
         event_stream: EventStream,
@@ -52,11 +51,7 @@ class AgentController:
         super().__init__()
         self.workspace_manager = workspace_manager
         self.agent = agent
-        self.tool_manager = AgentToolManager(
-            tools=tools,
-            logger_for_agent_logs=logger,
-            interactive_mode=interactive_mode,
-        )
+        self.tool_manager = tool_manager
 
         self.max_turns = max_turns
         self.interactive_mode = interactive_mode
@@ -66,22 +61,11 @@ class AgentController:
         self.context_manager = context_manager
 
 
-    def _validate_tool_parameters(self):
-        """Validate tool parameters and check for duplicates."""
-        tool_params = [tool.get_tool_param() for tool in self.tool_manager.tools]
-        tool_names = [param.name for param in tool_params]
-        sorted_names = sorted(tool_names)
-        for i in range(len(sorted_names) - 1):
-            if sorted_names[i] == sorted_names[i + 1]:
-                raise ValueError(f"Tool {sorted_names[i]} is duplicated")
-        return tool_params
-
-
     async def run_impl(
         self,
         tool_input: dict[str, Any],
         state: Optional[State] = None,
-    ) -> ToolImplOutput:
+    ) -> ToolResult:
         instruction = tool_input["instruction"]
         files = tool_input["files"]
 
@@ -123,15 +107,12 @@ class AgentController:
             remaining_turns -= 1
 
 
-            # Get tool parameters for available tools
-            all_tool_params = self._validate_tool_parameters()
-
             if self.interrupted:
                 # Handle interruption during model generation or other operations
                 self.add_fake_assistant_turn(AGENT_INTERRUPT_FAKE_MODEL_RSP)
-                return ToolImplOutput(
-                    tool_output=AGENT_INTERRUPT_MESSAGE,
-                    tool_result_message=AGENT_INTERRUPT_MESSAGE,
+                return ToolResult(
+                    llm_content=AGENT_INTERRUPT_MESSAGE,
+                    user_display_content=AGENT_INTERRUPT_MESSAGE,
                 )
 
             # Only show token count in debug mode, not in interactive CLI
@@ -193,20 +174,23 @@ class AgentController:
                             content={"text": "Task completed"},
                         )
                     )
-                return ToolImplOutput(
-                    tool_output=self.history.get_last_assistant_text_response() or "Task completed",
-                    tool_result_message="Task completed",
+                return ToolResult(
+                    llm_content=self.history.get_last_assistant_text_response() or "Task completed",
+                    user_display_content="Task completed",
                 )
 
             # Check for interruption before tool execution
             if self.interrupted:
                 # Handle interruption during tool execution
                 for tool_call in pending_tool_calls:
-                    self.add_tool_call_result(tool_call, TOOL_RESULT_INTERRUPT_MESSAGE)
+                    self.add_tool_call_result(tool_call, ToolResult(
+                        llm_content=TOOL_RESULT_INTERRUPT_MESSAGE,
+                        user_display_content=TOOL_RESULT_INTERRUPT_MESSAGE,
+                    ))
                 self.add_fake_assistant_turn(TOOL_CALL_INTERRUPT_FAKE_MODEL_RSP)
-                return ToolImplOutput(
-                    tool_output=TOOL_RESULT_INTERRUPT_MESSAGE,
-                    tool_result_message=TOOL_RESULT_INTERRUPT_MESSAGE,
+                return ToolResult(
+                    llm_content=TOOL_RESULT_INTERRUPT_MESSAGE,
+                    user_display_content=TOOL_RESULT_INTERRUPT_MESSAGE,
                 )
             
             # Execute all tool calls using batch approach
@@ -226,7 +210,7 @@ class AgentController:
                 )
             
             # Execute tools in batch (handles both single and multiple tools)
-            tool_results = await self.tool_manager.run_tools_batch(pending_tool_calls, self.history)
+            tool_results = await self.tool_manager.run_tools_batch(pending_tool_calls)
             
             # Add all results to history in order
             for tool_call, tool_result in zip(pending_tool_calls, tool_results):
@@ -236,8 +220,9 @@ class AgentController:
         self.event_stream.add_event(
             RealtimeEvent(type=EventType.AGENT_RESPONSE, content={"text": agent_answer})
         )
-        return ToolImplOutput(
-            tool_output=agent_answer, tool_result_message=agent_answer
+        return ToolResult(
+            llm_content=agent_answer,
+            user_display_content=agent_answer
         )
 
     def get_tool_start_message(self, tool_input: dict[str, Any]) -> str:
@@ -249,7 +234,7 @@ class AgentController:
         files: list[str] | None = None,
         resume: bool = False,
         orientation_instruction: str | None = None,
-    ) -> ToolImplOutput:
+    ) -> ToolResult:
         """Start a new agent run asynchronously.
 
         Args:
@@ -280,7 +265,7 @@ class AgentController:
         files: list[str] | None = None,
         resume: bool = False,
         orientation_instruction: str | None = None,
-    ) -> ToolImplOutput:
+    ) -> ToolResult:
         """Start a new agent run synchronously.
 
         Args:
@@ -309,9 +294,19 @@ class AgentController:
         self.interrupted = True
         logger.debug("Agent cancellation requested")
 
-    def add_tool_call_result(self, tool_call: ToolCallParameters, tool_result: str):
+    def add_tool_call_result(self, tool_call: ToolCallParameters, tool_result: ToolResult):
         """Add a tool call result to the history and send it to the message queue."""
-        self.history.add_tool_call_result(tool_call, tool_result)
+        llm_content = tool_result.llm_content
+        user_display_content = tool_result.user_display_content
+
+        if isinstance(llm_content, str):
+            self.history.add_tool_call_result(tool_call, llm_content)
+        else:
+            # TODO: add support for multiple text/image blocks
+            # Currently, we will support only the text blocks
+            llm_content_text = [item.text for item in llm_content if item.type == "text"]
+            llm_content_text = "\n".join(llm_content_text)
+            self.history.add_tool_call_result(tool_call, llm_content_text)
 
         self.event_stream.add_event(
             RealtimeEvent(
@@ -319,7 +314,7 @@ class AgentController:
                 content={
                     "tool_call_id": tool_call.tool_call_id,
                     "tool_name": tool_call.tool_name,
-                    "result": tool_result,
+                    "result": user_display_content
                 },
             )
         )

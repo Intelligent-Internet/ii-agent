@@ -1,5 +1,5 @@
 import os
-from typing import Optional
+from typing import Optional, Dict, Any
 from pydantic import Field, computed_field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from ii_agent.utils.constants import TOKEN_BUDGET
@@ -31,6 +31,12 @@ class IIAgentConfig(BaseSettings):
     max_turns: int = MAX_TURNS
     token_budget: int = TOKEN_BUDGET
     database_url: Optional[str] = None
+    mcp_config: Optional[Dict[str, Any]] = None
+
+    # Per session config
+    # TODO: move to a separate class
+    session_id: str
+    auto_approve_tools: bool = False
 
     @model_validator(mode='after')
     def set_database_url(self) -> "IIAgentConfig":
@@ -55,6 +61,14 @@ class IIAgentConfig(BaseSettings):
             return os.path.expanduser(v)
         return v
 
+    def set_auto_approve_tools(self, value: bool) -> None:
+        """Set the auto_approve_tools field value.
+        
+        Args:
+            value: Whether to automatically approve tool executions in CLI mode
+        """
+        self.auto_approve_tools = value
+
 if __name__ == "__main__":
-    config = IIAgentConfig()
+    config = IIAgentConfig(session_id="test")
     print(config.workspace_root)
