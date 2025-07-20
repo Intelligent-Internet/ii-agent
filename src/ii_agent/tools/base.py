@@ -29,25 +29,10 @@ class ToolConfirmationDetails(BaseModel):
     on_confirm_callback: Callable[[ToolConfirmationOutcome], None] | None = None
 
 class BaseTool(ABC):
-    def __init__(
-        self,
-        name: str,
-        description: str,
-        input_schema: dict[str, Any],
-        display_name: str | None = None,
-    ):
-        """Initialize a tool with its metadata and configuration.
-        
-        Args:
-            name: The unique identifier for the tool used in function calls.
-            description: A detailed description of what the tool does and when to use it.
-            input_schema: JSON schema defining the tool's input parameters and validation rules.
-            display_name: Human-readable name for UI display. Defaults to the tool name if not provided.
-        """
-        self.name = name
-        self.description = description
-        self.input_schema = input_schema
-        self.display_name = display_name if display_name else name
+    name: str # The unique identifier for the tool used in function calls.
+    description: str # A detailed description of what the tool does and when to use it.
+    input_schema: dict[str, Any] # JSON schema defining the tool's input parameters and validation rules.
+    display_name: str # Human-readable name for UI display
 
     def is_read_only(self) -> bool:
         """Determine if this tool only performs read operations without side effects.
@@ -67,7 +52,7 @@ class BaseTool(ABC):
         return False
 
     @abstractmethod
-    def should_confirm_execute(self, tool_input: dict[str, Any]) -> ToolConfirmationDetails | bool:
+    async def should_confirm_execute(self, tool_input: dict[str, Any]) -> ToolConfirmationDetails | bool:
         """Whether the tool should be confirmed by the user before execution."""
         raise NotImplementedError()
 

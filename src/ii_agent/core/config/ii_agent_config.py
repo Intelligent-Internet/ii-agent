@@ -36,7 +36,8 @@ class IIAgentConfig(BaseSettings):
     # Per session config
     # TODO: move to a separate class
     session_id: str
-    auto_approve_tools: bool = False
+    auto_approve_tools: bool = False # Global tool approval setting. If True, all tools will be automatically approved.
+    allow_tools: set[str] = set() # Tools that are confirmed by the user
 
     @model_validator(mode='after')
     def set_database_url(self) -> "IIAgentConfig":

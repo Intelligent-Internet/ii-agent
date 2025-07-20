@@ -8,7 +8,7 @@ the AgentController with event stream for CLI usage.
 import asyncio
 import json
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict, Any
 
 from ii_agent.core.config.ii_agent_config import IIAgentConfig
 from ii_agent.core.config.agent_config import AgentConfig
@@ -47,9 +47,11 @@ class CLIApp:
         # Create event stream
         self.event_stream = AsyncEventStream(logger=logger)
         
-        # Create console subscriber
+        # Create console subscriber with config and callback
         self.console_subscriber = ConsoleSubscriber(
-            minimal=minimal
+            minimal=minimal,
+            config=config,
+            confirmation_callback=self._handle_tool_confirmation
         )
         
         # Subscribe to events
@@ -63,6 +65,25 @@ class CLIApp:
         
         # Agent controller will be created when needed
         self.agent_controller: Optional[AgentController] = None
+        
+        # Store for pending tool confirmations
+        self._tool_confirmations: Dict[str, Dict[str, Any]] = {}
+        
+    def _handle_tool_confirmation(self, tool_call_id: str, tool_name: str, approved: bool, alternative_instruction: str) -> None:
+        """Handle tool confirmation response from console subscriber."""
+        # Store the confirmation response
+        self._tool_confirmations[tool_call_id] = {
+            "tool_name": tool_name,
+            "approved": approved,
+            "alternative_instruction": alternative_instruction
+        }
+        
+        # If there's an agent controller, send the confirmation response to it
+        if self.agent_controller:
+            self.agent_controller.add_confirmation_response(tool_call_id, approved, alternative_instruction)
+            logger.debug(f"Tool confirmation sent to agent controller: {tool_call_id} -> approved={approved}")
+        else:
+            logger.debug(f"Tool confirmation received but no agent controller: {tool_call_id} -> approved={approved}")
         
     async def initialize_agent(self, continue_from_state: bool = False) -> None:
         """Initialize the agent controller."""
@@ -150,6 +171,7 @@ class CLIApp:
             event_stream=self.event_stream,
             context_manager=context_manager,
             interactive_mode=True,
+            config=self.config,
         )
         
         # Print configuration info

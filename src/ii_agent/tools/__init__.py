@@ -3,7 +3,7 @@
 # from ii_agent.tools.sequential_thinking_tool import SequentialThinkingTool
 # from ii_agent.tools.bash_tool import BashTool
 from ii_agent.tools.tool_manager import get_system_tools, AgentToolManager, ToolCallParameters
-from ii_agent.tools.base import ToolResult, BaseTool
+from ii_agent.tools.base import ToolResult, BaseTool, ToolConfirmationDetails
 
 # Tools that need input truncation (ToolCall)
 # TOOLS_NEED_INPUT_TRUNCATION = {
@@ -20,6 +20,7 @@ __all__ = [
     "ToolCallParameters",
     "ToolResult",
     "BaseTool",
+    "ToolConfirmationDetails",
     # "TOOLS_NEED_INPUT_TRUNCATION",
     # "TOOLS_NEED_OUTPUT_FILE_SAVE",
     "get_system_tools",

@@ -4,7 +4,7 @@ Console subscriber for CLI output.
 This module provides real-time console output for agent events.
 """
 
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Callable
 from threading import Lock
 
 from rich.console import Console
@@ -16,6 +16,7 @@ from rich.syntax import Syntax
 
 from ii_agent.core.event import RealtimeEvent, EventType
 from ii_agent.core.config.llm_config import LLMConfig
+from ii_agent.core.config.ii_agent_config import IIAgentConfig
 from ii_agent.cli.components.spinner import AnimatedSpinner
 from ii_agent.cli.components.token_usage import TokenUsageDisplay
 
@@ -23,8 +24,15 @@ from ii_agent.cli.components.token_usage import TokenUsageDisplay
 class ConsoleSubscriber:
     """Subscriber that handles console output for agent events."""
     
-    def __init__(self, minimal: bool = False):
+    def __init__(
+        self, 
+        minimal: bool = False, 
+        config: Optional[IIAgentConfig] = None,
+        confirmation_callback: Optional[Callable[[str, str, bool, str], None]] = None
+    ):
         self.minimal = minimal
+        self.config = config
+        self.confirmation_callback = confirmation_callback
         self._lock = Lock()
         self._current_tool_call: Optional[Dict[str, Any]] = None
         self._thinking_indicator = False
@@ -50,6 +58,8 @@ class ConsoleSubscriber:
                 self._handle_error_event(event)
             elif event.type == EventType.PROCESSING:
                 self._handle_processing_event(event)
+            elif event.type == EventType.TOOL_CONFIRMATION:
+                self._handle_tool_confirmation_event(event)
     
     def _handle_thinking_event(self, event: RealtimeEvent) -> None:
         """Handle agent thinking event."""
@@ -121,6 +131,91 @@ class ConsoleSubscriber:
         error_text.append("  ⎿ ", style="red")
         error_text.append(f"Error: {error_msg}", style="red")
         self.console.print(error_text)
+    
+    def _handle_tool_confirmation_event(self, event: RealtimeEvent) -> None:
+        """Handle tool confirmation event with interactive prompt."""
+        content = event.content
+        tool_call_id = content.get("tool_call_id", "")
+        tool_name = content.get("tool_name", "unknown")
+        tool_input = content.get("tool_input", {})
+        message = content.get("message", "")
+        
+        # Show the tool details
+        self.console.print()
+        self.console.print("🔒 [yellow]Tool Confirmation Required[/yellow]")
+        self.console.print(f"   Tool: [bold]{tool_name}[/bold]")
+        if message:
+            self.console.print(f"   Reason: {message}")
+        
+        # Show key parameters
+        if tool_input:
+            self.console.print("   Parameters:")
+            for key, value in tool_input.items():
+                if isinstance(value, str) and len(value) > 100:
+                    value = value[:100] + "..."
+                self.console.print(f"     {key}: {value}")
+        
+        self.console.print()
+        self.console.print("Do you want to execute this tool?")
+        self.console.print("[bold green]1.[/bold green] Yes")
+        self.console.print("[bold blue]2.[/bold blue] Yes, and don't ask again for this tool this session")
+        self.console.print("[bold cyan]3.[/bold cyan] Yes, approve for all tools in this session")
+        self.console.print("[bold red]4.[/bold red] No, and tell ii-agent what to do differently")
+        self.console.print()
+        
+        # Get user choice
+        while True:
+            try:
+                choice = input("Enter your choice (1-4): ").strip()
+                if choice in ['1', '2', '3', '4']:
+                    break
+                else:
+                    self.console.print("[red]Please enter 1, 2, 3, or 4[/red]")
+            except (KeyboardInterrupt, EOFError):
+                choice = '4'  # Default to no on interrupt
+                break
+        
+        # Handle the choice
+        approved = False
+        alternative_instruction = ""
+        
+        if choice == '1':
+            self.console.print("✅ [green]Tool execution approved[/green]")
+            approved = True
+            
+        elif choice == '2':
+            self.console.print(f"✅ [blue]Tool '{tool_name}' approved for this session[/blue]")
+            approved = True
+            # Add tool to allow_tools set
+            if self.config:
+                self.config.allow_tools.add(tool_name)
+            
+        elif choice == '3':
+            self.console.print("✅ [cyan]All tools approved for this session[/cyan]")
+            approved = True
+            # Set auto_approve_tools to True
+            if self.config:
+                self.config.set_auto_approve_tools(True)
+            
+        elif choice == '4':
+            self.console.print("❌ [red]Tool execution denied[/red]")
+            approved = False
+            # Get alternative instruction
+            try:
+                alternative = input("What should ii-agent do instead? ").strip()
+                if alternative:
+                    self.console.print(f"📝 Alternative instruction: {alternative}")
+                    alternative_instruction = alternative
+                else:
+                    self.console.print("📝 No alternative instruction provided")
+            except (KeyboardInterrupt, EOFError):
+                self.console.print("📝 No alternative instruction provided")
+        
+        # Send response back via callback
+        if self.confirmation_callback:
+            self.confirmation_callback(tool_call_id, tool_name, approved, alternative_instruction)
+        
+        self.console.print()
     
     def _handle_processing_event(self, event: RealtimeEvent) -> None:
         """Handle processing event."""

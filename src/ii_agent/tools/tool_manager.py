@@ -64,12 +64,14 @@ class AgentToolManager:
             mcp_tools = await mcp_client.list_tools()
             for tool in mcp_tools:
                 assert tool.description is not None, f"Tool {tool.name} has no description"
+                tool_annotations = tool.annotations
                 self.tools.append(
                     MCPTool(
                         name=tool.name,
                         description=tool.description,
                         input_schema=tool.inputSchema,
                         mcp_client=mcp_client,
+                        annotations=tool_annotations,
                     )
                 )
 
