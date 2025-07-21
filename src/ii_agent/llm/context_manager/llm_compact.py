@@ -23,9 +23,6 @@ class LLMCompact(ContextManager):
         if len(message_lists) <= 1:
             return message_lists
 
-        # Keep the first message list (system prompt)
-        system_prompt = message_lists[:1]
-
         # Create summary request by appending COMPACT_PROMPT as user message
         summary_request_message = [TextPrompt(text=COMPACT_PROMPT)]
         messages_for_summary = message_lists + [summary_request_message]
@@ -33,16 +30,11 @@ class LLMCompact(ContextManager):
         # Generate summary using LLM
         try:
             # Use simple system prompt for summarization
-            system_message = [
-                TextPrompt(
-                    text="You are a helpful AI assistant tasked with summarizing conversations."
-                )
-            ]
-
             model_response, _ = self.client.generate(
-                messages=[system_message] + messages_for_summary,
+                messages=messages_for_summary,
                 max_tokens=SUMMARY_MAX_TOKENS,
                 thinking_tokens=0,
+                system_prompt="You are a helpful AI assistant tasked with summarizing conversations.",
             )
 
             # Extract summary text from response
@@ -63,10 +55,13 @@ class LLMCompact(ContextManager):
             logger.error(f"Failed to generate compact summary: {e}")
             summary_text = f"Failed to generate summary due to error: {str(e)}"
 
-        # Return system prompt + summary as user message
-        summary_message = [TextPrompt(text=summary_text)]
-        return system_prompt + [summary_message]
+        # Return user message about compact command + summary as assistant message
+        user_message = [TextPrompt(text=COMPACT_USER_MESSAGE)]
+        assistant_message = [TextResult(text=summary_text)]
+        return [user_message, assistant_message]
 
+
+COMPACT_USER_MESSAGE = "Use the /compact command to clear the conversation history, and start a new conversation with the summary in context."
 
 COMPACT_PROMPT = """
 Your task is to create a detailed summary of the conversation so far, paying close attention to the user's explicit requests and your previous actions.

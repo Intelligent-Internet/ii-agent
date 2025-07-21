@@ -17,9 +17,7 @@ from ii_agent.llm.context_manager.base import ContextManager
 
 TOOL_RESULT_INTERRUPT_MESSAGE = "[Request interrupted by user for tool use]"
 AGENT_INTERRUPT_MESSAGE = "Agent interrupted by user."
-TOOL_CALL_INTERRUPT_FAKE_MODEL_RSP = (
-    "[Request interrupted by user for tool use]"
-)
+TOOL_CALL_INTERRUPT_FAKE_MODEL_RSP = "[Request interrupted by user for tool use]"
 AGENT_INTERRUPT_FAKE_MODEL_RSP = (
     "Agent interrupted by user. You can resume by providing a new instruction."
 )
@@ -65,7 +63,6 @@ class AgentController:
         self.event_stream = event_stream
         self.context_manager = context_manager
 
-
     def _validate_tool_parameters(self):
         """Validate tool parameters and check for duplicates."""
         tool_params = [tool.get_tool_param() for tool in self.tool_manager.tools]
@@ -75,7 +72,6 @@ class AgentController:
             if sorted_names[i] == sorted_names[i + 1]:
                 raise ValueError(f"Tool {sorted_names[i]} is duplicated")
         return tool_params
-
 
     async def run_impl(
         self,
@@ -122,9 +118,7 @@ class AgentController:
             self.truncate_history()
             remaining_turns -= 1
 
-
-            # Get tool parameters for available tools
-            all_tool_params = self._validate_tool_parameters()
+            self._validate_tool_parameters()
 
             if self.interrupted:
                 # Handle interruption during model generation or other operations
@@ -136,18 +130,13 @@ class AgentController:
 
             # Only show token count in debug mode, not in interactive CLI
             if not self.interactive_mode:
-                logger.info(
-                    f"(Current token count: {self.count_tokens()})\n"
-                )
-            
+                logger.info(f"(Current token count: {self.count_tokens()})\n")
+
             # Emit thinking event before model response
             self.event_stream.add_event(
-                RealtimeEvent(
-                    type=EventType.AGENT_THINKING,
-                    content={}
-                )
+                RealtimeEvent(type=EventType.AGENT_THINKING, content={})
             )
-            
+
             loop = asyncio.get_event_loop()
             model_response = await loop.run_in_executor(
                 None,
@@ -194,7 +183,8 @@ class AgentController:
                         )
                     )
                 return ToolImplOutput(
-                    tool_output=self.history.get_last_assistant_text_response() or "Task completed",
+                    tool_output=self.history.get_last_assistant_text_response()
+                    or "Task completed",
                     tool_result_message="Task completed",
                 )
 
@@ -208,10 +198,10 @@ class AgentController:
                     tool_output=TOOL_RESULT_INTERRUPT_MESSAGE,
                     tool_result_message=TOOL_RESULT_INTERRUPT_MESSAGE,
                 )
-            
+
             # Execute all tool calls using batch approach
             logger.debug(f"Executing {len(pending_tool_calls)} tool(s)")
-            
+
             # Send events for all tool calls
             for tool_call in pending_tool_calls:
                 self.event_stream.add_event(
@@ -224,10 +214,12 @@ class AgentController:
                         },
                     )
                 )
-            
+
             # Execute tools in batch (handles both single and multiple tools)
-            tool_results = await self.tool_manager.run_tools_batch(pending_tool_calls, self.history)
-            
+            tool_results = await self.tool_manager.run_tools_batch(
+                pending_tool_calls, self.history
+            )
+
             # Add all results to history in order
             for tool_call, tool_result in zip(pending_tool_calls, tool_results):
                 self.add_tool_call_result(tool_call, tool_result)
@@ -349,3 +341,36 @@ class AgentController:
             self.history.get_messages_for_llm()
         )
         self.history.set_message_list(truncated_messages_for_llm)
+
+    def compact_context(self) -> dict[str, Any]:
+        """Manually compact the conversation context using truncation.
+
+        Returns:
+            Dict containing operation status and token information.
+        """
+        try:
+            # Get current token count before compacting
+            original_token_count = self.count_tokens()
+
+            # Apply truncation regardless of current token count
+            truncated_messages_for_llm = self.context_manager.apply_truncation(
+                self.history.get_messages_for_llm()
+            )
+
+            # Update history with truncated messages
+            self.history.set_message_list(truncated_messages_for_llm)
+
+            # Get new token count after compacting
+            new_token_count = self.count_tokens()
+
+            return {
+                "success": True,
+                "original_tokens": original_token_count,
+                "new_tokens": new_token_count,
+                "tokens_saved": original_token_count - new_token_count,
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e),
+            }
