@@ -1,13 +1,14 @@
 import asyncio
-from typing import Any, Optional, List
+from typing import Any, cast
 from functools import partial
+
+from openai import BaseModel
 
 from ii_agent.controller.agent import Agent
 from ii_agent.core.event import EventType, RealtimeEvent
 from ii_agent.core.event_stream import EventStream
-from ii_agent.llm.base import TextResult, ToolCallParameters
+from ii_agent.llm.base import AssistantContentBlock, TextResult, ToolCallParameters
 from ii_agent.controller.state import State
-from ii_agent.tools.base import ToolImplOutput, LLMTool
 from ii_agent.tools.utils import encode_image
 from ii_agent.tools import AgentToolManager
 from ii_agent.utils.constants import COMPLETE_MESSAGE
@@ -23,11 +24,16 @@ AGENT_INTERRUPT_FAKE_MODEL_RSP = (
 )
 
 
+class AgentOutput(BaseModel):
+    agent_output: str
+    agent_message: str
+
+
 class AgentController:
     def __init__(
         self,
         agent: Agent,
-        tools: List[LLMTool],
+        tool_manager: AgentToolManager,
         init_history: State,
         workspace_manager: WorkspaceManager,
         event_stream: EventStream,
@@ -39,7 +45,7 @@ class AgentController:
 
         Args:
             agent: The agent to use
-            tools: List of tools to use
+            tool_manager: Tool manager for tool execution
             init_history: Initial history to use
             workspace_manager: Workspace manager for file operations
             event_stream: Event stream for publishing events
@@ -50,11 +56,7 @@ class AgentController:
         super().__init__()
         self.workspace_manager = workspace_manager
         self.agent = agent
-        self.tool_manager = AgentToolManager(
-            tools=tools,
-            logger_for_agent_logs=logger,
-            interactive_mode=interactive_mode,
-        )
+        self.tool_manager = tool_manager
 
         self.max_turns = max_turns
         self.interactive_mode = interactive_mode
@@ -76,8 +78,7 @@ class AgentController:
     async def run_impl(
         self,
         tool_input: dict[str, Any],
-        state: Optional[State] = None,
-    ) -> ToolImplOutput:
+    ) -> AgentOutput:
         instruction = tool_input["instruction"]
         files = tool_input["files"]
 
@@ -118,14 +119,15 @@ class AgentController:
             self.truncate_history()
             remaining_turns -= 1
 
+            # Get tool parameters for available tools
             self._validate_tool_parameters()
 
             if self.interrupted:
                 # Handle interruption during model generation or other operations
                 self.add_fake_assistant_turn(AGENT_INTERRUPT_FAKE_MODEL_RSP)
-                return ToolImplOutput(
-                    tool_output=AGENT_INTERRUPT_MESSAGE,
-                    tool_result_message=AGENT_INTERRUPT_MESSAGE,
+                return AgentOutput(
+                    agent_output=AGENT_INTERRUPT_MESSAGE,
+                    agent_message=AGENT_INTERRUPT_MESSAGE,
                 )
 
             # Only show token count in debug mode, not in interactive CLI
@@ -147,7 +149,9 @@ class AgentController:
             )
 
             if len(model_response) == 0:
-                model_response = [TextResult(text=COMPLETE_MESSAGE)]
+                model_response = [
+                    cast(AssistantContentBlock, TextResult(text=COMPLETE_MESSAGE))
+                ]
 
             # Add the raw response to the canonical history
             self.history.add_assistant_turn(model_response)
@@ -182,10 +186,10 @@ class AgentController:
                             content={"text": "Task completed"},
                         )
                     )
-                return ToolImplOutput(
-                    tool_output=self.history.get_last_assistant_text_response()
+                return AgentOutput(
+                    agent_output=self.history.get_last_assistant_text_response()
                     or "Task completed",
-                    tool_result_message="Task completed",
+                    agent_message="Task completed",
                 )
 
             # Check for interruption before tool execution
@@ -194,9 +198,9 @@ class AgentController:
                 for tool_call in pending_tool_calls:
                     self.add_tool_call_result(tool_call, TOOL_RESULT_INTERRUPT_MESSAGE)
                 self.add_fake_assistant_turn(TOOL_CALL_INTERRUPT_FAKE_MODEL_RSP)
-                return ToolImplOutput(
-                    tool_output=TOOL_RESULT_INTERRUPT_MESSAGE,
-                    tool_result_message=TOOL_RESULT_INTERRUPT_MESSAGE,
+                return AgentOutput(
+                    agent_output=TOOL_RESULT_INTERRUPT_MESSAGE,
+                    agent_message=TOOL_RESULT_INTERRUPT_MESSAGE,
                 )
 
             # Execute all tool calls using batch approach
@@ -228,9 +232,7 @@ class AgentController:
         self.event_stream.add_event(
             RealtimeEvent(type=EventType.AGENT_RESPONSE, content={"text": agent_answer})
         )
-        return ToolImplOutput(
-            tool_output=agent_answer, tool_result_message=agent_answer
-        )
+        return AgentOutput(agent_output=agent_answer, agent_message=agent_answer)
 
     def get_tool_start_message(self, tool_input: dict[str, Any]) -> str:
         return f"Agent started with instruction: {tool_input['instruction']}"
@@ -240,8 +242,7 @@ class AgentController:
         instruction: str,
         files: list[str] | None = None,
         resume: bool = False,
-        orientation_instruction: str | None = None,
-    ) -> ToolImplOutput:
+    ) -> AgentOutput:
         """Start a new agent run asynchronously.
 
         Args:
@@ -249,7 +250,6 @@ class AgentController:
             files: Optional list of files to attach
             resume: Whether to resume the agent from the previous state,
                 continuing the dialog.
-            orientation_instruction: Optional orientation instruction
 
         Returns:
             The result from the agent execution.
@@ -262,17 +262,14 @@ class AgentController:
             "instruction": instruction,
             "files": files,
         }
-        if orientation_instruction:
-            tool_input["orientation_instruction"] = orientation_instruction
-        return await self.run_impl(tool_input, self.history)
+        return await self.run_impl(tool_input)
 
     def run_agent(
         self,
         instruction: str,
         files: list[str] | None = None,
         resume: bool = False,
-        orientation_instruction: str | None = None,
-    ) -> ToolImplOutput:
+    ):
         """Start a new agent run synchronously.
 
         Args:
@@ -285,9 +282,7 @@ class AgentController:
         Returns:
             The result from the agent execution.
         """
-        return asyncio.run(
-            self.run_agent_async(instruction, files, resume, orientation_instruction)
-        )
+        asyncio.run(self.run_agent_async(instruction, files, resume))
 
     def clear(self):
         """Clear the dialog and reset interruption state.

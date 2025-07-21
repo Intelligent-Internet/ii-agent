@@ -24,6 +24,7 @@ from ii_agent.controller.state import State
 from ii_agent.llm.context_manager import LLMCompact
 from ii_agent.core.storage.settings.file_settings_store import FileSettingsStore
 from ii_agent.llm.token_counter import TokenCounter
+from ii_agent.tools.tool_manager import AgentToolManager
 from ii_agent.utils.workspace_manager import WorkspaceManager
 from ii_agent.tools import get_system_tools
 from ii_agent.core.logger import logger
@@ -123,9 +124,15 @@ class CLIApp:
             client=llm_client,
             settings=settings,
             workspace_manager=self.workspace_manager,
+            event_stream=self.event_stream,
         )
 
-        agent = FunctionCallAgent(llm_client, agent_config, tools)
+        agent = FunctionCallAgent(
+            llm_client, agent_config, [tool.get_tool_param() for tool in tools]
+        )
+        tool_manager = AgentToolManager(
+            tools=tools,
+        )
 
         # Create context manager
         token_counter = TokenCounter()
@@ -144,7 +151,7 @@ class CLIApp:
         # Create agent controller
         self.agent_controller = AgentController(
             agent=agent,
-            tools=tools,
+            tool_manager=tool_manager,
             init_history=state,
             workspace_manager=self.workspace_manager,
             event_stream=self.event_stream,
@@ -178,6 +185,9 @@ class CLIApp:
             # Load session if resuming
             if resume and session_name:
                 self._load_session(session_name)
+
+            if self.agent_controller is None:
+                raise Exception("Agent controller not initialized")
 
             while True:
                 try:

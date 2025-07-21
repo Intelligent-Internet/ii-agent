@@ -22,6 +22,7 @@ class ToolParam(BaseModel):
     name: str
     description: str
     input_schema: dict[str, Any]
+    type: Literal["tool", "agent"] = "tool"
 
 
 class ToolCall(BaseModel):
@@ -105,21 +106,21 @@ class TextResult(BaseModel):
 
 class RedactedThinkingBlock(BaseModel):
     """Internal representation of redacted thinking block."""
-    
+
     data: str
     type: Literal["redacted_thinking"] = "redacted_thinking"
 
 
 class ThinkingBlock(BaseModel):
     """Internal representation of thinking block."""
-    
+
     signature: str
     thinking: str
     type: Literal["thinking"] = "thinking"
 
 
 AssistantContentBlock = (
-    TextResult | ToolCall | RedactedThinkingBlock | ThinkingBlock
+    TextResult | ToolCall | RedactedThinkingBlock | ThinkingBlock | ToolResult
 )
 UserContentBlock = TextPrompt | ToolFormattedResult | ImageBlock
 GeneralContentBlock = UserContentBlock | AssistantContentBlock
@@ -140,6 +141,31 @@ class LLMClient(ABC):
         tool_choice: dict[str, str] | None = None,
         thinking_tokens: int | None = None,
     ) -> Tuple[list[AssistantContentBlock], dict[str, Any]]:
+        """Generate responses.
+
+        Args:
+            messages: A list of messages.
+            max_tokens: The maximum number of tokens to generate.
+            system_prompt: A system prompt.
+            temperature: The temperature.
+            tools: A list of tools.
+            tool_choice: A tool choice.
+
+        Returns:
+            A generated response.
+        """
+        raise NotImplementedError
+
+    async def generate_stream(
+        self,
+        messages: LLMMessages,
+        max_tokens: int,
+        system_prompt: str | None = None,
+        temperature: float = 0.0,
+        tools: list[ToolParam] = [],
+        tool_choice: dict[str, str] | None = None,
+        thinking_tokens: int | None = None,
+    ) -> list[AssistantContentBlock]:
         """Generate responses.
 
         Args:

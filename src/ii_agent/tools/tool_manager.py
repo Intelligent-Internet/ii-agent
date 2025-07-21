@@ -1,10 +1,14 @@
 import asyncio
-import logging
 from copy import deepcopy
-from typing import Optional, List, Dict, Any
+from typing import List, Dict, Any, Optional
+
+from ii_agent.core.config.agent_config import AgentConfig
+from ii_agent.core.event_stream import AsyncEventStream
 from ii_agent.llm.base import LLMClient
 from ii_agent.llm.context_manager.llm_summarizing import LLMSummarizingContextManager
+from ii_agent.llm.r1 import R1DirectClient
 from ii_agent.llm.token_counter import TokenCounter
+from ii_agent.prompts.researcher_system_prompt import CONFIG
 from ii_agent.tools.image_search_tool import ImageSearchTool
 from ii_agent.tools.base import LLMTool
 from ii_agent.controller.state import ToolCallParameters
@@ -50,6 +54,7 @@ from ii_agent.tools.video_gen_tool import (
 from ii_agent.tools.image_gen_tool import ImageGenerateTool
 from ii_agent.tools.speech_gen_tool import SingleSpeakerSpeechGenerationTool
 from ii_agent.tools.pdf_tool import PdfTextExtractTool
+
 # from ii_agent.tools.deep_research_tool import DeepResearchTool
 from ii_agent.tools.list_html_links_tool import ListHtmlLinksTool
 from ii_agent.utils.constants import TOKEN_BUDGET
@@ -61,8 +66,9 @@ def get_system_tools(
     client: LLMClient,
     workspace_manager: WorkspaceManager,
     settings: Settings,
+    event_stream: AsyncEventStream,
     container_id: Optional[str] = None,
-    tool_args: Dict[str, Any] = None,
+    tool_args: Optional[Dict[str, Any]] = None,
 ) -> list[LLMTool]:
     """
     Retrieves a list of all system tools.
@@ -70,7 +76,7 @@ def get_system_tools(
     Returns:
         list[LLMTool]: A list of all system tools.
     """
-    ask_user_permission = False # Not support
+    ask_user_permission = False  # Not support
     if container_id is not None:
         bash_tool = create_docker_bash_tool(
             container=container_id, ask_user_permission=ask_user_permission
@@ -90,9 +96,7 @@ def get_system_tools(
         WebSearchTool(settings=settings),
         VisitWebpageTool(settings=settings),
         StaticDeployTool(workspace_manager=workspace_manager),
-        StrReplaceEditorTool(
-            workspace_manager=workspace_manager
-        ),
+        StrReplaceEditorTool(workspace_manager=workspace_manager),
         bash_tool,
         ListHtmlLinksTool(workspace_manager=workspace_manager),
         SlideDeckInitTool(
@@ -119,39 +123,73 @@ def get_system_tools(
             # Check if media config is available in settings
             has_media_config = False
             if settings and settings.media_config:
-                if (settings.media_config.gcp_project_id and settings.media_config.gcp_location) or (settings.media_config.google_ai_studio_api_key):
+                if (
+                    settings.media_config.gcp_project_id
+                    and settings.media_config.gcp_location
+                ) or (settings.media_config.google_ai_studio_api_key):
                     has_media_config = True
-                
+
             if has_media_config:
-                tools.append(ImageGenerateTool(workspace_manager=workspace_manager, settings=settings))
+                tools.append(
+                    ImageGenerateTool(
+                        workspace_manager=workspace_manager, settings=settings
+                    )
+                )
                 if tool_args.get("video_generation", True):
-                    tools.extend([
-                        VideoGenerateFromTextTool(workspace_manager=workspace_manager, settings=settings), 
-                        VideoGenerateFromImageTool(workspace_manager=workspace_manager, settings=settings),
-                        LongVideoGenerateFromTextTool(workspace_manager=workspace_manager, settings=settings),
-                        LongVideoGenerateFromImageTool(workspace_manager=workspace_manager, settings=settings)
-                    ])
-                if settings.media_config.google_ai_studio_api_key:
-                    tools.append(SingleSpeakerSpeechGenerationTool(workspace_manager=workspace_manager, settings=settings))
+                    tools.extend(
+                        [
+                            VideoGenerateFromTextTool(
+                                workspace_manager=workspace_manager, settings=settings
+                            ),
+                            VideoGenerateFromImageTool(
+                                workspace_manager=workspace_manager, settings=settings
+                            ),
+                            LongVideoGenerateFromTextTool(
+                                workspace_manager=workspace_manager, settings=settings
+                            ),
+                            LongVideoGenerateFromImageTool(
+                                workspace_manager=workspace_manager, settings=settings
+                            ),
+                        ]
+                    )
+                if (
+                    settings.media_config
+                    and settings.media_config.google_ai_studio_api_key
+                ):
+                    tools.append(
+                        SingleSpeakerSpeechGenerationTool(
+                            workspace_manager=workspace_manager, settings=settings
+                        )
+                    )
             else:
-                logger.warning("Media generation tools not added due to missing configuration")
-                raise Exception("Media generation tools not added due to missing configuration")
+                logger.warning(
+                    "Media generation tools not added due to missing configuration"
+                )
+                raise Exception(
+                    "Media generation tools not added due to missing configuration"
+                )
         if tool_args.get("audio_generation", False):
             # Check if audio config is available in settings
             has_audio_config = False
             if settings and settings.audio_config:
-                if (settings.audio_config.openai_api_key and 
-                    settings.audio_config.azure_endpoint):
+                if (
+                    settings.audio_config.openai_api_key
+                    and settings.audio_config.azure_endpoint
+                ):
                     has_audio_config = True
-                
+
             if has_audio_config:
                 tools.extend(
                     [
-                        AudioTranscribeTool(workspace_manager=workspace_manager, settings=settings),
-                        AudioGenerateTool(workspace_manager=workspace_manager, settings=settings),
+                        AudioTranscribeTool(
+                            workspace_manager=workspace_manager, settings=settings
+                        ),
+                        AudioGenerateTool(
+                            workspace_manager=workspace_manager, settings=settings
+                        ),
                     ]
                 )
-            
+
         # Browser tools
         if tool_args.get("browser", False):
             browser = Browser()
@@ -181,6 +219,26 @@ def get_system_tools(
         elif memory_tool == "simple":
             tools.append(SimpleMemoryTool())
 
+        if tool_args.get("researcher", False) and settings.researcher_config:
+            import ipdb
+
+            ipdb.set_trace()
+            from ii_agent.tools.agent_tool.researcher_tool import ResearcherTool
+
+            researcher_config = settings.researcher_config
+            r1_client = R1DirectClient(researcher_config)
+            agent_config = AgentConfig(system_prompt=CONFIG.system_prompt)
+            tools.append(
+                ResearcherTool(
+                    client=client,
+                    r1_client=r1_client,
+                    agent_config=agent_config,
+                    workspace_manager=workspace_manager,
+                    event_stream=event_stream,
+                    context_manager=context_manager,
+                )
+            )
+
     return tools
 
 
@@ -198,7 +256,7 @@ class AgentToolManager:
     search capabilities, and task completion functionality.
     """
 
-    def __init__(self, tools: List[LLMTool], logger_for_agent_logs: logging.Logger, interactive_mode: bool = True, reviewer_mode: bool = False):
+    def __init__(self, tools: List[LLMTool]):
         self.tools = tools
 
     def get_tool(self, tool_name: str) -> LLMTool:
@@ -259,45 +317,51 @@ class AgentToolManager:
 
         return tool_result
 
-    async def run_tools_batch(self, tool_calls: List[ToolCallParameters], history: State) -> List[str]:
+    async def run_tools_batch(
+        self, tool_calls: List[ToolCallParameters], history: State
+    ) -> List[str]:
         """
         Execute multiple tools either concurrently or serially based on their read-only status.
-        
+
         Args:
             tool_calls: List of tool call parameters
             history: Message history
-            
+
         Returns:
             List of tool results in the same order as input tool_calls
         """
         if not tool_calls:
             return []
-        
+
         if len(tool_calls) == 1:
             # Single tool - just execute normally
             result = await self.run_tool(tool_calls[0], history)
             return [result]
-        
+
         # Determine execution strategy based on read-only status
         if should_run_concurrently(tool_calls, self):
             logger.info(f"Running {len(tool_calls)} tools concurrently (all read-only)")
             return await self._run_tools_concurrently(tool_calls, history)
         else:
-            logger.info(f"Running {len(tool_calls)} tools serially (contains non-read-only tools)")
+            logger.info(
+                f"Running {len(tool_calls)} tools serially (contains non-read-only tools)"
+            )
             return await self._run_tools_serially(tool_calls, history)
-    
-    async def _run_tools_concurrently(self, tool_calls: List[ToolCallParameters], history: State) -> List[str]:
+
+    async def _run_tools_concurrently(
+        self, tool_calls: List[ToolCallParameters], history: State
+    ) -> List[str]:
         """Execute tools concurrently and return results in order."""
-        
+
         # Create tasks for each tool with proper concurrency limits
         async def run_single_tool(tool_call: ToolCallParameters) -> str:
             """Wrapper for single tool execution."""
             result = await self.run_tool(tool_call, history)
             return result
-        
+
         # Create tasks for all tools with concurrency limit
         from ii_agent.utils.concurrent_execution import MAX_TOOL_CONCURRENCY
-        
+
         if len(tool_calls) <= MAX_TOOL_CONCURRENCY:
             # All tools can run concurrently
             tasks = [asyncio.create_task(run_single_tool(tc)) for tc in tool_calls]
@@ -305,27 +369,31 @@ class AgentToolManager:
         else:
             # Use semaphore to limit concurrency
             semaphore = asyncio.Semaphore(MAX_TOOL_CONCURRENCY)
-            
+
             async def limited_run_tool(tool_call: ToolCallParameters) -> str:
                 async with semaphore:
                     return await run_single_tool(tool_call)
-            
+
             tasks = [asyncio.create_task(limited_run_tool(tc)) for tc in tool_calls]
             results = await asyncio.gather(*tasks, return_exceptions=True)
-        
+
         # Handle any exceptions and maintain order
         final_results = []
         for i, result in enumerate(results):
             if isinstance(result, Exception):
-                error_msg = f"Error executing tool {tool_calls[i].tool_name}: {str(result)}"
+                error_msg = (
+                    f"Error executing tool {tool_calls[i].tool_name}: {str(result)}"
+                )
                 logger.error(error_msg)
                 final_results.append(error_msg)
             else:
                 final_results.append(result)
-        
+
         return final_results
-    
-    async def _run_tools_serially(self, tool_calls: List[ToolCallParameters], history: State) -> List[str]:
+
+    async def _run_tools_serially(
+        self, tool_calls: List[ToolCallParameters], history: State
+    ) -> List[str]:
         """Execute tools serially and return results in order."""
         results = []
         for tool_call in tool_calls:
@@ -343,4 +411,3 @@ class AgentToolManager:
         Returns the list of tools.
         """
         return self.tools
-
