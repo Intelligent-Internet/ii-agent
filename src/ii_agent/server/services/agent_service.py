@@ -79,7 +79,6 @@ class AgentService:
                 if tool_args.get("sequential_thinking", False)
                 else SYSTEM_PROMPT
             )
-        
         # Create agent config
         agent_config = AgentConfig(
             max_tokens_per_turn=self.config.max_output_tokens_per_turn,
