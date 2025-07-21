@@ -20,6 +20,7 @@ from ii_agent.core.config.ii_agent_config import IIAgentConfig
 from ii_agent.core.storage.models.settings import Settings
 from ii_agent.cli.components.spinner import AnimatedSpinner
 from ii_agent.cli.components.token_usage import TokenUsageDisplay
+from ii_agent.cli.components.todo_panel import TodoPanel
 
 
 class ConsoleSubscriber:
@@ -43,6 +44,7 @@ class ConsoleSubscriber:
         self._progress: Optional[Progress] = None
         self._spinner: Optional[AnimatedSpinner] = None
         self._token_display = TokenUsageDisplay(self.console)
+        self._todo_panel = TodoPanel(self.console)
         
     def handle_event(self, event: RealtimeEvent) -> None:
         """Handle an event by outputting to console."""
@@ -327,7 +329,52 @@ class ConsoleSubscriber:
     def _print_tool_call(self, tool_name: str, tool_input: Dict[str, Any]) -> None:
         """Print clean tool call information."""
         
-        # Enhanced tool call display
+        # Special handling for todo tools
+        if tool_name in ["TodoRead", "TodoWrite"]:
+            tool_text = Text()
+            tool_text.append("  📋 ", style="bright_blue")
+            tool_text.append(f"Using {tool_name}", style="bright_blue bold")
+            self.console.print(tool_text)
+            
+            # For TodoWrite, show task preview with checkboxes
+            if tool_name == "TodoWrite" and "todos" in tool_input:
+                todos = tool_input.get("todos", [])
+                if todos:
+                    # Show first few tasks (limit to 5 for space)
+                    max_preview = 5
+                    for i, todo in enumerate(todos[:max_preview]):
+                        task_text = Text()
+                        if i == 0:
+                            task_text.append("    ⎿  ", style="dim blue")
+                        else:
+                            task_text.append("       ", style="dim")
+                        
+                        # Choose checkbox based on status
+                        status = todo.get("status", "pending")
+                        if status == "completed":
+                            task_text.append("☒ ", style="green")
+                        elif status == "in_progress":
+                            task_text.append("☐ ", style="cyan")
+                        else:  # pending
+                            task_text.append("☐ ", style="dim white")
+                        
+                        # Add task content (truncate if too long)
+                        content = todo.get("content", "")
+                        if len(content) > 60:
+                            content = content[:57] + "..."
+                        task_text.append(content, style="white")
+                        
+                        self.console.print(task_text)
+                    
+                    # If there are more tasks, show count
+                    if len(todos) > max_preview:
+                        more_text = Text()
+                        more_text.append("       ", style="dim")
+                        more_text.append(f"... and {len(todos) - max_preview} more tasks", style="dim cyan")
+                        self.console.print(more_text)
+            return
+        
+        # Enhanced tool call display for other tools
         tool_text = Text()
         tool_text.append("  🔧 ", style="bright_blue")
         tool_text.append(f"Using {tool_name}", style="bright_blue bold")
@@ -396,6 +443,11 @@ class ConsoleSubscriber:
         if not result.strip():
             return
         
+        # Special handling for todo-related tools
+        if tool_name.lower() in ["todoread", "todowrite", "todo_read", "todo_write"]:
+            self._print_todo_result(tool_name, result)
+            return
+        
         # Show result header with success indicator
         result_header = Text()
         result_header.append("  ✓ ", style="bright_green")
@@ -409,6 +461,48 @@ class ConsoleSubscriber:
         
         # Format the result content
         self._format_and_print_result(result)
+    
+    def _print_todo_result(self, tool_name: str, result: str) -> None:
+        """Print todo tool result using the TodoPanel component."""
+        try:
+            import json
+            
+            # Parse the result to get todo data
+            todos = []
+            
+            # Try to parse the result as JSON
+            try:
+                # The result might be a string that contains JSON
+                if "todos" in result:
+                    # Extract JSON from the result string
+                    start_idx = result.find('[')
+                    end_idx = result.rfind(']') + 1
+                    if start_idx != -1 and end_idx > start_idx:
+                        json_str = result[start_idx:end_idx]
+                        todos = json.loads(json_str)
+                else:
+                    # Try direct JSON parse
+                    parsed = json.loads(result)
+                    if isinstance(parsed, list):
+                        todos = parsed
+                    elif isinstance(parsed, dict) and 'todos' in parsed:
+                        todos = parsed['todos']
+            except json.JSONDecodeError:
+                # If JSON parsing fails, show raw result
+                self._format_and_print_result(result)
+                return
+            
+            # Use TodoPanel to render the todos
+            if todos:
+                self._todo_panel.render(todos, title=f"📋 {tool_name} Result")
+            else:
+                # Empty todos
+                self._todo_panel.render([], title=f"📋 {tool_name} Result")
+                
+        except Exception as e:
+            # Fallback to regular formatting if something goes wrong
+            self.console.print(f"[dim red]Error rendering todo panel: {e}[/dim red]")
+            self._format_and_print_result(result)
     
     def _format_and_print_result(self, result: str) -> None:
         """Format and print tool result with appropriate styling."""
