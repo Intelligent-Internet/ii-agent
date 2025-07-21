@@ -9,7 +9,7 @@ import asyncio
 import json
 from pathlib import Path
 from typing import Optional, Dict, Any
-
+from fastmcp import Client
 from ii_agent.core.config.ii_agent_config import IIAgentConfig
 from ii_agent.core.config.agent_config import AgentConfig
 from ii_agent.core.config.llm_config import LLMConfig
@@ -32,6 +32,7 @@ from ii_agent.utils.constants import TOKEN_BUDGET
 from ii_agent.cli.state_persistence import StateManager, restore_agent_state, restore_configs
 from ii_agent.tools import AgentToolManager
 from ii_agent.llm.base import ToolParam
+from ii_agent.mcp.server import create_mcp
 
 
 class CLIApp:
@@ -126,7 +127,7 @@ class CLIApp:
         )
         
         
-        # Get system tools
+        # Get system local tools
         tools = get_system_tools(
             client=llm_client,
             settings=settings,
@@ -139,8 +140,19 @@ class CLIApp:
             interactive_mode=True,
         )
 
+        # Get system MCP tools
+        mcp_client = Client(create_mcp(
+            workspace_dir=str(self.workspace_manager.root),
+            session_id=self.config.session_id,
+        ))
+        await tool_manager.register_mcp_tools(
+            mcp_client=mcp_client,
+            trust=True, # Trust the system MCP tools
+        )
+
         if self.config.mcp_config:
-            await tool_manager.register_mcp_tools(self.config.mcp_config)
+            # Don't trust the custom MCP tools by default
+            await tool_manager.register_mcp_tools(self.config.mcp_config, trust=False)
 
         agent = FunctionCallAgent(
             llm=llm_client, 

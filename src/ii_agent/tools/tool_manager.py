@@ -2,6 +2,7 @@ import asyncio
 import logging
 from copy import deepcopy
 from dataclasses import dataclass
+from fastmcp import Client
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 from ii_agent.llm.base import LLMClient
@@ -10,7 +11,10 @@ from ii_agent.utils import WorkspaceManager
 from ii_agent.utils.concurrent_execution import should_run_concurrently
 from ii_agent.core.storage.models.settings import Settings
 from ii_agent.core.logger import logger
-
+from ii_agent.tools.mcp_tool import MCPTool
+from ii_agent.tools.web_search_tool import WebSearchTool
+from ii_agent.tools.web_visit_tool import WebVisitTool
+from ii_agent.tools.web_dev_tool import FullStackInitTool
 
 class ToolCallParameters(BaseModel):
     tool_call_id: str
@@ -31,7 +35,13 @@ def get_system_tools(
     Returns:
         list[BaseTool]: A list of all system tools.
     """
-    return []
+
+    # TODO: Add more tools here
+    return [
+        WebSearchTool(settings=settings),
+        WebVisitTool(settings=settings),
+        FullStackInitTool(workspace_manager=workspace_manager),
+    ]
 
 
 class AgentToolManager:
@@ -54,11 +64,11 @@ class AgentToolManager:
     async def register_tools(self, tools: List[BaseTool]):
         self.tools.extend(tools)
 
-    async def register_mcp_tools(self, mcp_config: Dict[str, Any]):
-        from fastmcp import Client
-        from ii_agent.tools.mcp_tool import MCPTool
-        
-        mcp_client = Client(mcp_config)
+    async def register_mcp_tools(self, mcp_config: Dict[str, Any] | None = None, mcp_client: Client | None = None, trust: bool = False): 
+        if not mcp_config and not mcp_client:
+            raise ValueError("Either mcp_config or client must be provided")
+        if mcp_config:
+            mcp_client = Client(mcp_config)
 
         async with mcp_client:
             mcp_tools = await mcp_client.list_tools()
@@ -72,6 +82,7 @@ class AgentToolManager:
                         input_schema=tool.inputSchema,
                         mcp_client=mcp_client,
                         annotations=tool_annotations,
+                        trust=trust,
                     )
                 )
 
