@@ -17,6 +17,7 @@ from rich.syntax import Syntax
 from ii_agent.core.event import RealtimeEvent, EventType
 from ii_agent.core.config.llm_config import LLMConfig
 from ii_agent.core.config.ii_agent_config import IIAgentConfig
+from ii_agent.core.storage.models.settings import Settings
 from ii_agent.cli.components.spinner import AnimatedSpinner
 from ii_agent.cli.components.token_usage import TokenUsageDisplay
 
@@ -28,10 +29,12 @@ class ConsoleSubscriber:
         self, 
         minimal: bool = False, 
         config: Optional[IIAgentConfig] = None,
+        settings: Optional[Settings] = None,
         confirmation_callback: Optional[Callable[[str, str, bool, str], None]] = None
     ):
         self.minimal = minimal
         self.config = config
+        self.settings = settings
         self.confirmation_callback = confirmation_callback
         self._lock = Lock()
         self._current_tool_call: Optional[Dict[str, Any]] = None
@@ -156,24 +159,39 @@ class ConsoleSubscriber:
                 self.console.print(f"     {key}: {value}")
         
         self.console.print()
-        self.console.print("Do you want to execute this tool?")
-        self.console.print("[bold green]1.[/bold green] Yes")
-        self.console.print("[bold blue]2.[/bold blue] Yes, and don't ask again for this tool this session")
-        self.console.print("[bold cyan]3.[/bold cyan] Yes, approve for all tools in this session")
-        self.console.print("[bold red]4.[/bold red] No, and tell ii-agent what to do differently")
-        self.console.print()
         
-        # Get user choice
-        while True:
+        # Check if arrow navigation is enabled in CLI config
+        use_arrow_navigation = True  # Default to enabled
+        if self.settings and self.settings.cli_config:
+            use_arrow_navigation = self.settings.cli_config.enable_arrow_navigation
+        
+        if use_arrow_navigation:
+            # Use the new reliable select menu with arrow navigation
             try:
-                choice = input("Enter your choice (1-4): ").strip()
-                if choice in ['1', '2', '3', '4']:
-                    break
+                from ii_agent.cli.components.select_menu import create_tool_confirmation_menu
+                
+                menu = create_tool_confirmation_menu(self.console)
+                choice_index = menu.select()
+                
+                if choice_index is not None:
+                    choice = str(choice_index + 1)  # Convert 0-based to 1-based
                 else:
-                    self.console.print("[red]Please enter 1, 2, 3, or 4[/red]")
-            except (KeyboardInterrupt, EOFError):
-                choice = '4'  # Default to no on interrupt
-                break
+                    choice = '4'  # Default to "no" if cancelled
+                    
+            except Exception as e:
+                # Fallback to traditional input
+                self.console.print(f"[dim]Arrow navigation unavailable: {e}[/dim]")
+                use_arrow_navigation = False
+        
+        if not use_arrow_navigation:
+            # Traditional numbered input
+            self.console.print("Do you want to execute this tool?")
+            self.console.print("[bold green]1.[/bold green] Yes")
+            self.console.print("[bold blue]2.[/bold blue] Yes, and don't ask again for this tool this session")
+            self.console.print("[bold cyan]3.[/bold cyan] Yes, approve for all tools in this session")
+            self.console.print("[bold red]4.[/bold red] No, and tell ii-agent what to do differently")
+            self.console.print()
+            choice = self._get_traditional_input()
         
         # Handle the choice
         approved = False
@@ -217,6 +235,49 @@ class ConsoleSubscriber:
         
         self.console.print()
     
+    def _get_single_key_choice(self) -> str:
+        """Get user choice with single key press (enhanced UX)."""
+        try:
+            import sys
+            import tty
+            import termios
+            
+            fd = sys.stdin.fileno()
+            old_settings = termios.tcgetattr(fd)
+            
+            try:
+                tty.setraw(fd)
+                while True:
+                    key = sys.stdin.read(1)
+                    if key in ['1', '2', '3', '4']:
+                        # Echo the choice
+                        print(f"\nSelected: {key}")
+                        return key
+                    elif key == '\x03':  # Ctrl+C
+                        print("\nCancelled")
+                        return '4'
+                    elif key == '\r' or key == '\n':  # Enter without selection
+                        continue
+                        
+            finally:
+                termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+                
+        except Exception:
+            # Fallback to traditional input
+            return self._get_traditional_input()
+    
+    def _get_traditional_input(self) -> str:
+        """Get user choice with traditional input method."""
+        while True:
+            try:
+                choice = input("Enter your choice (1-4): ").strip()
+                if choice in ['1', '2', '3', '4']:
+                    return choice
+                else:
+                    self.console.print("[red]Please enter 1, 2, 3, or 4[/red]")
+            except (KeyboardInterrupt, EOFError):
+                return '4'  # Default to no on interrupt
+    
     def _handle_processing_event(self, event: RealtimeEvent) -> None:
         """Handle processing event."""
         content = event.content
@@ -237,7 +298,7 @@ class ConsoleSubscriber:
     
     def _print_response(self, text: str) -> None:
         """Print agent response with clean formatting."""
-        # Clear any status indicators
+        # Clear any status indicators immediately
         self._clear_thinking_indicator()
         
         if not self.minimal:
@@ -266,64 +327,211 @@ class ConsoleSubscriber:
     def _print_tool_call(self, tool_name: str, tool_input: Dict[str, Any]) -> None:
         """Print clean tool call information."""
         
-        # Simple clean format without heavy tables
+        # Enhanced tool call display
         tool_text = Text()
-        tool_text.append("  🔧 ", style="blue")
-        tool_text.append(f"Using {tool_name}", style="blue bold")
+        tool_text.append("  🔧 ", style="bright_blue")
+        tool_text.append(f"Using {tool_name}", style="bright_blue bold")
         
-        # Show key parameters if they exist
+        # Show formatted parameters
         if tool_input:
-            key_params = []
-            for key, value in tool_input.items():
-                if isinstance(value, str) and len(value) > 50:
-                    value = value[:50] + "..."
-                key_params.append(f"{key}: {value}")
+            self.console.print(tool_text)
+            self._print_tool_params(tool_input)
+        else:
+            self.console.print(tool_text)
+    
+    def _print_tool_params(self, tool_input: Dict[str, Any]) -> None:
+        """Print tool parameters with enhanced formatting."""
+        for key, value in tool_input.items():
+            param_text = Text()
+            param_text.append("    ├─ ", style="dim blue")
+            param_text.append(f"{key}: ", style="cyan")
             
-            if key_params:
-                tool_text.append(f" ({', '.join(key_params[:2])})", style="dim")
+            # Special handling for file paths
+            if key.endswith('_path') or key == 'file_path' or (isinstance(value, str) and ('/' in value or '\\' in value)):
+                formatted_path = self._format_file_path(str(value))
+                param_text.append(formatted_path, style="yellow")
+            # Special handling for long strings
+            elif isinstance(value, str) and len(value) > 80:
+                truncated = value[:80] + "..."
+                # Check if it's likely code/content
+                if any(marker in value[:100] for marker in ['{', '[', '<', '\\n', 'def ', 'class ']):
+                    param_text.append(f'"{truncated}"', style="dim green")
+                else:
+                    param_text.append(f'"{truncated}"', style="white")
+            else:
+                # Regular values
+                if isinstance(value, str):
+                    param_text.append(f'"{value}"', style="white")
+                else:
+                    param_text.append(str(value), style="magenta")
+            
+            self.console.print(param_text)
+    
+    def _format_file_path(self, path: str) -> str:
+        """Format file path for better readability."""
+        # Show relative path from working directory if possible
+        try:
+            import os
+            if os.path.isabs(path):
+                # Try to make it relative to current working directory
+                rel_path = os.path.relpath(path)
+                if len(rel_path) < len(path):
+                    return rel_path
+        except (ValueError, OSError):
+            pass
         
-        self.console.print(tool_text)
+        # Truncate very long paths intelligently
+        if len(path) > 60:
+            parts = path.split('/')
+            if len(parts) > 3:
+                return f"{parts[0]}/.../{'/'.join(parts[-2:])}"
+            else:
+                return f"{path[:30]}...{path[-30:]}"
+        
+        return path
     
     def _print_tool_result(self, tool_name: str, result: str) -> None:
-        """Print tool result with clean formatting."""
+        """Print tool result with enhanced formatting and visual hierarchy."""
         
-        # Truncate long results
-        if len(result) > 1000:
-            result = result[:1000] + "\n... (truncated)"
+        if not result.strip():
+            return
         
-        # Don't show the completed line - just show the result with proper formatting
-        if result.strip():
-            # Print connector
-            connector = Text()
-            connector.append("  ⎿ ", style="dim")
-            self.console.print(connector)
+        # Show result header with success indicator
+        result_header = Text()
+        result_header.append("  ✓ ", style="bright_green")
+        result_header.append(f"{tool_name} completed", style="green")
+        self.console.print(result_header)
+        
+        # Print visual connector
+        connector = Text()
+        connector.append("  │", style="dim green")
+        self.console.print(connector)
+        
+        # Format the result content
+        self._format_and_print_result(result)
+    
+    def _format_and_print_result(self, result: str) -> None:
+        """Format and print tool result with appropriate styling."""
+        # Truncate very long results
+        original_length = len(result)
+        if original_length > 2000:
+            result = result[:2000] + "\n... (truncated)"
             
-            # Enhanced code detection and syntax highlighting
-            code_indicators = [
-                "{", "[", "<", "def ", "class ", "import ", "function", "const ", "let ", "var ",
-                "#!/", "<?php", "<html", "SELECT", "CREATE", "INSERT", "UPDATE", "DELETE"
-            ]
+        # Detect result type and format accordingly
+        if self._is_file_operation_result(result):
+            self._print_file_operation_result(result)
+        elif self._is_code_content(result):
+            self._print_code_result(result)
+        elif self._is_structured_data(result):
+            self._print_structured_result(result)
+        else:
+            self._print_plain_result(result)
             
-            if any(marker in result for marker in code_indicators):
-                # Try to detect language and show with syntax highlighting
-                language = self._detect_language(result)
-                try:
-                    syntax = Syntax(result, language, theme="monokai", line_numbers=False)
-                    # Indent the code block slightly
-                    from rich.panel import Panel
-                    code_panel = Panel(syntax, border_style="dim", padding=(0, 1))
-                    self.console.print(code_panel)
-                except Exception:
-                    # Simple indented text fallback
-                    indented_result = "\n".join(f"    {line}" for line in result.split("\n"))
-                    self.console.print(indented_result, style="dim")
-            else:
-                # Simple indented text
-                indented_result = "\n".join(f"    {line}" for line in result.split("\n"))
-                self.console.print(indented_result, style="dim")
+        # Show truncation notice if applicable
+        if original_length > 2000:
+            truncation_notice = Text()
+            truncation_notice.append("  └─ ", style="dim green")
+            truncation_notice.append(f"({original_length - 2000} characters truncated)", style="dim yellow")
+            self.console.print(truncation_notice)
+    
+    def _is_file_operation_result(self, result: str) -> bool:
+        """Check if result is from a file operation."""
+        file_indicators = [
+            "Modified file", "Created file", "Deleted file", "File not found",
+            "replacement(s)", "added", "removed", "changed"
+        ]
+        return any(indicator in result for indicator in file_indicators)
+    
+    def _is_code_content(self, result: str) -> bool:
+        """Check if result contains code content."""
+        code_indicators = [
+            "def ", "class ", "function ", "import ", "from ", "const ", "let ", "var ",
+            "#!/", "<?php", "<html", "SELECT", "CREATE", "{", "[", "<"
+        ]
+        return any(marker in result[:200] for marker in code_indicators)
+    
+    def _is_structured_data(self, result: str) -> bool:
+        """Check if result is structured data (JSON, XML, etc.)."""
+        stripped = result.strip()
+        return (stripped.startswith('{') and stripped.endswith('}')) or \
+               (stripped.startswith('[') and stripped.endswith(']')) or \
+               stripped.startswith('<') and stripped.endswith('>')
+    
+    def _print_file_operation_result(self, result: str) -> None:
+        """Print file operation result with special formatting."""
+        lines = result.split('\n')
+        for line in lines:
+            if line.strip():
+                formatted_line = Text()
+                formatted_line.append("  └─ ", style="dim green")
+                
+                # Highlight file paths
+                if '/' in line or '\\' in line:
+                    # Try to identify and highlight file paths
+                    words = line.split()
+                    for word in words:
+                        if '/' in word or '\\' in word:
+                            formatted_line.append(word + " ", style="yellow")
+                        elif word.endswith('.py') or word.endswith('.js') or word.endswith('.html'):
+                            formatted_line.append(word + " ", style="yellow")
+                        else:
+                            formatted_line.append(word + " ", style="dim white")
+                else:
+                    formatted_line.append(line, style="dim white")
+                
+                self.console.print(formatted_line)
+    
+    def _print_code_result(self, result: str) -> None:
+        """Print code content with syntax highlighting."""
+        try:
+            from rich.panel import Panel
+            language = self._detect_language(result)
+            syntax = Syntax(result, language, theme="monokai", line_numbers=False, indent_guides=True)
+            
+            # Create a subtle panel for code
+            code_panel = Panel(
+                syntax,
+                border_style="dim green",
+                padding=(0, 1),
+                title="Result",
+                title_align="left"
+            )
+            self.console.print(code_panel, style="dim")
+        except Exception:
+            # Fallback to indented text
+            self._print_plain_result(result)
+    
+    def _print_structured_result(self, result: str) -> None:
+        """Print structured data (JSON, XML) with formatting."""
+        try:
+            import json
+            # Try to parse and pretty-print JSON
+            if result.strip().startswith(('{', '[')):
+                parsed = json.loads(result)
+                formatted = json.dumps(parsed, indent=2)
+                self._print_code_result(formatted)
+                return
+        except:
+            pass
         
-        # Add spacing after tool result
-        self.console.print()
+        # Fallback to regular formatting
+        self._print_plain_result(result)
+    
+    def _print_plain_result(self, result: str) -> None:
+        """Print plain text result with consistent indentation."""
+        lines = result.split('\n')
+        for i, line in enumerate(lines):
+            if line.strip():  # Skip empty lines
+                formatted_line = Text()
+                if i == 0:
+                    formatted_line.append("  └─ ", style="dim green")
+                else:
+                    formatted_line.append("     ", style="dim")
+                formatted_line.append(line, style="dim white")
+                self.console.print(formatted_line)
+            elif i > 0 and i < len(lines) - 1:  # Keep internal empty lines
+                self.console.print("     ", style="dim")
+        
     
     def _print_error(self, message: str) -> None:
         """Print error message."""
