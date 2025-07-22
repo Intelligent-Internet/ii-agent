@@ -211,12 +211,11 @@ class OpenAIDirectClient(LLMClient):
             try:
                 extra_body = {}
                 openai_max_tokens = max_tokens
-                openai_temperature = temperature
+                openai_temperature = temperature  # Not actually used - is this intended?
                 if self.cot_model:
                     extra_body["max_completion_tokens"] = max_tokens
                     openai_max_tokens = OpenAI_NOT_GIVEN
-                    openai_temperature = OpenAI_NOT_GIVEN
-                print(f'Openapi base client : {self.client} of type {str(type(self.client))}')  # Debug remove before PR
+                    openai_temperature = OpenAI_NOT_GIVEN 
                 response = self.client.chat.completions.create(
                     model=self.model_name,
                     messages=openai_messages,
@@ -225,7 +224,6 @@ class OpenAIDirectClient(LLMClient):
                     max_tokens=openai_max_tokens,
                     extra_body=extra_body,
                 )
-                print(f"OpenAI response: {response}")  # Debug remove before PR
                 assert response is not None, "OpenAI response is None"
                 break
             except (
