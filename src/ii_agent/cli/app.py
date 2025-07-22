@@ -97,6 +97,15 @@ class CLIApp:
 
         settings_store = await FileSettingsStore.get_instance(self.config, None)
         settings = await settings_store.load()
+        
+        # Ensure CLI config exists with defaults
+        if not settings.cli_config:
+            from ii_agent.core.config.cli_config import CliConfig
+            settings.cli_config = CliConfig()
+            await settings_store.store(settings)
+        
+        # Update console subscriber with settings
+        self.console_subscriber.settings = settings
 
         # Load saved state if --continue flag is used
         saved_state_data = None

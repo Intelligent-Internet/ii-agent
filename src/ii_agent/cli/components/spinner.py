@@ -132,7 +132,14 @@ class AnimatedSpinner:
             self.thread.join(timeout=0.5)
         
         if self.live:
-            self.live.stop()
+            try:
+                # Update with empty content before stopping
+                from rich.text import Text
+                self.live.update(Text(""))
+                self.live.refresh()
+                self.live.stop()
+            except Exception:
+                self.live.stop()
             self.live = None
     
     def __enter__(self):
@@ -196,7 +203,14 @@ class SimpleSpinner:
             self.thread.join(timeout=0.5)
         
         if self.live:
-            self.live.stop()
+            try:
+                # Update with empty content before stopping
+                from rich.text import Text
+                self.live.update(Text(""))
+                self.live.refresh()
+                self.live.stop()
+            except Exception:
+                self.live.stop()
             self.live = None
     
     def __enter__(self):
