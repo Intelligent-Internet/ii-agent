@@ -36,7 +36,7 @@ from ii_agent.cli.state_persistence import (
 )
 from ii_agent.tools import AgentToolManager
 from ii_agent.llm.base import ToolParam
-from ii_agent.mcp.server import create_mcp
+from ii_tool.mcp.server import create_mcp
 
 
 class CLIApp:
