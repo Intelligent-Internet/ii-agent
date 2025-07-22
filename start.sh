@@ -4,25 +4,23 @@ setup_frontend_env() {
   # Check if frontend/.env exists, if not, prompt for Google API credentials
   if [ ! -f "frontend/.env" ]; then
     echo "Provide Google API credentials for drive authentication (optional)"
-    
+
     echo -n "Enter your GOOGLE_API_KEY (optional): "
     read -r GOOGLE_API_KEY
-    
+
     echo -n "Enter your GOOGLE_CLIENT_ID (optional): "
     read -r GOOGLE_CLIENT_ID
-    
+
     echo -n "Enter your GOOGLE_CLIENT_SECRET (optional): "
     read -r GOOGLE_CLIENT_SECRET
-    
+
     # Create the .env file in frontend directory
-    cat > frontend/.env << EOF
+    cat >frontend/.env <<EOF
 NEXT_PUBLIC_API_URL=$BACKEND_URL
-NEXT_PUBLIC_VSCODE_URL=$BASE_URL
 GOOGLE_API_KEY=$GOOGLE_API_KEY
 GOOGLE_CLIENT_ID=$GOOGLE_CLIENT_ID
 GOOGLE_CLIENT_SECRET=$GOOGLE_CLIENT_SECRET
 EOF
-    
     echo "Created frontend/.env file"
   else
     echo "[✓] Host IP set to: $HOST_IP"
@@ -33,7 +31,16 @@ EOF
     echo "[✓] Nginx Port: $NGINX_PORT"
     echo ""
     echo "Found existing frontend/.env file"
-    echo "Current frontend/.env file contents:"
+    echo "Updating NEXT_PUBLIC_API_URL in existing frontend/.env file"
+
+    # Update the NEXT_PUBLIC_API_URL line in the existing .env file
+    if grep -q "^NEXT_PUBLIC_API_URL=" frontend/.env; then
+      sed -i.bak "s|^NEXT_PUBLIC_API_URL=.*|NEXT_PUBLIC_API_URL=$BACKEND_URL|" frontend/.env
+    else
+      echo "NEXT_PUBLIC_API_URL=$BACKEND_URL" >>frontend/.env
+    fi
+
+    echo "Updated frontend/.env file contents:"
     echo "─────────────────────────────"
     cat frontend/.env
     echo "─────────────────────────────"
@@ -45,33 +52,33 @@ EOF
 }
 
 print_banner() {
-echo -e "\033[1;34m"
-echo "╔══════════════════════════════════════════════════════════════════╗"
-echo "║ ██╗██╗       █████╗  ██████╗ ███████╗███╗   ██╗████████╗         ║"
-echo "║ ██║██║      ██╔══██╗██╔════╝ ██╔════╝████╗  ██║╚══██╔══╝         ║"
-echo "║ ██║██║█████╗███████║██║  ███╗█████╗  ██╔██╗ ██║   ██║            ║"
-echo "║ ██║██║╚════╝██╔══██║██║   ██║██╔══╝  ██║╚██╗██║   ██║            ║"
-echo "║ ██║██║      ██║  ██║╚██████╔╝███████╗██║ ╚████║   ██║            ║"
-echo "║ ╚═╝╚═╝      ╚═╝  ╚═╝ ╚═════╝ ╚══════╝╚═╝  ╚═══╝   ╚═╝            ║"
-echo "║                                                                  ║"
-echo "║                          🧠 Powered by @ii.inc                   ║"
-echo "╚══════════════════════════════════════════════════════════════════╝"
-echo ""
-echo -e "\033[0m"
+  echo -e "\033[1;34m"
+  echo "╔══════════════════════════════════════════════════════════════════╗"
+  echo "║ ██╗██╗       █████╗  ██████╗ ███████╗███╗   ██╗████████╗         ║"
+  echo "║ ██║██║      ██╔══██╗██╔════╝ ██╔════╝████╗  ██║╚══██╔══╝         ║"
+  echo "║ ██║██║█████╗███████║██║  ███╗█████╗  ██╔██╗ ██║   ██║            ║"
+  echo "║ ██║██║╚════╝██╔══██║██║   ██║██╔══╝  ██║╚██╗██║   ██║            ║"
+  echo "║ ██║██║      ██║  ██║╚██████╔╝███████╗██║ ╚████║   ██║            ║"
+  echo "║ ╚═╝╚═╝      ╚═╝  ╚═╝ ╚═════╝ ╚══════╝╚═╝  ╚═══╝   ╚═╝            ║"
+  echo "║                                                                  ║"
+  echo "║                          🧠 Powered by @ii.inc                   ║"
+  echo "╚══════════════════════════════════════════════════════════════════╝"
+  echo ""
+  echo -e "\033[0m"
 }
 
-get_host_ip() { 
-if [[ "$OSTYPE" == "darwin"* ]]; then
-  # macOS
-  HOST_IP=$(ipconfig getifaddr en0)
-elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
-  # Linux
-  HOST_IP=$(hostname -I | awk '{print $1}')
-else
-  echo "Unsupported OS type: $OSTYPE"
-  HOST_IP="localhost"
-fi
-echo "$HOST_IP"
+get_host_ip() {
+  if [[ "$OSTYPE" == "darwin"* ]]; then
+    # macOS
+    HOST_IP=$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null)
+  elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
+    # Linux
+    HOST_IP=$(hostname -I | awk '{print $1}')
+  else
+    echo "Unsupported OS type: $OSTYPE"
+    HOST_IP="localhost"
+  fi
+  echo "$HOST_IP"
 }
 
 main() {
@@ -81,10 +88,9 @@ main() {
   echo "HOST_IP: $HOST_IP"
   #export HOST_IP="CUSTOM_IP"
   #Set up backend environment variables
-  export HOST_IP=35.202.142.110
-  export FRONTEND_PORT=5000
-  export BACKEND_PORT=10000
-  export NGINX_PORT=9080
+  export FRONTEND_PORT=3000
+  export BACKEND_PORT=8000
+  export NGINX_PORT=8080
   export SANDBOX_PORT=17300
   export CODE_SERVER_PORT=9000
   #Change this if you have your own domain and reverse proxy
@@ -94,13 +100,10 @@ main() {
   export PUBLIC_DOMAIN=${HOST_IP}.nip.io
   export BASE_URL=${HOST_IP}.nip.io:${NGINX_PORT}
 
-
   #Set up frontend environment
   setup_frontend_env
 
   # Start docker-compose with the HOST_IP variable
-  # Use dev profile for faster development
-  export COMPOSE_PROFILES="dev"
   docker compose up "$@"
 }
 

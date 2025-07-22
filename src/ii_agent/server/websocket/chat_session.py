@@ -266,7 +266,10 @@ class ChatSession:
                     type=EventType.AGENT_INITIALIZED,
                     content={
                         "message": "Agent initialized"
-                        + (" with reviewer" if self.enable_reviewer else "")
+                        + (" with reviewer" if self.enable_reviewer else ""),
+                        "vscode_url": sandbox_manager.expose_port(
+                            self.config.code_server_port
+                        ),
                     },
                 )
             )
