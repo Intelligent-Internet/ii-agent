@@ -9,7 +9,7 @@ import asyncio
 import json
 from pathlib import Path
 from typing import Optional, Dict, Any
-from fastmcp import Client
+from fastmcp.client import Client
 from ii_agent.core.config.ii_agent_config import IIAgentConfig
 from ii_agent.core.config.agent_config import AgentConfig
 from ii_agent.core.config.llm_config import LLMConfig

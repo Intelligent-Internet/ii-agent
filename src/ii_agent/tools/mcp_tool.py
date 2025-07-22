@@ -1,5 +1,5 @@
 from typing import Any, Optional
-from fastmcp import Client
+from fastmcp.client import Client
 from mcp.types import ToolAnnotations
 from ii_agent.tools.base import BaseTool, ToolResult, TextContent, ImageContent, ToolConfirmationDetails, ToolConfirmationOutcome
 from ii_agent.core.config.ii_agent_config import IIAgentConfig
