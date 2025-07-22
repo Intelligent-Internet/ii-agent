@@ -1,6 +1,7 @@
 from typing import Annotated
 from pydantic import Field
 from ii_tool.tools.shell.terminal_manager import BaseShellManager, ShellCommandTimeoutError, ShellBusyError
+from ii_tool.tools.base import BaseTool
 
 DEFAULT_TIMEOUT = 60
 
@@ -41,10 +42,11 @@ Usage notes:
     cd /foo/bar && pytest tests
     </bad-example>"""
 
-class ShellRunCommand:
+class ShellRunCommand(BaseTool):
     name = "Bash"
     description = DESCRIPTION
-
+    read_only = False
+    
     def __init__(self, BaseShellManager: BaseShellManager) -> None:
         self.shell_manager = BaseShellManager
 

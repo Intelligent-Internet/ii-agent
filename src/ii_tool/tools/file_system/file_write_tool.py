@@ -3,8 +3,8 @@
 from pathlib import Path
 from typing import Annotated
 from pydantic import Field
-from ii_tool.core.workspace import WorkspaceManager
-from .base import BaseFileSystemTool, FileSystemValidationError
+from ii_tool.core.workspace import WorkspaceManager, FileSystemValidationError
+from .base import BaseFileSystemTool
 
 
 DESCRIPTION = """Writes a file to the local filesystem.
@@ -22,12 +22,10 @@ class FileWriteTool(BaseFileSystemTool):
     
     name = "Write"
     description = DESCRIPTION
+    read_only = False
     
     def __init__(self, workspace_manager: WorkspaceManager):
         super().__init__(workspace_manager)
-
-    def is_read_only(self) -> bool:
-        return False
 
     def run_impl(
         self,
@@ -37,7 +35,7 @@ class FileWriteTool(BaseFileSystemTool):
         """Execute the file write operation."""
         
         try:
-            self.validate_path(file_path)
+            self.workspace_manager.validate_path(file_path)
 
             path = Path(file_path).resolve()
             

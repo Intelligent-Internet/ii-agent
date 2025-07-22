@@ -1,10 +1,12 @@
 from typing import Annotated
 from pydantic import Field
 from ii_tool.tools.shell.terminal_manager import BaseShellManager
+from ii_tool.tools.base import BaseTool
 
-class ShellKill:
+class ShellKill(BaseTool):
     name = "BashKill"
     description = "Kill a bash session by name"
+    read_only = False
 
     def __init__(self, BaseShellManager: BaseShellManager) -> None:
         self.shell_manager = BaseShellManager

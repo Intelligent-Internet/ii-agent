@@ -6,8 +6,8 @@ import pymupdf
 from pathlib import Path
 from typing import Annotated, Optional
 from pydantic import Field
-from ii_tool.core.workspace import WorkspaceManager
-from ii_tool.tools.file_system.base import BaseFileSystemTool, FileSystemValidationError
+from ii_tool.core.workspace import WorkspaceManager, FileSystemValidationError
+from ii_tool.tools.file_system.base import BaseFileSystemTool
 from ii_tool.tools.file_system.utils import encode_image
 
 
@@ -168,6 +168,7 @@ class FileReadTool(BaseFileSystemTool):
     
     name = "Read"
     description = DESCRIPTION
+    read_only = True
     
     def __init__(self, workspace_manager: WorkspaceManager):
         super().__init__(workspace_manager)
@@ -188,7 +189,7 @@ class FileReadTool(BaseFileSystemTool):
             return "ERROR: Limit must be a positive number"
 
         try:
-            self.validate_existing_file_path(file_path)
+            self.workspace_manager.validate_existing_file_path(file_path)
 
             path = Path(file_path).resolve()
         

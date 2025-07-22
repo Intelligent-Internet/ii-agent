@@ -3,9 +3,8 @@
 from pathlib import Path
 from typing import Annotated
 from pydantic import Field
-from ii_tool.core.workspace import WorkspaceManager
-from ii_tool.tools.file_system.base import BaseFileSystemTool, FileSystemValidationError
-
+from ii_tool.core.workspace import WorkspaceManager, FileSystemValidationError
+from ii_tool.tools.file_system.base import BaseFileSystemTool
 
 DESCRIPTION = """Performs exact string replacements in files. 
 
@@ -45,12 +44,10 @@ class FileEditTool(BaseFileSystemTool):
     
     name = "Edit"
     description = DESCRIPTION
+    read_only = False
     
     def __init__(self, workspace_manager: WorkspaceManager):
         super().__init__(workspace_manager)
-
-    def is_read_only(self) -> bool:
-        return False
 
     def run_impl(
         self,
@@ -67,7 +64,7 @@ class FileEditTool(BaseFileSystemTool):
 
         # Validate file path
         try:
-            self.validate_existing_file_path(file_path)
+            self.workspace_manager.validate_existing_file_path(file_path)
         
             path = Path(file_path).resolve()
 

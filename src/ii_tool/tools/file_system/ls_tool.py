@@ -6,8 +6,8 @@ import fnmatch
 from pathlib import Path
 from typing import Annotated, Optional, List, NamedTuple
 from pydantic import Field
-from ii_tool.core.workspace import WorkspaceManager
-from ii_tool.tools.file_system.base import BaseFileSystemTool, FileSystemValidationError
+from ii_tool.core.workspace import WorkspaceManager, FileSystemValidationError
+from ii_tool.tools.file_system.base import BaseFileSystemTool
 
 
 DESCRIPTION = """Lists files and directories in a given path. The path parameter must be an absolute path, not a relative path. You can optionally provide an array of glob patterns to ignore with the ignore parameter. You should generally prefer the Glob and Grep tools, if you know which directories to search."""
@@ -30,6 +30,7 @@ class LSTool(BaseFileSystemTool):
     
     name = "LS"
     description = DESCRIPTION
+    read_only = True
 
     def __init__(self, workspace_manager: WorkspaceManager):
         super().__init__(workspace_manager)
@@ -224,7 +225,7 @@ class LSTool(BaseFileSystemTool):
         """
 
         try:
-            self.validate_existing_directory_path(path)
+            self.workspace_manager.validate_existing_directory_path(path)
             
             target_path = Path(path).resolve()
 

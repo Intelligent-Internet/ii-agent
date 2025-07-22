@@ -55,13 +55,11 @@ class MultiEditTool(BaseTool):
     
     name = "MultiEdit"
     description = DESCRIPTION
+    read_only = False
     
     def __init__(self, workspace_manager: WorkspaceManager):
         super().__init__()
         self.file_edit_tool = FileEditTool(workspace_manager)
-
-    def is_read_only(self) -> bool:
-        return False
 
     def run_impl(
         self,

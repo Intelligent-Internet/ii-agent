@@ -69,9 +69,7 @@ class TodoWriteTool(BaseTool):
     
     name = "TodoWrite"
     description = DESCRIPTION
-
-    def is_read_only(self) -> bool:
-        return True
+    read_only = False
 
     def run_impl(
         self,

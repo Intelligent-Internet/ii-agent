@@ -1,9 +1,11 @@
 from ii_tool.tools.shell.terminal_manager import BaseShellManager
 from ii_tool.tools.shell import ShellView
+from ii_tool.tools.base import BaseTool
 
-class ShellList:
+class ShellList(BaseTool):
     name = "BashList"
     description = "List all available bash sessions"
+    read_only = True
 
     def __init__(self, BaseShellManager: BaseShellManager) -> None:
         self.shell_manager = BaseShellManager

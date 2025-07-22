@@ -1,12 +1,14 @@
 from typing import Annotated, List
 from pydantic import Field
 from ii_tool.tools.shell.terminal_manager import BaseShellManager
+from ii_tool.tools.base import BaseTool
 
 DEFAULT_TIMEOUT = 60
 
-class ShellView:
+class ShellView(BaseTool):
     name = "BashView"
     description = "View the current output of bash sessions."
+    read_only = True
 
     def __init__(self, BaseShellManager: BaseShellManager) -> None:
         self.shell_manager = BaseShellManager

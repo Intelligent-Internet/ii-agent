@@ -1,11 +1,13 @@
 from typing import Annotated
 from pydantic import Field
 from ii_tool.tools.shell.terminal_manager import BaseShellManager
+from ii_tool.tools.base import BaseTool
 
-class ShellStopCommand:
+class ShellStopCommand(BaseTool):
     name = "BashStop"
     description = "Stop a running command in a bash session by sending a SIGINT signal (Ctrl+C)."
-
+    read_only = False
+    
     def __init__(self, BaseShellManager: BaseShellManager) -> None:
         self.shell_manager = BaseShellManager
 

@@ -29,9 +29,7 @@ class TodoReadTool(BaseTool):
     
     name = "TodoRead"
     description = DESCRIPTION
-
-    def is_read_only(self) -> bool:
-        return True
+    read_only = True
 
     def run_impl(self):
         """Read and return the current todo list."""

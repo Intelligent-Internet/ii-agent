@@ -6,8 +6,8 @@ import re
 from pathlib import Path
 from typing import Annotated, Dict, List, Optional
 from pydantic import Field
-from ii_tool.core.workspace import WorkspaceManager
-from ii_tool.tools.file_system.base import BaseFileSystemTool, FileSystemValidationError
+from ii_tool.core.workspace import WorkspaceManager, FileSystemValidationError
+from ii_tool.tools.file_system.base import BaseFileSystemTool
 
 
 DESCRIPTION = """\
@@ -80,6 +80,7 @@ class GrepTool(BaseFileSystemTool):
     
     name = "Grep"
     description = DESCRIPTION
+    read_only = True
 
     def __init__(self, workspace_manager: WorkspaceManager):
         super().__init__(workspace_manager)
@@ -174,7 +175,7 @@ class GrepTool(BaseFileSystemTool):
             if path is None:
                 search_dir = self.workspace_manager.get_workspace_path()
             else:
-                self.validate_existing_directory_path(path)
+                self.workspace_manager.validate_existing_directory_path(path)
                 search_dir = Path(path).resolve()
             
             matches = run_ripgrep(pattern, search_dir, include)

@@ -2,11 +2,13 @@ from typing import Annotated
 from pydantic import Field
 from ii_tool.tools.shell.terminal_manager import BaseShellManager, ShellInvalidSessionNameError, TmuxSessionExists
 from ii_tool.core.workspace import WorkspaceManager, FileSystemValidationError
+from ii_tool.tools.base import BaseTool
 
-class ShellInit:
+class ShellInit(BaseTool):
     name = "BashInit"
     description = "Initialize a bash session with a given name and start directory. Use this before running any commands in the session."
-
+    read_only = False
+    
     def __init__(self, BaseShellManager: BaseShellManager, workspace_manager: WorkspaceManager) -> None:
         self.shell_manager = BaseShellManager
         self.workspace_manager = workspace_manager

@@ -3,8 +3,8 @@
 from pathlib import Path
 from typing import Annotated, Optional
 from pydantic import Field
-from ii_tool.core.workspace import WorkspaceManager
-from ii_tool.tools.file_system.base import BaseFileSystemTool, FileSystemValidationError
+from ii_tool.core.workspace import WorkspaceManager, FileSystemValidationError
+from ii_tool.tools.file_system.base import BaseFileSystemTool
 
 
 DESCRIPTION = """- Fast file pattern matching tool that works with any codebase size
@@ -21,7 +21,8 @@ class GlobTool(BaseFileSystemTool):
     
     name = "Glob"
     description = DESCRIPTION
-
+    read_only = True
+    
     def __init__(self, workspace_manager: WorkspaceManager):
         super().__init__(workspace_manager)
 
@@ -36,7 +37,7 @@ class GlobTool(BaseFileSystemTool):
             if path is None:
                 search_dir = self.workspace_manager.get_workspace_path()
             else:
-                self.validate_existing_directory_path(path)
+                self.workspace_manager.validate_existing_directory_path(path)
                 search_dir = Path(path).resolve()
 
             # Execute glob pattern using pathlib
