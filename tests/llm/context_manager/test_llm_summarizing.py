@@ -1,4 +1,3 @@
-import logging
 from unittest.mock import Mock
 
 from ii_agent.llm.base import (
@@ -13,7 +12,6 @@ from ii_agent.llm.token_counter import TokenCounter
 
 
 def test_llm_summarizing_context_manager():
-    mock_logger = Mock(spec=logging.Logger)
     mock_llm_client = Mock(spec=LLMClient)
 
     # Mock the generate method to return a summary response
@@ -26,7 +24,6 @@ def test_llm_summarizing_context_manager():
     context_manager = LLMSummarizingContextManager(
         client=mock_llm_client,
         token_counter=token_counter,
-        logger=mock_logger,
         token_budget=1000,
         max_size=10,
     )
@@ -74,13 +71,8 @@ def test_llm_calls_during_summarization():
         llm_calls.append(call_info)
 
         # Return a mock summary response
-        return [
-            TextResult(
-                text="this_is_summary"
-            )
-        ], None
+        return [TextResult(text="this_is_summary")], None
 
-    mock_logger = Mock(spec=logging.Logger)
     mock_llm_client = Mock(spec=LLMClient)
     mock_llm_client.generate.side_effect = spy_generate
     token_counter = TokenCounter()
@@ -88,7 +80,6 @@ def test_llm_calls_during_summarization():
     context_manager = LLMSummarizingContextManager(
         client=mock_llm_client,
         token_counter=token_counter,
-        logger=mock_logger,
         token_budget=1000,
         max_size=8,  # Smaller size to trigger summarization
     )
@@ -155,11 +146,16 @@ def test_llm_calls_during_summarization():
     result = context_manager.apply_truncation_if_needed(conversation)
 
     expected_result = [
-        [TextPrompt(text='Can you read the contents of config.py?')], 
-        [TextResult(text='Conversation Summary: this_is_summary')], 
-        [ToolFormattedResult(tool_call_id='call_789', tool_name='edit_file', tool_output='File successfully modified')], 
-        [TextResult(text="I've added error handling to the Flask application.")]
+        [TextPrompt(text="Can you read the contents of config.py?")],
+        [TextResult(text="Conversation Summary: this_is_summary")],
+        [
+            ToolFormattedResult(
+                tool_call_id="call_789",
+                tool_name="edit_file",
+                tool_output="File successfully modified",
+            )
+        ],
+        [TextResult(text="I've added error handling to the Flask application.")],
     ]
 
     assert result == expected_result
-
