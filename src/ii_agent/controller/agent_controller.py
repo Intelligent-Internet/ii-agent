@@ -63,6 +63,11 @@ class AgentController:
         self.event_stream = event_stream
         self.context_manager = context_manager
 
+    @property
+    def state(self) -> State:
+        """Return the current conversation state/history."""
+        return self.history
+
     def _validate_tool_parameters(self):
         """Validate tool parameters and check for duplicates."""
         tool_params = [tool.get_tool_param() for tool in self.tool_manager.tools]

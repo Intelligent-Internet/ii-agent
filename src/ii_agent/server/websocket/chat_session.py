@@ -96,6 +96,23 @@ class ChatSession:
         """Get the event stream for this session."""
         return self.event_stream
 
+    def save_session_state(self):
+        """Save the current session state to file store."""
+        try:
+            if (
+                self.agent_controller
+                and hasattr(self.agent_controller, "state")
+                and self.agent_controller.state
+            ):
+                self.agent_controller.state.save_to_session(
+                    str(self.session_uuid), self.file_store
+                )
+                logger.info(f"Saved session state for session {self.session_uuid}")
+            else:
+                logger.debug(f"No agent state to save for session {self.session_uuid}")
+        except Exception as e:
+            logger.error(f"Error saving session state for {self.session_uuid}: {e}")
+
     async def send_event(self, event: RealtimeEvent):
         """Send an event to the client via WebSocket."""
         if self.websocket:
@@ -180,12 +197,8 @@ class ChatSession:
 
     def cleanup(self):
         """Clean up resources associated with this session."""
-        # Set websocket to None but keep controllers running
-        if self.agent_controller:
-            if hasattr(self.agent_controller, "state") and self.agent_controller.state:
-                self.agent_controller.state.save_to_session(
-                    str(self.session_uuid), self.file_store
-                )
+        # Save session state before cleanup as fallback
+        self.save_session_state()
 
         # Cancel any running tasks
         if self.active_task and not self.active_task.done():

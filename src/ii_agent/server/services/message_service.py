@@ -411,6 +411,8 @@ class MessageService:
                 )
             )
         finally:
+            # Save session state after agent turn completes
+            session.save_session_state()
             # Clean up task reference
             session.active_task = None
 
