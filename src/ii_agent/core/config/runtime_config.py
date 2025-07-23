@@ -7,7 +7,7 @@ from ii_agent.runtime.model.constants import RuntimeMode
 class RuntimeConfig(BaseModel):
     """Configuration for the runtime."""
 
-    mode: RuntimeMode = Field(default=RuntimeMode.DOCKER)
+    mode: RuntimeMode = Field(default=RuntimeMode.LOCAL)
     template_id: str | None = Field(default=None)
     runtime_api_key: SecretStr | None = Field(default=None)
     service_port: int = Field(default=17300)

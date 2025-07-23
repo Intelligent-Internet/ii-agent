@@ -1,15 +1,19 @@
+from __future__ import annotations
 import asyncio
 import os
 import uuid
-from typing import Dict
+from typing import Dict, TYPE_CHECKING
 
 import docker
+from fastmcp.client import Client
 from ii_agent.core.config.utils import load_ii_agent_config
-from ii_agent.core.storage.models.settings import Settings
 from ii_agent.runtime.base import BaseRuntime
 from ii_agent.runtime.config.runtime_config import RuntimeSettings
 from ii_agent.runtime.runtime_registry import RuntimeRegistry
 from ii_agent.runtime.model.constants import RuntimeMode
+
+if TYPE_CHECKING:
+    from ii_agent.core.storage.models.settings import Settings
 
 
 @RuntimeRegistry.register(RuntimeMode.DOCKER)
@@ -58,6 +62,11 @@ class DockerRuntime(BaseRuntime):
         self.host_url = (
             f"http://{self.session_id}:{self.settings.runtime_config.service_port}"
         )
+
+    def get_mcp_client(self, workspace_dir: str) -> Client:
+        if not self.host_url:
+            raise ValueError("Host URL is not set")
+        return Client(self.host_url)
 
     def expose_port(self, port: int) -> str:
         public_url = f"http://{self.session_id}-{port}.{os.getenv('BASE_URL')}"

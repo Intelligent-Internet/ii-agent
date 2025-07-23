@@ -1,9 +1,15 @@
+from __future__ import annotations
 from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING
 from uuid import UUID
 
-from ii_agent.core.storage.models.settings import Settings
+from fastmcp import Client
+
 from ii_agent.runtime.model.exception import RuntimeUninitializedError
 from ii_agent.runtime.model.constants import RuntimeMode
+
+if TYPE_CHECKING:
+    from ii_agent.core.storage.models.settings import Settings
 
 
 class BaseRuntime(ABC):
@@ -24,10 +30,9 @@ class BaseRuntime(ABC):
         self.session_id = session_id
         self.settings = settings
 
-    def get_host_url(self) -> str:
-        if self.host_url is None:
-            raise RuntimeUninitializedError("Host URL is not set")
-        return self.host_url
+    @abstractmethod
+    def get_mcp_client(self, workspace_dir: str) -> Client:
+        raise NotImplementedError("Subclasses must implement this method")
 
     def get_runtime_id(self) -> str:
         if self.runtime_id is None:

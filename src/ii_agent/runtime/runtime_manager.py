@@ -1,4 +1,6 @@
 import uuid
+
+from fastmcp.client import Client
 from ii_agent.core.storage.models.settings import Settings
 from ii_agent.runtime.model.exception import RuntimeUninitializedError
 from ii_agent.runtime.runtime_registry import RuntimeRegistry
@@ -17,15 +19,15 @@ class RuntimeManager:
         )
         await self.runtime.create()
 
-    def expose_port(self, port: int) -> str:
+    async def expose_port(self, port: int) -> str:
         if self.runtime is None:
             raise RuntimeUninitializedError("Runtime is not initialized")
         return self.runtime.expose_port(port)
 
-    def get_host_url(self) -> str:
+    async def get_mcp_client(self, workspace_dir: str) -> Client:
         if self.runtime is None:
             raise RuntimeUninitializedError("Runtime is not initialized")
-        return self.runtime.get_host_url()
+        return self.runtime.get_mcp_client(workspace_dir)
 
     # WIP
     async def connect_runtime(self):

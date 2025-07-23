@@ -1,10 +1,17 @@
+from __future__ import annotations
 import asyncio
 import os
 import uuid
-from ii_agent.core.storage.models.settings import Settings
+from typing import TYPE_CHECKING
+
+from fastmcp.client import Client
+from ii_tool.mcp.server import create_mcp
 from ii_agent.runtime.base import BaseRuntime
 from ii_agent.runtime.runtime_registry import RuntimeRegistry
 from ii_agent.runtime.model.constants import RuntimeMode
+
+if TYPE_CHECKING:
+    from ii_agent.core.storage.models.settings import Settings
 
 
 @RuntimeRegistry.register(RuntimeMode.LOCAL)
@@ -22,6 +29,10 @@ class LocalRuntime(BaseRuntime):
 
     async def stop(self):
         pass
+
+    def get_mcp_client(self, workspace_dir: str) -> Client:
+        mcp_client = create_mcp(workspace_dir, str(self.session_id))
+        return Client(mcp_client)
 
     async def create(self):
         # Start code-server in the background

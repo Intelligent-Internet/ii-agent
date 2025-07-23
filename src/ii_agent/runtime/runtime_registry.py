@@ -1,8 +1,11 @@
-from typing import Dict, Type
+from __future__ import annotations
+from typing import Dict, Type, TYPE_CHECKING
 import uuid
-from ii_agent.core.storage.models.settings import Settings
 from ii_agent.runtime.base import BaseRuntime
 from ii_agent.runtime.model.constants import RuntimeMode
+
+if TYPE_CHECKING:
+    from ii_agent.core.storage.models.settings import Settings
 
 
 class RuntimeRegistry:

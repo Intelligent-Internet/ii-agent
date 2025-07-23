@@ -9,7 +9,7 @@ import asyncio
 import json
 from pathlib import Path
 from typing import Optional, Dict, Any
-from fastmcp.client import Client
+from uuid import UUID
 from ii_agent.core.config.ii_agent_config import IIAgentConfig
 from ii_agent.core.config.agent_config import AgentConfig
 from ii_agent.core.config.llm_config import LLMConfig
@@ -24,6 +24,7 @@ from ii_agent.controller.state import State
 from ii_agent.llm.context_manager import LLMCompact
 from ii_agent.core.storage.settings.file_settings_store import FileSettingsStore
 from ii_agent.llm.token_counter import TokenCounter
+from ii_agent.runtime.runtime_manager import RuntimeManager
 from ii_agent.utils.workspace_manager import WorkspaceManager
 from ii_agent.tools import get_system_tools
 from ii_agent.core.logger import logger
@@ -36,7 +37,6 @@ from ii_agent.cli.state_persistence import (
 )
 from ii_agent.tools import AgentToolManager
 from ii_agent.llm.base import ToolParam
-from ii_tool.mcp.server import create_mcp
 
 
 class CLIApp:
@@ -179,12 +179,12 @@ class CLIApp:
             interactive_mode=True,
         )
 
-        # Get system MCP tools
-        mcp_client = Client(
-            create_mcp(
-                workspace_dir=str(self.workspace_manager.root),
-                session_id=self.config.session_id,
-            )
+        runtime_manager = RuntimeManager(
+            session_id=UUID(self.config.session_id), settings=settings
+        )
+        await runtime_manager.start_runtime()
+        mcp_client = await runtime_manager.get_mcp_client(
+            str(self.workspace_manager.root)
         )
         await tool_manager.register_mcp_tools(
             mcp_client=mcp_client,

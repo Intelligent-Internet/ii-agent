@@ -42,6 +42,11 @@ dependencies = [
     "youtube-transcript-api>=1.0.3",
     "alembic>=1.16.1",
     "fastmcp>=2.2.0",
+    "pre-commit>=4.2.0",
+    "e2b-code-interpreter==1.2.0b5",
+    "libtmux>=0.46.2",
+    "ipdb>=0.13.13",
+    "docker>=7.1.0",
 ]
 
 [project.optional-dependencies]
