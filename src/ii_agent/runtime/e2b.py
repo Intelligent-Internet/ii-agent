@@ -29,7 +29,9 @@ class E2BRuntime(BaseRuntime):
             api_key=self._get_api_key(),
             timeout=3600,
         )
-        self.host_url = self.expose_port(self.settings.runtime_config.service_port)
+        self.host_url = (
+            self.expose_port(self.settings.runtime_config.service_port) + "/mcp/"
+        )
         if not self.sandbox.sandbox_id:
             raise ValueError("Sandbox ID is not set")
         self.runtime_id = str(self.sandbox.sandbox_id)
@@ -55,7 +57,9 @@ class E2BRuntime(BaseRuntime):
             runtime_id,
             api_key=self._get_api_key(),
         )
-        self.host_url = self.expose_port(self.settings.runtime_config.service_port)
+        self.host_url = (
+            self.expose_port(self.settings.runtime_config.service_port) + "/mcp/"
+        )
         self.runtime_id = self.sandbox.sandbox_id
 
     async def cleanup(self):
@@ -72,7 +76,9 @@ class E2BRuntime(BaseRuntime):
                 api_key=self._get_api_key(),
                 timeout=3600,
             )
-            self.host_url = self.expose_port(self.settings.runtime_config.service_port)
+            self.host_url = (
+                self.expose_port(self.settings.runtime_config.service_port) + "/mcp/"
+            )
             self.runtime_id = self.sandbox.sandbox_id
 
     def _get_api_key(self):

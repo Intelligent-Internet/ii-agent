@@ -27,7 +27,8 @@ class RuntimeManager:
     async def get_mcp_client(self, workspace_dir: str) -> Client:
         if self.runtime is None:
             raise RuntimeUninitializedError("Runtime is not initialized")
-        return self.runtime.get_mcp_client(workspace_dir)
+        client = self.runtime.get_mcp_client(workspace_dir)
+        return client
 
     # WIP
     async def connect_runtime(self):

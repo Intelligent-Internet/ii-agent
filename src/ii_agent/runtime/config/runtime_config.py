@@ -19,6 +19,6 @@ class RuntimeSettings(BaseModel):
         default=True, description="Whether network access is allowed"
     )
     network_name: str = Field(
-        default=f"{os.getenv('COMPOSE_PROJECT_NAME')}_ii",
+        default="ii_agent_network",
         description="Name of the Docker network to connect to",
     )

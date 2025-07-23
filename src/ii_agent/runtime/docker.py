@@ -11,6 +11,11 @@ from ii_agent.runtime.base import BaseRuntime
 from ii_agent.runtime.config.runtime_config import RuntimeSettings
 from ii_agent.runtime.runtime_registry import RuntimeRegistry
 from ii_agent.runtime.model.constants import RuntimeMode
+from ii_agent.runtime.utils.docker_utils import (
+    build_if_not_exists,
+    get_host_ip,
+    get_project_root,
+)
 
 if TYPE_CHECKING:
     from ii_agent.core.storage.models.settings import Settings
@@ -44,6 +49,19 @@ class DockerRuntime(BaseRuntime):
             volume_bindings: Volume mappings in {host_path: container_path} format.
         """
         super().__init__(session_id=session_id, settings=settings)
+        self.docker_images = {
+            "sandbox": {
+                "path": os.path.join(get_project_root()),
+                "dockerfile": "docker/sandbox/Dockerfile",
+                "tag": "ii-agent-sandbox:latest",
+            },
+            "nginx": {
+                "path": os.path.join(get_project_root()),
+                "dockerfile": "docker/nginx/Dockerfile",
+                "tag": "ii-agent-nginx:latest",
+                "port": 8080,
+            },
+        }
         self.config = RuntimeSettings()
         self.volume_bindings = {
             load_ii_agent_config().workspace_root
@@ -52,25 +70,38 @@ class DockerRuntime(BaseRuntime):
         }
         self.client = docker.from_env()
 
-    async def start(self):
-        pass
-
     async def stop(self):
         pass
 
+    async def build(self):
+        try:
+            for _, config in self.docker_images.items():
+                build_if_not_exists(
+                    self.client, config["path"], config["dockerfile"], config["tag"]
+                )
+        except Exception as e:
+            raise RuntimeError(f"Failed to build runtime: {e}")
+
     async def connect(self):
         self.host_url = (
-            f"http://{self.session_id}:{self.settings.runtime_config.service_port}"
+            self.expose_port(self.settings.runtime_config.service_port) + "/mcp/"
         )
+
+    async def start(self):
+        """Start the runtime by ensuring network exists and nginx container is running."""
+        pass
 
     def get_mcp_client(self, workspace_dir: str) -> Client:
         if not self.host_url:
-            raise ValueError("Host URL is not set")
+            raise RuntimeError("Host URL is not set")
         return Client(self.host_url)
 
     def expose_port(self, port: int) -> str:
-        public_url = f"http://{self.session_id}-{port}.{os.getenv('BASE_URL')}"
-        return public_url
+        try:
+            public_url = f"http://{self.session_id}-{port}.{os.getenv('BASE_URL', get_host_ip())}.nip.io:{self.docker_images['nginx']['port']}"
+            return public_url
+        except Exception as e:
+            raise RuntimeError(f"Failed to expose port: {e}")
 
     async def create(self):
         """Creates and starts the docker runtime container.
@@ -82,7 +113,10 @@ class DockerRuntime(BaseRuntime):
             docker.errors.APIError: If Docker API call fails.
             RuntimeError: If container creation or startup fails.
         """
-        os.makedirs(self.config.work_dir, exist_ok=True)
+        await self.build()
+        await self._ensure_network_exists()
+        await self._ensure_nginx_running()
+        os.makedirs(load_ii_agent_config().workspace_root, exist_ok=True)
         try:
             # Prepare container config
             host_config = self.client.api.create_host_config(
@@ -98,7 +132,7 @@ class DockerRuntime(BaseRuntime):
             # Create container
             container = await asyncio.to_thread(
                 self.client.api.create_container,
-                image=self.config.image,
+                image=self.docker_images["sandbox"]["tag"],
                 hostname="sandbox",
                 host_config=host_config,
                 name=str(self.session_id),
@@ -115,8 +149,11 @@ class DockerRuntime(BaseRuntime):
             self.container = self.client.containers.get(container["Id"])
             self.container_id = container["Id"]
             self.container.start()
+            await asyncio.sleep(3)
 
-            self.host_url = f"http://{str(self.session_id)}:{self.settings.runtime_config.service_port}"
+            self.host_url = (
+                self.expose_port(self.settings.runtime_config.service_port) + "/mcp/"
+            )
             self.runtime_id = self.container_id
             print(f"Container created: {self.container_id}")
         except Exception as e:
@@ -135,29 +172,6 @@ class DockerRuntime(BaseRuntime):
             bindings[host_path] = {"bind": container_path, "mode": "rw"}
 
         return bindings
-
-    def _safe_resolve_path(self, path: str) -> str:
-        """Safely resolves container path, preventing path traversal.
-
-        Args:
-            path: Original path.
-
-        Returns:
-            Resolved absolute path.
-
-        Raises:
-            ValueError: If path contains potentially unsafe patterns.
-        """
-        # Check for path traversal attempts
-        if ".." in path.split("/"):
-            raise ValueError("Path contains potentially unsafe patterns")
-
-        resolved = (
-            os.path.join(self.config.work_dir, path)
-            if not os.path.isabs(path)
-            else path
-        )
-        return resolved
 
     async def cleanup(self) -> None:
         """Cleans up sandbox resources."""
@@ -189,12 +203,102 @@ class DockerRuntime(BaseRuntime):
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
         await self.cleanup()
 
+    async def _ensure_network_exists(self):
+        """Create the network if it doesn't exist."""
+        if not self.config.network_enabled:
+            return
+
+        try:
+            # Check if network exists
+            networks = await asyncio.to_thread(
+                self.client.networks.list, names=[self.config.network_name]
+            )
+            if not networks:
+                print(f"Creating network: {self.config.network_name}")
+                await asyncio.to_thread(
+                    self.client.networks.create,
+                    name=self.config.network_name,
+                    driver="bridge",
+                )
+                print(f"Network '{self.config.network_name}' created successfully")
+            else:
+                print(f"Network '{self.config.network_name}' already exists")
+        except Exception as e:
+            raise RuntimeError(f"Failed to ensure network exists: {e}")
+
+    async def _ensure_nginx_running(self):
+        """Create and start nginx container if none is running."""
+        try:
+            # Check if any nginx containers are running
+            containers = await asyncio.to_thread(
+                self.client.containers.list,
+                filters={
+                    "ancestor": self.docker_images["nginx"]["tag"],
+                    "status": "running",
+                },
+            )
+
+            if not containers:
+                print("No running nginx containers found, creating one...")
+                await self._create_nginx_container()
+            else:
+                print(f"Found {len(containers)} running nginx container(s)")
+        except Exception as e:
+            raise RuntimeError(f"Failed to ensure nginx is running: {e}")
+
+    async def _create_nginx_container(self):
+        """Create and start a new nginx container."""
+        try:
+            # Ensure nginx image is built
+            build_if_not_exists(
+                self.client,
+                self.docker_images["nginx"]["path"],
+                self.docker_images["nginx"]["dockerfile"],
+                self.docker_images["nginx"]["tag"],
+            )
+
+            # Prepare nginx container config
+            host_config = self.client.api.create_host_config(
+                port_bindings={"80/tcp": self.docker_images["nginx"]["port"]},
+                network_mode=self.config.network_name
+                if self.config.network_enabled
+                else None,
+            )
+
+            # Create nginx container
+            nginx_container = await asyncio.to_thread(
+                self.client.api.create_container,
+                image=self.docker_images["nginx"]["tag"],
+                hostname="nginx-proxy",
+                host_config=host_config,
+                name=f"nginx-proxy-{uuid.uuid4().hex[:8]}",
+                labels={
+                    "com.docker.compose.project": os.getenv(
+                        "COMPOSE_PROJECT_NAME", "ii-agent"
+                    ),
+                    "service": "nginx-proxy",
+                },
+                environment={
+                    "PUBLIC_DOMAIN": os.getenv("BASE_URL", get_host_ip() + ".nip.io")
+                },
+                detach=True,
+            )
+
+            nginx_container_obj = self.client.containers.get(nginx_container["Id"])
+            nginx_container_obj.start()
+
+            print(f"Nginx container created and started: {nginx_container['Id']}")
+
+        except Exception as e:
+            raise RuntimeError(f"Failed to create nginx container: {e}")
+
 
 if __name__ == "__main__":
 
     async def main():
         settings = Settings()
         runtime = DockerRuntime(uuid.uuid4(), settings)
+        await runtime.start()  # This will now ensure network and nginx are ready
         await runtime.create()
         print("Runtime created")
         # await runtime.run_command("ls -la")

@@ -1,0 +1,1 @@
+docker ps --filter "label=com.docker.compose.project=ii-agent" -q | xargs docker stop
