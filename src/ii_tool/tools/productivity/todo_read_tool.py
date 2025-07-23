@@ -1,9 +1,18 @@
 """TodoRead tool for reading the current session's task list."""
 
-from ii_tool.tools.base import BaseTool
+from ii_tool.tools.base import BaseTool, ToolResult
 from ii_tool.tools.productivity.shared_state import get_todo_manager
 
 
+# Constants
+EMPTY_MESSAGE = "No todos found"
+SUCCESS_MESSAGE = "Remember to continue to use update and read from the todo list as you make progress. Here is the current list: {todos}"
+
+# Name
+NAME = "TodoRead"
+DISPLAY_NAME = "Read todo list"
+
+# Tool description
 DESCRIPTION = """Use this tool to read the current to-do list for the session. This tool should be used proactively and frequently to ensure that you are aware of
 the status of the current task list. You should make use of this tool as often as possible, especially in the following situations:
 - At the beginning of conversations to see what's pending
@@ -19,24 +28,38 @@ Usage:
 - Use this information to track progress and plan next steps
 - If no todos exist yet, an empty list will be returned"""
 
-
-EMPTY_MESSAGE = "No todos found"
-SUCCESS_MESSAGE = "Remember to continue to use update and read from the todo list as you make progress. Here is the current list: {todos}"
+# Input schema
+INPUT_SCHEMA = {
+    "type": "object",
+    "properties": {},
+    "required": []
+}
 
 
 class TodoReadTool(BaseTool):
     """Tool for reading the current to-do list for the session."""
     
-    name = "TodoRead"
+    name = NAME
+    display_name = DISPLAY_NAME
     description = DESCRIPTION
+    input_schema = INPUT_SCHEMA
     read_only = True
 
-    def run_impl(self):
+    async def execute(self) -> ToolResult:
         """Read and return the current todo list."""
         manager = get_todo_manager()
         todos = manager.get_todos()
         
         if not todos:
-            return EMPTY_MESSAGE
+            return ToolResult(
+                llm_content=EMPTY_MESSAGE,
+                is_error=False
+            )
         
-        return SUCCESS_MESSAGE.format(todos=todos)
+        return ToolResult(
+            llm_content=SUCCESS_MESSAGE.format(todos=todos),
+            is_error=False
+        )
+
+    async def execute_mcp_wrapper(self):
+        return await self._mcp_wrapper()

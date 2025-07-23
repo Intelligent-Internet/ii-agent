@@ -1,26 +1,54 @@
-from typing import Annotated
-from pydantic import Field
+from typing import Optional
 from ii_tool.tools.shell.terminal_manager import BaseShellManager, ShellInvalidSessionNameError, TmuxSessionExists
 from ii_tool.core.workspace import WorkspaceManager, FileSystemValidationError
-from ii_tool.tools.base import BaseTool
+from ii_tool.tools.base import BaseTool, ToolResult
+
+# Name
+NAME = "BashInit"
+DISPLAY_NAME = "Initialize bash session"
+
+# Tool description
+DESCRIPTION = "Initialize a bash session with a given name and start directory. Use this before running any commands in the session."
+
+# Input schema
+INPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "session_name": {
+            "type": "string",
+            "description": "The name of the session to initialize."
+        },
+        "start_directory": {
+            "type": "string",
+            "description": "The absolute path to a directory to start the session in. If not provided, the session will start in the workspace directory."
+        }
+    },
+    "required": ["session_name"]
+}
 
 class ShellInit(BaseTool):
-    name = "BashInit"
-    description = "Initialize a bash session with a given name and start directory. Use this before running any commands in the session."
+    name = NAME
+    display_name = DISPLAY_NAME
+    description = DESCRIPTION
+    input_schema = INPUT_SCHEMA
     read_only = False
     
-    def __init__(self, BaseShellManager: BaseShellManager, workspace_manager: WorkspaceManager) -> None:
-        self.shell_manager = BaseShellManager
+    def __init__(self, shell_manager: BaseShellManager, workspace_manager: WorkspaceManager) -> None:
+        self.shell_manager = shell_manager
         self.workspace_manager = workspace_manager
 
-    def run_impl(
+    async def execute(
         self,
-        session_name: Annotated[str, Field(description="The name of the session to initialize.")],
-        start_directory: Annotated[str | None, Field(description="The absolute path to a directory to start the session in. If not provided, the session will start in the workspace directory.")],
-    ):
+        session_name: str,
+        start_directory: Optional[str] = None,
+    ) -> ToolResult:
+        """Initialize a bash session with the specified name and directory."""
         try:
             if session_name in self.shell_manager.get_all_sessions():
-                return f"Session '{session_name}' already exists"
+                return ToolResult(
+                    llm_content=f"Session '{session_name}' already exists",
+                    is_error=True
+                )
 
             if not start_directory:
                 start_directory = str(self.workspace_manager.get_workspace_path())
@@ -28,10 +56,23 @@ class ShellInit(BaseTool):
             self.workspace_manager.validate_existing_directory_path(start_directory)
             
             self.shell_manager.create_session(session_name, start_directory)
-            return f"Session '{session_name}' initialized successfully at start directory `{start_directory}`"
+            return ToolResult(
+                llm_content=f"Session '{session_name}' initialized successfully at start directory `{start_directory}`",
+                is_error=False
+            )
         except (
             FileSystemValidationError,
             ShellInvalidSessionNameError,
             TmuxSessionExists,
         ) as e:
-            return f"Error initializing session: {e}"
+            return ToolResult(
+                llm_content=f"Error initializing session: {e}",
+                is_error=True
+            )
+
+    async def execute_mcp_wrapper(
+        self,
+        session_name: str,
+        start_directory: Optional[str] = None,
+    ):
+        return await self._mcp_wrapper(session_name, start_directory)

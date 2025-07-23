@@ -2,11 +2,14 @@
 
 import asyncio
 import time
-from typing import Annotated, Dict, Any, List, Optional
-from pydantic import Field
-from ii_tool.tools.base import BaseTool
-from ii_tool.core.agent_executor import AgentExecutor
+from typing import Dict, Any, List, Optional
+from ii_tool.tools.base import BaseTool, ToolResult
 
+# Name
+NAME = "Task"
+DISPLAY_NAME = "Launch agent task"
+
+# Tool description
 DESCRIPTION = """Launch a new agent that has access to the following tools: Bash, Glob, Grep, LS, exit_plan_mode, Read, Edit, MultiEdit, Write, NotebookRead, NotebookEdit, WebFetch, TodoRead, TodoWrite, WebSearch, mcp__ide__getDiagnostics, mcp__ide__executeCode. When you are searching for a keyword or file and are not confident that you will find the right match in the first few tries, use the Agent tool to perform the search for you.
 
 When to use the Agent tool:
@@ -26,11 +29,31 @@ Usage notes:
 4. The agent's outputs should generally be trusted
 5. Clearly tell the agent whether you expect it to write code or just to do research (search, file reads, web fetches, etc.), since it is not aware of the user's intent"""
 
+# Input schema
+INPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "prompt": {
+            "type": "string",
+            "description": "The task for the agent to perform"
+        },
+        "dangerous_skip_permissions": {
+            "type": "boolean",
+            "description": "Allow the agent to use write tools",
+            "default": False
+        }
+    },
+    "required": ["prompt"]
+}
+
 class AgentTool(BaseTool):
     """Tool for launching new agents with specific capabilities."""
     
-    name = "Task"
+    name = NAME
+    display_name = DISPLAY_NAME
     description = DESCRIPTION
+    input_schema = INPUT_SCHEMA
+    read_only = True
 
     def _get_agent_prompt(self, task_prompt: str, dangerous_skip_permissions: bool = False) -> str:
         """
@@ -97,11 +120,11 @@ Usage notes:
         else:
             return f"Agent execution failed: {result.get('error', 'Unknown error')}"
 
-    def run_impl(
+    async def execute(
         self,
-        prompt: Annotated[str, Field(description="The task for the agent to perform")],
-        dangerous_skip_permissions: Annotated[Optional[bool], Field(description="Allow the agent to use write tools", default=False)],
-    ) -> str:
+        prompt: str,
+        dangerous_skip_permissions: bool = False,
+    ) -> ToolResult:
         """
         Execute the agent with the given task.
         
@@ -110,22 +133,17 @@ Usage notes:
             dangerous_skip_permissions: Whether to allow write operations
             
         Returns:
-            The agent's execution result formatted for the assistant
+            ToolResult with the agent's execution result
         """
-        try:
-            # Create agent executor
-            executor = AgentExecutor(dangerous_skip_permissions or False)
-            
-            # Execute the agent task
-            result = asyncio.run(executor.execute_agent_task(
-                prompt=prompt,
-                description="Agent task execution",
-                max_thinking_tokens=0,
-                model="claude-3-5-sonnet-20241022"
-            ))
-            
-            # Format and return the result
-            return self._format_result_for_assistant(result)
-            
-        except Exception as e:
-            return f"Agent execution failed: {str(e)}"
+        # TODO: Implement later
+        return ToolResult(
+            llm_content="Agent tool implementation is not yet complete",
+            is_error=True
+        )
+
+    async def execute_mcp_wrapper(
+        self,
+        prompt: str,
+        dangerous_skip_permissions: bool = False,
+    ):
+        return await self._mcp_wrapper(prompt, dangerous_skip_permissions)

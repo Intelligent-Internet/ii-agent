@@ -1,11 +1,19 @@
 """TodoWrite tool for creating and managing structured task lists."""
 
-from typing import Annotated, List, Dict, Any
-from pydantic import Field
-from ii_tool.tools.base import BaseTool
+from typing import List, Dict, Any
+from ii_tool.tools.base import BaseTool, ToolResult
 from ii_tool.tools.productivity.shared_state import get_todo_manager
 
 
+# Constants
+SUCCESS_MESSAGE = "Todos have been modified successfully. Ensure that you continue to use the todo list to track your progress. Please proceed with the current tasks if applicable"
+ERROR_MESSAGE = "Error updating todo list: {error}"
+
+# Name
+NAME = "TodoWrite"
+DISPLAY_NAME = "Write todo list"
+
+# Tool description
 DESCRIPTION = """Use this tool to create and manage a structured task list for your current coding session. This helps you track progress, organize complex tasks, and demonstrate thoroughness to the user.
 It also helps the user understand the progress of the task and overall progress of their requests.
 
@@ -61,20 +69,41 @@ NOTE that you should not use this tool if there is only one trivial task to do. 
 
 When in doubt, use this tool. Being proactive with task management demonstrates attentiveness and ensures you complete all requirements successfully."""
 
-SUCCESS_MESSAGE = "Todos have been modified successfully. Ensure that you continue to use the todo list to track your progress. Please proceed with the current tasks if applicable"
-ERROR_MESSAGE = "Error updating todo list: {error}"
+# Input schema
+INPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "todos": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "string"},
+                    "content": {"type": "string"},
+                    "status": {"type": "string", "enum": ["pending", "in_progress", "completed"]},
+                    "priority": {"type": "string", "enum": ["low", "medium", "high"]}
+                },
+                "required": ["id", "content", "status", "priority"]
+            },
+            "description": "The updated todo list. Each todo should have `content`, `status` (one of 'pending', 'in_progress', 'completed'), `priority` (one of 'low', 'medium', 'high'), and `id` (starts from 1) keys."
+        }
+    },
+    "required": ["todos"]
+}
 
 class TodoWriteTool(BaseTool):
     """Tool for creating and managing a structured task list for the coding session."""
     
-    name = "TodoWrite"
+    name = NAME
+    display_name = DISPLAY_NAME
     description = DESCRIPTION
+    input_schema = INPUT_SCHEMA
     read_only = False
 
-    def run_impl(
+    async def execute(
         self,
-        todos: Annotated[List[Dict[str, Any]], Field(description="The updated todo list. Each todo should have `content`, `status` (one of 'pending', 'in_progress', 'completed'), `priority` (one of 'low', 'medium', 'high'), and `id` (starts from 1) keys.")],
-    ):
+        todos: List[Dict[str, Any]],
+    ) -> ToolResult:
         """Write/update the todo list."""
         manager = get_todo_manager()
         
@@ -83,6 +112,18 @@ class TodoWriteTool(BaseTool):
             manager.set_todos(todos)
             
             # Return the updated list
-            return SUCCESS_MESSAGE
+            return ToolResult(
+                llm_content=SUCCESS_MESSAGE,
+                is_error=False
+            )
         except ValueError as e:
-            return ERROR_MESSAGE.format(error=e)
+            return ToolResult(
+                llm_content=ERROR_MESSAGE.format(error=e),
+                is_error=True
+            )
+
+    async def execute_mcp_wrapper(
+        self,
+        todos: List[Dict[str, Any]],
+    ):
+        return await self._mcp_wrapper(todos)

@@ -1,3 +1,4 @@
+from mcp.types import ToolAnnotations
 from fastmcp import FastMCP
 from argparse import ArgumentParser
 from ii_tool.core.workspace import WorkspaceManager
@@ -7,7 +8,7 @@ from ii_tool.tools.file_system import GlobTool, GrepTool, LSTool, FileReadTool, 
 from ii_tool.tools.productivity import TodoReadTool, TodoWriteTool
 
 
-def create_mcp(workspace_dir: str, session_id: str):
+async def create_mcp(workspace_dir: str, session_id: str):
     terminal_manager = TmuxWindowManager(chat_session_id=session_id)
     workspace_manager = WorkspaceManager(workspace_path=workspace_dir)
     
@@ -40,14 +41,22 @@ def create_mcp(workspace_dir: str, session_id: str):
     mcp = FastMCP(name="ii-mcp")
     for tool in tools:
         mcp.tool(
-            tool.run_impl,
+            tool.execute_mcp_wrapper,
             name=tool.name,
             description=tool.description,
+            annotations=ToolAnnotations(
+                title=tool.display_name,
+                readOnlyHint=tool.read_only,
+            ),
         )
+
+        # NOTE: this is a temporary fix to set the parameters of the tool
+        _mcp_tool = await mcp._tool_manager.get_tool(tool.name)
+        _mcp_tool.parameters = tool.input_schema
 
     return mcp
 
-if __name__ == "__main__":
+async def main():
     parser = ArgumentParser()
     parser.add_argument("--workspace_dir", type=str)
     parser.add_argument("--session_id", type=str, default=None)
@@ -55,8 +64,13 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
     
-    mcp = create_mcp(
+    mcp = await create_mcp(
         workspace_dir=args.workspace_dir,
         session_id=args.session_id,
     )
     mcp.run(transport="http", host="0.0.0.0", port=args.port)
+
+
+if __name__ == "__main__":
+    import asyncio
+    asyncio.run(main())
