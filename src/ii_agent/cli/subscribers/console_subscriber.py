@@ -11,6 +11,7 @@ import json
 import sys
 import termios
 import tty
+import difflib
 from pathlib import Path
 
 from rich.console import Console
@@ -857,12 +858,14 @@ class ConsoleSubscriber:
     def _interactive_session_selector(
         self, sessions: list
     ) -> tuple[Optional[str], bool]:
-        """Interactive session selector with arrow keys and Ctrl+R expansion."""
+        """Interactive session selector with arrow keys - sessions always expand on select."""
         if not sessions:
             return None, False
 
         selected_index = 0
-        expanded_sessions = set()
+        search_mode = False
+        search_query = ""
+        filtered_sessions = sessions.copy()
 
         # Check if terminal supports raw mode
         if not sys.stdin.isatty():
@@ -892,6 +895,35 @@ class ConsoleSubscriber:
                 return choice, False
             else:
                 return None, False
+
+        def fuzzy_search_sessions(query: str, sessions_list: list) -> list:
+            """Perform fuzzy search on sessions list."""
+            if not query.strip():
+                return sessions_list
+
+            # Use difflib for fuzzy matching
+            matches = difflib.get_close_matches(
+                query.lower(),
+                [s.lower() for s in sessions_list],
+                n=len(sessions_list),
+                cutoff=0.1,
+            )
+
+            # Return original sessions in order of matches
+            result = []
+            for match in matches:
+                # Find original session name with correct case
+                for session in sessions_list:
+                    if session.lower() == match:
+                        result.append(session)
+                        break
+
+            # Add sessions that contain the query as substring (not already included)
+            for session in sessions_list:
+                if query.lower() in session.lower() and session not in result:
+                    result.append(session)
+
+            return result if result else sessions_list
 
         def get_session_content(session_name: str) -> str:
             """Get session content from agent_state.json."""
@@ -964,33 +996,72 @@ class ConsoleSubscriber:
 
             # Create elegant header panel matching the theme
             header_content = Text()
-            header_content.append("📋 ", style="cyan")
-            header_content.append("Session Manager", style="bold cyan")
+            if search_mode:
+                header_content.append("🔍 ", style="yellow")
+                header_content.append("Search Sessions", style="bold yellow")
+            else:
+                header_content.append("📋 ", style="cyan")
+                header_content.append("Session Manager", style="bold cyan")
 
             header_panel = Panel(
                 header_content,
                 title="🚀 ii-agent",
                 title_align="left",
-                style="cyan",
-                border_style="bright_blue",
+                style="yellow" if search_mode else "cyan",
+                border_style="bright_yellow" if search_mode else "bright_blue",
                 padding=(0, 1),
             )
             content.append(header_panel)
             content.append(Text())  # Spacer
 
+            # Show search bar if in search mode
+            if search_mode:
+                search_content = Text()
+                search_content.append("Search: ", style="bold yellow")
+                search_content.append(
+                    search_query, style="bright_white on bright_black"
+                )
+                search_content.append("█", style="blink bright_white")  # Cursor
+
+                search_panel = Panel(
+                    search_content,
+                    title="🔍 Type to search",
+                    title_align="left",
+                    border_style="yellow",
+                    style="yellow",
+                    padding=(0, 1),
+                )
+                content.append(search_panel)
+                content.append(Text())  # Spacer
+
             # Create instruction panel with consistent styling
             instructions = Text()
-            instructions.append("Navigation: ", style="bold blue")
-            instructions.append("↑/↓ arrows ", style="bright_white")
-            instructions.append("• ", style="dim")
-            instructions.append("Enter ", style="green")
-            instructions.append("to select ", style="white")
-            instructions.append("• ", style="dim")
-            instructions.append("'n' ", style="yellow")
-            instructions.append("for new session ", style="white")
-            instructions.append("• ", style="dim")
-            instructions.append("Ctrl+C ", style="red")
-            instructions.append("to cancel", style="white")
+            if search_mode:
+                instructions.append("Search mode: ", style="bold yellow")
+                instructions.append("Type to search ", style="bright_white")
+                instructions.append("• ", style="dim")
+                instructions.append("↑/↓ arrows ", style="bright_white")
+                instructions.append("• ", style="dim")
+                instructions.append("Enter ", style="green")
+                instructions.append("to select ", style="white")
+                instructions.append("• ", style="dim")
+                instructions.append("Esc ", style="red")
+                instructions.append("to exit search", style="white")
+            else:
+                instructions.append("Navigation: ", style="bold blue")
+                instructions.append("↑/↓ arrows ", style="bright_white")
+                instructions.append("• ", style="dim")
+                instructions.append("Enter ", style="green")
+                instructions.append("to select ", style="white")
+                instructions.append("• ", style="dim")
+                instructions.append("'s' ", style="magenta")
+                instructions.append("to search ", style="white")
+                instructions.append("• ", style="dim")
+                instructions.append("'n' ", style="yellow")
+                instructions.append("for new session ", style="white")
+                instructions.append("• ", style="dim")
+                instructions.append("Ctrl+C ", style="red")
+                instructions.append("to cancel", style="white")
 
             content.append(Panel(instructions, border_style="dim blue", padding=(0, 1)))
             content.append(Text())  # Spacer
@@ -1003,7 +1074,7 @@ class ConsoleSubscriber:
             session_table.add_column("name", min_width=20)
             session_table.add_column("info", style="dim", no_wrap=True)
 
-            for i, session in enumerate(sessions):
+            for i, session in enumerate(filtered_sessions):
                 if i == selected_index:
                     # Selected session with enhanced styling
                     status_icon = Text("▶", style="bold bright_green")
@@ -1015,6 +1086,24 @@ class ConsoleSubscriber:
                     # Non-selected sessions with subtle styling
                     status_icon = Text("•", style="dim blue")
                     session_name = Text(session, style="bright_white")
+                    # Add search query highlighting if in search mode
+                    if search_mode and search_query.strip():
+                        # Highlight matching parts
+                        highlighted_name = Text()
+                        session_lower = session.lower()
+                        query_lower = search_query.lower()
+                        if query_lower in session_lower:
+                            start = session_lower.find(query_lower)
+                            end = start + len(query_lower)
+                            highlighted_name.append(
+                                session[:start], style="bright_white"
+                            )
+                            highlighted_name.append(
+                                session[start:end], style="bold yellow on bright_black"
+                            )
+                            highlighted_name.append(session[end:], style="bright_white")
+                            session_name = highlighted_name
+
                     # Add session metadata as info
                     try:
                         sessions_dir = Path.home() / ".ii_agent" / "sessions"
@@ -1033,15 +1122,13 @@ class ConsoleSubscriber:
 
                 session_table.add_row(status_icon, session_name, info_text)
 
-                # Show expanded content if this session is expanded
-                if session in expanded_sessions:
+                # Show expanded content for selected session
+                if i == selected_index:
                     session_content = get_session_content(session)
                     detail_panel = Panel(
                         session_content,
                         title="📊 Session Details",
                         title_align="left",
-                        subtitle="Ctrl+R to collapse",
-                        subtitle_align="right",
                         border_style="dim green",
                         style="dim",
                         padding=(0, 1),
@@ -1049,9 +1136,14 @@ class ConsoleSubscriber:
                     content.append(detail_panel)
 
             # Add the session table
+            if search_mode and search_query.strip():
+                title = f"📂 Search Results ({len(filtered_sessions)} of {len(sessions)} sessions)"
+            else:
+                title = f"📂 Sessions ({len(filtered_sessions)} available)"
+
             sessions_panel = Panel(
                 session_table,
-                title=f"📂 Sessions ({len(sessions)} available)",
+                title=title,
                 title_align="left",
                 border_style="dim cyan",
                 padding=(0, 1),
@@ -1061,26 +1153,32 @@ class ConsoleSubscriber:
             # Enhanced footer with current selection info
             content.append(Text())  # Spacer
 
-            current_session = sessions[selected_index]
-            footer_content = Text()
-            footer_content.append("📍 Current selection: ", style="dim")
-            footer_content.append(current_session, style="bold cyan")
-
-            if current_session in expanded_sessions:
+            if filtered_sessions:
+                current_session = filtered_sessions[selected_index]
+                footer_content = Text()
+                footer_content.append("📍 Current selection: ", style="dim")
+                footer_content.append(current_session, style="bold cyan")
                 footer_content.append(" ", style="dim")
                 footer_content.append("(details shown)", style="dim green")
-                footer_content.append(" • Press ", style="dim")
-                footer_content.append("Ctrl+R", style="dim yellow")
-                footer_content.append(" to collapse", style="dim")
-            else:
-                footer_content.append(" • Press ", style="dim")
-                footer_content.append("Ctrl+R", style="dim yellow")
-                footer_content.append(" for details", style="dim")
 
-            footer_panel = Panel(
-                footer_content, border_style="dim", style="dim", padding=(0, 1)
-            )
-            content.append(footer_panel)
+                footer_panel = Panel(
+                    footer_content, border_style="dim", style="dim", padding=(0, 1)
+                )
+                content.append(footer_panel)
+            else:
+                # No sessions match search
+                no_results_content = Text()
+                no_results_content.append("❌ No sessions match '", style="dim red")
+                no_results_content.append(search_query, style="red")
+                no_results_content.append("'", style="dim red")
+
+                footer_panel = Panel(
+                    no_results_content,
+                    border_style="dim red",
+                    style="dim",
+                    padding=(0, 1),
+                )
+                content.append(footer_panel)
 
             return Group(*content)
 
@@ -1115,7 +1213,65 @@ class ConsoleSubscriber:
                     if char == "\x03":  # Ctrl+C
                         return None, True
                     elif char == "\r" or char == "\n":  # Enter
-                        return sessions[selected_index], False
+                        if filtered_sessions:
+                            return filtered_sessions[selected_index], False
+                        else:
+                            continue  # No sessions to select
+                    elif char == "s" or char == "S":  # Search mode
+                        if not search_mode:
+                            search_mode = True
+                            search_query = ""
+                            filtered_sessions = sessions.copy()
+                            selected_index = 0
+                            update_display()
+                    elif char == "\x1b":  # Escape sequence (arrow keys or ESC)
+                        # Read the next two characters
+                        next_chars = sys.stdin.read(2)
+                        if next_chars == "[A":  # Up arrow
+                            if filtered_sessions:
+                                selected_index = (selected_index - 1) % len(
+                                    filtered_sessions
+                                )
+                                update_display()
+                        elif next_chars == "[B":  # Down arrow
+                            if filtered_sessions:
+                                selected_index = (selected_index + 1) % len(
+                                    filtered_sessions
+                                )
+                                update_display()
+                        elif search_mode and not next_chars:  # ESC key (exit search)
+                            search_mode = False
+                            search_query = ""
+                            filtered_sessions = sessions.copy()
+                            selected_index = 0
+                            update_display()
+                    elif search_mode:
+                        # Handle search input
+                        if char == "\x7f":  # Backspace
+                            if search_query:
+                                search_query = search_query[:-1]
+                                filtered_sessions = fuzzy_search_sessions(
+                                    search_query, sessions
+                                )
+                                if filtered_sessions:
+                                    selected_index = min(
+                                        selected_index, len(filtered_sessions) - 1
+                                    )
+                                else:
+                                    selected_index = 0
+                                update_display()
+                        elif char.isprintable():
+                            search_query += char
+                            filtered_sessions = fuzzy_search_sessions(
+                                search_query, sessions
+                            )
+                            if filtered_sessions:
+                                selected_index = min(
+                                    selected_index, len(filtered_sessions) - 1
+                                )
+                            else:
+                                selected_index = 0
+                            update_display()
                     elif char == "n" or char == "N":  # New session
                         # Restore terminal settings temporarily for input
                         termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
@@ -1133,22 +1289,6 @@ class ConsoleSubscriber:
                         finally:
                             # Always restore raw mode
                             tty.setcbreak(sys.stdin.fileno())
-                    elif char == "\x12":  # Ctrl+R
-                        session_name = sessions[selected_index]
-                        if session_name in expanded_sessions:
-                            expanded_sessions.remove(session_name)
-                        else:
-                            expanded_sessions.add(session_name)
-                        update_display()
-                    elif char == "\x1b":  # Escape sequence (arrow keys)
-                        # Read the next two characters for arrow keys
-                        next_chars = sys.stdin.read(2)
-                        if next_chars == "[A":  # Up arrow
-                            selected_index = (selected_index - 1) % len(sessions)
-                            update_display()
-                        elif next_chars == "[B":  # Down arrow
-                            selected_index = (selected_index + 1) % len(sessions)
-                            update_display()
 
             except KeyboardInterrupt:
                 return None, True
@@ -1173,7 +1313,7 @@ class ConsoleSubscriber:
         available_sessions.sort()
 
         if available_sessions:
-            # Use interactive selector with arrow keys and Ctrl+R expansion
+            # Use interactive selector with arrow keys
             selected_session, cancelled = self._interactive_session_selector(
                 available_sessions
             )
