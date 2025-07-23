@@ -7,6 +7,10 @@ This module provides real-time console output for agent events.
 from typing import Optional, Dict, Any, Callable
 from threading import Lock
 import uuid
+import json
+import sys
+import termios
+import tty
 from pathlib import Path
 
 from rich.console import Console
@@ -850,6 +854,308 @@ class ConsoleSubscriber:
             self._spinner.stop()
             self._spinner = None
 
+    def _interactive_session_selector(
+        self, sessions: list
+    ) -> tuple[Optional[str], bool]:
+        """Interactive session selector with arrow keys and Ctrl+R expansion."""
+        if not sessions:
+            return None, False
+
+        selected_index = 0
+        expanded_sessions = set()
+
+        # Check if terminal supports raw mode
+        if not sys.stdin.isatty():
+            # Fallback to simple selection for non-interactive terminals
+            self.console.print("\n[bold cyan]📋 Available Sessions[/bold cyan]")
+            for i, session in enumerate(sessions, 1):
+                self.console.print(f"  {i}. [bright_white]{session}[/bright_white]")
+
+            self.console.print(
+                "\n[dim]Enter session number (1-{}) or name, or 'new' to create a new session[/dim]".format(
+                    len(sessions)
+                )
+            )
+            choice = Prompt.ask("Selection", default="")
+
+            if choice.lower() == "new":
+                new_session_name = Prompt.ask(
+                    "Enter new session name", default=f"session_{uuid.uuid4().hex[:8]}"
+                )
+                return new_session_name, False
+            elif choice.isdigit() and 1 <= int(choice) <= len(sessions):
+                return sessions[int(choice) - 1], False
+            elif choice in sessions:
+                return choice, False
+            elif choice:
+                # Create new session with the given name
+                return choice, False
+            else:
+                return None, False
+
+        def get_session_content(session_name: str) -> str:
+            """Get session content from agent_state.json."""
+            try:
+                sessions_dir = Path.home() / ".ii_agent" / "sessions"
+                state_file = sessions_dir / session_name / "agent_state.json"
+                if state_file.exists():
+                    with open(state_file, "r") as f:
+                        data = json.load(f)
+
+                    # Extract meaningful information
+                    info_lines = []
+
+                    # User Message
+                    if "last_user_prompt_index" in data:
+                        last_user_prompt = data["message_lists"][
+                            int(data["last_user_prompt_index"])
+                        ][0]["text"]
+                        if len(last_user_prompt) > 50:
+                            last_user_prompt = "..." + last_user_prompt[-47:]
+                        info_lines.append(f"User: {last_user_prompt}")
+
+                    # Message count
+                    if "message_lists" in data and data["message_lists"]:
+                        message_count = len(data["message_lists"])
+                        info_lines.append(f"💬 Messages: {message_count}")
+
+                        # Get last few message summaries
+                        recent_messages = []
+                        for msg_list in data["message_lists"][
+                            -2:
+                        ]:  # Last 2 message lists
+                            messages = msg_list
+                            for msg in messages[-3:]:  # Last 3 messages from each list
+                                if msg.get("text"):
+                                    content = msg["text"][:100]
+                                    if len(msg["text"]) > 100:
+                                        content += "..."
+                                    recent_messages.append(content)
+
+                        if recent_messages:
+                            info_lines.append("📝 Recent messages:")
+                            info_lines.extend(recent_messages[-3:])  # Show only last 3
+
+                    # File size info
+                    file_size = state_file.stat().st_size
+                    size_str = f"{file_size} bytes"
+                    if file_size > 1024:
+                        size_str = f"{file_size / 1024:.1f} KB"
+                    if file_size > 1024 * 1024:
+                        size_str = f"{file_size / (1024 * 1024):.1f} MB"
+                    info_lines.append(f"📊 File size: {size_str}")
+
+                    return (
+                        "\n".join(info_lines) if info_lines else "No details available"
+                    )
+                else:
+                    return "❌ No state file found"
+            except Exception as e:
+                return f"❌ Error reading state: {str(e)}"
+
+        def render_session_list():
+            """Generate session list content without clearing screen."""
+            from rich.console import Group
+            from rich.text import Text
+            from rich.panel import Panel
+            from rich.table import Table
+
+            content = []
+
+            # Create elegant header panel matching the theme
+            header_content = Text()
+            header_content.append("📋 ", style="cyan")
+            header_content.append("Session Manager", style="bold cyan")
+
+            header_panel = Panel(
+                header_content,
+                title="🚀 ii-agent",
+                title_align="left",
+                style="cyan",
+                border_style="bright_blue",
+                padding=(0, 1),
+            )
+            content.append(header_panel)
+            content.append(Text())  # Spacer
+
+            # Create instruction panel with consistent styling
+            instructions = Text()
+            instructions.append("Navigation: ", style="bold blue")
+            instructions.append("↑/↓ arrows ", style="bright_white")
+            instructions.append("• ", style="dim")
+            instructions.append("Enter ", style="green")
+            instructions.append("to select ", style="white")
+            instructions.append("• ", style="dim")
+            instructions.append("'n' ", style="yellow")
+            instructions.append("for new session ", style="white")
+            instructions.append("• ", style="dim")
+            instructions.append("Ctrl+C ", style="red")
+            instructions.append("to cancel", style="white")
+
+            content.append(Panel(instructions, border_style="dim blue", padding=(0, 1)))
+            content.append(Text())  # Spacer
+
+            # Session items with improved visual hierarchy
+            session_table = Table(
+                show_header=False, show_edge=False, pad_edge=False, box=None
+            )
+            session_table.add_column("status", width=3, no_wrap=True)
+            session_table.add_column("name", min_width=20)
+            session_table.add_column("info", style="dim", no_wrap=True)
+
+            for i, session in enumerate(sessions):
+                if i == selected_index:
+                    # Selected session with enhanced styling
+                    status_icon = Text("▶", style="bold bright_green")
+                    session_name = Text(
+                        session, style="bold bright_green on bright_black"
+                    )
+                    info_text = Text("← selected", style="dim green")
+                else:
+                    # Non-selected sessions with subtle styling
+                    status_icon = Text("•", style="dim blue")
+                    session_name = Text(session, style="bright_white")
+                    # Add session metadata as info
+                    try:
+                        sessions_dir = Path.home() / ".ii_agent" / "sessions"
+                        state_file = sessions_dir / session / "agent_state.json"
+                        if state_file.exists():
+                            from datetime import datetime
+
+                            mtime = datetime.fromtimestamp(state_file.stat().st_mtime)
+                            info_text = Text(
+                                mtime.strftime("%m/%d %H:%M"), style="dim cyan"
+                            )
+                        else:
+                            info_text = Text("no state", style="dim yellow")
+                    except Exception:
+                        info_text = Text("", style="dim")
+
+                session_table.add_row(status_icon, session_name, info_text)
+
+                # Show expanded content if this session is expanded
+                if session in expanded_sessions:
+                    session_content = get_session_content(session)
+                    detail_panel = Panel(
+                        session_content,
+                        title="📊 Session Details",
+                        title_align="left",
+                        subtitle="Ctrl+R to collapse",
+                        subtitle_align="right",
+                        border_style="dim green",
+                        style="dim",
+                        padding=(0, 1),
+                    )
+                    content.append(detail_panel)
+
+            # Add the session table
+            sessions_panel = Panel(
+                session_table,
+                title=f"📂 Sessions ({len(sessions)} available)",
+                title_align="left",
+                border_style="dim cyan",
+                padding=(0, 1),
+            )
+            content.append(sessions_panel)
+
+            # Enhanced footer with current selection info
+            content.append(Text())  # Spacer
+
+            current_session = sessions[selected_index]
+            footer_content = Text()
+            footer_content.append("📍 Current selection: ", style="dim")
+            footer_content.append(current_session, style="bold cyan")
+
+            if current_session in expanded_sessions:
+                footer_content.append(" ", style="dim")
+                footer_content.append("(details shown)", style="dim green")
+                footer_content.append(" • Press ", style="dim")
+                footer_content.append("Ctrl+R", style="dim yellow")
+                footer_content.append(" to collapse", style="dim")
+            else:
+                footer_content.append(" • Press ", style="dim")
+                footer_content.append("Ctrl+R", style="dim yellow")
+                footer_content.append(" for details", style="dim")
+
+            footer_panel = Panel(
+                footer_content, border_style="dim", style="dim", padding=(0, 1)
+            )
+            content.append(footer_panel)
+
+            return Group(*content)
+
+        # Print welcome message once at the start
+        self.console.clear()
+        self.print_welcome()
+
+        # Create live display for session list
+        from rich.live import Live
+
+        # Save original terminal settings
+        old_settings = termios.tcgetattr(sys.stdin)
+
+        with Live(
+            render_session_list(),
+            console=self.console,
+            refresh_per_second=10,
+            screen=False,
+        ) as live:
+
+            def update_display():
+                live.update(render_session_list())
+
+            try:
+                # Set terminal to raw mode
+                tty.setcbreak(sys.stdin.fileno())
+
+                while True:
+                    # Read a single character
+                    char = sys.stdin.read(1)
+
+                    if char == "\x03":  # Ctrl+C
+                        return None, True
+                    elif char == "\r" or char == "\n":  # Enter
+                        return sessions[selected_index], False
+                    elif char == "n" or char == "N":  # New session
+                        # Restore terminal settings temporarily for input
+                        termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
+                        try:
+                            live.stop()
+                            self.console.clear()
+                            self.console.print(
+                                "[bold cyan]📝 Create New Session[/bold cyan]"
+                            )
+                            new_session_name = Prompt.ask(
+                                "Enter session name",
+                                default=f"session_{uuid.uuid4().hex[:8]}",
+                            )
+                            return new_session_name, False
+                        finally:
+                            # Always restore raw mode
+                            tty.setcbreak(sys.stdin.fileno())
+                    elif char == "\x12":  # Ctrl+R
+                        session_name = sessions[selected_index]
+                        if session_name in expanded_sessions:
+                            expanded_sessions.remove(session_name)
+                        else:
+                            expanded_sessions.add(session_name)
+                        update_display()
+                    elif char == "\x1b":  # Escape sequence (arrow keys)
+                        # Read the next two characters for arrow keys
+                        next_chars = sys.stdin.read(2)
+                        if next_chars == "[A":  # Up arrow
+                            selected_index = (selected_index - 1) % len(sessions)
+                            update_display()
+                        elif next_chars == "[B":  # Down arrow
+                            selected_index = (selected_index + 1) % len(sessions)
+                            update_display()
+
+            except KeyboardInterrupt:
+                return None, True
+            finally:
+                # Restore original terminal settings
+                termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
+
     async def setup_session_config(self) -> SessionConfig:
         """Set up session configuration with interactive user selection."""
         # Create session config directory if it doesn't exist
@@ -867,34 +1173,30 @@ class ConsoleSubscriber:
         available_sessions.sort()
 
         if available_sessions:
-            self.console.print("\n[cyan]Available sessions:[/cyan]")
-            for i, session in enumerate(available_sessions, 1):
-                self.console.print(f"  {i}. {session}")
+            # Use interactive selector with arrow keys and Ctrl+R expansion
+            selected_session, cancelled = self._interactive_session_selector(
+                available_sessions
+            )
 
-            self.console.print("\n[yellow]Options:[/yellow]")
-            self.console.print("  • Select a number to load an existing session")
-            self.console.print("  • Press Enter to create a new session")
-            self.console.print("  • Type a name to create/use a specific session")
-
-            choice = Prompt.ask("\nYour choice", default="")
-
-            if choice.isdigit() and 1 <= int(choice) <= len(available_sessions):
-                # Load existing session by number
-                session_name = available_sessions[int(choice) - 1]
-                session_id = str(uuid.uuid4())  # Generate new ID for continued session
-                self.console.print(f"[green]Loading session: {session_name}[/green]")
-            elif choice and choice not in available_sessions:
-                # Create new named session
-                session_name = choice
+            if cancelled:
+                # User cancelled, create new session
+                session_name = f"session_{uuid.uuid4().hex[:8]}"
                 session_id = str(uuid.uuid4())
                 self.console.print(
                     f"[green]Creating new session: {session_name}[/green]"
                 )
-            elif choice and choice in available_sessions:
-                # Load existing named session
-                session_name = choice
+            elif selected_session and selected_session in available_sessions:
+                # Load existing session
+                session_name = selected_session
                 session_id = str(uuid.uuid4())  # Generate new ID for continued session
                 self.console.print(f"[green]Loading session: {session_name}[/green]")
+            elif selected_session:
+                # Create new named session
+                session_name = selected_session
+                session_id = str(uuid.uuid4())
+                self.console.print(
+                    f"[green]Creating new session: {session_name}[/green]"
+                )
             else:
                 # Create new session with generated name
                 session_name = f"session_{uuid.uuid4().hex[:8]}"

@@ -38,7 +38,7 @@ def create_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
     # Chat command (interactive mode)
-    # chat_parser = subparsers.add_parser("chat", help="Start interactive chat session")
+    chat_parser = subparsers.add_parser("chat", help="Start interactive chat session")  # noqa: F841
 
     # Config command
     config_parser = subparsers.add_parser("config", help="Manage configuration")
