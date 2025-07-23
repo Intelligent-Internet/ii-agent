@@ -459,10 +459,6 @@ async def setup_runtime_configuration(settings_store: FileSettingsStore) -> None
             "Select Runtime Mode:",
             runtime_choices,
         )
-        from ipdb import set_trace
-
-        set_trace()
-
         runtime_mode = RuntimeMode(runtime_choices[mode_choice])
 
         # Step 2: E2B specific configuration

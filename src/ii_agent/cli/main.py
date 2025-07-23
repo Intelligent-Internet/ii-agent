@@ -4,7 +4,6 @@ Main CLI entry point for ii-agent.
 This module provides the command-line interface for interacting with the AgentController.
 """
 
-import uuid
 import json
 import argparse
 import asyncio
@@ -22,116 +21,57 @@ def create_parser() -> argparse.ArgumentParser:
         description="Intelligent Internet Agent - CLI interface for AI-powered automation",
         epilog="Use 'ii-agent <command> --help' for command-specific help.",
     )
-    
+
     # Global options
     parser.add_argument(
-        "--workspace", 
-        "-w", 
-        type=str, 
-        default=".", 
-        help="Working directory for the agent (default: current directory)"
-    )
-    parser.add_argument(
-        "--config", 
-        "-c", 
-        type=str, 
-        help="Configuration file path"
-    )
-    parser.add_argument(
-        "--mcp-config",
+        "--workspace",
+        "-w",
         type=str,
-        help="MCP config file path"
+        default=".",
+        help="Working directory for the agent (default: current directory)",
     )
-    parser.add_argument(
-        "--minimal", 
-        "-m", 
-        action="store_true", 
-        help="Minimize output"
-    )
-    
+    parser.add_argument("--config", "-c", type=str, help="Configuration file path")
+    parser.add_argument("--mcp-config", type=str, help="MCP config file path")
+    parser.add_argument("--minimal", "-m", action="store_true", help="Minimize output")
+
     # Subcommands
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
-    
+
     # Chat command (interactive mode)
-    chat_parser = subparsers.add_parser(
-        "chat", 
-        help="Start interactive chat session"
-    )
-    chat_parser.add_argument(
-        "--session", 
-        "-s", 
-        type=str, 
-        help="Session name to save/restore conversation"
-    )
-    chat_parser.add_argument(
-        "--resume", 
-        "-r", 
-        action="store_true", 
-        help="Resume from previous session"
-    )
-    chat_parser.add_argument(
-        "--continue", 
-        "-cont", 
-        action="store_true", 
-        help="Continue from last saved agent state in current directory"
-    ) 
-    
+    # chat_parser = subparsers.add_parser("chat", help="Start interactive chat session")
+
     # Config command
-    config_parser = subparsers.add_parser(
-        "config", 
-        help="Manage configuration"
-    )
+    config_parser = subparsers.add_parser("config", help="Manage configuration")
     config_group = config_parser.add_mutually_exclusive_group(required=True)
     config_group.add_argument(
-        "--show", 
-        action="store_true", 
-        help="Show current configuration"
+        "--show", action="store_true", help="Show current configuration"
     )
     config_group.add_argument(
-        "--set", 
-        nargs=2, 
-        metavar=("KEY", "VALUE"), 
-        help="Set configuration value"
+        "--set", nargs=2, metavar=("KEY", "VALUE"), help="Set configuration value"
     )
     config_group.add_argument(
-        "--reset", 
-        action="store_true", 
-        help="Reset configuration to defaults"
+        "--reset", action="store_true", help="Reset configuration to defaults"
     )
-    
+
     # LLM configuration options
     parser.add_argument(
-        "--llm-provider", 
-        choices=["anthropic", "openai", "gemini"], 
-        help="LLM provider to use"
+        "--llm-provider",
+        choices=["anthropic", "openai", "gemini"],
+        help="LLM provider to use",
     )
+    parser.add_argument("--llm-model", type=str, help="Specific model to use")
+    parser.add_argument("--max-tokens", type=int, help="Maximum tokens per turn")
     parser.add_argument(
-        "--llm-model", 
-        type=str, 
-        help="Specific model to use"
+        "--temperature", type=float, help="Temperature for LLM responses"
     )
-    parser.add_argument(
-        "--max-tokens", 
-        type=int, 
-        help="Maximum tokens per turn"
-    )
-    parser.add_argument(
-        "--temperature", 
-        type=float, 
-        help="Temperature for LLM responses"
-    )
-    parser.add_argument(
-        "--tools", 
-        nargs="*", 
-        help="Specific tools to enable"
-    )
-    
+    parser.add_argument("--tools", nargs="*", help="Specific tools to enable")
+
     return parser
 
 
 def validate_args(args: argparse.Namespace) -> None:
     """Validate command-line arguments."""
-    
+
     if args.workspace:
         workspace_path = Path(args.workspace)
         if not workspace_path.exists():
@@ -140,7 +80,7 @@ def validate_args(args: argparse.Namespace) -> None:
         if not workspace_path.is_dir():
             print(f"Error: Workspace path '{args.workspace}' is not a directory")
             sys.exit(1)
-    
+
     if args.config:
         config_path = Path(args.config)
         if not config_path.exists():
@@ -152,51 +92,46 @@ async def main_async() -> int:
     """Main entry point for the CLI."""
     parser = create_parser()
     args = parser.parse_args()
-    
+
     # Show help if no command is provided
     if not args.command:
         parser.print_help()
         return 0
-    
+
     # Validate arguments
     validate_args(args)
 
-    session_id = args.session if args.session else str(uuid.uuid4())
     mcp_config = json.loads(open(args.mcp_config).read()) if args.mcp_config else None
-    
+
     try:
         # Setup CLI configuration using the new pattern
         config, llm_config, workspace_path = await setup_cli_config(
-            session_id=session_id,
             workspace=args.workspace,
             model=args.llm_model,
             temperature=args.temperature,
             mcp_config=mcp_config,
         )
-        
+
         # Handle config command
         if args.command == "config":
             return await handle_config_command(args, config, llm_config)
-        
+
         # Create and run CLI app
         app = CLIApp(config, llm_config, workspace_path, minimal=args.minimal)
-        
+
         if args.command == "chat":
-            return await app.run_interactive_mode(
-                session_name=args.session,
-                resume=args.resume,
-                continue_from_state=getattr(args, 'continue', False)
-            )
+            return await app.run_interactive_mode()
         else:
             print(f"Unknown command: {args.command}")
             return 1
-            
+
     except KeyboardInterrupt:
         print("\nOperation interrupted by user")
         return 130
     except Exception as e:
         if args.debug:
             import traceback
+
             traceback.print_exc()
         else:
             print(f"Error: {e}")
@@ -220,7 +155,7 @@ async def handle_config_command(args: argparse.Namespace, config, llm_config) ->
     elif args.reset:
         print("Reset configuration (feature not yet implemented)")
         return 0
-    
+
     return 1
 
 
