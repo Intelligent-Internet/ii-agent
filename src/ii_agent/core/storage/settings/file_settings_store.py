@@ -29,14 +29,14 @@ class FileSettingsStore(SettingsStore):
     file_store: FileStore
     path: str = "settings.json"
 
-    async def load(self) -> Settings:
+    async def load(self) -> Settings | None:
         try:
             json_str = await call_sync_from_async(self.file_store.read, self.path)
             kwargs = json.loads(json_str)
             settings = Settings(**kwargs)
             return settings
         except FileNotFoundError:
-            raise FileNotFoundError(f"Settings file not found at {self.path}")
+            return None
 
     async def store(self, settings: Settings) -> None:
         json_str = settings.model_dump_json(context={"expose_secrets": True})
