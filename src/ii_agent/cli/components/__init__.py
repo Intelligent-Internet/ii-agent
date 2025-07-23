@@ -8,6 +8,7 @@ from .spinner import AnimatedSpinner, SimpleSpinner
 from .token_usage import TokenUsageDisplay
 from .message_renderer import MessageRenderer, MessageType
 from .file_path_completer import FilePathCompleter, MentionCompleter
+from .todo_panel import TodoPanel
 
 __all__ = [
     "AnimatedSpinner",
@@ -16,5 +17,6 @@ __all__ = [
     "MessageRenderer",
     "MessageType",
     "FilePathCompleter",
-    "MentionCompleter"
+    "MentionCompleter",
+    "TodoPanel"
 ]
