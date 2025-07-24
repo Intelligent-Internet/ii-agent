@@ -168,7 +168,7 @@ class CLIApp:
         )
 
         # Get system MCP tools
-        mcp_client = Client(create_mcp(
+        mcp_client = Client(await create_mcp(
             workspace_dir=str(self.workspace_manager.root),
             session_id=self.config.session_id,
         ))
