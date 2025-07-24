@@ -933,9 +933,6 @@ class ConsoleSubscriber:
                 instructions.append("• ", style="dim")
                 instructions.append("Enter ", style="green")
                 instructions.append("to select ", style="white")
-                instructions.append("• ", style="dim")
-                instructions.append("Esc ", style="red")
-                instructions.append("to exit search", style="white")
             else:
                 instructions.append("Navigation: ", style="bold blue")
                 instructions.append("↑/↓ arrows ", style="bright_white")
@@ -1106,13 +1103,12 @@ class ConsoleSubscriber:
                             return filtered_sessions[selected_index], False
                         else:
                             continue  # No sessions to select
-                    elif char == "s" or char == "S":  # Search mode
-                        if not search_mode:
-                            search_mode = True
-                            search_query = ""
-                            filtered_sessions = sessions.copy()
-                            selected_index = 0
-                            update_display()
+                    elif (char == "s" or char == "S") and not search_mode:  # Search mode
+                        search_mode = True
+                        search_query = ""
+                        filtered_sessions = sessions.copy()
+                        selected_index = 0
+                        update_display()
                     elif char == "\x1b":  # Escape sequence (arrow keys or ESC)
                         # Read the next two characters
                         next_chars = sys.stdin.read(2)
@@ -1128,12 +1124,6 @@ class ConsoleSubscriber:
                                     filtered_sessions
                                 )
                                 update_display()
-                        elif search_mode and not next_chars:  # ESC key (exit search)
-                            search_mode = False
-                            search_query = ""
-                            filtered_sessions = sessions.copy()
-                            selected_index = 0
-                            update_display()
                     elif search_mode:
                         # Handle search input
                         if char == "\x7f":  # Backspace
