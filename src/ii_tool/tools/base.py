@@ -25,14 +25,16 @@ class BaseTool(ABC):
     display_name: str
 
     @abstractmethod
-    async def execute(self, *args, **kwargs) -> ToolResult:
+    async def execute(self, tool_input: dict[str, Any]) -> ToolResult:
         raise NotImplementedError
 
-    async def _mcp_wrapper(self, *args, **kwargs):
+    async def _mcp_wrapper(self, tool_input: dict[str, Any]):
+        """Wraps the tool execution to match with FastMCP Format"""
+
         from mcp.types import ImageContent as MCPImageContent, TextContent as MCPTextContent
         from fastmcp.tools.tool import ToolResult as FastMCPToolResult
 
-        internal_result = await self.execute(*args, **kwargs)
+        internal_result = await self.execute(tool_input)
         llm_content = internal_result.llm_content
 
         mcp_result = []

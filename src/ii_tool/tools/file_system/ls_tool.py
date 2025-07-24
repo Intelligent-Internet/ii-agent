@@ -4,7 +4,7 @@ import os
 import fnmatch
 
 from pathlib import Path
-from typing import Optional, List, NamedTuple
+from typing import Optional, List, NamedTuple, Any
 from ii_tool.core.workspace import WorkspaceManager, FileSystemValidationError
 from ii_tool.tools.base import BaseTool, ToolResult
 
@@ -233,19 +233,19 @@ class LSTool(BaseTool):
 
     async def execute(
         self,
-        path: str,
-        ignore: Optional[List[str]] = None,
+        tool_input: dict[str, Any],
     ) -> ToolResult:
         """
         Execute the directory listing operation.
         
         Args:
-            path: Absolute path to the directory to list
-            ignore: Optional list of glob patterns to ignore
+            tool_input: Dictionary containing path and optional ignore patterns
             
         Returns:
             ToolResult with formatted directory tree
         """
+        path = tool_input.get("path")
+        ignore = tool_input.get("ignore")
 
         try:
             self.workspace_manager.validate_existing_directory_path(path)
@@ -305,4 +305,9 @@ class LSTool(BaseTool):
         path: str,
         ignore: Optional[List[str]] = None,
     ):
-        return await self._mcp_wrapper(path, ignore)
+        return await self._mcp_wrapper(
+            tool_input={
+                "path": path,
+                "ignore": ignore,
+            }
+        )

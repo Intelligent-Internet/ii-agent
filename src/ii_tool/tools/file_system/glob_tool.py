@@ -1,7 +1,7 @@
 """File pattern matching tool using glob patterns."""
 
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Any
 from ii_tool.core.workspace import WorkspaceManager, FileSystemValidationError
 from ii_tool.tools.base import BaseTool, ToolResult
 
@@ -52,10 +52,11 @@ class GlobTool(BaseTool):
 
     async def execute(
         self,
-        pattern: str,
-        path: Optional[str] = None,
+        tool_input: dict[str, Any],
     ) -> ToolResult:
         """Execute the glob pattern matching operation."""
+        pattern = tool_input.get("pattern")
+        path = tool_input.get("path")
         
         try:
             if path is None:
@@ -112,4 +113,9 @@ class GlobTool(BaseTool):
         pattern: str,
         path: Optional[str] = None,
     ):
-        return await self._mcp_wrapper(pattern, path)
+        return await self._mcp_wrapper(
+            tool_input={
+                "pattern": pattern,
+                "path": path,
+            }
+        )

@@ -1,5 +1,6 @@
 """File editing tool for making targeted edits to files."""
 
+from typing import Any
 from pathlib import Path
 from ii_tool.core.workspace import WorkspaceManager, FileSystemValidationError
 from ii_tool.tools.base import BaseTool, ToolResult
@@ -82,12 +83,13 @@ class FileEditTool(BaseTool):
 
     async def execute(
         self,
-        file_path: str,
-        old_string: str,
-        new_string: str,
-        replace_all: bool = False,
+        tool_input: dict[str, Any],
     ) -> ToolResult:
         """Execute the file edit operation."""
+        file_path = tool_input.get("file_path")
+        old_string = tool_input.get("old_string")
+        new_string = tool_input.get("new_string")
+        replace_all = tool_input.get("replace_all", False)
         
         # Validate parameters
         if old_string == new_string:
@@ -136,4 +138,11 @@ class FileEditTool(BaseTool):
         new_string: str,
         replace_all: bool = False,
     ):
-        return await self._mcp_wrapper(file_path, old_string, new_string, replace_all)
+        return await self._mcp_wrapper(
+            tool_input={
+                "file_path": file_path,
+                "old_string": old_string,
+                "new_string": new_string,
+                "replace_all": replace_all,
+            }
+        )

@@ -4,7 +4,7 @@ import mimetypes
 import pymupdf
 
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Any
 from ii_tool.core.workspace import WorkspaceManager, FileSystemValidationError
 from ii_tool.tools.base import BaseTool, ToolResult, ImageContent
 from ii_tool.tools.file_system.utils import encode_image
@@ -203,11 +203,12 @@ class FileReadTool(BaseTool):
 
     async def execute(
         self,
-        file_path: str,
-        limit: Optional[int] = None,
-        offset: Optional[int] = None,
+        tool_input: dict[str, Any],
     ) -> ToolResult:
         """Implementation of the file reading functionality."""
+        file_path = tool_input.get("file_path")
+        limit = tool_input.get("limit")
+        offset = tool_input.get("offset")
 
         # Validate parameters
         if offset is not None and offset < 0:
@@ -273,4 +274,10 @@ class FileReadTool(BaseTool):
         limit: Optional[int] = None,
         offset: Optional[int] = None,
     ):
-        return await self._mcp_wrapper(file_path, limit, offset)
+        return await self._mcp_wrapper(
+            tool_input={
+                "file_path": file_path,
+                "limit": limit,
+                "offset": offset,
+            }
+        )

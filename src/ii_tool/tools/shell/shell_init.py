@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Any
 from ii_tool.tools.shell.terminal_manager import BaseShellManager, ShellInvalidSessionNameError, TmuxSessionExists
 from ii_tool.core.workspace import WorkspaceManager, FileSystemValidationError
 from ii_tool.tools.base import BaseTool, ToolResult
@@ -39,10 +39,12 @@ class ShellInit(BaseTool):
 
     async def execute(
         self,
-        session_name: str,
-        start_directory: Optional[str] = None,
+        tool_input: dict[str, Any],
     ) -> ToolResult:
         """Initialize a bash session with the specified name and directory."""
+        session_name = tool_input.get("session_name")
+        start_directory = tool_input.get("start_directory")
+        
         try:
             if session_name in self.shell_manager.get_all_sessions():
                 return ToolResult(
@@ -75,4 +77,9 @@ class ShellInit(BaseTool):
         session_name: str,
         start_directory: Optional[str] = None,
     ):
-        return await self._mcp_wrapper(session_name, start_directory)
+        return await self._mcp_wrapper(
+            tool_input={
+                "session_name": session_name,
+                "start_directory": start_directory,
+            }
+        )

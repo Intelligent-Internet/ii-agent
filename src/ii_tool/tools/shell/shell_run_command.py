@@ -1,3 +1,4 @@
+from typing import Any
 from ii_tool.tools.shell.terminal_manager import BaseShellManager, ShellCommandTimeoutError, ShellBusyError
 from ii_tool.tools.base import BaseTool, ToolResult
 
@@ -89,13 +90,15 @@ class ShellRunCommand(BaseTool):
 
     async def execute(
         self,
-        session_name: str,
-        command: str,
-        description: str,
-        timeout: int = DEFAULT_TIMEOUT,
-        wait_for_output: bool = True,
+        tool_input: dict[str, Any],
     ) -> ToolResult:
         """Execute a bash command in the specified session."""
+        session_name = tool_input.get("session_name")
+        command = tool_input.get("command")
+        description = tool_input.get("description")
+        timeout = tool_input.get("timeout", DEFAULT_TIMEOUT)
+        wait_for_output = tool_input.get("wait_for_output", True)
+        
         all_current_sessions = self.shell_manager.get_all_sessions()
         if session_name not in all_current_sessions:
             return ToolResult(
@@ -107,6 +110,7 @@ class ShellRunCommand(BaseTool):
             result = self.shell_manager.run_command(session_name, command, timeout=timeout, wait_for_output=wait_for_output)
             return ToolResult(
                 llm_content=result,
+                user_display_content=description,
                 is_error=False
             )
         except ShellCommandTimeoutError:
@@ -129,4 +133,12 @@ class ShellRunCommand(BaseTool):
         timeout: int = DEFAULT_TIMEOUT,
         wait_for_output: bool = True,
     ):
-        return await self._mcp_wrapper(session_name, command, description, timeout, wait_for_output)
+        return await self._mcp_wrapper(
+            tool_input={
+                "session_name": session_name,
+                "command": command,
+                "description": description,
+                "timeout": timeout,
+                "wait_for_output": wait_for_output,
+            }
+        )

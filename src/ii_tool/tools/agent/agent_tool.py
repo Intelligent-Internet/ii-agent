@@ -122,19 +122,20 @@ Usage notes:
 
     async def execute(
         self,
-        prompt: str,
-        dangerous_skip_permissions: bool = False,
+        tool_input: dict[str, Any],
     ) -> ToolResult:
         """
         Execute the agent with the given task.
         
         Args:
-            prompt: Detailed task description for the agent
-            dangerous_skip_permissions: Whether to allow write operations
+            tool_input: Dictionary containing prompt and optional dangerous_skip_permissions
             
         Returns:
             ToolResult with the agent's execution result
         """
+        prompt = tool_input.get("prompt")
+        dangerous_skip_permissions = tool_input.get("dangerous_skip_permissions", False)
+        
         # TODO: Implement later
         return ToolResult(
             llm_content="Agent tool implementation is not yet complete",
@@ -146,4 +147,9 @@ Usage notes:
         prompt: str,
         dangerous_skip_permissions: bool = False,
     ):
-        return await self._mcp_wrapper(prompt, dangerous_skip_permissions)
+        return await self._mcp_wrapper(
+            tool_input={
+                "prompt": prompt,
+                "dangerous_skip_permissions": dangerous_skip_permissions,
+            }
+        )

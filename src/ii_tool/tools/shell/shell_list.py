@@ -1,3 +1,4 @@
+from typing import Any
 from ii_tool.tools.shell.terminal_manager import BaseShellManager
 from ii_tool.tools.shell import ShellView
 from ii_tool.tools.base import BaseTool, ToolResult
@@ -26,7 +27,10 @@ class ShellList(BaseTool):
     def __init__(self, shell_manager: BaseShellManager) -> None:
         self.shell_manager = shell_manager
 
-    async def execute(self) -> ToolResult:
+    async def execute(
+        self,
+        tool_input: dict[str, Any],
+    ) -> ToolResult:
         """List all available bash sessions."""
         all_current_sessions = self.shell_manager.get_all_sessions()
         
@@ -39,4 +43,6 @@ class ShellList(BaseTool):
         )
 
     async def execute_mcp_wrapper(self):
-        return await self._mcp_wrapper()
+        return await self._mcp_wrapper(
+            tool_input={}
+        )

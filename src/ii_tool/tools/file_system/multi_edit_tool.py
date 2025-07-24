@@ -95,10 +95,11 @@ class MultiEditTool(BaseTool):
 
     async def execute(
         self,
-        file_path: str,
-        edits: List[Dict[str, Any]],
+        tool_input: dict[str, Any],
     ) -> ToolResult:
         """Execute multiple file edit operations atomically."""
+        file_path = tool_input.get("file_path")
+        edits = tool_input.get("edits")
         
         # Validate that we have edits to perform
         if not edits:
@@ -195,4 +196,9 @@ class MultiEditTool(BaseTool):
         file_path: str,
         edits: List[Dict[str, Any]],
     ):
-        return await self._mcp_wrapper(file_path, edits) 
+        return await self._mcp_wrapper(
+            tool_input={
+                "file_path": file_path,
+                "edits": edits,
+            }
+        ) 

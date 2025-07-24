@@ -1,3 +1,4 @@
+from typing import Any
 from ii_tool.tools.shell.terminal_manager import BaseShellManager
 from ii_tool.tools.base import BaseTool, ToolResult
 
@@ -32,9 +33,11 @@ class ShellStopCommand(BaseTool):
 
     async def execute(
         self,
-        session_name: str,
+        tool_input: dict[str, Any],
     ) -> ToolResult:
         """Stop a running command in the specified bash session."""
+        session_name = tool_input.get("session_name")
+        
         all_current_sessions = self.shell_manager.get_all_sessions()
         if session_name not in all_current_sessions:
             return ToolResult(
@@ -52,4 +55,8 @@ class ShellStopCommand(BaseTool):
         self,
         session_name: str,
     ):
-        return await self._mcp_wrapper(session_name)
+        return await self._mcp_wrapper(
+            tool_input={
+                "session_name": session_name,
+            }
+        )

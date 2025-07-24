@@ -1,5 +1,6 @@
 """File writing tool for creating and overwriting files."""
 
+from typing import Any
 from pathlib import Path
 from ii_tool.core.workspace import WorkspaceManager, FileSystemValidationError
 from ii_tool.tools.base import BaseTool, ToolResult
@@ -49,10 +50,11 @@ class FileWriteTool(BaseTool):
 
     async def execute(
         self,
-        file_path: str,
-        content: str,
+        tool_input: dict[str, Any],
     ) -> ToolResult:
         """Execute the file write operation."""
+        file_path = tool_input.get("file_path")
+        content = tool_input.get("content")
         
         try:
             self.workspace_manager.validate_path(file_path)
@@ -98,4 +100,9 @@ class FileWriteTool(BaseTool):
         file_path: str,
         content: str,
     ):
-        return await self._mcp_wrapper(file_path, content)
+        return await self._mcp_wrapper(
+            tool_input={
+                "file_path": file_path,
+                "content": content,
+            }
+        )

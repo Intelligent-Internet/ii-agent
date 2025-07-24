@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Any
 from ii_tool.tools.shell.terminal_manager import BaseShellManager
 from ii_tool.tools.base import BaseTool, ToolResult
 
@@ -34,9 +34,11 @@ class ShellView(BaseTool):
 
     async def execute(
         self,
-        session_names: List[str],
+        tool_input: dict[str, Any],
     ) -> ToolResult:
         """View the current output of the specified bash sessions."""
+        session_names = tool_input.get("session_names")
+        
         all_current_sessions = self.shell_manager.get_all_sessions()
         for session_name in session_names:
             if session_name not in all_current_sessions:
@@ -59,4 +61,8 @@ class ShellView(BaseTool):
         self,
         session_names: List[str],
     ):
-        return await self._mcp_wrapper(session_names)
+        return await self._mcp_wrapper(
+            tool_input={
+                "session_names": session_names,
+            }
+        )

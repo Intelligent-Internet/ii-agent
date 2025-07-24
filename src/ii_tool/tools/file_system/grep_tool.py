@@ -4,7 +4,7 @@ import subprocess
 import re
 
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 from ii_tool.core.workspace import WorkspaceManager, FileSystemValidationError
 from ii_tool.tools.base import BaseTool, ToolResult
 
@@ -186,13 +186,14 @@ class GrepTool(BaseTool):
 
     async def execute(
         self,
-        pattern: str,
-        path: Optional[str] = None,
-        include: Optional[str] = None,
+        tool_input: dict[str, Any],
     ) -> ToolResult:
         """
         Search for pattern in files using ripgrep.
         """
+        pattern = tool_input.get("pattern")
+        path = tool_input.get("path")
+        include = tool_input.get("include")
         
         # Validate the regex pattern
         if not self._validate_regex_pattern(pattern):
@@ -229,4 +230,10 @@ class GrepTool(BaseTool):
         path: Optional[str] = None,
         include: Optional[str] = None,
     ):
-        return await self._mcp_wrapper(pattern, path, include)
+        return await self._mcp_wrapper(
+            tool_input={
+                "pattern": pattern,
+                "path": path,
+                "include": include,
+            }
+        )

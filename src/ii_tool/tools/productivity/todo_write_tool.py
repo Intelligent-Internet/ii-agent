@@ -102,9 +102,11 @@ class TodoWriteTool(BaseTool):
 
     async def execute(
         self,
-        todos: List[Dict[str, Any]],
+        tool_input: dict[str, Any],
     ) -> ToolResult:
         """Write/update the todo list."""
+        todos = tool_input.get("todos")
+        
         manager = get_todo_manager()
         
         try:
@@ -126,4 +128,8 @@ class TodoWriteTool(BaseTool):
         self,
         todos: List[Dict[str, Any]],
     ):
-        return await self._mcp_wrapper(todos)
+        return await self._mcp_wrapper(
+            tool_input={
+                "todos": todos,
+            }
+        )

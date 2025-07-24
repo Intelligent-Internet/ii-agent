@@ -1,5 +1,6 @@
 """TodoRead tool for reading the current session's task list."""
 
+from typing import Any
 from ii_tool.tools.base import BaseTool, ToolResult
 from ii_tool.tools.productivity.shared_state import get_todo_manager
 
@@ -45,7 +46,10 @@ class TodoReadTool(BaseTool):
     input_schema = INPUT_SCHEMA
     read_only = True
 
-    async def execute(self) -> ToolResult:
+    async def execute(
+        self,
+        tool_input: dict[str, Any],
+    ) -> ToolResult:
         """Read and return the current todo list."""
         manager = get_todo_manager()
         todos = manager.get_todos()
@@ -62,4 +66,6 @@ class TodoReadTool(BaseTool):
         )
 
     async def execute_mcp_wrapper(self):
-        return await self._mcp_wrapper()
+        return await self._mcp_wrapper(
+            tool_input={}
+        )
