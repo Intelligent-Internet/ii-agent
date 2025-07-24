@@ -299,7 +299,7 @@ The generated image will be saved to the specified local path in the workspace a
         add_watermark: bool = True,
         safety_filter_level: str = SafetyFilterLevel.BLOCK_SOME.value,
         person_generation: str = PersonGeneration.ALLOW_ADULT.value,
-    ) -> ToolResult:
+    ):
         return await self._mcp_wrapper(
             tool_input={
                 "prompt": prompt,

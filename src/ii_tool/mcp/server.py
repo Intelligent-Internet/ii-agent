@@ -2,9 +2,12 @@ from mcp.types import ToolAnnotations
 from fastmcp import FastMCP
 from argparse import ArgumentParser
 from ii_tool.core.workspace import WorkspaceManager
-from ii_tool.core.config import WebSearchConfig, WebVisitConfig, ImageSearchConfig, VideoGenerateConfig, ImageGenerateConfig
+from ii_tool.core.config import WebSearchConfig, WebVisitConfig, ImageSearchConfig, VideoGenerateConfig, ImageGenerateConfig, FullStackDevConfig
 from ii_tool.tools.shell import TmuxWindowManager
 from ii_tool.tools.manager import get_default_tools
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
 async def create_mcp(workspace_dir: str, session_id: str):
@@ -15,6 +18,7 @@ async def create_mcp(workspace_dir: str, session_id: str):
     image_search_config = ImageSearchConfig()
     video_generate_config = VideoGenerateConfig()
     image_generate_config = ImageGenerateConfig()
+    fullstack_dev_config = FullStackDevConfig()
     
     tools = get_default_tools(
         workspace_manager=workspace_manager,
@@ -24,6 +28,7 @@ async def create_mcp(workspace_dir: str, session_id: str):
         image_search_config=image_search_config,
         video_generate_config=video_generate_config,
         image_generate_config=image_generate_config,
+        fullstack_dev_config=fullstack_dev_config,
     )
 
     mcp = FastMCP()
