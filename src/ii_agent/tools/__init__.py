@@ -2,7 +2,7 @@
 # from ii_agent.tools.str_replace_tool_relative import StrReplaceEditorTool
 # from ii_agent.tools.sequential_thinking_tool import SequentialThinkingTool
 # from ii_agent.tools.bash_tool import BashTool
-from ii_agent.tools.tool_manager import get_system_tools, AgentToolManager, ToolCallParameters
+from ii_agent.tools.tool_manager import AgentToolManager, ToolCallParameters
 from ii_agent.tools.base import ToolResult, BaseTool, ToolConfirmationDetails
 
 # Tools that need input truncation (ToolCall)
