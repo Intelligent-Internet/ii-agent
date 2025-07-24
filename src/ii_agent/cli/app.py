@@ -21,7 +21,7 @@ from ii_agent.controller.agent_controller import AgentController
 from ii_agent.agents.function_call import FunctionCallAgent
 from ii_agent.llm import get_client
 from ii_agent.controller.state import State
-from ii_agent.llm.context_manager.llm_summarizing import LLMSummarizingContextManager
+from ii_agent.llm.context_manager import LLMCompact
 from ii_agent.core.storage.settings.file_settings_store import FileSettingsStore
 from ii_agent.llm.token_counter import TokenCounter
 from ii_agent.utils.workspace_manager import WorkspaceManager
@@ -29,16 +29,26 @@ from ii_agent.tools import get_system_tools
 from ii_agent.core.logger import logger
 from ii_agent.prompts.system_prompt import SYSTEM_PROMPT
 from ii_agent.utils.constants import TOKEN_BUDGET
-from ii_agent.cli.state_persistence import StateManager, restore_agent_state, restore_configs
+from ii_agent.cli.state_persistence import (
+    StateManager,
+    restore_agent_state,
+    restore_configs,
+)
 from ii_agent.tools import AgentToolManager
 from ii_agent.llm.base import ToolParam
-from ii_agent.mcp.server import create_mcp
+from ii_tool.mcp.server import create_mcp
 
 
 class CLIApp:
     """Main CLI application class."""
-    
-    def __init__(self, config: IIAgentConfig, llm_config: LLMConfig, workspace_path: str, minimal: bool = False):
+
+    def __init__(
+        self,
+        config: IIAgentConfig,
+        llm_config: LLMConfig,
+        workspace_path: str,
+        minimal: bool = False,
+    ):
         self.config = config
         self.llm_config = llm_config
         self.workspace_manager = WorkspaceManager(Path(workspace_path))
@@ -57,13 +67,15 @@ class CLIApp:
         
         # Subscribe to events
         self.event_stream.subscribe(self.console_subscriber.handle_event)
-        
+
         # Create command handler first
         self.command_handler = CommandHandler(self.console_subscriber.console)
-        
+
         # Create rich prompt with command handler
-        self.rich_prompt = create_rich_prompt(workspace_path, self.console_subscriber.console, self.command_handler)
-        
+        self.rich_prompt = create_rich_prompt(
+            workspace_path, self.console_subscriber.console, self.command_handler
+        )
+
         # Agent controller will be created when needed
         self.agent_controller: Optional[AgentController] = None
         
@@ -93,7 +105,9 @@ class CLIApp:
 
         # Create state manager now that we know if we're continuing
         if self.state_manager is None:
-            self.state_manager = StateManager(Path(self.workspace_path), continue_session=continue_from_state)
+            self.state_manager = StateManager(
+                Path(self.workspace_path), continue_session=continue_from_state
+            )
 
         settings_store = await FileSettingsStore.get_instance(self.config, None)
         settings = await settings_store.load()
@@ -112,7 +126,9 @@ class CLIApp:
         if continue_from_state:
             saved_state_data = self.state_manager.load_state()
             if saved_state_data:
-                self.console_subscriber.console.print("🔄 [cyan]Continuing from previous state...[/cyan]")
+                self.console_subscriber.console.print(
+                    "🔄 [cyan]Continuing from previous state...[/cyan]"
+                )
                 # Update configurations from saved state if available
                 config_data, llm_config_data = restore_configs(saved_state_data)
                 if config_data:
@@ -124,11 +140,13 @@ class CLIApp:
                         if hasattr(self.llm_config, key):
                             setattr(self.llm_config, key, value)
             else:
-                self.console_subscriber.console.print("⚠️ [yellow]No saved state found, starting fresh...[/yellow]")
-        
+                self.console_subscriber.console.print(
+                    "⚠️ [yellow]No saved state found, starting fresh...[/yellow]"
+                )
+
         # Create LLM client based on configuration
         llm_client = get_client(self.llm_config)
-        
+
         # Create agent
         agent_config = AgentConfig(
             max_tokens_per_turn=self.config.max_output_tokens_per_turn,
@@ -150,7 +168,7 @@ class CLIApp:
         )
 
         # Get system MCP tools
-        mcp_client = Client(create_mcp(
+        mcp_client = Client(await create_mcp(
             workspace_dir=str(self.workspace_manager.root),
             session_id=self.config.session_id,
         ))
@@ -171,18 +189,18 @@ class CLIApp:
         
         # Create context manager
         token_counter = TokenCounter()
-        context_manager = LLMSummarizingContextManager(
+        context_manager = LLMCompact(
             client=llm_client,
             token_counter=token_counter,
             token_budget=TOKEN_BUDGET,  # Default token budget
         )
-        
+
         # Create message history - restore from saved state if available
         if saved_state_data:
             state = restore_agent_state(saved_state_data)
         else:
             state = State()
-        
+
         # Create agent controller
         self.agent_controller = AgentController(
             agent=agent,
@@ -194,79 +212,86 @@ class CLIApp:
             interactive_mode=True,
             config=self.config,
         )
-        
+
         # Print configuration info
         self.console_subscriber.print_config_info(self.llm_config)
         self.console_subscriber.print_workspace_info(str(self.workspace_manager.root))
-        
+
         # Show previous conversation history if continuing from state
         if continue_from_state and saved_state_data:
-            self.console_subscriber.render_conversation_history(self.agent_controller.history)
-    
+            self.console_subscriber.render_conversation_history(
+                self.agent_controller.history
+            )
+
     async def run_interactive_mode(
-        self, 
+        self,
         session_name: Optional[str] = None,
         resume: bool = False,
-        continue_from_state: bool = False
+        continue_from_state: bool = False,
     ) -> int:
         """Run interactive chat mode."""
         try:
             await self.initialize_agent(continue_from_state)
-            
+
             self.console_subscriber.print_welcome()
             self.console_subscriber.print_session_info(session_name)
-            
+
             # Load session if resuming
             if resume and session_name:
                 self._load_session(session_name)
-            
+
             while True:
                 try:
                     # Get user input using rich prompt
                     user_input = await self.rich_prompt.get_input()
-                    
+
                     if not user_input:
                         continue
-                    
+
                     # Check if it's a slash command
                     if self.command_handler.is_command(user_input):
                         # Create command context
                         command_context = {
-                            'app': self,
-                            'config': self.config,
-                            'agent_controller': self.agent_controller,
-                            'workspace_manager': self.workspace_manager,
-                            'session_name': session_name,
-                            'should_exit': False
+                            "app": self,
+                            "config": self.config,
+                            "agent_controller": self.agent_controller,
+                            "workspace_manager": self.workspace_manager,
+                            "session_name": session_name,
+                            "should_exit": False,
                         }
-                        
+
                         # Execute command
-                        result = await self.command_handler.execute_command(user_input, command_context)
-                        
+                        result = await self.command_handler.execute_command(
+                            user_input, command_context
+                        )
+
                         # Check if we should exit
-                        if command_context.get('should_exit', False) or result == "EXIT_COMMAND":
+                        if (
+                            command_context.get("should_exit", False)
+                            or result == "EXIT_COMMAND"
+                        ):
                             break
-                        
+
                         # Continue to next iteration for commands
                         continue
-                    
+
                     # Handle regular conversation input
-                    if user_input.lower() in ['exit', 'quit', 'bye']:
+                    if user_input.lower() in ["exit", "quit", "bye"]:
                         break
-                    
+
                     # Run agent
                     if self.agent_controller is None:
                         raise RuntimeError("Agent controller not initialized")
                     await self.agent_controller.run_agent_async(
                         instruction=user_input,
                         files=None,
-                        resume=True  # Always resume in interactive mode
+                        resume=True,  # Always resume in interactive mode
                     )
-                    
+
                     # Save session if name provided
                     if session_name:
                         self._save_session(session_name)
-                
+
                 except KeyboardInterrupt:
                     self.console_subscriber.console.print("\n⚠️ [yellow]Interrupted by user[/yellow]")
                     if self.agent_controller is not None:
@@ -274,135 +299,143 @@ class CLIApp:
                     continue
                 except EOFError:
                     break
-            
+
             # Save state before exit (always save so it can be restored with --continue)
             self._save_state_on_exit(True)
-            
+
             self.console_subscriber.print_goodbye()
             return 0
-            
+
         except Exception as e:
             logger.error(f"Error in interactive mode: {e}")
             # if self.config.debug:
             import traceback
+
             traceback.print_exc()
             return 1
-     
+
     def _read_instruction_from_file(self, file_path: str) -> str:
         """Read instruction from file."""
         try:
-            with open(file_path, 'r') as f:
+            with open(file_path, "r") as f:
                 return f.read().strip()
         except Exception as e:
             print(f"Error reading instruction file: {e}")
             return ""
-    
+
     def _save_output(self, result: str, output_file: str, output_format: str) -> None:
         """Save output to file."""
         try:
             if output_format == "json":
-                data = {"result": result, "timestamp": str(asyncio.get_event_loop().time())}
-                with open(output_file, 'w') as f:
+                data = {
+                    "result": result,
+                    "timestamp": str(asyncio.get_event_loop().time()),
+                }
+                with open(output_file, "w") as f:
                     json.dump(data, f, indent=2)
             elif output_format == "markdown":
-                with open(output_file, 'w') as f:
+                with open(output_file, "w") as f:
                     f.write(f"# Agent Result\n\n{result}\n")
             else:  # text
-                with open(output_file, 'w') as f:
+                with open(output_file, "w") as f:
                     f.write(result)
-            
+
             print(f"Output saved to: {output_file}")
         except Exception as e:
             print(f"Error saving output: {e}")
-    
+
     def _load_session(self, session_name: str) -> None:
         """Load session from file."""
         try:
             session_dir = self.config.get_session_dir()
             if not session_dir:
                 return
-            
+
             session_file = session_dir / f"{session_name}.json"
             if not session_file.exists():
                 print(f"Session '{session_name}' not found")
                 return
-            
-            with open(session_file, 'r') as f:
+
+            with open(session_file, "r") as f:
                 session_data = json.load(f)
-            
+
             # Restore message history
             if self.agent_controller and "history" in session_data:
                 # You'll need to implement history restoration based on your State class
                 pass
-            
+
             print(f"Session '{session_name}' loaded")
-            
+
         except Exception as e:
             print(f"Error loading session: {e}")
-    
+
     def _save_session(self, session_name: str) -> None:
         """Save session to file."""
         try:
             session_dir = self.config.get_session_dir()
             if not session_dir:
                 return
-            
+
             session_dir.mkdir(parents=True, exist_ok=True)
             session_file = session_dir / f"{session_name}.json"
-            
+
             # Save message history
             session_data = {
                 "name": session_name,
                 "timestamp": str(asyncio.get_event_loop().time()),
                 "config": self.config.get_llm_config(),
             }
-            
+
             if self.agent_controller:
                 # You'll need to implement history serialization based on your State class
                 pass
-            
-            with open(session_file, 'w') as f:
+
+            with open(session_file, "w") as f:
                 json.dump(session_data, f, indent=2)
-            
+
         except Exception as e:
             logger.error(f"Error saving session: {e}")
-    
+
     def _save_state_on_exit(self, should_save: bool) -> None:
         """Save agent state when exiting if requested."""
         if not should_save or not self.agent_controller or not self.state_manager:
             return
-            
+
         try:
             # Get the current state from agent controller
             current_state = self.agent_controller.history  # Access the state directly
-            
+
             # Only save if there's conversation history
             if len(current_state.message_lists) == 0:
                 return
-            
+
             # Save the complete state
             self.state_manager.save_state(
                 agent_state=current_state,
                 config=self.config,
                 llm_config=self.llm_config,
                 workspace_path=str(self.workspace_manager.root),
-                session_name=None  # For --continue, we don't use session names
+                session_name=None,  # For --continue, we don't use session names
             )
-            
-            self.console_subscriber.console.print("💾 [green]State saved for next --continue[/green]")
-            
+
+            self.console_subscriber.console.print(
+                "💾 [green]State saved for next --continue[/green]"
+            )
+
         except Exception as e:
             logger.error(f"Error saving state on exit: {e}")
-            self.console_subscriber.console.print(f"⚠️ [yellow]Failed to save state: {e}[/yellow]")
-    
+            self.console_subscriber.console.print(
+                f"⚠️ [yellow]Failed to save state: {e}[/yellow]"
+            )
+
     def cleanup(self) -> None:
         """Clean up resources."""
         if self.event_stream:
             self.event_stream.clear_subscribers()
-        
+
         if self.rich_prompt:
             self.rich_prompt.cleanup()
-        
+
         # Clean up console subscriber resources
         if self.console_subscriber:
             self.console_subscriber.cleanup()
