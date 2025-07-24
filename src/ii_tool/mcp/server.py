@@ -2,7 +2,7 @@ from mcp.types import ToolAnnotations
 from fastmcp import FastMCP
 from argparse import ArgumentParser
 from ii_tool.core.workspace import WorkspaceManager
-from ii_tool.core.config import WebSearchConfig, WebVisitConfig, ImageSearchConfig
+from ii_tool.core.config import WebSearchConfig, WebVisitConfig, ImageSearchConfig, VideoGenerateConfig
 from ii_tool.tools.shell import TmuxWindowManager
 from ii_tool.tools.manager import get_default_tools
 
@@ -13,6 +13,7 @@ async def create_mcp(workspace_dir: str, session_id: str):
     web_search_config = WebSearchConfig()
     web_visit_config = WebVisitConfig()
     image_search_config = ImageSearchConfig()
+    video_generate_config = VideoGenerateConfig()
     
     tools = get_default_tools(
         workspace_manager=workspace_manager,
@@ -20,6 +21,7 @@ async def create_mcp(workspace_dir: str, session_id: str):
         web_search_config=web_search_config,
         web_visit_config=web_visit_config,
         image_search_config=image_search_config,
+        video_generate_config=video_generate_config,
     )
 
     mcp = FastMCP()
