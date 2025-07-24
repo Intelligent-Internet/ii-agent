@@ -6,60 +6,91 @@ including conversation history, configuration, and workspace context.
 """
 
 import json
-import uuid
+import os
+import glob
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, Any
+import uuid
 
+from ii_agent.cli.session_config import SessionConfig
 from ii_agent.core.config.ii_agent_config import IIAgentConfig
 from ii_agent.core.config.llm_config import LLMConfig
 from ii_agent.controller.state import State
 from ii_agent.core.logger import logger
 from ii_agent.core.storage.local import LocalFileStore
-from ii_agent.core.storage.locations import get_conversation_metadata_filename
+from ii_agent.core.storage.locations import get_conversation_agent_history_filename, get_conversation_metadata_filename, CONVERSATION_BASE_DIR
+from ii_agent.core.storage.models.settings import Settings
+from ii_agent.runtime.model.constants import RuntimeMode
 
 
 class StateManager:
     """Manages saving and loading of agent state for --continue functionality."""
 
     def __init__(
-        self, workspace_path: Path, session_name: str, continue_session: bool = False
+        self, config: IIAgentConfig, settings: Settings
     ):
-        self.workspace_path = str(workspace_path)
-        self.session_name = session_name
-        self.ii_agent_dir = workspace_path / "sessions" / session_name
-        self.ii_agent_dir.mkdir(exist_ok=True)
-        self.current_state_link = self.ii_agent_dir / "agent_state.json"
-        self.metadata_link = self.ii_agent_dir / "metadata.json"
-        # Use the global file store location
-        self.file_store = LocalFileStore("~/.ii_agent")
-        
-        # Determine session ID based on whether we're continuing or starting fresh
-        if (
-            continue_session
-            and self.current_state_link.exists()
-            and self.metadata_link.exists()
-        ):
-            try:
-                with open(self.metadata_link, "r") as f:
-                    metadata = json.load(f)
-                existing_session_id = metadata.get("session_id")
-                if existing_session_id:
-                    self.session_id = existing_session_id
-                    logger.info(f"Continuing with existing session: {self.session_id}")
-                else:
-                    self.session_id = uuid.uuid4().hex
-                    logger.info(f"No valid session found, creating new session: {self.session_id}")
-            except Exception as e:
-                logger.warning(f"Error reading existing session, creating new one: {e}")
-                self.session_id = uuid.uuid4().hex
+        self.workspace_path = config.file_store_path
+        self.config = config
+        self.settings = settings
+        self.file_store = LocalFileStore(self.workspace_path)
+    
+    def get_metadata(self, session_id: str) -> Optional[Dict[str, Any]]:
+        try:
+            metadata_filename = get_conversation_metadata_filename(session_id)
+            metadata = self.file_store.read(metadata_filename)
+            metadata = json.loads(metadata)
+            return metadata
+        except Exception as e:
+            logger.error(f"Error reading metadata: {e}")
+            return None
+    
+    def get_state_config(self, session_id: Optional[str] = None) -> SessionConfig:
+        if not session_id or not self.is_valid_session(session_id):
+            session_id = uuid.uuid4().hex
+            session_name = None
+            runtime_mode = self.settings.runtime_config.mode
+            return SessionConfig(session_id=session_id, session_name=session_name, mode=runtime_mode)
         else:
-            self.session_id = uuid.uuid4().hex
-            if not continue_session:
-                logger.info(f"Starting new session: {self.session_id}")
+            metadata = self.get_metadata(session_id)
+            if "runtime_mode" not in metadata: # type: ignore
+                runtime_mode = self.settings.runtime_config.mode
+            return SessionConfig(session_id=session_id, session_name=metadata["session_name"], mode=RuntimeMode(metadata["runtime_mode"])) # type: ignore
+            
+    def is_valid_session(self, session_id: str) -> bool:
+        return self.get_metadata(session_id) is not None and self.get_state(session_id) is not None
+    
+    def get_state(self, session_id: str) -> Optional[Dict[str, Any]]:
+        try:
+            state_filename = get_conversation_agent_history_filename(session_id)
+            state = self.file_store.read(state_filename)
+            state = json.loads(state)
+            return state
+        except Exception as e:
+            logger.error(f"Error reading state: {e}")
+            return None
+
+    def get_available_sessions(self) -> list[str]:
+        try:
+            sessions_dir = Path(os.path.join(self.workspace_path, CONVERSATION_BASE_DIR))
+            if not sessions_dir.exists():
+                return []
+            
+            sessions = []
+            for session_dir in sessions_dir.glob("*"):
+                if session_dir.is_dir():
+                    json_files = list(session_dir.glob("*.json"))
+                    if json_files:
+                        sessions.append(session_dir.name)
+            
+            return sorted(sessions)
+        except Exception as e:
+            logger.error(f"Error getting available sessions: {e}")
+            return []
     
     def save_state(
         self, 
+        session_id: str,
         agent_state: State,
         config: IIAgentConfig,
         llm_config: LLMConfig,
@@ -69,15 +100,16 @@ class StateManager:
         """Save state and metadata using the new JSON format."""
         try:
             # Save core state using State's save_to_session method
-            agent_state.save_to_session(self.session_id, self.file_store)
+            agent_state.save_to_session(session_id, self.file_store)
             
             # Save metadata separately
             metadata = {
                 "version": "2.0",
                 "timestamp": datetime.now().isoformat(),
-                "session_id": self.session_id,
+                "session_id": session_id,
                 "workspace_path": str(workspace_path),
                 "session_name": session_name,
+                "runtime_mode": self.settings.runtime_config.mode.value,
                 "agent_state": {
                     "message_count": len(agent_state.message_lists)
                 },
@@ -95,48 +127,27 @@ class StateManager:
                 }
             }
             
-            metadata_filename = get_conversation_metadata_filename(self.session_id)
+            metadata_filename = get_conversation_metadata_filename(session_id)
             self.file_store.write(metadata_filename, json.dumps(metadata, indent=2, ensure_ascii=False))
-            
-            # Update current state pointer
-            current_state_info = {
-                "current_session_id": self.session_id,
-                "workspace_path": self.workspace_path,
-                "last_updated": datetime.now().isoformat()
-            }
-            with open(self.current_state_link, "w") as f:
-                json.dump(current_state_info, f, indent=2)
-                
-            logger.info(f"State saved for session {self.session_id}")
+            logger.info(f"State saved for session {session_id}")
             
         except Exception as e:
             logger.error(f"Error saving state: {e}")
             raise
     
-    def load_state(self) -> Optional[Dict[str, Any]]:
+    def load_state(self, session_id: str) -> Optional[Dict[str, Any]]:
         """Load the saved agent state from current state pointer."""
         try:
             # First, check if current_state.json exists
-            if not self.current_state_link.exists():
-                return None
-            
-            # Read the current state pointer
-            with open(self.metadata_link, "r") as f:
-                metadata = json.load(f)
+            chat_history = self.get_state(session_id)
+            metadata = self.get_metadata(session_id)
 
-            session_id = metadata.get("session_id")
-
-            if not session_id:
+            if not chat_history or not metadata:
                 return None
             
             # Create a new State object and restore from session
             state = State()
             state.restore_from_session(session_id, self.file_store)
-            
-            # Load metadata
-            metadata_filename = get_conversation_metadata_filename(session_id)
-            metadata_json = self.file_store.read(metadata_filename)
-            metadata = json.loads(metadata_json)
             
             # Combine state and metadata into return format
             return {
@@ -157,57 +168,80 @@ class StateManager:
             logger.error(f"Error loading state: {e}")
             return None
     
-    
-    def clear_state(self) -> None:
-        """Remove the saved state files."""
-        try:
-            # Remove current state pointer
-            if self.current_state_link.exists():
-                self.current_state_link.unlink()
-                logger.info(f"Current state pointer {self.current_state_link} removed")
-        except Exception as e:
-            logger.error(f"Error clearing state: {e}")
-    
-    def has_saved_state(self) -> bool:
-        """Check if there's a saved state file."""
-        return self.current_state_link.exists()
-
-    def get_state_info(self) -> Optional[Dict[str, Any]]:
+    def load_state_info(self, session_id: str) -> Optional[Dict[str, Any]]:
         """Get basic info about the saved state without loading it."""
         try:
-            if not self.current_state_link.exists():
+            chat_history = self.get_state(session_id)
+            metadata = self.get_metadata(session_id)
+            if not chat_history or not metadata:
                 return None
-            
-            # Read current state pointer
-            with open(self.current_state_link, "r") as f:
-                current_state_info = json.load(f)
-            
-            session_id = current_state_info.get("current_session_id")
-            workspace_path = current_state_info.get("workspace_path")
-            
-            if not session_id:
-                return None
-            
-            # Read metadata file
-            metadata_filename = get_conversation_metadata_filename(session_id)
-            try:
-                metadata_json = self.file_store.read(metadata_filename)
-                metadata = json.loads(metadata_json)
-                
-                return {
-                    "timestamp": metadata.get("timestamp"),
-                    "session_name": metadata.get("session_name"),
-                    "workspace_path": metadata.get("workspace_path"),
-                    "version": metadata.get("version", "2.0"),
-                    "session_id": metadata.get("session_id"),
-                    "message_count": metadata.get("agent_state", {}).get("message_count", 0)
-                }
-            except FileNotFoundError:
-                return None
-            
+            return {
+                "timestamp": metadata.get("timestamp"),
+                "session_name": metadata.get("session_name"),
+                "workspace_path": metadata.get("workspace_path"),
+                "version": metadata.get("version", "2.0"),
+                "session_id": metadata.get("session_id"),
+                "message_count": metadata.get("agent_state", {}).get("message_count", 0)
+            }
         except Exception as e:
             logger.error(f"Error getting state info: {e}")
             return None
+    
+    def load_state_summary(self, session_id: str) -> str:
+        sessions_dir = Path.home() / ".ii_agent" / "sessions"
+        state_file = sessions_dir / session_id / "agent_state.json"
+        if state_file.exists():
+            with open(state_file, "r") as f:
+                data = json.load(f)
+
+            # Extract meaningful information
+            info_lines = []
+
+            # User Message
+            if "last_user_prompt_index" in data:
+                last_user_prompt = data["message_lists"][
+                    int(data["last_user_prompt_index"])
+                ][0]["text"]
+                if len(last_user_prompt) > 50:
+                    last_user_prompt = "..." + last_user_prompt[-47:]
+                info_lines.append(f"User: {last_user_prompt}")
+
+            # Message count
+            if "message_lists" in data and data["message_lists"]:
+                message_count = len(data["message_lists"])
+                info_lines.append(f"💬 Messages: {message_count}")
+
+                # Get last few message summaries
+                recent_messages = []
+                for msg_list in data["message_lists"][
+                    -2:
+                ]:  # Last 2 message lists
+                    messages = msg_list
+                    for msg in messages[-3:]:  # Last 3 messages from each list
+                        if msg.get("text"):
+                            content = msg["text"][:100]
+                            if len(msg["text"]) > 100:
+                                content += "..."
+                            recent_messages.append(content)
+
+                if recent_messages:
+                    info_lines.append("📝 Recent messages:")
+                    info_lines.extend(recent_messages[-3:])  # Show only last 3
+
+            # File size info
+            file_size = state_file.stat().st_size
+            size_str = f"{file_size} bytes"
+            if file_size > 1024:
+                size_str = f"{file_size / 1024:.1f} KB"
+            if file_size > 1024 * 1024:
+                size_str = f"{file_size / (1024 * 1024):.1f} MB"
+            info_lines.append(f"📊 File size: {size_str}")
+
+            return (
+                "\n".join(info_lines) if info_lines else "No details available"
+            )
+        else:
+            return "❌ No state file found"
 
 
 def restore_agent_state(state_data: Dict[str, Any]) -> State:

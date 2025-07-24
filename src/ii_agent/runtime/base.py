@@ -1,7 +1,6 @@
 from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
-from uuid import UUID
 
 from fastmcp import Client
 
@@ -18,12 +17,12 @@ class BaseRuntime(ABC):
     """
 
     mode: RuntimeMode
-    session_id: UUID
+    session_id: str
     settings: Settings
     runtime_id: str | None = None
     host_url: str | None = None
 
-    def __init__(self, session_id: UUID, settings: Settings):
+    def __init__(self, session_id: str, settings: Settings):
         """
         Initializes a runtime instance.
         """

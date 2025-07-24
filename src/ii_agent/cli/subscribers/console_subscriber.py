@@ -4,10 +4,8 @@ Console subscriber for CLI output.
 This module provides real-time console output for agent events.
 """
 
-from typing import Optional, Dict, Any, Callable
+from typing import Optional, Dict, Any, Callable, Tuple
 from threading import Lock
-import uuid
-import json
 import sys
 import termios
 import tty
@@ -22,6 +20,7 @@ from rich.table import Table
 from rich.syntax import Syntax
 from rich.prompt import Prompt, Confirm
 
+from ii_agent.cli.state_persistence import StateManager
 from ii_agent.core.event import RealtimeEvent, EventType
 from ii_agent.core.config.llm_config import LLMConfig
 from ii_agent.core.config.ii_agent_config import IIAgentConfig
@@ -791,9 +790,10 @@ class ConsoleSubscriber:
             self._spinner = None
 
     def _interactive_session_selector(
-        self, sessions: list
-    ) -> tuple[Optional[str], bool]:
+        self, state_manager: StateManager
+    ) -> Tuple[Optional[str], bool]:
         """Interactive session selector with arrow keys - sessions always expand on select."""
+        sessions = state_manager.get_available_sessions()
         if not sessions:
             return None, False
 
@@ -817,10 +817,10 @@ class ConsoleSubscriber:
             choice = Prompt.ask("Selection", default="")
 
             if choice.lower() == "new":
-                new_session_name = Prompt.ask(
-                    "Enter new session name", default=f"session_{uuid.uuid4().hex[:8]}"
+                new_session_id = Prompt.ask(
+                    "Enter new session name"
                 )
-                return new_session_name, False
+                return new_session_id, False
             elif choice.isdigit() and 1 <= int(choice) <= len(sessions):
                 return sessions[int(choice) - 1], False
             elif choice in sessions:
@@ -860,63 +860,10 @@ class ConsoleSubscriber:
 
             return result if result else sessions_list
 
-        def get_session_content(session_name: str) -> str:
+        def get_session_content(session_id: str) -> str:
             """Get session content from agent_state.json."""
             try:
-                sessions_dir = Path.home() / ".ii_agent" / "sessions"
-                state_file = sessions_dir / session_name / "agent_state.json"
-                if state_file.exists():
-                    with open(state_file, "r") as f:
-                        data = json.load(f)
-
-                    # Extract meaningful information
-                    info_lines = []
-
-                    # User Message
-                    if "last_user_prompt_index" in data:
-                        last_user_prompt = data["message_lists"][
-                            int(data["last_user_prompt_index"])
-                        ][0]["text"]
-                        if len(last_user_prompt) > 50:
-                            last_user_prompt = "..." + last_user_prompt[-47:]
-                        info_lines.append(f"User: {last_user_prompt}")
-
-                    # Message count
-                    if "message_lists" in data and data["message_lists"]:
-                        message_count = len(data["message_lists"])
-                        info_lines.append(f"💬 Messages: {message_count}")
-
-                        # Get last few message summaries
-                        recent_messages = []
-                        for msg_list in data["message_lists"][
-                            -2:
-                        ]:  # Last 2 message lists
-                            messages = msg_list
-                            for msg in messages[-3:]:  # Last 3 messages from each list
-                                if msg.get("text"):
-                                    content = msg["text"][:100]
-                                    if len(msg["text"]) > 100:
-                                        content += "..."
-                                    recent_messages.append(content)
-
-                        if recent_messages:
-                            info_lines.append("📝 Recent messages:")
-                            info_lines.extend(recent_messages[-3:])  # Show only last 3
-
-                    # File size info
-                    file_size = state_file.stat().st_size
-                    size_str = f"{file_size} bytes"
-                    if file_size > 1024:
-                        size_str = f"{file_size / 1024:.1f} KB"
-                    if file_size > 1024 * 1024:
-                        size_str = f"{file_size / (1024 * 1024):.1f} MB"
-                    info_lines.append(f"📊 File size: {size_str}")
-
-                    return (
-                        "\n".join(info_lines) if info_lines else "No details available"
-                    )
-                else:
-                    return "❌ No state file found"
+                return state_manager.load_state_summary(session_id)
             except Exception as e:
                 return f"❌ Error reading state: {str(e)}"
 
@@ -1013,14 +960,14 @@ class ConsoleSubscriber:
                 if i == selected_index:
                     # Selected session with enhanced styling
                     status_icon = Text("▶", style="bold bright_green")
-                    session_name = Text(
+                    session_id = Text(
                         session, style="bold bright_green on bright_black"
                     )
                     info_text = Text("← selected", style="dim green")
                 else:
                     # Non-selected sessions with subtle styling
                     status_icon = Text("•", style="dim blue")
-                    session_name = Text(session, style="bright_white")
+                    session_id = Text(session, style="bright_white")
                     # Add search query highlighting if in search mode
                     if search_mode and search_query.strip():
                         # Highlight matching parts
@@ -1037,7 +984,7 @@ class ConsoleSubscriber:
                                 session[start:end], style="bold yellow on bright_black"
                             )
                             highlighted_name.append(session[end:], style="bright_white")
-                            session_name = highlighted_name
+                            session_id = highlighted_name
 
                     # Add session metadata as info
                     try:
@@ -1055,7 +1002,7 @@ class ConsoleSubscriber:
                     except Exception:
                         info_text = Text("", style="dim")
 
-                session_table.add_row(status_icon, session_name, info_text)
+                session_table.add_row(status_icon, session_id, info_text)
 
                 # Show expanded content for selected session
                 if i == selected_index:
@@ -1216,11 +1163,7 @@ class ConsoleSubscriber:
                             self.console.print(
                                 "[bold cyan]📝 Create New Session[/bold cyan]"
                             )
-                            new_session_name = Prompt.ask(
-                                "Enter session name",
-                                default=f"session_{uuid.uuid4().hex[:8]}",
-                            )
-                            return new_session_name, False
+                            return None, False
                         finally:
                             # Always restore raw mode
                             tty.setcbreak(sys.stdin.fileno())
@@ -1231,76 +1174,29 @@ class ConsoleSubscriber:
                 # Restore original terminal settings
                 termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
 
-    async def setup_session_config(self) -> SessionConfig:
+    async def select_session_config(self, state_manager: StateManager) -> SessionConfig:
         """Set up session configuration with interactive user selection."""
-        # Create session config directory if it doesn't exist
-        sessions_dir = Path.home() / ".ii_agent" / "sessions"
-        sessions_dir.mkdir(parents=True, exist_ok=True)
-
-        # Get available sessions
-        available_sessions = []
-        for session_dir in sessions_dir.glob("*"):
-            if session_dir.is_dir():
-                json_files = list(session_dir.glob("*.json"))
-                if json_files:
-                    available_sessions.append(session_dir.name)
-
-        available_sessions.sort()
-
-        if available_sessions:
-            # Use interactive selector with arrow keys
-            selected_session, cancelled = self._interactive_session_selector(
-                available_sessions
-            )
-
-            if cancelled:
-                # User cancelled, create new session
-                session_name = f"session_{uuid.uuid4().hex[:8]}"
-                session_id = str(uuid.uuid4())
-                self.console.print(
-                    f"[green]Creating new session: {session_name}[/green]"
-                )
-            elif selected_session and selected_session in available_sessions:
-                # Load existing session
-                session_name = selected_session
-                session_id = str(uuid.uuid4())  # Generate new ID for continued session
-                self.console.print(f"[green]Loading session: {session_name}[/green]")
-            elif selected_session:
-                # Create new named session
-                session_name = selected_session
-                session_id = str(uuid.uuid4())
-                self.console.print(
-                    f"[green]Creating new session: {session_name}[/green]"
-                )
-            else:
-                # Create new session with generated name
-                session_name = f"session_{uuid.uuid4().hex[:8]}"
-                session_id = str(uuid.uuid4())
-                self.console.print(
-                    f"[green]Creating new session: {session_name}[/green]"
-                )
-        else:
-            # No existing sessions, create new one
-            session_name = f"session_{uuid.uuid4().hex[:8]}"
-            session_id = str(uuid.uuid4())
-            self.console.print(f"[green]Creating new session: {session_name}[/green]")
-
-        session_config = SessionConfig(session_id=session_id, session_name=session_name)
-
-        # Ensure sessions directory exists
-        session_config.ensure_sessions_dir()
-
-        return session_config
-
-    async def should_continue_from_state(self, session_id: str, root_dir: str) -> bool:
-        """Ask user if they want to continue from previous state in current directory."""
-        # Check if there's a saved state in current directory
-        workspace_state_file = (
-            Path(root_dir) / "sessions" / session_id / "agent_state.json"
+        session_id, cancelled = self._interactive_session_selector(
+            state_manager
         )
-        if workspace_state_file.exists():
-            return Confirm.ask(
-                "\n[yellow]Found previous state in current directory. Continue from where you left off?[/yellow]",
-                default=True,
+        config = state_manager.get_state_config(session_id=session_id)
+        if cancelled:
+            # User cancelled, create new session
+            self.console.print(
+                f"[green]Creating new session: {config.session_id}[/green]"
             )
-        return False
+        elif config.session_id and  state_manager.is_valid_session(config.session_id):
+            # Load existing session
+            self.console.print(f"[green]Loading session: {config.session_id}[/green]")
+        else:
+            self.console.print(
+                f"[green]Creating new session: {config.session_id}[/green]"
+            )
+        return config
+
+    async def should_continue_from_state(self) -> bool:
+        """Ask user if they want to continue from previous state in current directory."""
+        return Confirm.ask(
+            "\n[yellow]Found previous state in current directory. Continue from where you left off?[/yellow]",
+            default=True,
+        )

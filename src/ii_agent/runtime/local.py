@@ -1,7 +1,6 @@
 from __future__ import annotations
 import asyncio
 import os
-import uuid
 from typing import TYPE_CHECKING
 
 from fastmcp.client import Client
@@ -18,7 +17,7 @@ if TYPE_CHECKING:
 class LocalRuntime(BaseRuntime):
     mode: RuntimeMode = RuntimeMode.LOCAL
 
-    def __init__(self, session_id: uuid.UUID, settings: Settings):
+    def __init__(self, session_id: str, settings: Settings):
         super().__init__(session_id=session_id, settings=settings)
 
     async def start(self):

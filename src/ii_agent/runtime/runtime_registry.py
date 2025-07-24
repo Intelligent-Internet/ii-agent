@@ -1,6 +1,5 @@
 from __future__ import annotations
 from typing import Dict, Type, TYPE_CHECKING
-import uuid
 from ii_agent.runtime.base import BaseRuntime
 from ii_agent.runtime.model.constants import RuntimeMode
 
@@ -27,7 +26,7 @@ class RuntimeRegistry:
     def create(
         cls,
         runtime_type: RuntimeMode,
-        session_id: uuid.UUID,
+        session_id: str,
         settings: Settings,
     ) -> BaseRuntime:
         """Create a runtime instance."""

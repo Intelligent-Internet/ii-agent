@@ -53,7 +53,6 @@ class CLIApp:
         self.llm_config = llm_config
         self.workspace_manager = WorkspaceManager(Path(workspace_path))
         # Create state manager - we'll update it with continue_session later
-        self.state_manager = None
         self.workspace_path = workspace_path
         # Create event stream
         self.event_stream = AsyncEventStream(logger=logger)
@@ -99,7 +98,7 @@ class CLIApp:
         else:
             logger.debug(f"Tool confirmation received but no agent controller: {tool_call_id} -> approved={approved}")
         
-    async def initialize_agent(self, continue_from_state: bool = False) -> None:
+    async def initialize_agent(self) -> None:
         """Initialize the agent controller."""
         if self.agent_controller is not None:
             return
@@ -107,30 +106,13 @@ class CLIApp:
         if not self.session_config:
             raise ValueError("Session config not initialized")
 
-        # Create state manager now that we know if we're continuing
-        if self.state_manager is None:
-            self.state_manager = StateManager(
-                Path(self.config.file_store_path),
-                session_name=self.session_config.session_name,
-                continue_session=continue_from_state,
-            )
 
-        settings_store = await FileSettingsStore.get_instance(self.config, None)
-        settings = await settings_store.load()
-        
-        # Ensure CLI config exists with defaults
-        if not settings.cli_config:
-            from ii_agent.core.config.cli_config import CliConfig
-            settings.cli_config = CliConfig()
-            await settings_store.store(settings)
-        
-        # Update console subscriber with settings
-        self.console_subscriber.settings = settings
 
-        # Load saved state if --continue flag is used
         saved_state_data = None
-        if continue_from_state:
-            saved_state_data = self.state_manager.load_state()
+        # Initialize with session continuation check
+        is_valid_session = self.state_manager.is_valid_session(self.session_config.session_id)
+        if is_valid_session and await self.console_subscriber.should_continue_from_state():
+            saved_state_data = self.state_manager.load_state(self.session_config.session_id)
             if saved_state_data:
                 self.console_subscriber.console.print(
                     "🔄 [cyan]Continuing from previous state...[/cyan]"
@@ -163,7 +145,7 @@ class CLIApp:
         # Get system local tools
         tools = get_system_tools(
             client=llm_client,
-            settings=settings,
+            settings=self.settings,
             workspace_manager=self.workspace_manager,
         )
 
@@ -174,9 +156,12 @@ class CLIApp:
         )
 
         runtime_manager = RuntimeManager(
-            session_id=UUID(self.session_config.session_id), settings=settings
+            session_config=self.session_config, settings=self.settings
         )
-        await runtime_manager.start_runtime()
+        if not is_valid_session:
+            await runtime_manager.start_runtime()
+        else:
+            await runtime_manager.connect_runtime()
         mcp_client = await runtime_manager.get_mcp_client(
             str(self.workspace_manager.root)
         )
@@ -226,7 +211,7 @@ class CLIApp:
         self.console_subscriber.print_workspace_info(str(self.workspace_manager.root))
 
         # Show previous conversation history if continuing from state
-        if continue_from_state and saved_state_data:
+        if is_valid_session and saved_state_data:
             self.console_subscriber.render_conversation_history(
                 self.agent_controller.history
             )
@@ -234,16 +219,20 @@ class CLIApp:
     async def run_interactive_mode(self) -> int:
         """Run interactive chat mode."""
         try:
-            # Set up session configuration with interactive selection
-            self.session_config = await self.console_subscriber.setup_session_config()
+            #Initialize settings
+            settings_store = await FileSettingsStore.get_instance(self.config, None)
+            self.settings = await settings_store.load()
+            
+            # Ensure CLI config exists with defaults
+            if not self.settings.cli_config:
+                from ii_agent.core.config.cli_config import CliConfig
+                self.settings.cli_config = CliConfig()
+            await settings_store.store(self.settings)
+            self.console_subscriber.settings = self.settings
+            self.state_manager = StateManager(self.config, self.settings)
 
-            # Initialize with session continuation check
-            continue_from_state = (
-                await self.console_subscriber.should_continue_from_state(
-                    self.session_config.session_name, self.config.file_store_path
-                )
-            )
-            await self.initialize_agent(continue_from_state)
+            self.session_config = await self.console_subscriber.select_session_config(self.state_manager)
+            await self.initialize_agent()
 
             self.console_subscriber.print_welcome()
             self.console_subscriber.print_session_info(
@@ -354,7 +343,7 @@ class CLIApp:
 
     def _save_state_on_exit(self, should_save: bool) -> None:
         """Save agent state when exiting if requested."""
-        if not should_save or not self.agent_controller or not self.state_manager:
+        if not should_save or not self.agent_controller or not self.state_manager or not self.session_config:
             return
 
         try:
@@ -367,11 +356,11 @@ class CLIApp:
 
             # Save the complete state
             self.state_manager.save_state(
+                session_id=self.session_config.session_id,
                 agent_state=current_state,
                 config=self.config,
                 llm_config=self.llm_config,
                 workspace_path=str(self.workspace_manager.root),
-                session_name=None,  # For --continue, we don't use session names
             )
 
             self.console_subscriber.console.print(

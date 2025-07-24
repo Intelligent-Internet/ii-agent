@@ -39,7 +39,7 @@ class DockerRuntime(BaseRuntime):
 
     def __init__(
         self,
-        session_id: uuid.UUID,
+        session_id: str,
         settings: Settings,
     ):
         """Initializes a docker runtime instance.
@@ -297,7 +297,7 @@ if __name__ == "__main__":
 
     async def main():
         settings = Settings()
-        runtime = DockerRuntime(uuid.uuid4(), settings)
+        runtime = DockerRuntime(uuid.uuid4().hex, settings)
         await runtime.start()  # This will now ensure network and nginx are ready
         await runtime.create()
         print("Runtime created")

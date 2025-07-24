@@ -9,7 +9,7 @@ from ii_agent.runtime.base import BaseRuntime
 from ii_agent.runtime.runtime_registry import RuntimeRegistry
 from ii_agent.runtime.model.constants import RuntimeMode
 from ii_agent.db.manager import Sessions
-
+from uuid import UUID
 if TYPE_CHECKING:
     from ii_agent.core.storage.models.settings import Settings
 
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 class E2BRuntime(BaseRuntime):
     mode: RuntimeMode = RuntimeMode.E2B
 
-    def __init__(self, session_id: uuid.UUID, settings: Settings):
+    def __init__(self, session_id: str, settings: Settings):
         super().__init__(session_id=session_id, settings=settings)
 
     async def create(self):
@@ -36,7 +36,7 @@ class E2BRuntime(BaseRuntime):
             raise ValueError("Sandbox ID is not set")
         self.runtime_id = str(self.sandbox.sandbox_id)
 
-        Sessions.update_session_runtime_id(self.session_id, self.runtime_id)
+        Sessions.update_session_runtime_id(UUID(self.session_id), self.runtime_id)
 
     def expose_port(self, port: int) -> str:
         return "https://" + self.sandbox.get_host(port)
@@ -47,7 +47,7 @@ class E2BRuntime(BaseRuntime):
         return Client(self.host_url)
 
     async def connect(self):
-        runtime_id = Sessions.get_runtime_id_by_session_id(self.session_id)
+        runtime_id = Sessions.get_runtime_id_by_session_id(UUID(self.session_id))
         if runtime_id is None:
             # Note: Raise error for now, should never happen
             raise ValueError(f"Runtime ID not found for session {self.session_id}")
@@ -66,7 +66,7 @@ class E2BRuntime(BaseRuntime):
         pass
 
     async def start(self):
-        runtime_id = Sessions.get_runtime_id_by_session_id(self.session_id)
+        runtime_id = Sessions.get_runtime_id_by_session_id(UUID(self.session_id))
         if runtime_id is None:
             # Note: Raise error for now, should never happen
             raise ValueError(f"Runtime ID not found for session {self.session_id}")

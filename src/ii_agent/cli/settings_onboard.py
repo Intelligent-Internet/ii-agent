@@ -497,6 +497,8 @@ async def modify_settings(settings_store: FileSettingsStore) -> None:
         
         if modify_choice == 0:
             await setup_llm_configuration(settings_store)
+        elif modify_choice == 1:
+            await setup_runtime_configuration(settings_store)
     else:
         print_formatted_text(HTML('<grey>No settings found. Running first-time setup...</grey>'))
         await run_first_time_setup(settings_store)
