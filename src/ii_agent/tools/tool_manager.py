@@ -1,47 +1,17 @@
 import asyncio
-import logging
-from copy import deepcopy
-from dataclasses import dataclass
 from fastmcp import Client
 from pydantic import BaseModel
-from typing import Optional, List, Dict, Any
-from ii_agent.llm.base import LLMClient
+from typing import List, Dict, Any
 from ii_agent.tools.base import BaseTool, ToolResult
-from ii_agent.utils import WorkspaceManager
 from ii_agent.utils.concurrent_execution import should_run_concurrently
-from ii_agent.core.storage.models.settings import Settings
 from ii_agent.core.logger import logger
 from ii_agent.tools.mcp_tool import MCPTool
-from ii_agent.tools.web_search_tool import WebSearchTool
-from ii_agent.tools.web_visit_tool import WebVisitTool
-from ii_agent.tools.web_dev_tool import FullStackInitTool
+
 
 class ToolCallParameters(BaseModel):
     tool_call_id: str
     tool_name: str
     tool_input: Any
-
-
-def get_system_tools(
-    client: LLMClient,
-    workspace_manager: WorkspaceManager,
-    settings: Settings,
-    container_id: Optional[str] = None,
-    tool_args: Optional[Dict[str, Any]] = None,
-) -> list[BaseTool]:
-    """
-    Retrieves a list of all system tools.
-
-    Returns:
-        list[BaseTool]: A list of all system tools.
-    """
-
-    # TODO: Add more tools here
-    return [
-        WebSearchTool(settings=settings),
-        WebVisitTool(settings=settings),
-        FullStackInitTool(workspace_manager=workspace_manager),
-    ]
 
 
 class AgentToolManager:
@@ -58,18 +28,18 @@ class AgentToolManager:
     search capabilities, and task completion functionality.
     """
 
-    def __init__(self, tools: List[BaseTool], logger_for_agent_logs: logging.Logger, interactive_mode: bool = True, reviewer_mode: bool = False):
-        self.tools = deepcopy(tools)
+    def __init__(self):
+        self.tools = []
 
-    async def register_tools(self, tools: List[BaseTool]):
+    def register_tools(self, tools: List[BaseTool]):
         self.tools.extend(tools)
+        self._validate_tool_parameters()
 
-    async def register_mcp_tools(self, mcp_config: Dict[str, Any] | None = None, mcp_client: Client | None = None, trust: bool = False): 
-        if not mcp_config and not mcp_client:
-            raise ValueError("Either mcp_config or client must be provided")
-        if mcp_config:
-            mcp_client = Client(mcp_config)
-
+    async def register_mcp_tools(
+        self,
+        mcp_client: Client,
+        trust: bool = False,
+    ):
         async with mcp_client:
             mcp_tools = await mcp_client.list_tools()
             for tool in mcp_tools:

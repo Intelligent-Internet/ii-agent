@@ -1,11 +1,17 @@
 import os
 import subprocess
 
-from typing import Any, Optional
-from ii_agent.tools.base import BaseTool, ToolResult
-from ii_agent.utils.workspace_manager import WorkspaceManager
+from typing import Any
+from ii_tool.core.config import FullStackDevConfig
+from ii_tool.tools.base import BaseTool, ToolResult
+from ii_tool.core.workspace import WorkspaceManager
 
 
+# Name
+NAME = "fullstack_project_init"
+DISPLAY_NAME = "Initialize application template"
+
+# Description
 DESCRIPTION = """\
 This tool initializes a fullstack web application environment by using the development template. It constructs a `frontend` and `backend` template directory inside the project path, and installs all necessary packages.
 
@@ -39,11 +45,8 @@ This tool initializes a fullstack web application environment by using the devel
 </debug_rules>
 """
 
-class FullStackInitTool(BaseTool):
-    name = "fullstack_project_init"
-    description = DESCRIPTION
-
-    input_schema = {
+# Input schema
+INPUT_SCHEMA = {
         "type": "object",
         "properties": {
             "project_name": {
@@ -54,18 +57,21 @@ class FullStackInitTool(BaseTool):
         "required": ["project_name"],
     }
 
+class FullStackInitTool(BaseTool):
+    name = NAME
+    display_name = DISPLAY_NAME
+    description = DESCRIPTION
+    input_schema = INPUT_SCHEMA
+    read_only = False
+
     def __init__(
         self,
         workspace_manager: WorkspaceManager,
+        settings: FullStackDevConfig,
     ) -> None:
         super().__init__()
         self.workspace_manager = workspace_manager
-
-    def is_read_only(self) -> bool:
-        return False
-
-    async def should_confirm_execute(self, tool_input: dict[str, Any]):
-        return False
+        self.settings = settings
 
     async def execute(
         self,
@@ -74,7 +80,7 @@ class FullStackInitTool(BaseTool):
         project_name = tool_input["project_name"]
         
         # Create the frontend directory if it doesn't exist
-        workspace_dir = str(self.workspace_manager.root)
+        workspace_dir = str(self.workspace_manager.get_workspace_path())
         project_dir = f"{workspace_dir}/{project_name}"
         frontend_dir = f"{project_dir}/frontend"
         backend_dir = f"{project_dir}/backend"
@@ -83,9 +89,9 @@ class FullStackInitTool(BaseTool):
 
         print("Creating project directory: ", project_dir)
 
-        template_path = "./.templates/react-tailwind-python/*"
+        template_path = self.settings.template_path.rstrip("/")
 
-        get_template_command = f"cp -r {template_path} {project_dir}"
+        get_template_command = f"cp -r {template_path}/* {project_dir}"
         subprocess.run(get_template_command, shell=True)
         
         print("Copy template done, see the project directory: ", project_dir)
@@ -163,3 +169,13 @@ requests
 You don't need to re-install the dependencies above, they are already installed"""
 
         return ToolResult(llm_content=output_message, user_display_content="Successfully initialized fullstack web application")
+
+    async def execute_mcp_wrapper(
+        self,
+        project_name: str,
+    ):
+        return await self._mcp_wrapper(
+            tool_input={
+                "project_name": project_name,
+            }
+        )

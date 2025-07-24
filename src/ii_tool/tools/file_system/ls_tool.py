@@ -79,7 +79,7 @@ def _should_skip(path: Path, ignore_patterns: Optional[List[str]] = None) -> boo
 
 def _list_directory(initial_path: Path, base_path: Path, ignore_patterns: Optional[List[str]] = None) -> List[str]:
     """
-    Recursively list files and directories.
+    List files and directories in the specified directory (non-recursive).
     
     Args:
         initial_path: The starting directory Path
@@ -90,105 +90,67 @@ def _list_directory(initial_path: Path, base_path: Path, ignore_patterns: Option
         List of relative paths from base_path as strings
     """
     results = []
-    queue = [initial_path]
     
-    while queue and len(results) <= MAX_FILES:
-        current_path = queue.pop(0)
+    # Only process the initial directory, not recursively
+    try:
+        entries = list(initial_path.iterdir())
+        entries.sort(key=lambda p: p.name.lower())  # Sort entries for consistent output
         
-        if _should_skip(current_path, ignore_patterns):
-            continue
-            
-        # Add directory to results if it's not the initial path
-        if current_path != initial_path:
+        for entry_path in entries:
+            if _should_skip(entry_path, ignore_patterns):
+                continue
+                
             try:
-                relative_path = current_path.relative_to(base_path)
-                results.append(str(relative_path) + os.sep)
+                relative_path = entry_path.relative_to(base_path)
+                if entry_path.is_dir():
+                    # Add directory with trailing slash
+                    results.append(str(relative_path) + os.sep)
+                else:
+                    # Add file
+                    results.append(str(relative_path))
             except ValueError:
                 # Skip if we can't make it relative
                 continue
-            
-        # Try to read directory contents
-        try:
-            entries = list(current_path.iterdir())
-            entries.sort(key=lambda p: p.name.lower())  # Sort entries for consistent output
-            
-            for entry_path in entries:
-                if _should_skip(entry_path, ignore_patterns):
-                    continue
-                    
-                if entry_path.is_dir():
-                    # Add directory to queue for processing
-                    queue.append(entry_path)
-                else:
-                    # Add file to results
-                    try:
-                        relative_path = entry_path.relative_to(base_path)
-                        results.append(str(relative_path))
-                    except ValueError:
-                        # Skip if we can't make it relative
-                        continue
-                    
-                # Check if we've hit the limit
-                if len(results) > MAX_FILES:
-                    return results
-                    
-        except (OSError, PermissionError):
-            # Log error but continue processing
-            continue
+                
+            # Check if we've hit the limit
+            if len(results) > MAX_FILES:
+                return results[:MAX_FILES]
+                
+    except (OSError, PermissionError):
+        # Return empty list if we can't read the directory
+        return []
             
     return results
 
 def _create_file_tree(sorted_paths: List[str]) -> List[TreeNode]:
     """
-    Create a tree structure from a list of sorted paths.
+    Create a simple flat tree structure from a list of sorted paths.
     
     Args:
-        sorted_paths: List of relative file paths as strings
+        sorted_paths: List of relative file paths as strings (single level only)
         
     Returns:
-        List of TreeNode objects representing the tree structure
+        List of TreeNode objects representing the flat structure
     """
     root = []
     
     for path_str in sorted_paths:
-        path = Path(path_str)
-        parts = path.parts
-        current_level = root
-        current_path_parts = []
+        # For non-recursive listing, each path is just a filename or dirname
+        name = path_str.rstrip(os.sep)  # Remove trailing slash
+        node_type = "directory" if path_str.endswith(os.sep) else "file"
         
-        for i, part in enumerate(parts):
-            current_path_parts.append(part)
-            current_path_str = str(Path(*current_path_parts))
-            is_last_part = i == len(parts) - 1
-            
-            # Find existing node at current level
-            existing_node = None
-            for node in current_level:
-                if node.name == part:
-                    existing_node = node
-                    break
-                    
-            if existing_node:
-                # Use existing node
-                current_level = existing_node.children if existing_node.children else []
-            else:
-                # Create new node
-                node_type = "file" if is_last_part else "directory"
-                children = [] if not is_last_part else None
-                
-                new_node = TreeNode(
-                    name=part,
-                    path=current_path_str, 
-                    type=node_type,
-                    children=children
-                )
-                
-                current_level.append(new_node)
-                current_level = children if children is not None else []
+        new_node = TreeNode(
+            name=name,
+            path=path_str,
+            type=node_type,
+            children=None
+        )
+        
+        root.append(new_node)
                 
     return root
 
-def _print_tree(tree: List[TreeNode], level: int = 0, prefix: str = "") -> str:
+def _print_tree(tree: List[TreeNode], level: int = 0, prefix: str = "", root_path: Optional[Path] = None) -> str:
     """
     Format tree structure as a readable string.
     
@@ -196,6 +158,7 @@ def _print_tree(tree: List[TreeNode], level: int = 0, prefix: str = "") -> str:
         tree: List of TreeNode objects to format
         level: Current indentation level
         prefix: Current line prefix
+        root_path: The root path to display at the top level
         
     Returns:
         Formatted tree string
@@ -203,8 +166,8 @@ def _print_tree(tree: List[TreeNode], level: int = 0, prefix: str = "") -> str:
     result = ""
     
     # Add absolute path at root level
-    if level == 0:
-        result += f"- {Path.cwd()}{os.sep}\n"
+    if level == 0 and root_path:
+        result += f"- {root_path}{os.sep}\n"
         prefix = "  "
         
     for node in tree:
@@ -214,7 +177,7 @@ def _print_tree(tree: List[TreeNode], level: int = 0, prefix: str = "") -> str:
         
         # Recursively add children
         if node.children:
-            result += _print_tree(node.children, level + 1, f"{prefix}  ")
+            result += _print_tree(node.children, level + 1, f"{prefix}  ", root_path)
             
     return result
 
@@ -287,7 +250,7 @@ class LSTool(BaseTool):
             if is_truncated:
                 result += TRUNCATED_MESSAGE
             
-            result += _print_tree(tree)
+            result += _print_tree(tree, root_path=target_path)
             
             return ToolResult(
                 llm_content=result.rstrip(),

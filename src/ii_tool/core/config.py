@@ -62,3 +62,12 @@ class ImageGenerateConfig(BaseSettings):
         env_prefix = "IMAGE_GENERATE_"
         env_file = ".env"
         extra = "ignore"
+
+# --- Full Stack Dev Config ---
+class FullStackDevConfig(BaseSettings):
+    template_path: str = ".templates/react-tailwind-python"
+    
+    class Config:
+        env_prefix = "FULLSTACK_DEV_"
+        env_file = ".env"
+        extra = "ignore"

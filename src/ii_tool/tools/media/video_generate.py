@@ -301,7 +301,7 @@ Uses Google AI Studio if GEMINI_API_KEY is set, otherwise falls back to Vertex A
         duration_seconds: int = 5, 
         enhance_prompt: bool = True, 
         allow_person_generation: bool = False
-    ) -> str:        
+    ):        
         return await self._mcp_wrapper(
             tool_input={
                 "prompt": prompt,
@@ -569,7 +569,7 @@ The generated video will be saved to the specified local path in the workspace."
         aspect_ratio: str = "16:9", 
         duration_seconds: int = 5, 
         allow_person_generation: bool = False
-    ) -> str:        
+    ):        
         return await self._mcp_wrapper(
             tool_input={
                 "image_file_path": image_file_path,
@@ -830,7 +830,7 @@ The generated video will be saved to the specified local path in the workspace."
         aspect_ratio: str = "16:9", 
         duration_seconds: int = 5, 
         enhance_prompt: bool = True
-    ) -> str:        
+    ):        
         return await self._mcp_wrapper(
             tool_input={
                 "prompts": prompts,
@@ -1099,7 +1099,7 @@ The generated video will be saved to the specified local path in the workspace."
         aspect_ratio: str = "16:9", 
         duration_seconds: int = 5, 
         enhance_prompt: bool = True
-    ) -> str:        
+    ):        
         return await self._mcp_wrapper(
             tool_input={
                 "image_file_path": image_file_path,
