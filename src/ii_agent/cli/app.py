@@ -55,18 +55,17 @@ class CLIApp:
         # Create state manager - we'll update it with continue_session later
         self.state_manager = None
         self.workspace_path = workspace_path
-        # Session config will be set up during run_interactive_mode
         # Create event stream
         self.event_stream = AsyncEventStream(logger=logger)
-
+        
         # Create console subscriber with config and callback
         self.console_subscriber = ConsoleSubscriber(
             minimal=minimal,
             config=config,
-            confirmation_callback=self._handle_tool_confirmation,
+            confirmation_callback=self._handle_tool_confirmation
         )
         self.session_config = None
-
+        
         # Subscribe to events
         self.event_stream.subscribe(self.console_subscriber.handle_event)
 
@@ -80,38 +79,26 @@ class CLIApp:
 
         # Agent controller will be created when needed
         self.agent_controller: Optional[AgentController] = None
-
+        
         # Store for pending tool confirmations
         self._tool_confirmations: Dict[str, Dict[str, Any]] = {}
-
-    def _handle_tool_confirmation(
-        self,
-        tool_call_id: str,
-        tool_name: str,
-        approved: bool,
-        alternative_instruction: str,
-    ) -> None:
+        
+    def _handle_tool_confirmation(self, tool_call_id: str, tool_name: str, approved: bool, alternative_instruction: str) -> None:
         """Handle tool confirmation response from console subscriber."""
         # Store the confirmation response
         self._tool_confirmations[tool_call_id] = {
             "tool_name": tool_name,
             "approved": approved,
-            "alternative_instruction": alternative_instruction,
+            "alternative_instruction": alternative_instruction
         }
-
+        
         # If there's an agent controller, send the confirmation response to it
         if self.agent_controller:
-            self.agent_controller.add_confirmation_response(
-                tool_call_id, approved, alternative_instruction
-            )
-            logger.debug(
-                f"Tool confirmation sent to agent controller: {tool_call_id} -> approved={approved}"
-            )
+            self.agent_controller.add_confirmation_response(tool_call_id, approved, alternative_instruction)
+            logger.debug(f"Tool confirmation sent to agent controller: {tool_call_id} -> approved={approved}")
         else:
-            logger.debug(
-                f"Tool confirmation received but no agent controller: {tool_call_id} -> approved={approved}"
-            )
-
+            logger.debug(f"Tool confirmation received but no agent controller: {tool_call_id} -> approved={approved}")
+        
     async def initialize_agent(self, continue_from_state: bool = False) -> None:
         """Initialize the agent controller."""
         if self.agent_controller is not None:
@@ -130,14 +117,13 @@ class CLIApp:
 
         settings_store = await FileSettingsStore.get_instance(self.config, None)
         settings = await settings_store.load()
-
+        
         # Ensure CLI config exists with defaults
         if not settings.cli_config:
             from ii_agent.core.config.cli_config import CliConfig
-
             settings.cli_config = CliConfig()
             await settings_store.store(settings)
-
+        
         # Update console subscriber with settings
         self.console_subscriber.settings = settings
 
@@ -172,7 +158,8 @@ class CLIApp:
             max_tokens_per_turn=self.config.max_output_tokens_per_turn,
             system_prompt=SYSTEM_PROMPT,
         )
-
+        
+        
         # Get system local tools
         tools = get_system_tools(
             client=llm_client,
@@ -195,7 +182,7 @@ class CLIApp:
         )
         await tool_manager.register_mcp_tools(
             mcp_client=mcp_client,
-            trust=True,  # Trust the system MCP tools
+            trust=True, # Trust the system MCP tools
         )
 
         if self.config.mcp_config:
@@ -203,18 +190,11 @@ class CLIApp:
             await tool_manager.register_mcp_tools(self.config.mcp_config, trust=False)
 
         agent = FunctionCallAgent(
-            llm=llm_client,
+            llm=llm_client, 
             config=agent_config,
-            tools=[
-                ToolParam(
-                    name=tool.name,
-                    description=tool.description,
-                    input_schema=tool.input_schema,
-                )
-                for tool in tool_manager.get_tools()
-            ],
+            tools=[ToolParam(name=tool.name, description=tool.description, input_schema=tool.input_schema) for tool in tool_manager.get_tools()]
         )
-
+        
         # Create context manager
         token_counter = TokenCounter()
         context_manager = LLMCompact(
@@ -321,9 +301,7 @@ class CLIApp:
                     )
 
                 except KeyboardInterrupt:
-                    self.console_subscriber.console.print(
-                        "\n⚠️ [yellow]Interrupted by user[/yellow]"
-                    )
+                    self.console_subscriber.console.print("\n⚠️ [yellow]Interrupted by user[/yellow]")
                     if self.agent_controller is not None:
                         self.agent_controller.cancel()
                     continue

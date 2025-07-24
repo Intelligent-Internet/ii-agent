@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import Dict
 
 from pydantic import (
-    BaseModel,
+    BaseModel, 
     Field,
 )
 
@@ -12,6 +12,7 @@ from ii_agent.core.config.audio_config import AudioConfig
 from ii_agent.core.config.llm_config import LLMConfig
 from ii_agent.core.config.runtime_config import RuntimeConfig
 from ii_agent.core.config.cli_config import CliConfig
+
 
 
 class Settings(BaseModel):
@@ -27,5 +28,5 @@ class Settings(BaseModel):
     cli_config: CliConfig | None = Field(default=None)
 
     model_config = {
-        "validate_assignment": True,
+        'validate_assignment': True,
     }

@@ -18,10 +18,7 @@ from ii_agent.db.manager import Sessions
 from ii_agent.llm import get_client
 from ii_agent.llm.context_manager.llm_summarizing import LLMSummarizingContextManager
 from ii_agent.llm.token_counter import TokenCounter
-from ii_agent.prompts.system_prompt import (
-    SYSTEM_PROMPT,
-    SYSTEM_PROMPT_WITH_SEQ_THINKING,
-)
+from ii_agent.prompts.system_prompt import SYSTEM_PROMPT, SYSTEM_PROMPT_WITH_SEQ_THINKING
 from ii_agent.subscribers.websocket_subscriber import WebSocketSubscriber
 from ii_agent.tools import get_system_tools
 from ii_agent.utils.workspace_manager import WorkspaceManager
@@ -50,7 +47,7 @@ class AgentService:
         system_prompt: Optional[str] = None,
     ) -> Tuple[FunctionCallAgent, AgentController]:
         """Create a new agent instance following CLI patterns.
-
+        
         Args:
             model_name: Name of the LLM model to use
             session_id: Session UUID
@@ -58,7 +55,7 @@ class AgentService:
             websocket: WebSocket connection
             tool_args: Tool configuration arguments
             system_prompt: Optional custom system prompt
-
+            
         Returns:
             Tuple of (FunctionCallAgent, AgentController)
         """
@@ -66,15 +63,15 @@ class AgentService:
         user_id = None  # TODO: Support user id
         settings_store = await FileSettingsStore.get_instance(self.config, user_id)
         settings = await settings_store.load()
-
+        
         # Get LLM configuration
         llm_config = settings.llm_configs.get(model_name)
         if not llm_config:
             raise ValueError(f"LLM config not found for model: {model_name}")
-
+        
         # Create LLM client
         llm_client = get_client(llm_config)
-
+        
         # Determine system prompt
         if system_prompt is None:
             system_prompt = (
@@ -88,7 +85,7 @@ class AgentService:
             system_prompt=system_prompt,
             temperature=getattr(self.config, "temperature", 0.7),
         )
-
+        
         # Get tools
         tools = get_system_tools(
             client=llm_client,
@@ -97,21 +94,21 @@ class AgentService:
             container_id=self.config.docker_container_id,
             tool_args=tool_args,
         )
-
+        
         # Create agent
         agent = FunctionCallAgent(
             llm=llm_client,
             config=agent_config,
             tools=tools,
         )
-
+        
         # Create event stream
         event_stream = AsyncEventStream(logger=logger)
-
+        
         # Add WebSocket subscriber
         websocket_subscriber = WebSocketSubscriber(websocket)
         event_stream.subscribe(websocket_subscriber.handle_event)
-
+        
         # Create context manager
         token_counter = TokenCounter()
         context_manager = LLMSummarizingContextManager(
@@ -119,14 +116,14 @@ class AgentService:
             token_counter=token_counter,
             token_budget=self.config.token_budget,
         )
-
+        
         # Create or restore state
         state = State()
         try:
             state.restore_from_session(str(session_id), self.file_store)
         except FileNotFoundError:
             logger.info(f"No history found for session {session_id}")
-
+        
         # Create controller
         controller = AgentController(
             agent=agent,
@@ -137,10 +134,10 @@ class AgentService:
             context_manager=context_manager,
             interactive_mode=True,
         )
-
+        
         # Store session ID for tracking
         controller.session_id = session_id
-
+        
         return agent, controller
 
     async def create_reviewer_agent(
@@ -152,19 +149,19 @@ class AgentService:
         tool_args: Dict[str, Any],
     ) -> Tuple[FunctionCallAgent, AgentController]:
         """Create a reviewer agent using FunctionCallAgent with reviewer prompt.
-
+        
         Args:
             model_name: Name of the LLM model to use
             session_id: Session UUID
             workspace_manager: Workspace manager instance
             websocket: WebSocket connection
             tool_args: Tool configuration arguments
-
+            
         Returns:
             Tuple of (FunctionCallAgent, AgentController) configured for reviewing
         """
         reviewer_prompt = self.get_reviewer_system_prompt()
-
+        
         return await self.create_agent(
             model_name=model_name,
             session_id=session_id,
@@ -187,26 +184,16 @@ Focus on:
 
 The user will provide you with the task, result, and workspace directory to review. Conduct a thorough review with emphasis on functionality testing and user experience evaluation."""
 
-    def _ensure_session_exists(
-        self,
-        session_id: uuid.UUID,
-        workspace_manager: WorkspaceManager,
-        device_id: Optional[str] = None,
-    ):
+    def _ensure_session_exists(self, session_id: uuid.UUID, workspace_manager: WorkspaceManager, device_id: Optional[str] = None):
         """Ensure a database session exists for the given session ID."""
         existing_session = Sessions.get_session_by_id(session_id)
         if existing_session:
-            logger.info(
-                f"Found existing session {session_id} with workspace at {existing_session.workspace_dir}"
-            )
+            logger.info(f"Found existing session {session_id} with workspace at {existing_session.workspace_dir}")
         else:
             # Create new session if it doesn't exist
             Sessions.create_session(
                 device_id=device_id,
                 session_uuid=session_id,
                 workspace_path=workspace_manager.root,
-                runtime_id=str(session_id),
             )
-            logger.info(
-                f"Created new session {session_id} with workspace at {workspace_manager.root}"
-            )
+            logger.info(f"Created new session {session_id} with workspace at {workspace_manager.root}")
