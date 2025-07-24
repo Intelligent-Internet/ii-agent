@@ -155,7 +155,7 @@ class DockerRuntime(BaseRuntime):
                 self.expose_port(self.settings.runtime_config.service_port) + "/mcp/"
             )
             self.runtime_id = self.container_id
-            print(f"Container created: {self.container_id}")
+            #print(f"Container created: {self.container_id}")
         except Exception as e:
             await self.cleanup()  # Ensure resources are cleaned up
             raise RuntimeError(f"Failed to create sandbox: {e}") from e
@@ -222,7 +222,8 @@ class DockerRuntime(BaseRuntime):
                 )
                 print(f"Network '{self.config.network_name}' created successfully")
             else:
-                print(f"Network '{self.config.network_name}' already exists")
+                return
+                #print(f"Network '{self.config.network_name}' already exists")
         except Exception as e:
             raise RuntimeError(f"Failed to ensure network exists: {e}")
 
@@ -242,7 +243,8 @@ class DockerRuntime(BaseRuntime):
                 print("No running nginx containers found, creating one...")
                 await self._create_nginx_container()
             else:
-                print(f"Found {len(containers)} running nginx container(s)")
+                return
+                #print(f"Found {len(containers)} running nginx container(s)")
         except Exception as e:
             raise RuntimeError(f"Failed to ensure nginx is running: {e}")
 
@@ -287,7 +289,7 @@ class DockerRuntime(BaseRuntime):
             nginx_container_obj = self.client.containers.get(nginx_container["Id"])
             nginx_container_obj.start()
 
-            print(f"Nginx container created and started: {nginx_container['Id']}")
+            #print(f"Nginx container created and started: {nginx_container['Id']}")
 
         except Exception as e:
             raise RuntimeError(f"Failed to create nginx container: {e}")

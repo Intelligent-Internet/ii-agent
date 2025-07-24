@@ -42,7 +42,7 @@ def build_if_not_exists(
     client: docker.DockerClient, path: str, dockerfile: str, tag: str
 ):
     if image_exists(client, tag):
-        print(f"✓ Image {tag} already exists, skipping build")
+        #print(f"✓ Image {tag} already exists, skipping build")
         return client.images.get(tag)
     else:
         print(f"Building {tag}...")

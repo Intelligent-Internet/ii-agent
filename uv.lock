@@ -682,6 +682,20 @@ wheels = [
 ]
 
 [[package]]
+name = "ddgs"
+version = "9.4.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "click" },
+    { name = "lxml" },
+    { name = "primp" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/a7/36/23cf38e968260fdcc0068306136ac4ba5a9ceb0b4cde2ce7d70b8b90091b/ddgs-9.4.3.tar.gz", hash = "sha256:476646042ae8002c06e52c5be578386efbe8af54d7e86c3eb063fa6110eb5aa8", size = 31227 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b1/56/4805b11d2d8ba44bf381bb0971fe14dc0d081e81702103fb87dcd211bc88/ddgs-9.4.3-py3-none-any.whl", hash = "sha256:bb929f5d891745f5113a3bba9a3b8ec2713ff67afb82d97dcffe4695f61c9cc9", size = 34976 },
+]
+
+[[package]]
 name = "decorator"
 version = "5.2.1"
 source = { registry = "https://pypi.org/simple" }
@@ -765,20 +779,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/41/93/82ea696e7fb15db20d3f41a27633989a9670445129eb5463ea3b51d18cf5/docutils-0.22rc5.tar.gz", hash = "sha256:2f5ccf878d7bfb2bc7feea02b527f0b10e48f44e01f51d9dbb55e7761a308e41", size = 2279312 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/de/9c/0e31e9f650326bfbe483b613071ab9e1b1c2ac48d372e70b465e3241f3ed/docutils-0.22rc5-py3-none-any.whl", hash = "sha256:0285ee30d970430f141dc3d806e1c44decebdf6080364075d071c58c843aeaf5", size = 636361 },
-]
-
-[[package]]
-name = "duckduckgo-search"
-version = "8.1.1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "click" },
-    { name = "lxml" },
-    { name = "primp" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/10/ef/07791a05751e6cc9de1dd49fb12730259ee109b18e6d097e25e6c32d5617/duckduckgo_search-8.1.1.tar.gz", hash = "sha256:9da91c9eb26a17e016ea1da26235d40404b46b0565ea86d75a9f78cc9441f935", size = 22868 }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/db/72/c027b3b488b1010cf71670032fcf7e681d44b81829d484bb04e31a949a8d/duckduckgo_search-8.1.1-py3-none-any.whl", hash = "sha256:f48adbb06626ee05918f7e0cef3a45639e9939805c4fc179e68c48a12f1b5062", size = 18932 },
 ]
 
 [[package]]
@@ -1524,8 +1524,8 @@ dependencies = [
     { name = "alembic" },
     { name = "anthropic", extra = ["vertex"] },
     { name = "dataclasses-json" },
+    { name = "ddgs" },
     { name = "docker" },
-    { name = "duckduckgo-search" },
     { name = "e2b-code-interpreter" },
     { name = "fastapi" },
     { name = "fastmcp" },
@@ -1585,8 +1585,8 @@ requires-dist = [
     { name = "anthropic", extras = ["vertex"], specifier = ">=0.50.0" },
     { name = "dataclasses-json", specifier = ">=0.6.7" },
     { name = "datasets", marker = "extra == 'gaia'", specifier = ">=3.6.0" },
+    { name = "ddgs", specifier = ">=9.4.3" },
     { name = "docker", specifier = ">=7.1.0" },
-    { name = "duckduckgo-search", specifier = ">=8.0.1" },
     { name = "e2b-code-interpreter", specifier = "==1.2.0b5" },
     { name = "fastapi", specifier = ">=0.115.12" },
     { name = "fastmcp", specifier = ">=2.2.0" },

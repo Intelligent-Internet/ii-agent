@@ -10,7 +10,6 @@ requires-python = ">=3.10"
 dependencies = [
     "anthropic[vertex]>=0.50.0",
     "dataclasses-json>=0.6.7",
-    "duckduckgo-search>=8.0.1",
     "fastapi>=0.115.12",
     "google-cloud-aiplatform>=1.90.0",
     "google-genai>=1.14.0",
@@ -47,6 +46,7 @@ dependencies = [
     "libtmux>=0.46.2",
     "ipdb>=0.13.13",
     "docker>=7.1.0",
+    "ddgs>=9.4.3",
 ]
 
 [project.optional-dependencies]

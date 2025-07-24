@@ -147,10 +147,10 @@ class DuckDuckGoSearchClient(BaseSearchClient):
     def __init__(self, max_results=10, **kwargs):
         self.max_results = max_results
         try:
-            from duckduckgo_search import DDGS
+            from ddgs import DDGS
         except ImportError as e:
             raise ImportError(
-                "You must install package `duckduckgo-search` to run this tool: for instance run `pip install duckduckgo-search`."
+                "You must install package `ddgs` to run this tool: for instance run `pip install ddgs`."
             ) from e
         self.ddgs = DDGS(**kwargs)
 

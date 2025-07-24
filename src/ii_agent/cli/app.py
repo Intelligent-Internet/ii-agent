@@ -7,6 +7,7 @@ the AgentController with event stream for CLI usage.
 
 import asyncio
 import json
+import signal
 from pathlib import Path
 from typing import Optional, Dict, Any
 from uuid import UUID
@@ -82,6 +83,9 @@ class CLIApp:
         # Store for pending tool confirmations
         self._tool_confirmations: Dict[str, Dict[str, Any]] = {}
         
+        # Setup signal handlers
+        self._setup_signal_handlers()
+        
     def _handle_tool_confirmation(self, tool_call_id: str, tool_name: str, approved: bool, alternative_instruction: str) -> None:
         """Handle tool confirmation response from console subscriber."""
         # Store the confirmation response
@@ -111,7 +115,7 @@ class CLIApp:
         saved_state_data = None
         # Initialize with session continuation check
         is_valid_session = self.state_manager.is_valid_session(self.session_config.session_id)
-        if is_valid_session and await self.console_subscriber.should_continue_from_state():
+        if is_valid_session:
             saved_state_data = self.state_manager.load_state(self.session_config.session_id)
             if saved_state_data:
                 self.console_subscriber.console.print(
@@ -158,7 +162,7 @@ class CLIApp:
         runtime_manager = RuntimeManager(
             session_config=self.session_config, settings=self.settings
         )
-        if not is_valid_session:
+        if not self.state_manager.is_valid_session(self.session_config.session_id):
             await runtime_manager.start_runtime()
         else:
             await runtime_manager.connect_runtime()
@@ -236,7 +240,8 @@ class CLIApp:
 
             self.console_subscriber.print_welcome()
             self.console_subscriber.print_session_info(
-                self.session_config.session_name if self.session_config else None
+                self.session_config.session_id if self.session_config else None,
+                self.session_config.mode.value if self.session_config else None
             )
 
             while True:
@@ -372,6 +377,19 @@ class CLIApp:
             self.console_subscriber.console.print(
                 f"⚠️ [yellow]Failed to save state: {e}[/yellow]"
             )
+
+    def _setup_signal_handlers(self) -> None:
+        """Setup signal handlers for graceful shutdown."""
+        def signal_handler(signum, frame):
+            signal_name = "SIGINT" if signum == signal.SIGINT else "SIGTSTP"
+            self.console_subscriber.console.print(f"\n\n🛑 [yellow]Received {signal_name}, saving state...[/yellow]")
+            self._save_state_on_exit(True)
+            self.console_subscriber.print_goodbye()
+            exit(0)
+        
+        signal.signal(signal.SIGINT, signal_handler)
+        # Note: SIGTSTP (Ctrl+Z) cannot be caught in the same way as it suspends the process
+        # We'll handle KeyboardInterrupt in the main loop instead
 
     def cleanup(self) -> None:
         """Clean up resources."""

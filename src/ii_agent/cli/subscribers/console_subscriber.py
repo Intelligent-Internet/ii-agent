@@ -673,11 +673,18 @@ class ConsoleSubscriber:
             )
             self.console.print(goodbye_panel)
     
-    def print_session_info(self, session_name: Optional[str] = None) -> None:
+    def print_session_info(self, session_id: Optional[str] = None, runtime_mode: Optional[str] = None) -> None:
         """Print session information."""
-        if not self.minimal and session_name:
+        if not self.minimal and session_id:
+            # Get runtime mode icon
+            mode_icon = "🐳" if runtime_mode == "docker" else "💻" if runtime_mode == "local" else "☁️" if runtime_mode == "e2b" else "⚙️"
+            
+            session_info = f"📝 [bold]Active Session[/bold]\n\nID: [cyan]{session_id}[/cyan]"
+            if runtime_mode:
+                session_info += f"\nRuntime: {mode_icon} [green]{runtime_mode.upper()}[/green]"
+            
             session_panel = Panel(
-                f"📝 [bold]Active Session[/bold]\n\nName: [cyan]{session_name}[/cyan]",
+                session_info,
                 title="Session Info",
                 style="yellow"
             )
@@ -1187,11 +1194,13 @@ class ConsoleSubscriber:
             )
         elif config.session_id and  state_manager.is_valid_session(config.session_id):
             # Load existing session
-            self.console.print(f"[green]Loading session: {config.session_id}[/green]")
-        else:
-            self.console.print(
-                f"[green]Creating new session: {config.session_id}[/green]"
-            )
+            if await self.should_continue_from_state(): 
+                self.console.print(f"[green]Loading session: {config.session_id}[/green]")
+            else:
+                config = state_manager.get_state_config()
+                self.console.print(
+                    f"[green]Creating new session: {config.session_id}[/green]"
+                )
         return config
 
     async def should_continue_from_state(self) -> bool:

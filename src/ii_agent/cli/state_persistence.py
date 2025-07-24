@@ -41,8 +41,7 @@ class StateManager:
             metadata = self.file_store.read(metadata_filename)
             metadata = json.loads(metadata)
             return metadata
-        except Exception as e:
-            logger.error(f"Error reading metadata: {e}")
+        except Exception:
             return None
     
     def get_state_config(self, session_id: Optional[str] = None) -> SessionConfig:
@@ -67,7 +66,6 @@ class StateManager:
             state = json.loads(state)
             return state
         except Exception as e:
-            logger.error(f"Error reading state: {e}")
             return None
 
     def get_available_sessions(self) -> list[str]:
@@ -85,7 +83,6 @@ class StateManager:
             
             return sorted(sessions)
         except Exception as e:
-            logger.error(f"Error getting available sessions: {e}")
             return []
     
     def save_state(
@@ -132,7 +129,6 @@ class StateManager:
             logger.info(f"State saved for session {session_id}")
             
         except Exception as e:
-            logger.error(f"Error saving state: {e}")
             raise
     
     def load_state(self, session_id: str) -> Optional[Dict[str, Any]]:
