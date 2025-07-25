@@ -1,8 +1,10 @@
 import asyncio
 from fastmcp import Client
+from mcp.types import ToolAnnotations
 from pydantic import BaseModel
-from typing import List, Dict, Any
-from ii_agent.tools.base import BaseTool, ToolResult
+from typing import List, Any, Optional
+from ii_agent.llm.base import ToolParam
+from ii_tool.tools.base import BaseTool, ToolResult
 from ii_agent.utils.concurrent_execution import should_run_concurrently
 from ii_agent.core.logger import logger
 from ii_agent.tools.mcp_tool import MCPTool
@@ -38,23 +40,37 @@ class AgentToolManager:
     async def register_mcp_tools(
         self,
         mcp_client: Client,
+        tools: Optional[List[BaseTool]] = None,
         trust: bool = False,
     ):
-        async with mcp_client:
-            mcp_tools = await mcp_client.list_tools()
-            for tool in mcp_tools:
-                assert tool.description is not None, f"Tool {tool.name} has no description"
-                tool_annotations = tool.annotations
+        if tools is not None:
+            for tool in tools:
                 self.tools.append(
                     MCPTool(
                         name=tool.name,
                         description=tool.description,
-                        input_schema=tool.inputSchema,
+                        input_schema=tool.input_schema,
                         mcp_client=mcp_client,
-                        annotations=tool_annotations,
+                        annotations=ToolAnnotations(title = tool.display_name, readOnlyHint = tool.read_only),
                         trust=trust,
                     )
                 )
+        else:
+            async with mcp_client:
+                mcp_tools = await mcp_client.list_tools()
+                for tool in mcp_tools:
+                    assert tool.description is not None, f"Tool {tool.name} has no description"
+                    tool_annotations = tool.annotations
+                    self.tools.append(
+                        MCPTool(
+                            name=tool.name,
+                            description=tool.description,
+                            input_schema=tool.inputSchema,
+                            mcp_client=mcp_client,
+                            annotations=tool_annotations,
+                            trust=trust,
+                        )
+                    )
 
     def _validate_tool_parameters(self):
         """Validate tool parameters and check for duplicates."""
@@ -194,4 +210,3 @@ class AgentToolManager:
         Returns the list of tools.
         """
         return self.tools
-

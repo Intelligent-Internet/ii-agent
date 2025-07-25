@@ -30,8 +30,7 @@ class FunctionCallAgent(Agent):
             config: The configuration for the agent
             tools: List of tools to use
         """
-        super().__init__(llm, config)
-        self.tools = tools
+        super().__init__(llm, config, tools)
 
     def step(self, state: State) -> list[AssistantContentBlock]:
         model_response, _ = self.llm.generate(

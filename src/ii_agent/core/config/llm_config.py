@@ -6,9 +6,12 @@ from ii_agent.utils.constants import DEFAULT_MODEL
 
 class APITypes(Enum):
     """Types of API keys."""
-    OPENAI = 'openai'
-    ANTHROPIC = 'anthropic'
-    GEMINI = 'gemini'
+
+    OPENAI = "openai"
+    ANTHROPIC = "anthropic"
+    GEMINI = "gemini"
+    R1 = "r1"
+
 
 class LLMConfig(BaseModel):
     """Configuration for the LLM.
@@ -41,6 +44,7 @@ class LLMConfig(BaseModel):
     azure_endpoint: str | None = Field(default=None)
     azure_api_version: str | None = Field(default=None)
     cot_model: bool = Field(default=False)
+    stop_sequence: list[str] | None = Field(default=None)
 
 
     @field_serializer('api_key')

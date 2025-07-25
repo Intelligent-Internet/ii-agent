@@ -113,7 +113,7 @@ class ThinkingBlock(BaseModel):
 
 
 AssistantContentBlock = (
-    TextResult | ToolCall | RedactedThinkingBlock | ThinkingBlock
+    TextResult | ToolCall | RedactedThinkingBlock | ThinkingBlock | ToolResult
 )
 UserContentBlock = TextPrompt | ToolFormattedResult | ImageBlock
 GeneralContentBlock = UserContentBlock | AssistantContentBlock
@@ -134,6 +134,31 @@ class LLMClient(ABC):
         tool_choice: dict[str, str] | None = None,
         thinking_tokens: int | None = None,
     ) -> Tuple[list[AssistantContentBlock], dict[str, Any]]:
+        """Generate responses.
+
+        Args:
+            messages: A list of messages.
+            max_tokens: The maximum number of tokens to generate.
+            system_prompt: A system prompt.
+            temperature: The temperature.
+            tools: A list of tools.
+            tool_choice: A tool choice.
+
+        Returns:
+            A generated response.
+        """
+        raise NotImplementedError
+
+    async def generate_stream(
+        self,
+        messages: LLMMessages,
+        max_tokens: int,
+        system_prompt: str | None = None,
+        temperature: float = 0.0,
+        tools: list[ToolParam] = [],
+        tool_choice: dict[str, str] | None = None,
+        thinking_tokens: int | None = None,
+    ) -> list[AssistantContentBlock]:
         """Generate responses.
 
         Args:

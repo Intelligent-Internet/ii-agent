@@ -24,6 +24,8 @@ from ii_agent.controller.state import State
 from ii_agent.llm.context_manager import LLMCompact
 from ii_agent.core.storage.settings.file_settings_store import FileSettingsStore
 from ii_agent.llm.token_counter import TokenCounter
+from ii_agent.tools.agent_tool.sub_agent import get_sub_agents
+from ii_agent.tools.tool_manager import AgentToolManager
 from ii_agent.utils.workspace_manager import WorkspaceManager
 from ii_agent.core.logger import logger
 from ii_agent.prompts.system_prompt import SYSTEM_PROMPT
@@ -158,7 +160,17 @@ class CLIApp:
         mcp_client = Client(await create_mcp(
             workspace_dir=str(self.workspace_manager.root),
             session_id=self.config.session_id,
-        ))
+        ))        # Create context manager
+
+        token_counter = TokenCounter()
+        context_manager = LLMCompact(
+            client=llm_client,
+            token_counter=token_counter,
+            token_budget=TOKEN_BUDGET,  # Default token budget
+        )
+
+        sub_agents = get_sub_agents(llm_client, mcp_client, self.workspace_manager, self.event_stream, context_manager)
+        tool_manager.register_tools(sub_agents)
         await tool_manager.register_mcp_tools(
             mcp_client=mcp_client,
             trust=True, # Trust the system MCP tools
@@ -174,13 +186,7 @@ class CLIApp:
             tools=[ToolParam(name=tool.name, description=tool.description, input_schema=tool.input_schema) for tool in tool_manager.get_tools()]
         )
         
-        # Create context manager
-        token_counter = TokenCounter()
-        context_manager = LLMCompact(
-            client=llm_client,
-            token_counter=token_counter,
-            token_budget=TOKEN_BUDGET,  # Default token budget
-        )
+
 
         # Create message history - restore from saved state if available
         if saved_state_data:
@@ -226,6 +232,9 @@ class CLIApp:
             # Load session if resuming
             if resume and session_name:
                 self._load_session(session_name)
+
+            if self.agent_controller is None:
+                raise Exception("Agent controller not initialized")
 
             while True:
                 try:
