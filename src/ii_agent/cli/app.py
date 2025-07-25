@@ -7,9 +7,10 @@ the AgentController with event stream for CLI usage.
 
 import asyncio
 import json
+import signal
 from pathlib import Path
 from typing import Optional, Dict, Any
-from fastmcp import Client
+from uuid import UUID
 from ii_agent.core.config.ii_agent_config import IIAgentConfig
 from ii_agent.core.config.agent_config import AgentConfig
 from ii_agent.core.config.llm_config import LLMConfig
@@ -24,6 +25,7 @@ from ii_agent.controller.state import State
 from ii_agent.llm.context_manager import LLMCompact
 from ii_agent.core.storage.settings.file_settings_store import FileSettingsStore
 from ii_agent.llm.token_counter import TokenCounter
+from ii_agent.runtime.runtime_manager import RuntimeManager
 from ii_agent.utils.workspace_manager import WorkspaceManager
 from ii_agent.core.logger import logger
 from ii_agent.prompts.system_prompt import SYSTEM_PROMPT
@@ -35,7 +37,6 @@ from ii_agent.cli.state_persistence import (
 )
 from ii_agent.tools import AgentToolManager
 from ii_agent.llm.base import ToolParam
-from ii_tool.mcp.server import create_mcp
 
 
 class CLIApp:
@@ -52,7 +53,6 @@ class CLIApp:
         self.llm_config = llm_config
         self.workspace_manager = WorkspaceManager(Path(workspace_path))
         # Create state manager - we'll update it with continue_session later
-        self.state_manager = None
         self.workspace_path = workspace_path
         # Create event stream
         self.event_stream = AsyncEventStream(logger=logger)
@@ -63,6 +63,7 @@ class CLIApp:
             config=config,
             confirmation_callback=self._handle_tool_confirmation
         )
+        self.session_config = None
         
         # Subscribe to events
         self.event_stream.subscribe(self.console_subscriber.handle_event)
@@ -81,6 +82,9 @@ class CLIApp:
         # Store for pending tool confirmations
         self._tool_confirmations: Dict[str, Dict[str, Any]] = {}
         
+        # Setup signal handlers
+        self._setup_signal_handlers()
+        
     def _handle_tool_confirmation(self, tool_call_id: str, tool_name: str, approved: bool, alternative_instruction: str) -> None:
         """Handle tool confirmation response from console subscriber."""
         # Store the confirmation response
@@ -97,33 +101,21 @@ class CLIApp:
         else:
             logger.debug(f"Tool confirmation received but no agent controller: {tool_call_id} -> approved={approved}")
         
-    async def initialize_agent(self, continue_from_state: bool = False) -> None:
+    async def initialize_agent(self) -> None:
         """Initialize the agent controller."""
         if self.agent_controller is not None:
             return
 
-        # Create state manager now that we know if we're continuing
-        if self.state_manager is None:
-            self.state_manager = StateManager(
-                Path(self.workspace_path), continue_session=continue_from_state
-            )
+        if not self.session_config:
+            raise ValueError("Session config not initialized")
 
-        settings_store = await FileSettingsStore.get_instance(self.config, None)
-        settings = await settings_store.load()
-        
-        # Ensure CLI config exists with defaults
-        if not settings.cli_config:
-            from ii_agent.core.config.cli_config import CliConfig
-            settings.cli_config = CliConfig()
-            await settings_store.store(settings)
-        
-        # Update console subscriber with settings
-        self.console_subscriber.settings = settings
 
-        # Load saved state if --continue flag is used
+
         saved_state_data = None
-        if continue_from_state:
-            saved_state_data = self.state_manager.load_state()
+        # Initialize with session continuation check
+        is_valid_session = self.state_manager.is_valid_session(self.session_config.session_id)
+        if is_valid_session:
+            saved_state_data = self.state_manager.load_state(self.session_config.session_id)
             if saved_state_data:
                 self.console_subscriber.console.print(
                     "🔄 [cyan]Continuing from previous state...[/cyan]"
@@ -154,11 +146,17 @@ class CLIApp:
 
         tool_manager = AgentToolManager()
 
-        # Get system MCP tools
-        mcp_client = Client(await create_mcp(
-            workspace_dir=str(self.workspace_manager.root),
-            session_id=self.config.session_id,
-        ))
+        runtime_manager = RuntimeManager(
+            session_config=self.session_config, settings=self.settings
+        )
+        if not self.state_manager.is_valid_session(self.session_config.session_id):
+            await runtime_manager.start_runtime()
+        else:
+            await runtime_manager.connect_runtime()
+        mcp_client = await runtime_manager.get_mcp_client(
+            str(self.workspace_manager.root)
+        )
+
         await tool_manager.register_mcp_tools(
             mcp_client=mcp_client,
             trust=True, # Trust the system MCP tools
@@ -205,27 +203,34 @@ class CLIApp:
         self.console_subscriber.print_workspace_info(str(self.workspace_manager.root))
 
         # Show previous conversation history if continuing from state
-        if continue_from_state and saved_state_data:
+        if is_valid_session and saved_state_data:
             self.console_subscriber.render_conversation_history(
                 self.agent_controller.history
             )
 
-    async def run_interactive_mode(
-        self,
-        session_name: Optional[str] = None,
-        resume: bool = False,
-        continue_from_state: bool = False,
-    ) -> int:
+    async def run_interactive_mode(self) -> int:
         """Run interactive chat mode."""
         try:
-            await self.initialize_agent(continue_from_state)
+            #Initialize settings
+            settings_store = await FileSettingsStore.get_instance(self.config, None)
+            self.settings = await settings_store.load()
+            
+            # Ensure CLI config exists with defaults
+            if not self.settings.cli_config:
+                from ii_agent.core.config.cli_config import CliConfig
+                self.settings.cli_config = CliConfig()
+            await settings_store.store(self.settings)
+            self.console_subscriber.settings = self.settings
+            self.state_manager = StateManager(self.config, self.settings)
+
+            self.session_config = await self.console_subscriber.select_session_config(self.state_manager)
+            await self.initialize_agent()
 
             self.console_subscriber.print_welcome()
-            self.console_subscriber.print_session_info(session_name)
-
-            # Load session if resuming
-            if resume and session_name:
-                self._load_session(session_name)
+            self.console_subscriber.print_session_info(
+                self.session_config.session_id if self.session_config else None,
+                self.session_config.mode.value if self.session_config else None
+            )
 
             while True:
                 try:
@@ -243,7 +248,9 @@ class CLIApp:
                             "config": self.config,
                             "agent_controller": self.agent_controller,
                             "workspace_manager": self.workspace_manager,
-                            "session_name": session_name,
+                            "session_name": self.session_config.session_name
+                            if self.session_config
+                            else None,
                             "should_exit": False,
                         }
 
@@ -274,10 +281,6 @@ class CLIApp:
                         files=None,
                         resume=True,  # Always resume in interactive mode
                     )
-
-                    # Save session if name provided
-                    if session_name:
-                        self._save_session(session_name)
 
                 except KeyboardInterrupt:
                     self.console_subscriber.console.print("\n⚠️ [yellow]Interrupted by user[/yellow]")
@@ -331,61 +334,9 @@ class CLIApp:
         except Exception as e:
             print(f"Error saving output: {e}")
 
-    def _load_session(self, session_name: str) -> None:
-        """Load session from file."""
-        try:
-            session_dir = self.config.get_session_dir()
-            if not session_dir:
-                return
-
-            session_file = session_dir / f"{session_name}.json"
-            if not session_file.exists():
-                print(f"Session '{session_name}' not found")
-                return
-
-            with open(session_file, "r") as f:
-                session_data = json.load(f)
-
-            # Restore message history
-            if self.agent_controller and "history" in session_data:
-                # You'll need to implement history restoration based on your State class
-                pass
-
-            print(f"Session '{session_name}' loaded")
-
-        except Exception as e:
-            print(f"Error loading session: {e}")
-
-    def _save_session(self, session_name: str) -> None:
-        """Save session to file."""
-        try:
-            session_dir = self.config.get_session_dir()
-            if not session_dir:
-                return
-
-            session_dir.mkdir(parents=True, exist_ok=True)
-            session_file = session_dir / f"{session_name}.json"
-
-            # Save message history
-            session_data = {
-                "name": session_name,
-                "timestamp": str(asyncio.get_event_loop().time()),
-                "config": self.config.get_llm_config(),
-            }
-
-            if self.agent_controller:
-                # You'll need to implement history serialization based on your State class
-                pass
-
-            with open(session_file, "w") as f:
-                json.dump(session_data, f, indent=2)
-
-        except Exception as e:
-            logger.error(f"Error saving session: {e}")
-
     def _save_state_on_exit(self, should_save: bool) -> None:
         """Save agent state when exiting if requested."""
-        if not should_save or not self.agent_controller or not self.state_manager:
+        if not should_save or not self.agent_controller or not self.state_manager or not self.session_config:
             return
 
         try:
@@ -398,11 +349,11 @@ class CLIApp:
 
             # Save the complete state
             self.state_manager.save_state(
+                session_id=self.session_config.session_id,
                 agent_state=current_state,
                 config=self.config,
                 llm_config=self.llm_config,
                 workspace_path=str(self.workspace_manager.root),
-                session_name=None,  # For --continue, we don't use session names
             )
 
             self.console_subscriber.console.print(
@@ -414,6 +365,19 @@ class CLIApp:
             self.console_subscriber.console.print(
                 f"⚠️ [yellow]Failed to save state: {e}[/yellow]"
             )
+
+    def _setup_signal_handlers(self) -> None:
+        """Setup signal handlers for graceful shutdown."""
+        def signal_handler(signum, frame):
+            signal_name = "SIGINT" if signum == signal.SIGINT else "SIGTSTP"
+            self.console_subscriber.console.print(f"\n\n🛑 [yellow]Received {signal_name}, saving state...[/yellow]")
+            self._save_state_on_exit(True)
+            self.console_subscriber.print_goodbye()
+            exit(0)
+        
+        signal.signal(signal.SIGINT, signal_handler)
+        # Note: SIGTSTP (Ctrl+Z) cannot be caught in the same way as it suspends the process
+        # We'll handle KeyboardInterrupt in the main loop instead
 
     def cleanup(self) -> None:
         """Clean up resources."""

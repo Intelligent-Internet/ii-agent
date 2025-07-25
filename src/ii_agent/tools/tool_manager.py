@@ -28,6 +28,7 @@ class AgentToolManager:
     search capabilities, and task completion functionality.
     """
 
+
     def __init__(self):
         self.tools = []
 
@@ -194,4 +195,3 @@ class AgentToolManager:
         Returns the list of tools.
         """
         return self.tools
-

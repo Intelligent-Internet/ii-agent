@@ -15,8 +15,10 @@ from prompt_toolkit.widgets import Frame, TextArea
 from pydantic import SecretStr
 
 from ii_agent.core.config.llm_config import LLMConfig, APITypes
+from ii_agent.core.config.runtime_config import RuntimeConfig
 from ii_agent.core.storage.models.settings import Settings
 from ii_agent.core.storage.settings.file_settings_store import FileSettingsStore
+from ii_agent.runtime.model.constants import RuntimeMode
 from ii_agent.utils.constants import DEFAULT_MODEL
 from dotenv import load_dotenv
 
@@ -36,7 +38,7 @@ VERIFIED_OPENAI_MODELS = [
 ]
 
 VERIFIED_GEMINI_MODELS = [
-    "gemini-2.5-flash"
+    "gemini-2.5-flash",
     "gemini-2.5-pro",
 ]
 
@@ -94,11 +96,28 @@ def display_settings(settings: Settings) -> None:
     
     # Add Vertex AI specific settings if applicable
     if default_llm.api_type in [APITypes.GEMINI, APITypes.ANTHROPIC]:
-        labels_and_values.extend([
-            ('   Vertex Region', default_llm.vertex_region or 'Not Set'),
-            ('   Vertex Project ID', default_llm.vertex_project_id or 'Not Set'),
-        ])
-    
+        labels_and_values.extend(
+            [
+                ("   Vertex Region", default_llm.vertex_region or "Not Set"),
+                ("   Vertex Project ID", default_llm.vertex_project_id or "Not Set"),
+            ]
+        )
+
+    # Add runtime configuration
+    if settings.runtime_config:
+        labels_and_values.extend(
+            [
+                ("   Runtime Mode", settings.runtime_config.mode.value),
+                ("   Template ID", settings.runtime_config.template_id or "Not Set"),
+                (
+                    "   Runtime API Key",
+                    "********"
+                    if settings.runtime_config.runtime_api_key
+                    else "Not Set",
+                ),
+            ]
+        )
+
     # Calculate max width for alignment
     max_label_width = max(len(label) for label, _ in labels_and_values)
     
@@ -362,13 +381,91 @@ async def setup_llm_configuration(settings_store: FileSettingsStore) -> None:
         
         # Save settings
         await settings_store.store(settings)
-        
-        print_formatted_text(HTML('\n<green>✓ Settings saved successfully!</green>'))
-        
+
+        print_formatted_text(HTML("\n<green>✓ Settings saved successfully!</green>"))
+
     except UserCancelledError:
-        print_formatted_text(HTML('\n<yellow>Setup cancelled by user.</yellow>'))
+        print_formatted_text(HTML("\n<yellow>Setup cancelled by user.</yellow>"))
     except Exception as e:
-        print_formatted_text(HTML(f'\n<red>Error during setup: {e}</red>'))
+        print_formatted_text(HTML(f"\n<red>Error during setup: {e}</red>"))
+
+
+async def setup_runtime_configuration(settings_store: FileSettingsStore) -> None:
+    """Interactive setup for runtime configuration."""
+    session = PromptSession()
+
+    try:
+        # Step 1: Select runtime mode
+        print_formatted_text(HTML("\n<green>Setting up Runtime Configuration</green>"))
+        print_formatted_text(HTML("<grey>Choose your preferred runtime mode:</grey>\n"))
+
+        runtime_choices = [mode.value for mode in RuntimeMode]
+
+        mode_choice = cli_confirm(
+            "Select Runtime Mode:",
+            runtime_choices,
+        )
+        runtime_mode = RuntimeMode(runtime_choices[mode_choice])
+
+        # Step 2: E2B specific configuration
+        template_id = None
+        runtime_api_key = None
+
+        if runtime_mode == RuntimeMode.E2B:
+            print_formatted_text(
+                HTML("\n<grey>E2B Configuration (required for E2B runtime):</grey>")
+            )
+
+            template_id = await get_validated_input(
+                session,
+                "Enter E2B template ID: ",
+                error_message="Template ID cannot be empty",
+            )
+
+            runtime_api_key = await get_validated_input(
+                session,
+                "Enter E2B API key: ",
+                error_message="API key cannot be empty",
+                is_password=True,
+            )
+
+        # Confirm save
+        if not save_settings_confirmation():
+            return
+
+        # Create runtime configuration
+        runtime_config = RuntimeConfig(
+            mode=runtime_mode,
+            template_id=template_id,
+            runtime_api_key=SecretStr(runtime_api_key) if runtime_api_key else None,
+        )
+
+        # Load existing settings or create new
+        settings = await settings_store.load()
+        if not settings:
+            settings = Settings()
+
+        # Set runtime config
+        settings.runtime_config = runtime_config
+
+        # Save settings
+        await settings_store.store(settings)
+
+        print_formatted_text(
+            HTML("\n<green>✓ Runtime settings saved successfully!</green>")
+        )
+        print_formatted_text(
+            HTML(
+                "<yellow>Note: Runtime changes will take effect on the next startup, not the current session.</yellow>"
+            )
+        )
+
+    except UserCancelledError:
+        print_formatted_text(
+            HTML("\n<yellow>Runtime setup cancelled by user.</yellow>")
+        )
+    except Exception as e:
+        print_formatted_text(HTML(f"\n<red>Error during runtime setup: {e}</red>"))
 
 
 async def run_first_time_setup(settings_store: FileSettingsStore) -> bool:
@@ -377,7 +474,12 @@ async def run_first_time_setup(settings_store: FileSettingsStore) -> bool:
     print_formatted_text(HTML('<grey>No settings found. Let\'s set up your LLM configuration.</grey>\n'))
     
     try:
+        # Step 1: Setup LLM configuration
         await setup_llm_configuration(settings_store)
+
+        # Step 2: Setup runtime configuration
+        await setup_runtime_configuration(settings_store)
+
         return True
     except Exception as e:
         print_formatted_text(HTML(f'\n<red>Setup failed: {e}</red>'))
@@ -392,12 +494,14 @@ async def modify_settings(settings_store: FileSettingsStore) -> None:
         display_settings(settings)
         
         modify_choice = cli_confirm(
-            '\nWhat would you like to modify?',
-            ['LLM Configuration', 'Go back']
+            "\nWhat would you like to modify?",
+            ["LLM Configuration", "Runtime Configuration", "Go back"],
         )
         
         if modify_choice == 0:
             await setup_llm_configuration(settings_store)
+        elif modify_choice == 1:
+            await setup_runtime_configuration(settings_store)
     else:
         print_formatted_text(HTML('<grey>No settings found. Running first-time setup...</grey>'))
         await run_first_time_setup(settings_store)

@@ -1,5 +1,7 @@
 from mcp.types import ToolAnnotations
 from fastmcp import FastMCP
+from starlette.middleware import Middleware
+from starlette.middleware.cors import CORSMiddleware
 from argparse import ArgumentParser
 from ii_tool.core.workspace import WorkspaceManager
 from ii_tool.core.config import WebSearchConfig, WebVisitConfig, ImageSearchConfig, VideoGenerateConfig, ImageGenerateConfig, FullStackDevConfig
@@ -32,6 +34,17 @@ async def create_mcp(workspace_dir: str, session_id: str):
     )
 
     mcp = FastMCP()
+        # Add CORS middleware to allow all hosts
+    custom_middleware = [
+        Middleware(
+            CORSMiddleware,
+            allow_origins=["*"],
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+    ]
+    mcp.http_app(middleware=custom_middleware)
 
     for tool in tools:
         mcp.tool(

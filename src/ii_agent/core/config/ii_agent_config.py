@@ -33,11 +33,8 @@ class IIAgentConfig(BaseSettings):
     database_url: Optional[str] = None
     mcp_config: Optional[Dict[str, Any]] = None
 
-    # Per session config
-    # TODO: move to a separate class
-    session_id: str
-    auto_approve_tools: bool = False # Global tool approval setting. If True, all tools will be automatically approved.
-    allow_tools: set[str] = set() # Tools that are confirmed by the user
+    auto_approve_tools: bool = False  # Global tool approval setting. If True, all tools will be automatically approved.
+    allow_tools: set[str] = set()  # Tools that are confirmed by the user
 
     @model_validator(mode='after')
     def set_database_url(self) -> "IIAgentConfig":
@@ -71,5 +68,5 @@ class IIAgentConfig(BaseSettings):
         self.auto_approve_tools = value
 
 if __name__ == "__main__":
-    config = IIAgentConfig(session_id="test")
+    config = IIAgentConfig()
     print(config.workspace_root)

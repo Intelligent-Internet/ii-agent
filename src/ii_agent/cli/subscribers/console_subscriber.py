@@ -4,8 +4,13 @@ Console subscriber for CLI output.
 This module provides real-time console output for agent events.
 """
 
-from typing import Optional, Dict, Any, Callable
+from typing import Optional, Dict, Any, Callable, Tuple
 from threading import Lock
+import sys
+import termios
+import tty
+import difflib
+from pathlib import Path
 
 from rich.console import Console
 from rich.panel import Panel
@@ -13,7 +18,9 @@ from rich.text import Text
 from rich.progress import Progress
 from rich.table import Table
 from rich.syntax import Syntax
+from rich.prompt import Prompt, Confirm
 
+from ii_agent.cli.state_persistence import StateManager
 from ii_agent.core.event import RealtimeEvent, EventType
 from ii_agent.core.config.llm_config import LLMConfig
 from ii_agent.core.config.ii_agent_config import IIAgentConfig
@@ -21,6 +28,7 @@ from ii_agent.core.storage.models.settings import Settings
 from ii_agent.cli.components.spinner import AnimatedSpinner
 from ii_agent.cli.components.token_usage import TokenUsageDisplay
 from ii_agent.cli.components.todo_panel import TodoPanel
+from ii_agent.cli.session_config import SessionConfig
 
 
 class ConsoleSubscriber:
@@ -665,11 +673,18 @@ class ConsoleSubscriber:
             )
             self.console.print(goodbye_panel)
     
-    def print_session_info(self, session_name: Optional[str] = None) -> None:
+    def print_session_info(self, session_id: Optional[str] = None, runtime_mode: Optional[str] = None) -> None:
         """Print session information."""
-        if not self.minimal and session_name:
+        if not self.minimal and session_id:
+            # Get runtime mode icon
+            mode_icon = "🐳" if runtime_mode == "docker" else "💻" if runtime_mode == "local" else "☁️" if runtime_mode == "e2b" else "⚙️"
+            
+            session_info = f"📝 [bold]Active Session[/bold]\n\nID: [cyan]{session_id}[/cyan]"
+            if runtime_mode:
+                session_info += f"\nRuntime: {mode_icon} [green]{runtime_mode.upper()}[/green]"
+            
             session_panel = Panel(
-                f"📝 [bold]Active Session[/bold]\n\nName: [cyan]{session_name}[/cyan]",
+                session_info,
                 title="Session Info",
                 style="yellow"
             )
@@ -780,3 +795,407 @@ class ConsoleSubscriber:
         if self._spinner:
             self._spinner.stop()
             self._spinner = None
+
+    def _interactive_session_selector(
+        self, state_manager: StateManager
+    ) -> Tuple[Optional[str], bool]:
+        """Interactive session selector with arrow keys - sessions always expand on select."""
+        sessions = state_manager.get_available_sessions()
+        if not sessions:
+            return None, False
+
+        selected_index = 0
+        search_mode = False
+        search_query = ""
+        filtered_sessions = sessions.copy()
+
+        # Check if terminal supports raw mode
+        if not sys.stdin.isatty():
+            # Fallback to simple selection for non-interactive terminals
+            self.console.print("\n[bold cyan]📋 Available Sessions[/bold cyan]")
+            for i, session in enumerate(sessions, 1):
+                self.console.print(f"  {i}. [bright_white]{session}[/bright_white]")
+
+            self.console.print(
+                "\n[dim]Enter session number (1-{}) or name, or 'new' to create a new session[/dim]".format(
+                    len(sessions)
+                )
+            )
+            choice = Prompt.ask("Selection", default="")
+
+            if choice.lower() == "new":
+                new_session_id = Prompt.ask(
+                    "Enter new session name"
+                )
+                return new_session_id, False
+            elif choice.isdigit() and 1 <= int(choice) <= len(sessions):
+                return sessions[int(choice) - 1], False
+            elif choice in sessions:
+                return choice, False
+            elif choice:
+                # Create new session with the given name
+                return choice, False
+            else:
+                return None, False
+
+        def fuzzy_search_sessions(query: str, sessions_list: list) -> list:
+            """Perform fuzzy search on sessions list."""
+            if not query.strip():
+                return sessions_list
+
+            # Use difflib for fuzzy matching
+            matches = difflib.get_close_matches(
+                query.lower(),
+                [s.lower() for s in sessions_list],
+                n=len(sessions_list),
+                cutoff=0.1,
+            )
+
+            # Return original sessions in order of matches
+            result = []
+            for match in matches:
+                # Find original session name with correct case
+                for session in sessions_list:
+                    if session.lower() == match:
+                        result.append(session)
+                        break
+
+            # Add sessions that contain the query as substring (not already included)
+            for session in sessions_list:
+                if query.lower() in session.lower() and session not in result:
+                    result.append(session)
+
+            return result if result else sessions_list
+
+        def get_session_content(session_id: str) -> str:
+            """Get session content from agent_state.json."""
+            try:
+                return state_manager.load_state_summary(session_id)
+            except Exception as e:
+                return f"❌ Error reading state: {str(e)}"
+
+        def render_session_list():
+            """Generate session list content without clearing screen."""
+            from rich.console import Group
+            from rich.text import Text
+            from rich.panel import Panel
+            from rich.table import Table
+
+            content = []
+
+            # Create elegant header panel matching the theme
+            header_content = Text()
+            if search_mode:
+                header_content.append("🔍 ", style="yellow")
+                header_content.append("Search Sessions", style="bold yellow")
+            else:
+                header_content.append("📋 ", style="cyan")
+                header_content.append("Session Manager", style="bold cyan")
+
+            header_panel = Panel(
+                header_content,
+                title="🚀 ii-agent",
+                title_align="left",
+                style="yellow" if search_mode else "cyan",
+                border_style="bright_yellow" if search_mode else "bright_blue",
+                padding=(0, 1),
+            )
+            content.append(header_panel)
+            content.append(Text())  # Spacer
+
+            # Show search bar if in search mode
+            if search_mode:
+                search_content = Text()
+                search_content.append("Search: ", style="bold yellow")
+                search_content.append(
+                    search_query, style="bright_white on bright_black"
+                )
+                search_content.append("█", style="blink bright_white")  # Cursor
+
+                search_panel = Panel(
+                    search_content,
+                    title="🔍 Type to search",
+                    title_align="left",
+                    border_style="yellow",
+                    style="yellow",
+                    padding=(0, 1),
+                )
+                content.append(search_panel)
+                content.append(Text())  # Spacer
+
+            # Create instruction panel with consistent styling
+            instructions = Text()
+            if search_mode:
+                instructions.append("Search mode: ", style="bold yellow")
+                instructions.append("Type to search ", style="bright_white")
+                instructions.append("• ", style="dim")
+                instructions.append("↑/↓ arrows ", style="bright_white")
+                instructions.append("• ", style="dim")
+                instructions.append("Enter ", style="green")
+                instructions.append("to select ", style="white")
+            else:
+                instructions.append("Navigation: ", style="bold blue")
+                instructions.append("↑/↓ arrows ", style="bright_white")
+                instructions.append("• ", style="dim")
+                instructions.append("Enter ", style="green")
+                instructions.append("to select ", style="white")
+                instructions.append("• ", style="dim")
+                instructions.append("'s' ", style="magenta")
+                instructions.append("to search ", style="white")
+                instructions.append("• ", style="dim")
+                instructions.append("'n' ", style="yellow")
+                instructions.append("for new session ", style="white")
+                instructions.append("• ", style="dim")
+                instructions.append("Ctrl+C ", style="red")
+                instructions.append("to cancel", style="white")
+
+            content.append(Panel(instructions, border_style="dim blue", padding=(0, 1)))
+            content.append(Text())  # Spacer
+
+            # Session items with improved visual hierarchy
+            session_table = Table(
+                show_header=False, show_edge=False, pad_edge=False, box=None
+            )
+            session_table.add_column("status", width=3, no_wrap=True)
+            session_table.add_column("name", min_width=20)
+            session_table.add_column("info", style="dim", no_wrap=True)
+
+            for i, session in enumerate(filtered_sessions):
+                if i == selected_index:
+                    # Selected session with enhanced styling
+                    status_icon = Text("▶", style="bold bright_green")
+                    session_id = Text(
+                        session, style="bold bright_green on bright_black"
+                    )
+                    info_text = Text("← selected", style="dim green")
+                else:
+                    # Non-selected sessions with subtle styling
+                    status_icon = Text("•", style="dim blue")
+                    session_id = Text(session, style="bright_white")
+                    # Add search query highlighting if in search mode
+                    if search_mode and search_query.strip():
+                        # Highlight matching parts
+                        highlighted_name = Text()
+                        session_lower = session.lower()
+                        query_lower = search_query.lower()
+                        if query_lower in session_lower:
+                            start = session_lower.find(query_lower)
+                            end = start + len(query_lower)
+                            highlighted_name.append(
+                                session[:start], style="bright_white"
+                            )
+                            highlighted_name.append(
+                                session[start:end], style="bold yellow on bright_black"
+                            )
+                            highlighted_name.append(session[end:], style="bright_white")
+                            session_id = highlighted_name
+
+                    # Add session metadata as info
+                    try:
+                        sessions_dir = Path.home() / ".ii_agent" / "sessions"
+                        state_file = sessions_dir / session / "agent_state.json"
+                        if state_file.exists():
+                            from datetime import datetime
+
+                            mtime = datetime.fromtimestamp(state_file.stat().st_mtime)
+                            info_text = Text(
+                                mtime.strftime("%m/%d %H:%M"), style="dim cyan"
+                            )
+                        else:
+                            info_text = Text("no state", style="dim yellow")
+                    except Exception:
+                        info_text = Text("", style="dim")
+
+                session_table.add_row(status_icon, session_id, info_text)
+
+                # Show expanded content for selected session
+                if i == selected_index:
+                    session_content = get_session_content(session)
+                    detail_panel = Panel(
+                        session_content,
+                        title="📊 Session Details",
+                        title_align="left",
+                        border_style="dim green",
+                        style="dim",
+                        padding=(0, 1),
+                    )
+                    content.append(detail_panel)
+
+            # Add the session table
+            if search_mode and search_query.strip():
+                title = f"📂 Search Results ({len(filtered_sessions)} of {len(sessions)} sessions)"
+            else:
+                title = f"📂 Sessions ({len(filtered_sessions)} available)"
+
+            sessions_panel = Panel(
+                session_table,
+                title=title,
+                title_align="left",
+                border_style="dim cyan",
+                padding=(0, 1),
+            )
+            content.append(sessions_panel)
+
+            # Enhanced footer with current selection info
+            content.append(Text())  # Spacer
+
+            if filtered_sessions:
+                current_session = filtered_sessions[selected_index]
+                footer_content = Text()
+                footer_content.append("📍 Current selection: ", style="dim")
+                footer_content.append(current_session, style="bold cyan")
+                footer_content.append(" ", style="dim")
+                footer_content.append("(details shown)", style="dim green")
+
+                footer_panel = Panel(
+                    footer_content, border_style="dim", style="dim", padding=(0, 1)
+                )
+                content.append(footer_panel)
+            else:
+                # No sessions match search
+                no_results_content = Text()
+                no_results_content.append("❌ No sessions match '", style="dim red")
+                no_results_content.append(search_query, style="red")
+                no_results_content.append("'", style="dim red")
+
+                footer_panel = Panel(
+                    no_results_content,
+                    border_style="dim red",
+                    style="dim",
+                    padding=(0, 1),
+                )
+                content.append(footer_panel)
+
+            return Group(*content)
+
+        # Print welcome message once at the start
+        self.console.clear()
+        self.print_welcome()
+
+        # Create live display for session list
+        from rich.live import Live
+
+        # Save original terminal settings
+        old_settings = termios.tcgetattr(sys.stdin)
+
+        with Live(
+            render_session_list(),
+            console=self.console,
+            refresh_per_second=10,
+            screen=False,
+        ) as live:
+
+            def update_display():
+                live.update(render_session_list())
+
+            try:
+                # Set terminal to raw mode
+                tty.setcbreak(sys.stdin.fileno())
+
+                while True:
+                    # Read a single character
+                    char = sys.stdin.read(1)
+
+                    if char == "\x03":  # Ctrl+C
+                        return None, True
+                    elif char == "\r" or char == "\n":  # Enter
+                        if filtered_sessions:
+                            return filtered_sessions[selected_index], False
+                        else:
+                            continue  # No sessions to select
+                    elif (char == "s" or char == "S") and not search_mode:  # Search mode
+                        search_mode = True
+                        search_query = ""
+                        filtered_sessions = sessions.copy()
+                        selected_index = 0
+                        update_display()
+                    elif char == "\x1b":  # Escape sequence (arrow keys or ESC)
+                        # Read the next two characters
+                        next_chars = sys.stdin.read(2)
+                        if next_chars == "[A":  # Up arrow
+                            if filtered_sessions:
+                                selected_index = (selected_index - 1) % len(
+                                    filtered_sessions
+                                )
+                                update_display()
+                        elif next_chars == "[B":  # Down arrow
+                            if filtered_sessions:
+                                selected_index = (selected_index + 1) % len(
+                                    filtered_sessions
+                                )
+                                update_display()
+                    elif search_mode:
+                        # Handle search input
+                        if char == "\x7f":  # Backspace
+                            if search_query:
+                                search_query = search_query[:-1]
+                                filtered_sessions = fuzzy_search_sessions(
+                                    search_query, sessions
+                                )
+                                if filtered_sessions:
+                                    selected_index = min(
+                                        selected_index, len(filtered_sessions) - 1
+                                    )
+                                else:
+                                    selected_index = 0
+                                update_display()
+                        elif char.isprintable():
+                            search_query += char
+                            filtered_sessions = fuzzy_search_sessions(
+                                search_query, sessions
+                            )
+                            if filtered_sessions:
+                                selected_index = min(
+                                    selected_index, len(filtered_sessions) - 1
+                                )
+                            else:
+                                selected_index = 0
+                            update_display()
+                    elif char == "n" or char == "N":  # New session
+                        # Restore terminal settings temporarily for input
+                        termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
+                        try:
+                            live.stop()
+                            self.console.clear()
+                            self.console.print(
+                                "[bold cyan]📝 Create New Session[/bold cyan]"
+                            )
+                            return None, False
+                        finally:
+                            # Always restore raw mode
+                            tty.setcbreak(sys.stdin.fileno())
+
+            except KeyboardInterrupt:
+                return None, True
+            finally:
+                # Restore original terminal settings
+                termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
+
+    async def select_session_config(self, state_manager: StateManager) -> SessionConfig:
+        """Set up session configuration with interactive user selection."""
+        session_id, cancelled = self._interactive_session_selector(
+            state_manager
+        )
+        config = state_manager.get_state_config(session_id=session_id)
+        if cancelled:
+            # User cancelled, create new session
+            self.console.print(
+                f"[green]Creating new session: {config.session_id}[/green]"
+            )
+        elif config.session_id and  state_manager.is_valid_session(config.session_id):
+            # Load existing session
+            if await self.should_continue_from_state(): 
+                self.console.print(f"[green]Loading session: {config.session_id}[/green]")
+            else:
+                config = state_manager.get_state_config()
+                self.console.print(
+                    f"[green]Creating new session: {config.session_id}[/green]"
+                )
+        return config
+
+    async def should_continue_from_state(self) -> bool:
+        """Ask user if they want to continue from previous state in current directory."""
+        return Confirm.ask(
+            "\n[yellow]Found previous state in current directory. Continue from where you left off?[/yellow]",
+            default=True,
+        )

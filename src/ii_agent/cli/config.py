@@ -15,7 +15,6 @@ from pydantic import SecretStr
 
 
 async def setup_cli_config(
-    session_id: str,
     workspace: Optional[str] = None,
     model: Optional[str] = None,
     api_key: Optional[str] = None,
@@ -26,8 +25,8 @@ async def setup_cli_config(
     """Setup CLI configuration using the standard configuration pattern."""
     
     # Create config with defaults
-    config = IIAgentConfig(session_id=session_id, mcp_config=mcp_config)
-    
+    config = IIAgentConfig(mcp_config=mcp_config)
+
     # Load settings from store
     settings_store = await FileSettingsStore.get_instance(config=config, user_id=None)
     settings = await settings_store.load()

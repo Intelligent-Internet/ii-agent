@@ -4,7 +4,6 @@ Main CLI entry point for ii-agent.
 This module provides the command-line interface for interacting with the AgentController.
 """
 
-import uuid
 import json
 import argparse
 import asyncio
@@ -57,25 +56,6 @@ def create_parser() -> argparse.ArgumentParser:
         "chat", 
         help="Start interactive chat session"
     )
-    chat_parser.add_argument(
-        "--session", 
-        "-s", 
-        type=str, 
-        help="Session name to save/restore conversation"
-    )
-    chat_parser.add_argument(
-        "--resume", 
-        "-r", 
-        action="store_true", 
-        help="Resume from previous session"
-    )
-    chat_parser.add_argument(
-        "--continue", 
-        "-cont", 
-        action="store_true", 
-        help="Continue from last saved agent state in current directory"
-    ) 
-    
     # Config command
     config_parser = subparsers.add_parser(
         "config", 
@@ -161,13 +141,11 @@ async def main_async() -> int:
     # Validate arguments
     validate_args(args)
 
-    session_id = args.session if args.session else str(uuid.uuid4())
     mcp_config = json.loads(open(args.mcp_config).read()) if args.mcp_config else None
     
     try:
         # Setup CLI configuration using the new pattern
         config, llm_config, workspace_path = await setup_cli_config(
-            session_id=session_id,
             workspace=args.workspace,
             model=args.llm_model,
             temperature=args.temperature,
@@ -182,11 +160,7 @@ async def main_async() -> int:
         app = CLIApp(config, llm_config, workspace_path, minimal=args.minimal)
         
         if args.command == "chat":
-            return await app.run_interactive_mode(
-                session_name=args.session,
-                resume=args.resume,
-                continue_from_state=getattr(args, 'continue', False)
-            )
+            return await app.run_interactive_mode()
         else:
             print(f"Unknown command: {args.command}")
             return 1
