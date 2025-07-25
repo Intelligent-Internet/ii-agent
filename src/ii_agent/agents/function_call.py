@@ -1,3 +1,4 @@
+
 from typing import List
 from ii_agent.controller.agent import Agent
 from ii_agent.llm.base import LLMClient, ToolParam, AssistantContentBlock
@@ -15,6 +16,7 @@ AGENT_INTERRUPT_FAKE_MODEL_RSP = (
 
 
 class FunctionCallAgent(Agent):
+
     def __init__(
         self,
         llm: LLMClient,

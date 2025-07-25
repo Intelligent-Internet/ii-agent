@@ -4,7 +4,6 @@ from pydantic.json import pydantic_encoder
 
 from ii_agent.utils.constants import DEFAULT_MODEL
 
-
 class APITypes(Enum):
     """Types of API keys."""
 
@@ -16,7 +15,7 @@ class APITypes(Enum):
 
 class LLMConfig(BaseModel):
     """Configuration for the LLM.
-
+    
     Attributes:
         model: The model to use.
         api_key: The API key to use. (optional)
@@ -32,7 +31,6 @@ class LLMConfig(BaseModel):
         azure_api_version: The API version to use for Azure. (optional)
         cot_model: Whether cot model or not. (optional)
     """
-
     model: str = Field(default=DEFAULT_MODEL)
     api_key: SecretStr | None = Field(default=None)
     base_url: str | None = Field(default=None)
@@ -48,7 +46,8 @@ class LLMConfig(BaseModel):
     cot_model: bool = Field(default=False)
     stop_sequence: list[str] | None = Field(default=None)
 
-    @field_serializer("api_key")
+
+    @field_serializer('api_key')
     def api_key_serializer(self, api_key: SecretStr | None, info: SerializationInfo):
         """Custom serializer for API keys.
 
@@ -58,7 +57,8 @@ class LLMConfig(BaseModel):
             return None
 
         context = info.context
-        if context and context.get("expose_secrets", False):
+        if context and context.get('expose_secrets', False):
             return api_key.get_secret_value()
 
         return pydantic_encoder(api_key)
+

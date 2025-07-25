@@ -268,7 +268,6 @@ class AgentController:
                     approved_tool_calls.append(tool_call)
                     continue
 
-                import ipdb; ipdb.set_trace()
                 confirmation_details = await tool.should_confirm_execute(tool_call.tool_input)
                 
                 # Check if tool should be auto-approved

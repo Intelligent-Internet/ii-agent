@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from abc import ABC, abstractmethod
-from typing import Callable, Optional, Set
+from typing import Callable, Set
 from threading import Lock
 
 from ii_agent.core.event import RealtimeEvent
@@ -29,11 +29,9 @@ class EventStream(ABC):
 class AsyncEventStream(EventStream):
     """Async implementation of EventStream that manages event subscribers."""
 
-    def __init__(self, logger: Optional[logging.Logger] = None):
+    def __init__(self, logger: logging.Logger = None):
         self._subscribers: Set[Callable[[RealtimeEvent], None]] = set()
-        self._async_subscribers: Set[Callable[[RealtimeEvent], asyncio.coroutine]] = (
-            set()
-        )
+        self._async_subscribers: Set[Callable[[RealtimeEvent], asyncio.coroutine]] = set()
         self._lock = Lock()
         self._logger = logger or logging.getLogger(__name__)
 

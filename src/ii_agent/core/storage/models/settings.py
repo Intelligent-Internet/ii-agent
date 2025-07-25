@@ -28,5 +28,5 @@ class Settings(BaseModel):
     cli_config: CliConfig | None = Field(default=None)
 
     model_config = {
-        "validate_assignment": True,
+        'validate_assignment': True,
     }

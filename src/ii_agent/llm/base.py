@@ -16,7 +16,6 @@ class ToolParam(BaseModel):
     name: str
     description: str
     input_schema: dict[str, Any]
-    type: Literal["tool", "agent"] = "tool"
 
 
 class ToolCall(BaseModel):
@@ -100,14 +99,14 @@ class TextResult(BaseModel):
 
 class RedactedThinkingBlock(BaseModel):
     """Internal representation of redacted thinking block."""
-
+    
     data: str
     type: Literal["redacted_thinking"] = "redacted_thinking"
 
 
 class ThinkingBlock(BaseModel):
     """Internal representation of thinking block."""
-
+    
     signature: str
     thinking: str
     type: Literal["thinking"] = "thinking"
