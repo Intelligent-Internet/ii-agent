@@ -75,6 +75,9 @@ You can view the full traces of some samples here: [GAIA Benchmark Traces](https
 1. Clone the repository
 2. Run the following command
 
+<img width="821" alt="Screenshot 2025-07-08 at 17 50 34" src="https://github.com/user-attachments/assets/094f73aa-7384-4500-a670-528853f92ae7" />
+
+
 ```
 chmod +x start.sh
 ./start.sh

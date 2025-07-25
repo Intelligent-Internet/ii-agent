@@ -7,9 +7,7 @@ from ii_agent.llm.gemini import GeminiDirectClient
 def get_client(config: LLMConfig) -> LLMClient:
     """Get a client for a given client name."""
     if config.api_type == APITypes.ANTHROPIC:
-        return AnthropicDirectClient(
-            llm_config=config,
-        )
+        return AnthropicDirectClient(llm_config=config)
     elif config.api_type == APITypes.OPENAI:
         return OpenAIDirectClient(llm_config=config)
     elif config.api_type == APITypes.GEMINI:

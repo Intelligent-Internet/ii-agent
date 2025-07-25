@@ -21,7 +21,6 @@ GOOGLE_API_KEY=$GOOGLE_API_KEY
 GOOGLE_CLIENT_ID=$GOOGLE_CLIENT_ID
 GOOGLE_CLIENT_SECRET=$GOOGLE_CLIENT_SECRET
 EOF
-
     echo "Created frontend/.env file"
   else
     echo "[✓] Host IP set to: $HOST_IP"

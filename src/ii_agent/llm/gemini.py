@@ -127,7 +127,6 @@ class GeminiDirectClient(LLMClient):
                     config=types.GenerateContentConfig(
                         tools=tool_params,
                         system_instruction=system_prompt,
-                        temperature=temperature,
                         max_output_tokens=max_tokens,
                         tool_config={'function_calling_config': {'mode': mode}}
                         ),
@@ -150,8 +149,17 @@ class GeminiDirectClient(LLMClient):
                     raise e
 
         internal_messages = []
-        if response.text:
-            internal_messages.append(TextResult(text=response.text))
+        text_parts = []
+        if response.candidates and len(response.candidates) > 0:
+            candidate = response.candidates[0]
+            if candidate.content and candidate.content.parts:
+                for part in candidate.content.parts:
+                    if hasattr(part, 'text') and part.text:
+                        text_parts.append(part.text)
+        
+        if text_parts:
+            combined_text = ''.join(text_parts)
+            internal_messages.append(TextResult(text=combined_text))
 
         if response.function_calls:
             for fn_call in response.function_calls:

@@ -23,7 +23,7 @@ class LLMConfig(BaseModel):
     model: str = Field(default=DEFAULT_MODEL)
     api_key: SecretStr | None = Field(default=None)
     base_url: str | None = Field(default=None)
-    max_retries: int = Field(default=3)
+    max_retries: int = Field(default=5)
     max_message_chars: int = Field(default=30_000)
     temperature: float = Field(default=0.0)
     vertex_region: str | None = Field(default=None)

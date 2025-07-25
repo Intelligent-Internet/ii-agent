@@ -5,7 +5,7 @@ from ii_agent.tools.image_search_tool import ImageSearchTool
 from ii_agent.tools.base import LLMTool
 from ii_agent.utils.workspace_manager import WorkspaceManager
 from ii_agent.tools.bash_tool import create_bash_tool
-from ii_agent.tools.str_replace_tool_relative import StrReplaceEditorTool
+from ii_agent.tools.filesystem_tools import EditTool, WriteTool
 
 from ii_agent.llm.message_history import MessageHistory
 from ii_agent.tools.base import ToolImplOutput
@@ -185,7 +185,8 @@ action = init
         self.bash_tool = create_bash_tool(ask_user_permission, workspace_manager.root)
         self.tools = [
             self.bash_tool,
-            StrReplaceEditorTool(workspace_manager=workspace_manager),
+            # TODO: Add back file editing tool when settings are available
+            # StrReplaceEditorTool(workspace_manager=workspace_manager),
         ]
         image_search_tool = ImageSearchTool()
         if image_search_tool.is_available():

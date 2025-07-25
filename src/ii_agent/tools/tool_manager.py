@@ -33,6 +33,15 @@ from ii_agent.tools.visit_webpage_tool import VisitWebpageTool
 from ii_agent.tools.str_replace_tool_relative import (
     StrReplaceEditorTool as StrReplaceEditorToolRelative,
 )
+from ii_agent.tools.filesystem_tools import (
+    ReadTool,
+    EditTool,
+    WriteTool,
+    MultiEditTool,
+    LSTool,
+    GlobTool,
+    GrepTool,
+)
 from ii_agent.tools.sequential_thinking_tool import SequentialThinkingTool
 from ii_agent.tools.message_tool import MessageTool
 from ii_agent.tools.complete_tool import (
@@ -78,6 +87,7 @@ from ii_agent.tools.list_html_links_tool import ListHtmlLinksTool
 from ii_agent.utils.constants import TOKEN_BUDGET
 from ii_agent.core.storage.models.settings import Settings
 from ii_agent.utils.sandbox_manager import SandboxManager
+from ii_agent.tools.todo_tools import TodoReadTool, TodoWriteTool
 
 
 def get_system_tools(
@@ -99,7 +109,7 @@ def get_system_tools(
     logger = logging.getLogger("tool_manager")
 
     terminal_client = TerminalClient(settings)
-    str_replace_client = StrReplaceClient(settings)
+   # str_replace_client = StrReplaceClient(settings)
 
     tools = []
     if workspace_manager.is_local_workspace():
@@ -146,31 +156,50 @@ def get_system_tools(
         ]
     )
 
-    # Str replace tools
+    # File system tools (replacing str_replace tools)
     tools.extend(
         [
-            StrReplaceEditorToolRelative(
-                workspace_manager=workspace_manager,
-                message_queue=message_queue,
-                str_replace_client=str_replace_client,
-            ),
+            ReadTool(settings=settings, message_queue=message_queue),
+            EditTool(settings=settings, message_queue=message_queue),
+            WriteTool(settings=settings, message_queue=message_queue),
+            MultiEditTool(settings=settings, message_queue=message_queue),
+            LSTool(settings=settings),
+            GlobTool(settings=settings),
+            GrepTool(settings=settings),
         ]
     )
+
+    tools.extend(
+        [
+            TodoReadTool(settings=settings),
+            TodoWriteTool(settings=settings),
+        ]
+    )
+    # Str replace tools (deprecated - commented out)
+    #tools.extend(
+    #    [
+    #        StrReplaceEditorToolRelative(
+    #            workspace_manager=workspace_manager,
+    #            message_queue=message_queue,
+    #            str_replace_client=str_replace_client,
+    #        ),
+    #    ]
+    #)
 
     tools.extend(
         [
             MessageTool(),
             WebSearchTool(settings=settings),
             VisitWebpageTool(settings=settings),
-            SlideDeckInitTool(
-                workspace_manager=workspace_manager,
-                terminal_client=terminal_client,
-            ),
-            SlideDeckCompleteTool(
-                workspace_manager=workspace_manager,
-                str_replace_client=str_replace_client,
-            ),
-            DisplayImageTool(workspace_manager=workspace_manager),
+#            SlideDeckInitTool(
+#                workspace_manager=workspace_manager,
+#                terminal_client=terminal_client,
+#            ),
+#            SlideDeckCompleteTool(
+#                workspace_manager=workspace_manager,
+#                str_replace_client=str_replace_client,
+#            ),
+#            DisplayImageTool(workspace_manager=workspace_manager),
         ]
     )
 
