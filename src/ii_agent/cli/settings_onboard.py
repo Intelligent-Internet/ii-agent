@@ -20,6 +20,9 @@ from ii_agent.core.storage.models.settings import Settings
 from ii_agent.core.storage.settings.file_settings_store import FileSettingsStore
 from ii_agent.runtime.model.constants import RuntimeMode
 from ii_agent.utils.constants import DEFAULT_MODEL
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
 # Verified models for each provider

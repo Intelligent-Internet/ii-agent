@@ -21,9 +21,9 @@ except ImportError:
 
 from PIL import Image
 
-from ii_agent.tools.base import BaseTool, ToolResult
-from ii_agent.utils import WorkspaceManager
-from ii_agent.core.storage.models.settings import Settings
+from ii_tool.tools.base import BaseTool, ToolResult
+from ii_tool.core.workspace import WorkspaceManager
+from ii_tool.core.config import ImageGenerateConfig
 
 
 class AspectRatio(str, Enum):
@@ -70,6 +70,7 @@ class ImageGenerationError(Exception):
 
 class ImageGenerateTool(BaseTool):
     name = "generate_image_from_text"
+    display_name = "Generate Image"
     description = """Generates an image based on a text prompt using Google's Imagen 3 model via Vertex AI or Google AI Studio.
 The generated image will be saved to the specified local path in the workspace as a PNG file."""
     
@@ -119,8 +120,9 @@ The generated image will be saved to the specified local path in the workspace a
         },
         "required": ["prompt", "output_filename"],
     }
+    read_only = True
 
-    def __init__(self, workspace_manager: WorkspaceManager, settings: Optional[Settings] = None):
+    def __init__(self, workspace_manager: WorkspaceManager, settings: ImageGenerateConfig):
         super().__init__()
         self.workspace_manager = workspace_manager
         self.api_type: Optional[APIType] = None
@@ -129,27 +131,15 @@ The generated image will be saved to the specified local path in the workspace a
         
         self._initialize_api_client(settings)
 
-    def is_read_only(self) -> bool:
-        return False
-
-    async def should_confirm_execute(self, tool_input: dict[str, Any]):
-        return False
-
-    def _initialize_api_client(self, settings: Optional[Settings]) -> None:
+    def _initialize_api_client(self, settings: ImageGenerateConfig) -> None:
         """Initialize the appropriate API client based on available settings."""
-        if not settings or not settings.media_config:
-            raise ImageGenerationError(
-                "Settings with media_config must be provided for image generation"
-            )
-        
-        media_config = settings.media_config
         
         # Try Google AI Studio first
-        if hasattr(media_config, 'google_ai_studio_api_key') and media_config.google_ai_studio_api_key:
-            self._initialize_genai_client(media_config.google_ai_studio_api_key)
+        if hasattr(settings, 'google_ai_studio_api_key') and settings.google_ai_studio_api_key:
+            self._initialize_genai_client(settings.google_ai_studio_api_key)
         # Fall back to Vertex AI
-        elif media_config.gcp_project_id and media_config.gcp_location:
-            self._initialize_vertex_client(media_config.gcp_project_id, media_config.gcp_location)
+        elif settings.gcp_project_id and settings.gcp_location:
+            self._initialize_vertex_client(settings.gcp_project_id, settings.gcp_location)
         else:
             raise ImageGenerationError(
                 "Either Google AI Studio API key or GCP project ID and location must be provided in settings.media_config"
@@ -160,7 +150,7 @@ The generated image will be saved to the specified local path in the workspace a
         if not HAS_GENAI:
             raise ImageGenerationError("Google GenAI package not available")
         
-        self.genai_client = genai.Client(api_key=api_key.get_secret_value())
+        self.genai_client = genai.Client(api_key=api_key)
         self.api_type = APIType.GENAI
         print("Using Google AI Studio for image generation")
 
@@ -169,6 +159,7 @@ The generated image will be saved to the specified local path in the workspace a
         if not HAS_VERTEX:
             raise ImageGenerationError("Vertex AI package not available")
         
+        print(f"Initializing Vertex AI client for project {project_id} and location {location}")
         vertexai.init(project=project_id, location=location)
         self.vertex_model = ImageGenerationModel.from_pretrained(IMAGE_MODEL_NAME)
         self.api_type = APIType.VERTEX
@@ -189,7 +180,7 @@ The generated image will be saved to the specified local path in the workspace a
 
     def _prepare_output_path(self, relative_filename: str) -> Path:
         """Prepare the output path and create directories if needed."""
-        local_output_path = self.workspace_manager.workspace_path(Path(relative_filename))
+        local_output_path = Path(relative_filename).resolve()
         local_output_path.parent.mkdir(parents=True, exist_ok=True)
         return local_output_path
 
@@ -279,21 +270,45 @@ The generated image will be saved to the specified local path in the workspace a
             else:
                 raise ImageGenerationError("No image generation API is configured")
             
-            # Generate output URL
-            output_url = self._get_output_url(relative_output_filename)
-            
             return ToolResult(
-                llm_content=f"Successfully generated image from text and saved to '{relative_output_filename}'. View at: {output_url}",
+                llm_content=f"Successfully generated image from text and saved to '{relative_output_filename}'",
                 user_display_content=f"Image generated and saved to {relative_output_filename}",
+                is_error=False,
             )
             
         except ImageGenerationError as e:
             return ToolResult(
                 llm_content=f"Image generation failed: {str(e)}",
                 user_display_content="Failed to generate image from text.",
+                is_error=True,
             )
         except Exception as e:
             return ToolResult(
                 llm_content=f"Unexpected error during image generation: {str(e)}",
                 user_display_content="Failed to generate image from text.",
+                is_error=True,
             )
+
+    async def execute_mcp_wrapper(
+        self,
+        prompt: str,
+        output_filename: str,
+        number_of_images: int = 1,
+        aspect_ratio: str = AspectRatio.SQUARE.value,
+        seed: int = None,
+        add_watermark: bool = True,
+        safety_filter_level: str = SafetyFilterLevel.BLOCK_SOME.value,
+        person_generation: str = PersonGeneration.ALLOW_ADULT.value,
+    ):
+        return await self._mcp_wrapper(
+            tool_input={
+                "prompt": prompt,
+                "output_filename": output_filename,
+                "number_of_images": number_of_images,
+                "aspect_ratio": aspect_ratio,
+                "seed": seed,
+                "add_watermark": add_watermark,
+                "safety_filter_level": safety_filter_level,
+                "person_generation": person_generation,
+            }
+        )

@@ -1,6 +1,9 @@
-"""Web tools for fetching and searching online content."""
-
-from .web_fetch_tool import WebFetchTool
 from .web_search_tool import WebSearchTool
+from .web_visit_tool import WebVisitTool
+from .image_search_tool import ImageSearchTool
 
-__all__ = ["WebFetchTool", "WebSearchTool"]
+__all__ = [
+    "WebSearchTool",
+    "WebVisitTool",
+    "ImageSearchTool",
+]

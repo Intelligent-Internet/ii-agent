@@ -1,20 +1,22 @@
-from ii_agent.tools.base import BaseTool, ToolResult
-from typing import Any, Optional
-from ii_agent.tools.clients.web_visit_client import (
+from typing import Any
+from ii_tool.core.config import WebVisitConfig
+from ii_tool.tools.base import BaseTool, ToolResult
+from ii_tool.tools.web.clients.web_visit_client import (
     create_visit_client,
     WebpageVisitException,
     ContentExtractionError,
     NetworkError,
 )
-from ii_agent.core.storage.models.settings import Settings
 
+# Name
+NAME = "visit_webpage"
+DISPLAY_NAME = "Web Visit"
 
-VISIT_WEB_PAGE_MAX_OUTPUT_LENGTH = 40_000
+# Tool description
+DESCRIPTION = "You should call this tool when you need to visit a webpage and extract its content. Returns webpage content as text."
 
-class WebVisitTool(BaseTool):
-    name = "visit_webpage"
-    description = "You should call this tool when you need to visit a webpage and extract its content. Returns webpage content as text."
-    input_schema = {
+# Input schema
+INPUT_SCHEMA = {
         "type": "object",
         "properties": {
             "url": {
@@ -24,23 +26,22 @@ class WebVisitTool(BaseTool):
         },
         "required": ["url"],
     }
-    output_type = "string"
+
+
+class WebVisitTool(BaseTool):
+    name = NAME
+    display_name = DISPLAY_NAME
+    description = DESCRIPTION
+    input_schema = INPUT_SCHEMA
+    read_only = True
 
     def __init__(
         self,
-        settings: Optional[Settings] = None,
-        max_output_length: int = VISIT_WEB_PAGE_MAX_OUTPUT_LENGTH,
+        settings: WebVisitConfig,
     ):
-        self.max_output_length = max_output_length
         self.visit_client = create_visit_client(
-            settings=settings, max_output_length=max_output_length
+            settings=settings,
         )
-
-    def is_read_only(self) -> bool:
-        return True
-
-    async def should_confirm_execute(self, tool_input: dict[str, Any]):
-        return False
 
     async def execute(
         self,
@@ -55,6 +56,7 @@ class WebVisitTool(BaseTool):
             return ToolResult(
                 llm_content=output,
                 user_display_content=output,
+                is_error=False,
             )
 
         except ContentExtractionError:
@@ -62,6 +64,7 @@ class WebVisitTool(BaseTool):
             return ToolResult(
                 llm_content=error_msg,
                 user_display_content=f"Failed to extract content from {url}",
+                is_error=True,
             )
 
         except NetworkError:
@@ -69,6 +72,7 @@ class WebVisitTool(BaseTool):
             return ToolResult(
                 llm_content=error_msg,
                 user_display_content=f"Failed to access {url} due to network error",
+                is_error=True,
             )
 
         except WebpageVisitException:
@@ -76,4 +80,12 @@ class WebVisitTool(BaseTool):
             return ToolResult(
                 llm_content=error_msg,
                 user_display_content=f"Failed to visit {url}",
+                is_error=True,
             )
+
+    async def execute_mcp_wrapper(self, url: str):
+        return await self._mcp_wrapper(
+            tool_input={
+                "url": url,
+            }
+        )

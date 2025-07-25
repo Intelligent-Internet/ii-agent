@@ -4,12 +4,20 @@ import subprocess
 import re
 
 from pathlib import Path
-from typing import Annotated, Dict, List, Optional
-from pydantic import Field
-from ii_tool.core.workspace import WorkspaceManager
-from ii_tool.tools.file_system.base import BaseFileSystemTool, FileSystemValidationError
+from typing import Dict, List, Optional, Any
+from ii_tool.core.workspace import WorkspaceManager, FileSystemValidationError
+from ii_tool.tools.base import BaseTool, ToolResult
 
 
+# Constants
+MAX_GLOB_RESULTS = 100
+COMMAND_TIMEOUT = 30
+
+# Name
+NAME = "Grep"
+DISPLAY_NAME = "Search file contents"
+
+# Tool description
 DESCRIPTION = """\
 - Fast content search tool that works with any codebase size
 - Searches file contents using regular expressions
@@ -20,8 +28,26 @@ DESCRIPTION = """\
 - If you need to identify/count the number of matches within files, use the Bash tool with `rg` (ripgrep) directly. Do NOT use `grep`.
 - When you are doing an open ended search that may require multiple rounds of globbing and grepping, use the Agent tool instead
 """
-MAX_GLOB_RESULTS = 100
-COMMAND_TIMEOUT = 30
+
+# Input schema
+INPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "pattern": {
+            "type": "string",
+            "description": "The regular expression pattern to search for within file contents"
+        },
+        "path": {
+            "type": "string",
+            "description": "The absolute path to the directory to search within. If omitted, searches the current working directory"
+        },
+        "include": {
+            "type": "string",
+            "description": "A glob pattern to filter which files are searched. If omitted, searches all files"
+        }
+    },
+    "required": ["pattern"]
+}
 
 
 class GrepToolError(Exception):
@@ -75,14 +101,17 @@ def run_ripgrep(pattern: str, search_path: Path, include: Optional[str] = None) 
     except subprocess.CalledProcessError as e:
         raise GrepToolError(f"Ripgrep command failed: {e.stderr.strip()}")
 
-class GrepTool(BaseFileSystemTool):
+class GrepTool(BaseTool):
     """Tool for searching file contents using regular expressions."""
     
-    name = "Grep"
+    name = NAME
+    display_name = DISPLAY_NAME
     description = DESCRIPTION
+    input_schema = INPUT_SCHEMA
+    read_only = True
 
     def __init__(self, workspace_manager: WorkspaceManager):
-        super().__init__(workspace_manager)
+        self.workspace_manager = workspace_manager
 
     def _validate_regex_pattern(self, pattern: str) -> bool:
         """Validate if the pattern is a valid regular expression."""
@@ -155,31 +184,56 @@ class GrepTool(BaseFileSystemTool):
         
         return '\n'.join(result_lines)
 
-    def run_impl(
+    async def execute(
         self,
-        pattern: Annotated[str, Field(description="The regular expression pattern to search for within file contents")],
-        path: Annotated[Optional[str], Field(description="The absolute path to the directory to search within. If omitted, searches the current working directory")] = None,
-        include: Annotated[Optional[str], Field(description="A glob pattern to filter which files are searched. If omitted, searches all files")] = None,
-    ) -> str:
+        tool_input: dict[str, Any],
+    ) -> ToolResult:
         """
         Search for pattern in files using ripgrep.
         """
+        pattern = tool_input.get("pattern")
+        path = tool_input.get("path")
+        include = tool_input.get("include")
         
         # Validate the regex pattern
         if not self._validate_regex_pattern(pattern):
-            return f"ERROR: Invalid regular expression pattern: {pattern}"
+            return ToolResult(
+                llm_content=f"ERROR: Invalid regular expression pattern: {pattern}",
+                is_error=True
+            )
         
         try:
             # Determine search directory using Path
             if path is None:
                 search_dir = self.workspace_manager.get_workspace_path()
             else:
-                self.validate_existing_directory_path(path)
+                self.workspace_manager.validate_existing_directory_path(path)
                 search_dir = Path(path).resolve()
             
             matches = run_ripgrep(pattern, search_dir, include)
 
             # Format and return results
-            return self._format_results(matches, pattern, search_dir, include)
-        except (FileSystemValidationError, GrepToolError) as e:
-            return f"ERROR: {e}"
+            result_content = self._format_results(matches, pattern, search_dir, include)
+            return ToolResult(
+                llm_content=result_content,
+                is_error=False
+            )
+        except (subprocess.CalledProcessError, OSError, FileSystemValidationError, GrepToolError) as e:
+            return ToolResult(
+                llm_content=f"ERROR: {e}",
+                is_error=True
+            )
+
+    async def execute_mcp_wrapper(
+        self,
+        pattern: str,
+        path: Optional[str] = None,
+        include: Optional[str] = None,
+    ):
+        return await self._mcp_wrapper(
+            tool_input={
+                "pattern": pattern,
+                "path": path,
+                "include": include,
+            }
+        )

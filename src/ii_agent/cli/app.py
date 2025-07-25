@@ -27,7 +27,6 @@ from ii_agent.core.storage.settings.file_settings_store import FileSettingsStore
 from ii_agent.llm.token_counter import TokenCounter
 from ii_agent.runtime.runtime_manager import RuntimeManager
 from ii_agent.utils.workspace_manager import WorkspaceManager
-from ii_agent.tools import get_system_tools
 from ii_agent.core.logger import logger
 from ii_agent.prompts.system_prompt import SYSTEM_PROMPT
 from ii_agent.utils.constants import TOKEN_BUDGET
@@ -144,20 +143,8 @@ class CLIApp:
             max_tokens_per_turn=self.config.max_output_tokens_per_turn,
             system_prompt=SYSTEM_PROMPT,
         )
-        
-        
-        # Get system local tools
-        tools = get_system_tools(
-            client=llm_client,
-            settings=self.settings,
-            workspace_manager=self.workspace_manager,
-        )
 
-        tool_manager = AgentToolManager(
-            tools=tools,
-            logger_for_agent_logs=logger,
-            interactive_mode=True,
-        )
+        tool_manager = AgentToolManager()
 
         runtime_manager = RuntimeManager(
             session_config=self.session_config, settings=self.settings
@@ -169,6 +156,7 @@ class CLIApp:
         mcp_client = await runtime_manager.get_mcp_client(
             str(self.workspace_manager.root)
         )
+
         await tool_manager.register_mcp_tools(
             mcp_client=mcp_client,
             trust=True, # Trust the system MCP tools
@@ -176,7 +164,7 @@ class CLIApp:
 
         if self.config.mcp_config:
             # Don't trust the custom MCP tools by default
-            await tool_manager.register_mcp_tools(self.config.mcp_config, trust=False)
+            await tool_manager.register_mcp_tools(Client(self.config.mcp_config), trust=False)
 
         agent = FunctionCallAgent(
             llm=llm_client, 

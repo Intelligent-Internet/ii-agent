@@ -4,15 +4,21 @@ import mimetypes
 import pymupdf
 
 from pathlib import Path
-from typing import Annotated, Optional
-from pydantic import Field
-from ii_tool.core.workspace import WorkspaceManager
-from ii_tool.tools.file_system.base import BaseFileSystemTool, FileSystemValidationError
+from typing import Optional, Any
+from ii_tool.core.workspace import WorkspaceManager, FileSystemValidationError
+from ii_tool.tools.base import BaseTool, ToolResult, ImageContent
 from ii_tool.tools.file_system.utils import encode_image
 
 
+# Constants
 MAX_FILE_READ_LINES = 2000
 MAX_LINE_LENGTH = 2000
+
+# Name
+NAME = "Read"
+DISPLAY_NAME = "Read file"
+
+# Tool description
 DESCRIPTION = f"""Reads and returns the content of a specified file from the local filesystem. Handles text files, images (PNG, JPG, GIF, WEBP, SVG, BMP), and PDF files.
 
 Usage:
@@ -24,7 +30,25 @@ Usage:
 - Results are returned using cat -n format, with line numbers starting at 1
 - If you read a file that exists but has empty contents you will receive a system reminder warning in place of file contents."""
 
-
+# Input schema
+INPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "file_path": {
+            "type": "string",
+            "description": "The absolute path to the file to read"
+        },
+        "limit": {
+            "type": "integer",
+            "description": "The number of lines to read. Only provide if the file is too large to read at once"
+        },
+        "offset": {
+            "type": "integer",
+            "description": "The line number to start reading from. Only provide if the file is too large to read at once"
+        }
+    },
+    "required": ["file_path"]
+}
 
 def _is_binary_file(file_path: Path) -> bool:
     """Determine if a file is binary by checking its content."""
@@ -101,11 +125,13 @@ def _read_image_file(path: Path):
     # Encode to base64
     base64_image = encode_image(str(path))
     
-    return {
-        "type": "base64",
-        "media_type": mime_type,
-        "data": base64_image,
-    }
+    image_content = ImageContent(
+        type="image",
+        mime_type=mime_type,
+        data=base64_image,
+    )
+
+    return [image_content]
     
 def _truncate_text_content(content: str, offset: Optional[int] = None, limit: Optional[int] = None):
     """Truncate text content with optional line range."""
@@ -163,53 +189,95 @@ def _truncate_text_content(content: str, offset: Optional[int] = None, limit: Op
     return truncated_content
 
 
-class FileReadTool(BaseFileSystemTool):
+class FileReadTool(BaseTool):
     """Tool for reading file contents with optional line range specification."""
     
-    name = "Read"
+    name = NAME
+    display_name = DISPLAY_NAME
     description = DESCRIPTION
-    
-    def __init__(self, workspace_manager: WorkspaceManager):
-        super().__init__(workspace_manager)
+    input_schema = INPUT_SCHEMA
+    read_only = True
 
-    def run_impl(
+    def __init__(self, workspace_manager: WorkspaceManager):
+        self.workspace_manager = workspace_manager
+
+    async def execute(
         self,
-        file_path: Annotated[str, Field(description="The absolute path to the file to read")],
-        limit: Annotated[Optional[int], Field(description="The number of lines to read. Only provide if the file is too large to read at once.")] = None,
-        offset: Annotated[Optional[int], Field(description="The line number to start reading from. Only provide if the file is too large to read at once")] = None,
-    ):
+        tool_input: dict[str, Any],
+    ) -> ToolResult:
         """Implementation of the file reading functionality."""
+        file_path = tool_input.get("file_path")
+        limit = tool_input.get("limit")
+        offset = tool_input.get("offset")
 
         # Validate parameters
         if offset is not None and offset < 0:
-            return "ERROR: Offset must be a non-negative number"
+            return ToolResult(
+                llm_content="ERROR: Offset must be a non-negative number",
+                is_error=True
+            )
         
         if limit is not None and limit <= 0:
-            return "ERROR: Limit must be a positive number"
+            return ToolResult(
+                llm_content="ERROR: Limit must be a positive number",
+                is_error=True
+            )
 
         try:
-            self.validate_existing_file_path(file_path)
+            self.workspace_manager.validate_existing_file_path(file_path)
 
             path = Path(file_path).resolve()
         
             # Detect file type
             file_type = _detect_file_type(path)
             if file_type == 'binary':
-                return f"ERROR: Cannot display content of binary file: {path}"
+                return ToolResult(
+                    llm_content=f"ERROR: Cannot display content of binary file: {path}",
+                    is_error=True
+                )
 
             elif file_type == 'text':
                 full_content = path.read_text(encoding='utf-8')
-                return _truncate_text_content(full_content, offset, limit)
+                return ToolResult(
+                    llm_content=_truncate_text_content(full_content, offset, limit),
+                    is_error=False
+                )
             
             elif file_type == 'pdf':
                 full_content = _read_pdf_file(path)
-                return _truncate_text_content(full_content, offset, limit)
+                return ToolResult(
+                    llm_content=_truncate_text_content(full_content, offset, limit),
+                    is_error=False
+                )
             
             elif file_type == 'image':
-                return _read_image_file(path)
+                return ToolResult(
+                    llm_content=_read_image_file(path),
+                    is_error=False
+                )
             
             else:
-                return f"ERROR: Unsupported file type: {file_type}"
+                return ToolResult(
+                    llm_content=f"ERROR: Unsupported file type: {file_type}",
+                    is_error=True
+                )
 
         except (FileSystemValidationError) as e:
-            return f"ERROR: {e}"
+            return ToolResult(
+                llm_content=f"ERROR: {e}",
+                is_error=True
+            )
+
+    async def execute_mcp_wrapper(
+        self,
+        file_path: str,
+        limit: Optional[int] = None,
+        offset: Optional[int] = None,
+    ):
+        return await self._mcp_wrapper(
+            tool_input={
+                "file_path": file_path,
+                "limit": limit,
+                "offset": offset,
+            }
+        )
