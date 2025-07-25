@@ -79,7 +79,6 @@ class AgentService:
                 if tool_args.get("sequential_thinking", False)
                 else SYSTEM_PROMPT
             )
-        
         # Create agent config
         agent_config = AgentConfig(
             max_tokens_per_turn=self.config.max_output_tokens_per_turn,
@@ -87,20 +86,11 @@ class AgentService:
             temperature=getattr(self.config, "temperature", 0.7),
         )
         
-        # Get tools
-        tools = get_system_tools(
-            client=llm_client,
-            workspace_manager=workspace_manager,
-            settings=settings,
-            container_id=self.config.docker_container_id,
-            tool_args=tool_args,
-        )
-        
         # Create agent
         agent = FunctionCallAgent(
             llm=llm_client,
             config=agent_config,
-            tools=tools,
+            tools=[], # NOTE: Temporary fix
         )
         
         # Create event stream
@@ -128,7 +118,7 @@ class AgentService:
         # Create controller
         controller = AgentController(
             agent=agent,
-            tools=tools,
+            tools=[], # NOTE: Temporary fix
             init_history=state,
             workspace_manager=workspace_manager,
             event_stream=event_stream,

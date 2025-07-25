@@ -13,10 +13,10 @@ from ii_agent.llm.base import (
     TextPrompt,
     TextResult,
     ToolCall,
-    ToolCallParameters,
     ToolFormattedResult,
     ImageBlock,
 )
+from ii_agent.tools import ToolCallParameters
 
 
 class State(BaseModel):

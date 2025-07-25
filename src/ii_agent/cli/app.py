@@ -8,8 +8,8 @@ the AgentController with event stream for CLI usage.
 import asyncio
 import json
 from pathlib import Path
-from typing import Optional
-
+from typing import Optional, Dict, Any
+from fastmcp import Client
 from ii_agent.core.config.ii_agent_config import IIAgentConfig
 from ii_agent.core.config.agent_config import AgentConfig
 from ii_agent.core.config.llm_config import LLMConfig
@@ -24,9 +24,9 @@ from ii_agent.controller.state import State
 from ii_agent.llm.context_manager import LLMCompact
 from ii_agent.core.storage.settings.file_settings_store import FileSettingsStore
 from ii_agent.llm.token_counter import TokenCounter
+from ii_agent.tools.agent_tool.sub_agent import get_sub_agents
 from ii_agent.tools.tool_manager import AgentToolManager
 from ii_agent.utils.workspace_manager import WorkspaceManager
-from ii_agent.tools import get_system_tools
 from ii_agent.core.logger import logger
 from ii_agent.prompts.system_prompt import SYSTEM_PROMPT
 from ii_agent.utils.constants import TOKEN_BUDGET
@@ -35,6 +35,9 @@ from ii_agent.cli.state_persistence import (
     restore_agent_state,
     restore_configs,
 )
+from ii_agent.tools import AgentToolManager
+from ii_agent.llm.base import ToolParam
+from ii_tool.mcp.server import create_mcp
 
 
 class CLIApp:
@@ -55,10 +58,14 @@ class CLIApp:
         self.workspace_path = workspace_path
         # Create event stream
         self.event_stream = AsyncEventStream(logger=logger)
-
-        # Create console subscriber
-        self.console_subscriber = ConsoleSubscriber(minimal=minimal)
-
+        
+        # Create console subscriber with config and callback
+        self.console_subscriber = ConsoleSubscriber(
+            minimal=minimal,
+            config=config,
+            confirmation_callback=self._handle_tool_confirmation
+        )
+        
         # Subscribe to events
         self.event_stream.subscribe(self.console_subscriber.handle_event)
 
@@ -72,7 +79,26 @@ class CLIApp:
 
         # Agent controller will be created when needed
         self.agent_controller: Optional[AgentController] = None
-
+        
+        # Store for pending tool confirmations
+        self._tool_confirmations: Dict[str, Dict[str, Any]] = {}
+        
+    def _handle_tool_confirmation(self, tool_call_id: str, tool_name: str, approved: bool, alternative_instruction: str) -> None:
+        """Handle tool confirmation response from console subscriber."""
+        # Store the confirmation response
+        self._tool_confirmations[tool_call_id] = {
+            "tool_name": tool_name,
+            "approved": approved,
+            "alternative_instruction": alternative_instruction
+        }
+        
+        # If there's an agent controller, send the confirmation response to it
+        if self.agent_controller:
+            self.agent_controller.add_confirmation_response(tool_call_id, approved, alternative_instruction)
+            logger.debug(f"Tool confirmation sent to agent controller: {tool_call_id} -> approved={approved}")
+        else:
+            logger.debug(f"Tool confirmation received but no agent controller: {tool_call_id} -> approved={approved}")
+        
     async def initialize_agent(self, continue_from_state: bool = False) -> None:
         """Initialize the agent controller."""
         if self.agent_controller is not None:
@@ -86,6 +112,15 @@ class CLIApp:
 
         settings_store = await FileSettingsStore.get_instance(self.config, None)
         settings = await settings_store.load()
+        
+        # Ensure CLI config exists with defaults
+        if not settings.cli_config:
+            from ii_agent.core.config.cli_config import CliConfig
+            settings.cli_config = CliConfig()
+            await settings_store.store(settings)
+        
+        # Update console subscriber with settings
+        self.console_subscriber.settings = settings
 
         # Load saved state if --continue flag is used
         saved_state_data = None
@@ -119,28 +154,39 @@ class CLIApp:
             system_prompt=SYSTEM_PROMPT,
         )
 
-        # Get system tools
-        tools = get_system_tools(
-            client=llm_client,
-            settings=settings,
-            workspace_manager=self.workspace_manager,
-            event_stream=self.event_stream,
-        )
+        tool_manager = AgentToolManager()
 
-        agent = FunctionCallAgent(
-            llm_client, agent_config, [tool.get_tool_param() for tool in tools]
-        )
-        tool_manager = AgentToolManager(
-            tools=tools,
-        )
+        # Get system MCP tools
+        mcp_client = Client(await create_mcp(
+            workspace_dir=str(self.workspace_manager.root),
+            session_id=self.config.session_id,
+        ))        # Create context manager
 
-        # Create context manager
         token_counter = TokenCounter()
         context_manager = LLMCompact(
             client=llm_client,
             token_counter=token_counter,
             token_budget=TOKEN_BUDGET,  # Default token budget
         )
+
+        sub_agents = get_sub_agents(llm_client, mcp_client, self.workspace_manager, self.event_stream, context_manager)
+        tool_manager.register_tools(sub_agents)
+        await tool_manager.register_mcp_tools(
+            mcp_client=mcp_client,
+            trust=True, # Trust the system MCP tools
+        )
+
+        if self.config.mcp_config:
+            # Don't trust the custom MCP tools by default
+            await tool_manager.register_mcp_tools(Client(self.config.mcp_config), trust=False)
+
+        agent = FunctionCallAgent(
+            llm=llm_client, 
+            config=agent_config,
+            tools=[ToolParam(name=tool.name, description=tool.description, input_schema=tool.input_schema) for tool in tool_manager.get_tools()]
+        )
+        
+
 
         # Create message history - restore from saved state if available
         if saved_state_data:
@@ -157,6 +203,7 @@ class CLIApp:
             event_stream=self.event_stream,
             context_manager=context_manager,
             interactive_mode=True,
+            config=self.config,
         )
 
         # Print configuration info
@@ -229,6 +276,8 @@ class CLIApp:
                         break
 
                     # Run agent
+                    if self.agent_controller is None:
+                        raise RuntimeError("Agent controller not initialized")
                     await self.agent_controller.run_agent_async(
                         instruction=user_input,
                         files=None,
@@ -240,10 +289,9 @@ class CLIApp:
                         self._save_session(session_name)
 
                 except KeyboardInterrupt:
-                    self.console_subscriber.console.print(
-                        "\n⚠️ [yellow]Interrupted by user[/yellow]"
-                    )
-                    self.agent_controller.cancel()
+                    self.console_subscriber.console.print("\n⚠️ [yellow]Interrupted by user[/yellow]")
+                    if self.agent_controller is not None:
+                        self.agent_controller.cancel()
                     continue
                 except EOFError:
                     break

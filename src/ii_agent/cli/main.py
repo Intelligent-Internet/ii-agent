@@ -4,11 +4,13 @@ Main CLI entry point for ii-agent.
 This module provides the command-line interface for interacting with the AgentController.
 """
 
+import uuid
+import json
 import argparse
 import asyncio
 import sys
-from pathlib import Path
 
+from pathlib import Path
 from ii_agent.cli.app import CLIApp
 from ii_agent.cli.config import setup_cli_config
 
@@ -34,6 +36,11 @@ def create_parser() -> argparse.ArgumentParser:
         "-c", 
         type=str, 
         help="Configuration file path"
+    )
+    parser.add_argument(
+        "--mcp-config",
+        type=str,
+        help="MCP config file path"
     )
     parser.add_argument(
         "--minimal", 
@@ -153,13 +160,18 @@ async def main_async() -> int:
     
     # Validate arguments
     validate_args(args)
+
+    session_id = args.session if args.session else str(uuid.uuid4())
+    mcp_config = json.loads(open(args.mcp_config).read()) if args.mcp_config else None
     
     try:
         # Setup CLI configuration using the new pattern
         config, llm_config, workspace_path = await setup_cli_config(
+            session_id=session_id,
             workspace=args.workspace,
             model=args.llm_model,
             temperature=args.temperature,
+            mcp_config=mcp_config,
         )
         
         # Handle config command

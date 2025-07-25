@@ -1,7 +1,7 @@
 [project]
 name = "ii-agent"
 version = "0.1.0"
-description = "Intelligent Agent platform providing CLI and WebSocket interfaces"
+description = "Intelligent Agent platform with tools and MCP support"
 readme = "README.md"
 authors = [
     { name = "Intelligent Internet", email = "info@ii.inc" }
@@ -56,10 +56,15 @@ gaia = [
 
 [project.scripts]
 ii-agent = "ii_agent.cli.main:main"
+ii-tool = "ii_tool.mcp.server:main"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["ii_agent*", "ii_tool*"]
 
 [dependency-groups]
 dev = [

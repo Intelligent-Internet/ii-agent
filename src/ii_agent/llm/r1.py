@@ -52,9 +52,6 @@ class R1DirectClient(LLMClient):
     def __init__(self, llm_config: LLMConfig):
         """Initialize the OpenAI first party client."""
         base_url = llm_config.base_url
-        import ipdb
-
-        ipdb.set_trace()
         self.client = openai.OpenAI(
             api_key=llm_config.api_key.get_secret_value()
             if llm_config.api_key

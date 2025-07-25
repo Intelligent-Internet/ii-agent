@@ -5,7 +5,7 @@ This module handles loading, saving, and managing CLI configuration options.
 """
 
 import os
-from typing import Optional
+from typing import Optional, Dict, Any
 
 from ii_agent.core.config.ii_agent_config import IIAgentConfig
 from ii_agent.core.config.llm_config import LLMConfig
@@ -15,16 +15,18 @@ from pydantic import SecretStr
 
 
 async def setup_cli_config(
+    session_id: str,
     workspace: Optional[str] = None,
     model: Optional[str] = None,
     api_key: Optional[str] = None,
     base_url: Optional[str] = None,
     temperature: Optional[float] = None,
+    mcp_config: Optional[Dict[str, Any]] = None,
 ) -> tuple[IIAgentConfig, LLMConfig, str]:
     """Setup CLI configuration using the standard configuration pattern."""
     
     # Create config with defaults
-    config = IIAgentConfig()
+    config = IIAgentConfig(session_id=session_id, mcp_config=mcp_config)
     
     # Load settings from store
     settings_store = await FileSettingsStore.get_instance(config=config, user_id=None)

@@ -4,7 +4,7 @@ from ii_agent.controller.state import State
 from ii_agent.llm.base import AssistantContentBlock
 from ii_agent.llm.base import LLMClient
 from ii_agent.core.config.agent_config import AgentConfig
-from ii_agent.tools.base import ToolParam
+from ii_agent.llm.base import ToolParam
 
 
 class Agent(ABC):

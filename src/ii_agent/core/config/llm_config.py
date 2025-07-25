@@ -11,6 +11,7 @@ class APITypes(Enum):
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
     GEMINI = "gemini"
+    R1 = "r1"
 
 
 class LLMConfig(BaseModel):

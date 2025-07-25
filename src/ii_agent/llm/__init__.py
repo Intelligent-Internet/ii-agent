@@ -18,6 +18,8 @@ def get_client(config: LLMConfig) -> LLMClient:
         return GeminiDirectClient(llm_config=config)
     elif config.api_type == APITypes.R1:
         return R1DirectClient(llm_config=config)
+    else:
+        raise ValueError(f"Unknown API type: {config.api_type}")
 
 
 __all__ = [
