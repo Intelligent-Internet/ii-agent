@@ -1,0 +1,85 @@
+{
+    "version": 1,
+    "interactions": [
+        {
+            "request": {
+                "method": "GET",
+                "uri": "https://r.jina.ai/https://example.com",
+                "body": null,
+                "headers": {
+                    "Accept": [
+                        "application/json"
+                    ],
+                    "X-Engine": [
+                        "browser"
+                    ],
+                    "X-Return-Format": [
+                        "markdown"
+                    ],
+                    "X-With-Images-Summary": [
+                        "true"
+                    ]
+                }
+            },
+            "response": {
+                "status": {
+                    "code": 200,
+                    "message": "OK"
+                },
+                "headers": {
+                    "Date": [
+                        "Mon, 28 Jul 2025 09:14:37 GMT"
+                    ],
+                    "Content-Type": [
+                        "application/json; charset=utf-8"
+                    ],
+                    "Transfer-Encoding": [
+                        "chunked"
+                    ],
+                    "Connection": [
+                        "keep-alive"
+                    ],
+                    "Content-Encoding": [
+                        "gzip"
+                    ],
+                    "Vary": [
+                        "Accept-Encoding"
+                    ],
+                    "x-cloud-trace-context": [
+                        "c44e4a5edc8104894c3baa5898312165/15900398129247371810;o=1"
+                    ],
+                    "traceparent": [
+                        "00-c44e4a5edc8104894c3baa5898312165-dca98fdac9134222-01"
+                    ],
+                    "Via": [
+                        "1.1 google"
+                    ],
+                    "alt-svc": [
+                        "h3=\":443\"; ma=86400"
+                    ],
+                    "cf-cache-status": [
+                        "DYNAMIC"
+                    ],
+                    "Report-To": [
+                        "{\"endpoints\":[{\"url\":\"https:\\/\\/a.nel.cloudflare.com\\/report\\/v4?s=p1HHLlbl8DnkyQ%2F4eJ1vaT0jcOewxwKsQQGcKU1H0r1Lcq%2Fz%2BN07Anw9Y9U4uOfAfKfldEvHAwkF3UNQSHzGQFgMdU45EIS1cLtbKjH6hBY0AC6uCyajWHSkKQ%3D%3D\"}],\"group\":\"cf-nel\",\"max_age\":604800}"
+                    ],
+                    "NEL": [
+                        "{\"success_fraction\":0,\"report_to\":\"cf-nel\",\"max_age\":604800}"
+                    ],
+                    "Server": [
+                        "cloudflare"
+                    ],
+                    "CF-RAY": [
+                        "9663446d8e401d1c-SIN"
+                    ],
+                    "server-timing": [
+                        "cfL4;desc=\"?proto=TCP&rtt=59994&min_rtt=56022&rtt_var=28952&sent=5&recv=6&lost=0&retrans=0&sent_bytes=2828&recv_bytes=936&delivery_rate=47358&cwnd=231&unsent_bytes=0&cid=3b9f1bb26ea99900&ts=819&x=0\""
+                    ]
+                },
+                "body": {
+                    "string": "{\"code\":200,\"status\":20000,\"data\":{\"images\":{},\"title\":\"Example Domain\",\"description\":\"\",\"url\":\"https://example.com/\",\"content\":\"Example Domain\\n\\n===============\\n\\nExample Domain\\n==============\\n\\nThis domain is for use in illustrative examples in documents. You may use this domain in literature without prior coordination or asking for permission.\\n\\n[More information...](https://www.iana.org/domains/example)\",\"publishedTime\":\"Mon, 13 Jan 2025 20:11:20 GMT\",\"metadata\":{\"viewport\":\"width=device-width, initial-scale=1\"},\"external\":{},\"warning\":\"This is a cached snapshot of the original page, consider retry with caching opt-out.\",\"usage\":{\"tokens\":52}},\"meta\":{\"usage\":{\"tokens\":52}}}"
+                }
+            }
+        }
+    ]
+}

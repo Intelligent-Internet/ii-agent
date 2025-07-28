@@ -1,0 +1,52 @@
+{
+    "version": 1,
+    "interactions": [
+        {
+            "request": {
+                "method": "POST",
+                "uri": "https://api.firecrawl.dev/v1/scrape",
+                "body": null,
+                "headers": {
+                    "Content-Type": [
+                        "application/json"
+                    ]
+                }
+            },
+            "response": {
+                "status": {
+                    "code": 500,
+                    "message": "Internal Server Error"
+                },
+                "headers": {
+                    "X-Powered-By": [
+                        "Express"
+                    ],
+                    "Access-Control-Allow-Origin": [
+                        "*"
+                    ],
+                    "Content-Type": [
+                        "application/json; charset=utf-8"
+                    ],
+                    "Content-Length": [
+                        "162"
+                    ],
+                    "Etag": [
+                        "W/\"a2-sgfLNdQC+Th0m5LHc6V3ye+bc8s\""
+                    ],
+                    "Date": [
+                        "Mon, 28 Jul 2025 09:12:15 GMT"
+                    ],
+                    "Via": [
+                        "1.1 google"
+                    ],
+                    "Alt-Svc": [
+                        "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000"
+                    ]
+                },
+                "body": {
+                    "string": "{\"success\":false,\"error\":\"(Internal server error) - DNS resolution failed for hostname: example-unknown.com. Please check if the domain is valid and accessible.\"}"
+                }
+            }
+        }
+    ]
+}

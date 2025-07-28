@@ -1,0 +1,52 @@
+{
+    "version": 1,
+    "interactions": [
+        {
+            "request": {
+                "method": "POST",
+                "uri": "https://api.firecrawl.dev/v1/scrape",
+                "body": null,
+                "headers": {
+                    "Content-Type": [
+                        "application/json"
+                    ]
+                }
+            },
+            "response": {
+                "status": {
+                    "code": 200,
+                    "message": "OK"
+                },
+                "headers": {
+                    "X-Powered-By": [
+                        "Express"
+                    ],
+                    "Access-Control-Allow-Origin": [
+                        "*"
+                    ],
+                    "Content-Type": [
+                        "application/json; charset=utf-8"
+                    ],
+                    "Content-Length": [
+                        "554"
+                    ],
+                    "Etag": [
+                        "W/\"22a-mA05LuQsT9IpkqGgh9gEYHP+jJQ\""
+                    ],
+                    "Date": [
+                        "Mon, 28 Jul 2025 09:09:12 GMT"
+                    ],
+                    "Via": [
+                        "1.1 google"
+                    ],
+                    "Alt-Svc": [
+                        "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000"
+                    ]
+                },
+                "body": {
+                    "string": "{\"success\":true,\"data\":{\"markdown\":\"# Example Domain\\n\\nThis domain is for use in illustrative examples in documents. You may use this\\ndomain in literature without prior coordination or asking for permission.\\n\\n[More information...](https://www.iana.org/domains/example)\",\"metadata\":{\"title\":\"Example Domain\",\"viewport\":\"width=device-width, initial-scale=1\",\"scrapeId\":\"c16c6f4d-692a-4f53-a4bf-5c0ae2a12c64\",\"sourceURL\":\"https://example.com\",\"url\":\"https://example.com/\",\"statusCode\":200,\"contentType\":\"text/html\",\"proxyUsed\":\"basic\",\"creditsUsed\":1}}}"
+                }
+            }
+        }
+    ]
+}

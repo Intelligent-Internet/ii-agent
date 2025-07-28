@@ -1,4 +1,5 @@
 import base64
+from pathlib import Path
 from PIL import Image
 from io import BytesIO
 
@@ -24,8 +25,8 @@ def save_base64_image_png(base64_str: str, path: str) -> None:
     image.save(path, format="PNG")
 
 
-def encode_image(image_path):
-    if image_path.startswith("http"):
+def encode_image(image_path: Path | str):
+    if str(image_path).startswith("http"):
         user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36 Edg/119.0.0.0"
         request_kwargs = {
             "headers": {"User-Agent": user_agent},
@@ -33,7 +34,7 @@ def encode_image(image_path):
         }
 
         # Send a HTTP request to the URL
-        response = requests.get(image_path, **request_kwargs)
+        response = requests.get(str(image_path), **request_kwargs)
         response.raise_for_status()
 
         # Read image data directly from response content

@@ -1,0 +1,78 @@
+{
+    "version": 1,
+    "interactions": [
+        {
+            "request": {
+                "method": "GET",
+                "uri": "https://serpapi.com/search.json?q=test+query&api_key=",
+                "body": null,
+                "headers": {}
+            },
+            "response": {
+                "status": {
+                    "code": 401,
+                    "message": "Unauthorized"
+                },
+                "headers": {
+                    "Date": [
+                        "Mon, 28 Jul 2025 09:41:22 GMT"
+                    ],
+                    "Content-Type": [
+                        "application/json; charset=utf-8"
+                    ],
+                    "Transfer-Encoding": [
+                        "chunked"
+                    ],
+                    "Connection": [
+                        "keep-alive"
+                    ],
+                    "CF-RAY": [
+                        "96636b9c7e718142-HKG"
+                    ],
+                    "x-frame-options": [
+                        "SAMEORIGIN"
+                    ],
+                    "x-xss-protection": [
+                        "1; mode=block"
+                    ],
+                    "x-content-type-options": [
+                        "nosniff"
+                    ],
+                    "x-download-options": [
+                        "noopen"
+                    ],
+                    "x-permitted-cross-domain-policies": [
+                        "none"
+                    ],
+                    "referrer-policy": [
+                        "strict-origin-when-cross-origin"
+                    ],
+                    "Cache-Control": [
+                        "no-cache"
+                    ],
+                    "x-request-id": [
+                        "a5dbe74b-b7c5-4796-a96b-e04a80272677"
+                    ],
+                    "x-runtime": [
+                        "0.003681"
+                    ],
+                    "CF-Cache-Status": [
+                        "MISS"
+                    ],
+                    "Vary": [
+                        "Accept-Encoding"
+                    ],
+                    "Server": [
+                        "cloudflare"
+                    ],
+                    "alt-svc": [
+                        "h3=\":443\"; ma=86400"
+                    ]
+                },
+                "body": {
+                    "string": "{\n  \"error\": \"Invalid API key. Your API key should be here: https://serpapi.com/manage-api-key\"\n}"
+                }
+            }
+        }
+    ]
+}

@@ -1,0 +1,82 @@
+{
+    "version": 1,
+    "interactions": [
+        {
+            "request": {
+                "method": "GET",
+                "uri": "https://r.jina.ai/https://example-unknown.com",
+                "body": null,
+                "headers": {
+                    "Accept": [
+                        "application/json"
+                    ],
+                    "X-Engine": [
+                        "browser"
+                    ],
+                    "X-Return-Format": [
+                        "markdown"
+                    ],
+                    "X-With-Images-Summary": [
+                        "true"
+                    ]
+                }
+            },
+            "response": {
+                "status": {
+                    "code": 400,
+                    "message": "Bad Request"
+                },
+                "headers": {
+                    "Date": [
+                        "Mon, 28 Jul 2025 09:15:26 GMT"
+                    ],
+                    "Content-Type": [
+                        "application/json; charset=utf-8"
+                    ],
+                    "Content-Length": [
+                        "243"
+                    ],
+                    "Connection": [
+                        "keep-alive"
+                    ],
+                    "CF-RAY": [
+                        "966345a32f251f59-HKG"
+                    ],
+                    "Vary": [
+                        "Accept-Encoding"
+                    ],
+                    "x-cloud-trace-context": [
+                        "395e3c7da38a46d1bdd112c8f1ecfdac/11785464319439183178;o=1"
+                    ],
+                    "traceparent": [
+                        "00-395e3c7da38a46d1bdd112c8f1ecfdac-a38e615b41369d4a-01"
+                    ],
+                    "Via": [
+                        "1.1 google"
+                    ],
+                    "alt-svc": [
+                        "h3=\":443\"; ma=86400"
+                    ],
+                    "cf-cache-status": [
+                        "DYNAMIC"
+                    ],
+                    "Report-To": [
+                        "{\"endpoints\":[{\"url\":\"https:\\/\\/a.nel.cloudflare.com\\/report\\/v4?s=wdCPqT8XUC20Bjgx%2F1hb5gMOcmTUtSg9pELAfw389lXPmElIL6Blcg14Xn5kZmRBy9ITHVfuqieJiOAOS9kF%2BuoaGuTo5v4zAyDwjuecRPr7sniwemZIvcr2Jg%3D%3D\"}],\"group\":\"cf-nel\",\"max_age\":604800}"
+                    ],
+                    "NEL": [
+                        "{\"success_fraction\":0,\"report_to\":\"cf-nel\",\"max_age\":604800}"
+                    ],
+                    "Server": [
+                        "cloudflare"
+                    ],
+                    "server-timing": [
+                        "cfL4;desc=\"?proto=TCP&rtt=42343&min_rtt=41549&rtt_var=17170&sent=5&recv=6&lost=0&retrans=0&sent_bytes=2828&recv_bytes=944&delivery_rate=86791&cwnd=252&unsent_bytes=0&cid=16fcceff15b3fd69&ts=244&x=0\""
+                    ]
+                },
+                "body": {
+                    "string": "{\"data\":null,\"path\":\"url\",\"code\":400,\"name\":\"ParamValidationError\",\"status\":40001,\"message\":\"Domain 'example-unknown.com' could not be resolved\",\"readableMessage\":\"ParamValidationError(url): Domain 'example-unknown.com' could not be resolved\"}"
+                }
+            }
+        }
+    ]
+}

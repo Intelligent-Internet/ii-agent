@@ -1,0 +1,79 @@
+{
+    "version": 1,
+    "interactions": [
+        {
+            "request": {
+                "method": "GET",
+                "uri": "https://s.jina.ai/?q=Intelligent+Internet+ii.inc&num=10",
+                "body": null,
+                "headers": {
+                    "X-Respond-With": [
+                        "no-content"
+                    ],
+                    "Accept": [
+                        "application/json"
+                    ]
+                }
+            },
+            "response": {
+                "status": {
+                    "code": 200,
+                    "message": "OK"
+                },
+                "headers": {
+                    "Date": [
+                        "Mon, 28 Jul 2025 09:44:12 GMT"
+                    ],
+                    "Content-Type": [
+                        "application/json; charset=utf-8"
+                    ],
+                    "Transfer-Encoding": [
+                        "chunked"
+                    ],
+                    "Connection": [
+                        "keep-alive"
+                    ],
+                    "Content-Encoding": [
+                        "gzip"
+                    ],
+                    "Vary": [
+                        "Accept-Encoding"
+                    ],
+                    "traceparent": [
+                        "00-58e35e109a4156e8552990dd5a226db5-eb4637f73907a2b6-00"
+                    ],
+                    "x-cloud-trace-context": [
+                        "58e35e109a4156e8552990dd5a226db5/16953299382236062390"
+                    ],
+                    "Via": [
+                        "1.1 google"
+                    ],
+                    "alt-svc": [
+                        "h3=\":443\"; ma=86400"
+                    ],
+                    "cf-cache-status": [
+                        "DYNAMIC"
+                    ],
+                    "Report-To": [
+                        "{\"endpoints\":[{\"url\":\"https:\\/\\/a.nel.cloudflare.com\\/report\\/v4?s=hCuWX1HQCcNVMKSAHAqXf5vXh8hT8SeZlyT7KfbXvYC8Pw3kQFhLh2PbLM6ueF2EaAjLSfbI58KlsitZt%2BVMlgnI0ItC%2FNjZ64oUtkua05KQXxgDdqgg01UIog%3D%3D\"}],\"group\":\"cf-nel\",\"max_age\":604800}"
+                    ],
+                    "NEL": [
+                        "{\"success_fraction\":0,\"report_to\":\"cf-nel\",\"max_age\":604800}"
+                    ],
+                    "Server": [
+                        "cloudflare"
+                    ],
+                    "CF-RAY": [
+                        "96636fb69b74f8e4-SIN"
+                    ],
+                    "server-timing": [
+                        "cfL4;desc=\"?proto=TCP&rtt=73231&min_rtt=58693&rtt_var=51086&sent=6&recv=7&lost=0&retrans=1&sent_bytes=2882&recv_bytes=907&delivery_rate=23713&cwnd=250&unsent_bytes=0&cid=54902c5398d40e6b&ts=2342&x=0\""
+                    ]
+                },
+                "body": {
+                    "string": "{\"code\":200,\"status\":20000,\"data\":[{\"title\":\"Intelligent Internet - The Intelligence Age is Here\",\"url\":\"https://ii.inc/\",\"description\":\"We are building the best open intelligence for everyone. This includes SOTA, fully open-source AI models, agents, datasets and systems.\",\"content\":\"\",\"usage\":{\"tokens\":1000}},{\"title\":\"Intelligent Internet | LinkedIn\",\"url\":\"https://www.linkedin.com/company/intelligent-internet-ii\",\"description\":\"Mission: Increase humanity's intelligence. Website: https://www.ii.inc. External link for Intelligent Internet. Industry: Technology, Information and Media.\",\"content\":\"\",\"usage\":{\"tokens\":1000}},{\"title\":\"Intelligent Internet (@ii_posts) / X\",\"url\":\"https://x.com/ii_posts?lang=en\",\"description\":\"\\\"When two roads lead to ruin, wisdom builds a third way.\\\" To ensure AI serves everyone, we're building it open from day one.\",\"content\":\"\",\"usage\":{\"tokens\":1000}},{\"title\":\"II's Substack | Intelligent Internet | Substack\",\"url\":\"https://intelligentinternet.substack.com/\",\"description\":\"Click to read II's Substack, by Intelligent Internet, a Substack publication with thousands of subscribers.\",\"content\":\"\",\"usage\":{\"tokens\":1000}},{\"title\":\"Intelligent-Internet/ii-researcher - GitHub\",\"url\":\"https://github.com/Intelligent-Internet/ii-researcher\",\"description\":\"A powerful deep search agent that uses BAML functions to perform intelligent web searches and generate comprehensive answers to questions.\",\"content\":\"\",\"usage\":{\"tokens\":1000}},{\"title\":\"Intelligent Internet - Valuation, Funding & Investors - PitchBook\",\"url\":\"https://pitchbook.com/profiles/company/844416-46\",\"description\":\"Developer of an open, distributed AI system designed to democratize access and foster collaboration. The company's platform provides open datasets, models, and\",\"content\":\"\",\"usage\":{\"tokens\":1000}},{\"title\":\"Intelligent-Internet (II) - Hugging Face\",\"url\":\"https://huggingface.co/Intelligent-Internet\",\"description\":\"Org profile for II on Hugging Face, the AI community building the future.\",\"content\":\"\",\"usage\":{\"tokens\":1000}},{\"title\":\"Intelligent-Internet/ii-agent: II-Agent: a new open-source  - GitHub\",\"url\":\"https://github.com/Intelligent-Internet/ii-agent\",\"description\":\"II-Agent is an open-source intelligent assistant designed to streamline and enhance workflows across multiple domains.\",\"content\":\"\",\"usage\":{\"tokens\":1000}},{\"title\":\"Highlights by Intelligent Internet (@ii_posts) / X\",\"url\":\"https://twitter.com/ii_posts/highlights\",\"description\":\"1. Build II-Agent, possibly the best agent in the world 2. Open source it  4. Everyone profits Our mission at II is to increase humanity's intelligence\",\"content\":\"\",\"usage\":{\"tokens\":1000}},{\"title\":\"II-Researcher - Intelligent Internet | Intelligent Internet - LinkedIn\",\"url\":\"https://www.linkedin.com/posts/intelligent-internet-ii_ii-researcher-intelligent-internet-activity-7312795518059925504-R719\",\"description\":\"Reflecting on a Milestone Week: Advancing the Future of Intelligence At Intelligent Internet, our core mission is to increase humanity's intelligence by\",\"content\":\"\",\"usage\":{\"tokens\":1000}}],\"meta\":{\"usage\":{\"tokens\":10000}}}"
+                }
+            }
+        }
+    ]
+}
