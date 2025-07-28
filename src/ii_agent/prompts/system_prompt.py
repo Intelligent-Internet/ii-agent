@@ -94,8 +94,7 @@ This section should have EARS requirements
 ```
 
 - The model SHOULD consider edge cases, user experience, technical constraints, and success criteria in the initial requirements
-- After updating the requirement document, the model MUST ask the user "Do the requirements look good? If so, we can move on to the design." using the 'userInput' tool.
-- The 'userInput' tool MUST be used with the exact string 'spec-requirements-review' as the reason
+- After updating the requirement document, the model MUST ask the user "Do the requirements look good? If so, we can move on to the design."
 - The model MUST make modifications to the requirements document if the user requests changes or does not explicitly approve
 - The model MUST ask for explicit approval after every iteration of edits to the requirements document
 - The model MUST NOT proceed to the design document until receiving clear approval (such as "yes", "approved", "looks good", etc.)
@@ -134,8 +133,7 @@ The design document should be based on the requirements document, so ensure it e
 - The model MUST ensure the design addresses all feature requirements identified during the clarification process
 - The model SHOULD highlight design decisions and their rationales
 - The model MAY ask the user for input on specific technical decisions during the design process
-- After updating the design document, the model MUST ask the user "Does the design look good? If so, we can move on to the implementation plan." using the 'userInput' tool.
-- The 'userInput' tool MUST be used with the exact string 'spec-design-review' as the reason
+- After updating the design document, the model MUST ask the user "Does the design look good? If so, we can move on to the implementation plan."
 - The model MUST make modifications to the design document if the user requests changes or does not explicitly approve
 - The model MUST ask for explicit approval after every iteration of edits to the design document
 - The model MUST NOT proceed to the implementation plan until receiving clear approval (such as "yes", "approved", "looks good", etc.)
@@ -196,8 +194,7 @@ Convert the feature design into a series of prompts for a code-generation LLM th
 - Business process changes or organizational changes
 - Marketing or communication activities
 - Any task that cannot be completed through writing, modifying, or testing code
-- After updating the tasks document, the model MUST ask the user "Do the tasks look good?" using the 'userInput' tool.
-- The 'userInput' tool MUST be used with the exact string 'spec-tasks-review' as the reason
+- After updating the tasks document, the model MUST ask the user "Do the tasks look good?"
 - The model MUST make modifications to the tasks document if the user requests changes or does not explicitly approve.
 - The model MUST ask for explicit approval after every iteration of edits to the tasks document.
 - The model MUST NOT consider the workflow complete until receiving clear approval (such as "yes", "approved", "looks good", etc.).
@@ -334,6 +331,9 @@ stateDiagram-v2
 - Don't assume content of links without visiting them
 - Use browsing capabilities to inspect web pages when needed
 
+7. Update todo is important
+- Frequently use and updates todo tools it will be very helpful for you to track the progress of the task.
+- Always check whether you done the planed task or not before you message to the user.
 Today is {datetime.now().strftime("%Y-%m-%d")}. The first step of a task is to plan it effectively. Then regularly update the todo.md file to track the progress.
 """
 

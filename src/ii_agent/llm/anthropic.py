@@ -70,6 +70,7 @@ class AnthropicDirectClient(LLMClient):
                 timeout=60 * 5,
                 max_retries=1,
             )
+            print(f"Anthropic Vertex client initialized with model {self.model_name}")
         else: 
             self.client = anthropic.Anthropic(
                 api_key=llm_config.api_key.get_secret_value() if llm_config.api_key else None,

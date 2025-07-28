@@ -18,7 +18,10 @@ from ii_agent.cli.input.rich_prompt import create_rich_prompt
 from ii_agent.cli.commands.command_handler import CommandHandler
 from ii_agent.core.event_stream import AsyncEventStream
 from ii_agent.controller.agent_controller import AgentController
+from ii_agent.controller.moa_controller import MoAAgentController, create_moa_controller
 from ii_agent.agents.function_call import FunctionCallAgent
+from ii_agent.agents.moa_agent import create_moa_agent
+from ii_agent.core.config.moa_config import create_default_moa_config
 from ii_agent.llm import get_client
 from ii_agent.controller.state import State
 from ii_agent.llm.context_manager import LLMCompact
@@ -47,6 +50,7 @@ class CLIApp:
         llm_config: LLMConfig,
         workspace_path: str,
         minimal: bool = False,
+        enable_moa: bool = False,
     ):
         self.config = config
         self.llm_config = llm_config
@@ -75,6 +79,9 @@ class CLIApp:
             workspace_path, self.console_subscriber.console, self.command_handler
         )
 
+        # Store MoA preference
+        self.enable_moa = enable_moa
+        
         # Agent controller will be created when needed
         self.agent_controller: Optional[AgentController] = None
         
@@ -168,11 +175,19 @@ class CLIApp:
             # Don't trust the custom MCP tools by default
             await tool_manager.register_mcp_tools(Client(self.config.mcp_config), trust=False)
 
-        agent = FunctionCallAgent(
-            llm=llm_client, 
-            config=agent_config,
-            tools=[ToolParam(name=tool.name, description=tool.description, input_schema=tool.input_schema) for tool in tool_manager.get_tools()]
-        )
+        # Get tools as ToolParam list
+        tools = [ToolParam(name=tool.name, description=tool.description, input_schema=tool.input_schema) for tool in tool_manager.get_tools()]
+        
+        # Create agent based on MoA preference
+        if self.enable_moa:
+            # For MoA, agent will be created by the MoA controller
+            agent = None
+        else:
+            agent = FunctionCallAgent(
+                llm=llm_client, 
+                config=agent_config,
+                tools=tools
+            )
         
         # Create context manager
         token_counter = TokenCounter()
@@ -188,17 +203,43 @@ class CLIApp:
         else:
             state = State()
 
-        # Create agent controller
-        self.agent_controller = AgentController(
-            agent=agent,
-            tool_manager=tool_manager,
-            init_history=state,
-            workspace_manager=self.workspace_manager,
-            event_stream=self.event_stream,
-            context_manager=context_manager,
-            interactive_mode=True,
-            config=self.config,
-        )
+        # Create agent controller based on MoA preference
+        if self.enable_moa:
+            # Create MoA configuration
+            moa_config = create_default_moa_config()
+            
+            # Update agent config with MoA
+            agent_config.moa_config = moa_config
+            
+            # Create MoA agent controller
+            self.agent_controller = create_moa_controller(
+                tool_manager=tool_manager,
+                tools=tools,
+                init_history=state,
+                workspace_manager=self.workspace_manager,
+                event_stream=self.event_stream,
+                context_manager=context_manager,
+                moa_config=moa_config,
+                agent_config=agent_config,
+                interactive_mode=True,
+                config=self.config,
+            )
+            
+            # Print MoA activation message
+            self.console_subscriber.console.print("[bold green]🚀 MoA (Mixture-of-Agents) enabled! Using Claude + GPT-4 + Gemini working together.[/bold green]")
+            
+        else:
+            # Create standard agent controller
+            self.agent_controller = AgentController(
+                agent=agent,
+                tool_manager=tool_manager,
+                init_history=state,
+                workspace_manager=self.workspace_manager,
+                event_stream=self.event_stream,
+                context_manager=context_manager,
+                interactive_mode=True,
+                config=self.config,
+            )
 
         # Print configuration info
         self.console_subscriber.print_config_info(self.llm_config)

@@ -125,6 +125,16 @@ def create_parser() -> argparse.ArgumentParser:
         nargs="*", 
         help="Specific tools to enable"
     )
+    parser.add_argument(
+        "--debug", 
+        action="store_true", 
+        help="Enable debug mode with detailed error messages"
+    )
+    parser.add_argument(
+        "--moa", 
+        action="store_true", 
+        help="Enable Mixture-of-Agents (MoA) for enhanced AI responses"
+    )
     
     return parser
 
@@ -179,7 +189,7 @@ async def main_async() -> int:
             return await handle_config_command(args, config, llm_config)
         
         # Create and run CLI app
-        app = CLIApp(config, llm_config, workspace_path, minimal=args.minimal)
+        app = CLIApp(config, llm_config, workspace_path, minimal=args.minimal, enable_moa=args.moa)
         
         if args.command == "chat":
             return await app.run_interactive_mode(

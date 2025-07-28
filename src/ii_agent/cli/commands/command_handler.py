@@ -27,6 +27,7 @@ class CommandHandler:
         from .clear_command import ClearCommand
         from .compact_command import CompactCommand
         from .settings_command import SettingsCommand
+        from .moa_command import MoACommand
         
         default_commands = [
             HelpCommand(self.console),
@@ -34,6 +35,7 @@ class CommandHandler:
             ClearCommand(self.console),
             CompactCommand(self.console),
             SettingsCommand(self.console),
+            MoACommand(self.console),
         ]
         
         for command in default_commands:
