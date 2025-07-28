@@ -652,9 +652,7 @@ The generated video will be saved to the specified local path in the workspace."
                 is_error=True,
             )
 
-        local_output_path = self.workspace_manager.workspace_path(
-            Path(relative_output_filename)
-        )
+        local_output_path = Path(relative_output_filename).resolve()
         local_output_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Create temporary directory for scene videos and frames
@@ -677,11 +675,7 @@ The generated video will be saved to the specified local path in the workspace."
             first_scene_result = await text_tool.run_impl(
                 {
                     "prompt": prompts[0],
-                    "output_filename": str(
-                        first_scene_path.relative_to(
-                            self.workspace_manager.workspace_path(Path())
-                        )
-                    ),
+                    "output_filename": str(first_scene_path),
                     "aspect_ratio": aspect_ratio,
                     "duration_seconds": str(duration_per_scene),
                     "enhance_prompt": enhance_prompt,
@@ -748,16 +742,8 @@ The generated video will be saved to the specified local path in the workspace."
 
                 scene_result = await image_tool.run_impl(
                     {
-                        "image_file_path": str(
-                            last_frame_path.relative_to(
-                                self.workspace_manager.workspace_path(Path())
-                            )
-                        ),
-                        "output_filename": str(
-                            scene_path.relative_to(
-                                self.workspace_manager.workspace_path(Path())
-                            )
-                        ),
+                        "image_file_path": str(last_frame_path),
+                        "output_filename": str(scene_path),
                         "prompt": prompt,
                         "aspect_ratio": aspect_ratio,
                         "duration_seconds": str(duration_per_scene),
@@ -922,9 +908,7 @@ The generated video will be saved to the specified local path in the workspace."
                 is_error=True,
             )
 
-        local_output_path = self.workspace_manager.workspace_path(
-            Path(relative_output_filename)
-        )
+        local_output_path = Path(relative_output_filename).resolve()
         local_output_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Create temporary directory for scene videos and frames
@@ -950,11 +934,7 @@ The generated video will be saved to the specified local path in the workspace."
                 {
                     "image_file_path": image_file_path,
                     "prompt": prompts[0],
-                    "output_filename": str(
-                        first_scene_path.relative_to(
-                            self.workspace_manager.workspace_path(Path())
-                        )
-                    ),
+                    "output_filename": str(first_scene_path),
                     "aspect_ratio": aspect_ratio,
                     "duration_seconds": str(duration_per_scene),
                     "enhance_prompt": enhance_prompt,
@@ -1016,16 +996,8 @@ The generated video will be saved to the specified local path in the workspace."
 
                 scene_result = await image_tool.run_impl(
                     {
-                        "image_file_path": str(
-                            last_frame_path.relative_to(
-                                self.workspace_manager.workspace_path(Path())
-                            )
-                        ),
-                        "output_filename": str(
-                            scene_path.relative_to(
-                                self.workspace_manager.workspace_path(Path())
-                            )
-                        ),
+                        "image_file_path": str(last_frame_path),
+                        "output_filename": str(scene_path),
                         "prompt": prompt,
                         "aspect_ratio": aspect_ratio,
                         "duration_seconds": str(duration_per_scene),

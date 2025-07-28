@@ -1,6 +1,6 @@
 from pydantic_settings import BaseSettings
 
-# --- Search Config ---
+# --- Web Search Config ---
 class WebSearchConfig(BaseSettings):
     firecrawl_api_key: str | None = None
     serpapi_api_key: str | None = None

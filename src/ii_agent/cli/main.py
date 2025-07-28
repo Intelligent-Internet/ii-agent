@@ -13,6 +13,19 @@ import sys
 from pathlib import Path
 from ii_agent.cli.app import CLIApp
 from ii_agent.cli.config import setup_cli_config
+from ii_tool.core.config import (
+    WebSearchConfig,
+    WebVisitConfig,
+    FullStackDevConfig,
+    ImageSearchConfig,
+    VideoGenerateConfig,
+    ImageGenerateConfig,
+)
+from dotenv import load_dotenv
+
+# NOTE: This is a temporary fix to load the config
+# This should be removed once we move to onboarding module
+load_dotenv()
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -179,7 +192,19 @@ async def main_async() -> int:
             return await handle_config_command(args, config, llm_config)
         
         # Create and run CLI app
-        app = CLIApp(config, llm_config, workspace_path, minimal=args.minimal)
+        app = CLIApp(
+            config=config,
+            llm_config=llm_config,
+            workspace_path=workspace_path,
+            minimal=args.minimal,
+            # TODO: Get these config from the onboarding module
+            web_search_config=WebSearchConfig(),
+            web_visit_config=WebVisitConfig(),
+            fullstack_dev_config=FullStackDevConfig(),
+            image_search_config=ImageSearchConfig(),
+            video_generate_config=VideoGenerateConfig(),
+            image_generate_config=ImageGenerateConfig(),
+        )
         
         if args.command == "chat":
             return await app.run_interactive_mode(

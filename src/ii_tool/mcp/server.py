@@ -1,9 +1,9 @@
+import uuid
+
 from mcp.types import ToolAnnotations
 from fastmcp import FastMCP
 from argparse import ArgumentParser
-from ii_tool.core.workspace import WorkspaceManager
 from ii_tool.core.config import WebSearchConfig, WebVisitConfig, ImageSearchConfig, VideoGenerateConfig, ImageGenerateConfig, FullStackDevConfig
-from ii_tool.tools.shell import TmuxWindowManager
 from ii_tool.tools.manager import get_default_tools
 from dotenv import load_dotenv
 
@@ -11,8 +11,6 @@ load_dotenv()
 
 
 async def create_mcp(workspace_dir: str, session_id: str):
-    terminal_manager = TmuxWindowManager(chat_session_id=session_id)
-    workspace_manager = WorkspaceManager(workspace_path=workspace_dir)
     web_search_config = WebSearchConfig()
     web_visit_config = WebVisitConfig()
     image_search_config = ImageSearchConfig()
@@ -21,8 +19,8 @@ async def create_mcp(workspace_dir: str, session_id: str):
     fullstack_dev_config = FullStackDevConfig()
     
     tools = get_default_tools(
-        workspace_manager=workspace_manager,
-        terminal_manager=terminal_manager,
+        chat_session_id=session_id,
+        workspace_path=workspace_dir,
         web_search_config=web_search_config,
         web_visit_config=web_visit_config,
         image_search_config=image_search_config,
@@ -57,10 +55,15 @@ async def main():
     parser.add_argument("--port", type=int, default=6060)
     
     args = parser.parse_args()
+
+    workspace_dir = args.workspace_dir
+    session_id = args.session_id
+    if not session_id:
+        session_id = str(uuid.uuid4())
     
     mcp = await create_mcp(
-        workspace_dir=args.workspace_dir,
-        session_id=args.session_id,
+        workspace_dir=workspace_dir,
+        session_id=session_id,
     )
     await mcp.run_async(transport="http", host="0.0.0.0", port=args.port)
 

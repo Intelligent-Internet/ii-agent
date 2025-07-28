@@ -3,7 +3,7 @@
 from typing import Any
 from pathlib import Path
 from ii_tool.core.workspace import WorkspaceManager, FileSystemValidationError
-from ii_tool.tools.base import BaseTool, ToolResult
+from ii_tool.tools.base import BaseTool, ToolResult, ToolConfirmationDetails
 
 
 # Name
@@ -47,6 +47,12 @@ class FileWriteTool(BaseTool):
     
     def __init__(self, workspace_manager: WorkspaceManager):
         self.workspace_manager = workspace_manager
+
+    def should_confirm_execute(self, tool_input: dict[str, Any]) -> ToolConfirmationDetails | bool:
+        return ToolConfirmationDetails(
+            type="edit",
+            message=f"Write file {tool_input['file_path']} with the following content:\n{tool_input['content']}"
+        )
 
     async def execute(
         self,

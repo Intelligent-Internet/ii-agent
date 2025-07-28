@@ -9,7 +9,7 @@ from ii_tool.tools.web.clients.web_visit_client import (
 )
 
 # Name
-NAME = "visit_webpage"
+NAME = "web_visit"
 DISPLAY_NAME = "Web Visit"
 
 # Tool description
