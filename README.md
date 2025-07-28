@@ -1,6 +1,6 @@
 <img width="3600" height="1890" alt="II-Agent-updated" src="https://github.com/user-attachments/assets/4e6211d1-c565-42a9-9d53-d809154a9493" />
 
-# II Agent
+# II-Agent
 
 <div align="center">
 
@@ -25,7 +25,7 @@
 
 II-Agent is an open-source intelligent assistant designed to streamline and enhance workflows across multiple domains. It represents a significant advancement in how we interact with technology—shifting from passive tools to intelligent systems capable of independently executing complex tasks.
 
-### Discord Join US
+### Join Us on Discord
 
 📢 Join Our [Discord Channel](https://discord.gg/yDWPsshPHB)! Looking forward to seeing you there! 🎉
 
@@ -33,7 +33,7 @@ II-Agent is an open-source intelligent assistant designed to streamline and enha
 
 <https://github.com/user-attachments/assets/2707b106-f37d-41a8-beff-8802b1c9b186>
 
-## (New Features) Full-stack Web Agent Show cases!
+## (New Features) Full-stack Web Agent Showcases!
 
 https://github.com/user-attachments/assets/8399f494-1e5a-43ba-9c7b-32861c51075e
 
@@ -41,7 +41,7 @@ https://github.com/user-attachments/assets/647e6bae-bc62-4c8b-9e6e-a7c8946caf56
 
 ## Overview
 
-II Agent is built around providing an agentic interface to leading language models. It offers:
+II-Agent is built around providing an agentic interface to leading language models. It offers:
 
 - A CLI interface for direct command-line interaction
 - A WebSocket server that powers a modern React-based frontend
@@ -76,8 +76,8 @@ You can view the full traces of some samples here: [GAIA Benchmark Traces](https
 
 > \[!TIP]
 >
-> - For best performance, we recommend using Claude 4.0 Sonnet or Claude Opus 4.0 models.
-> - For fast and cheap, we recommend using GPT4.1 from OpenAI.
+> - For best performance, we recommend using Claude Sonnet 4 or Claude Opus 4 models.
+> - For fast and cheap, we recommend using GPT-4.1 from OpenAI.
 > - Gemini 2.5 Pro is a good balance between performance and cost.
 
 ## Installation
@@ -169,7 +169,7 @@ The II-Agent system represents a sophisticated approach to building versatile AI
 
 ## Conclusion
 
-The II-Agent framework, architected around the reasoning capabilities of large language models like Claude 4.0 Sonnet or Gemini 2.5 Pro, presents a comprehensive and robust methodology for building versatile AI agents. Through its synergistic combination of a powerful LLM, a rich set of execution capabilities, an explicit mechanism for planning and reflection, and intelligent context management strategies, II-Agent is well-equipped to address a wide spectrum of complex, multi-step tasks. Its open-source nature and extensible design provide a strong foundation for continued research and development in the rapidly evolving field of agentic AI.
+The II-Agent framework, architected around the reasoning capabilities of large language models like Claude Sonnet 4 or Gemini 2.5 Pro, presents a comprehensive and robust methodology for building versatile AI agents. Through its synergistic combination of a powerful LLM, a rich set of execution capabilities, an explicit mechanism for planning and reflection, and intelligent context management strategies, II-Agent is well-equipped to address a wide spectrum of complex, multi-step tasks. Its open-source nature and extensible design provide a strong foundation for continued research and development in the rapidly evolving field of agentic AI.
 
 ## Acknowledgement
 
