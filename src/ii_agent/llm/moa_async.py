@@ -75,7 +75,6 @@ class AsyncMoAExecutor:
         total_time = time.time() - start_time
         self.request_count += len(clients)
         self.total_time += total_time
-        
         successful_responses = [r for r in responses if r.is_successful]
         self.failed_requests += len(responses) - len(successful_responses)
         

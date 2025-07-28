@@ -103,7 +103,7 @@ class GeminiDirectClient(LLMClient):
             {
                 "name": tool.name,
                 "description": tool.description,
-                "parameters": {k: v for k, v in tool.input_schema.items() if k != "$schema"},
+                "parameters": {k: v for k, v in tool.input_schema.items() if k not in ["$schema", "strict"]},
             }
             for tool in tools
         ]

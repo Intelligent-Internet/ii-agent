@@ -157,14 +157,26 @@ def create_default_moa_config() -> MoAConfig:
         max_retries=3,
     )
     
+    # Default OpenAI configuration
+    from pydantic import SecretStr
+    openai_config = LLMConfig(
+        model="glm-4.5",
+        base_url="http://localhost:30000/v1",
+        api_key=SecretStr("EMPTY"),
+        api_type=APITypes.OPENAI,
+        temperature=0.0,
+        max_retries=3,
+    )
+    
+    
     return MoAConfig(
         enabled=True,
         num_layers=1,
         claude_config=claude_config,
-        openai_config=None,  # Removed OpenAI
+        openai_config=openai_config,  # Added OpenAI
         gemini_config=gemini_config,
         aggregator_config=claude_config,  # Use Claude as default aggregator
         parallel_execution=True,
-        max_concurrent_requests=2,  # Reduced to 2 since we have 2 models
+        max_concurrent_requests=3,  # Increased to 3 for all models
         fallback_to_single_model=True,
     )
