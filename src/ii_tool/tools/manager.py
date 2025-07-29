@@ -77,7 +77,7 @@ def get_default_tools(
         WebSearchTool(settings=web_search_config),
         WebVisitTool(settings=web_visit_config),
         # Dev tools
-        FullStackInitTool(workspace_manager, fullstack_dev_config),
+        FullStackInitTool(workspace_manager, terminal_manager, fullstack_dev_config),
     ]
 
     if image_search_config is not None:
