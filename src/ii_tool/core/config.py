@@ -1,4 +1,5 @@
 from pydantic_settings import BaseSettings
+from pydantic import ConfigDict
 
 # --- Web Search Config ---
 class WebSearchConfig(BaseSettings):
@@ -9,10 +10,11 @@ class WebSearchConfig(BaseSettings):
 
     max_results: int = 5
     
-    class Config:
-        env_prefix = "WEB_SEARCH_"
-        env_file = ".env"
-        extra = "ignore"
+    model_config = ConfigDict(
+        env_prefix="WEB_SEARCH_",
+        env_file=".env",
+        extra="ignore"
+    )
 
 # --- Image Search Config ---
 class ImageSearchConfig(BaseSettings):
@@ -20,10 +22,11 @@ class ImageSearchConfig(BaseSettings):
 
     max_results: int = 5
 
-    class Config:
-        env_prefix = "IMAGE_SEARCH_"
-        env_file = ".env"
-        extra = "ignore"
+    model_config = ConfigDict(
+        env_prefix="IMAGE_SEARCH_",
+        env_file=".env",
+        extra="ignore"
+    )
 
 
 # --- Web Visit Config ---
@@ -34,10 +37,11 @@ class WebVisitConfig(BaseSettings):
 
     max_output_length: int = 40_000
 
-    class Config:
-        env_prefix = "WEB_VISIT_"
-        env_file = ".env"
-        extra = "ignore"
+    model_config = ConfigDict(
+        env_prefix="WEB_VISIT_",
+        env_file=".env",
+        extra="ignore"
+    )
 
 # --- Video Generate Config ---
 class VideoGenerateConfig(BaseSettings):
@@ -46,10 +50,11 @@ class VideoGenerateConfig(BaseSettings):
     gcs_output_bucket: str | None = None
     google_ai_studio_api_key: str | None = None
 
-    class Config:
-        env_prefix = "VIDEO_GENERATE_"
-        env_file = ".env"
-        extra = "ignore"
+    model_config = ConfigDict(
+        env_prefix="VIDEO_GENERATE_",
+        env_file=".env",
+        extra="ignore"
+    )
 
 # --- Image Generate Config ---
 class ImageGenerateConfig(BaseSettings):
@@ -58,16 +63,18 @@ class ImageGenerateConfig(BaseSettings):
     gcs_output_bucket: str | None = None
     google_ai_studio_api_key: str | None = None
 
-    class Config:
-        env_prefix = "IMAGE_GENERATE_"
-        env_file = ".env"
-        extra = "ignore"
+    model_config = ConfigDict(
+        env_prefix="IMAGE_GENERATE_",
+        env_file=".env",
+        extra="ignore"
+    )
 
 # --- Full Stack Dev Config ---
 class FullStackDevConfig(BaseSettings):
     template_path: str = ".templates/react-tailwind-python"
     
-    class Config:
-        env_prefix = "FULLSTACK_DEV_"
-        env_file = ".env"
-        extra = "ignore"
+    model_config = ConfigDict(
+        env_prefix="FULLSTACK_DEV_",
+        env_file=".env",
+        extra="ignore"
+    )

@@ -8,7 +8,7 @@ from ii_agent.llm.moa_client import MoALLMClient
 from ii_agent.controller.state import State
 from ii_agent.core.config.agent_config import AgentConfig
 from ii_agent.core.config.moa_config import MoAConfig, create_default_moa_config
-from ii_agent.tools import AgentToolManager
+from ii_agent.controller.tool_manager import AgentToolManager
 from ii_agent.utils.workspace_manager import WorkspaceManager
 from ii_agent.core.event_stream import EventStream
 from ii_agent.llm.context_manager.base import ContextManager

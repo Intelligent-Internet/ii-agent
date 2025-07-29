@@ -4,6 +4,11 @@ Main CLI entry point for ii-agent.
 This module provides the command-line interface for interacting with the AgentController.
 """
 
+import warnings
+# Suppress SWIG deprecation warnings before any other imports
+warnings.filterwarnings("ignore", category=DeprecationWarning, message=".*SwigPy.*")
+warnings.filterwarnings("ignore", category=DeprecationWarning, message=".*swigvarlink.*")
+
 import uuid
 import json
 import argparse
