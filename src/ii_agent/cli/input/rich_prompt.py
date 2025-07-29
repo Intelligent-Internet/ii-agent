@@ -14,6 +14,7 @@ from prompt_toolkit.document import Document
 from prompt_toolkit.formatted_text import HTML
 from prompt_toolkit.styles import Style
 from prompt_toolkit.key_binding import KeyBindings
+from prompt_toolkit.history import FileHistory, InMemoryHistory
 
 from rich.console import Console
 from rich.panel import Panel
@@ -92,19 +93,85 @@ class RichPrompt:
             """Handle alt+enter for multiline."""
             event.app.exit(result=event.app.current_buffer.text + '\n')
         
+        # Essential keyboard shortcuts for better CLI experience
+        @bindings.add('c-a')  # Ctrl+A - beginning of line
+        def _(event):
+            """Move cursor to beginning of line."""
+            event.current_buffer.cursor_position = 0
+        
+        @bindings.add('c-e')  # Ctrl+E - end of line
+        def _(event):
+            """Move cursor to end of line."""
+            event.current_buffer.cursor_position = len(event.current_buffer.text)
+        
+        @bindings.add('c-k')  # Ctrl+K - delete to end of line
+        def _(event):
+            """Delete from cursor to end of line."""
+            buffer = event.current_buffer
+            buffer.delete(count=len(buffer.text) - buffer.cursor_position)
+        
+        @bindings.add('c-u')  # Ctrl+U - delete to beginning of line
+        def _(event):
+            """Delete from cursor to beginning of line."""
+            buffer = event.current_buffer
+            buffer.delete(count=-buffer.cursor_position)
+        
+        # Word navigation shortcuts
+        @bindings.add('escape', 'b')  # Alt+B - word backward
+        def _(event):
+            """Move cursor one word backward."""
+            buffer = event.current_buffer
+            pos = buffer.document.find_start_of_previous_word()
+            if pos:
+                buffer.cursor_position += pos
+        
+        @bindings.add('escape', 'f')  # Alt+F - word forward  
+        def _(event):
+            """Move cursor one word forward."""
+            buffer = event.current_buffer
+            pos = buffer.document.find_end_of_current_word()
+            if pos:
+                buffer.cursor_position += pos
+        
+        @bindings.add('c-w')  # Ctrl+W - delete word backward
+        def _(event):
+            """Delete word backward."""
+            buffer = event.current_buffer
+            pos = buffer.document.find_start_of_previous_word()
+            if pos:
+                buffer.delete(count=pos)
+        
+        # Setup history file
+        self.history_file = Path(workspace_path) / ".ii-agent-history" / "prompt_history.txt"
+        self.history_file.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Try a hybrid approach: Load existing history into InMemoryHistory
+        # This should work better for arrow key navigation
+        self.pt_history = InMemoryHistory()
+        
+        # Load existing history entries into memory
+        if self.history_file.exists():
+            try:
+                with open(self.history_file, 'r', encoding='utf-8') as f:
+                    for line in f:
+                        line = line.strip()
+                        if line:
+                            self.pt_history.append_string(line)
+                pass
+            except Exception as e:
+                pass
+        
         self.session = PromptSession(
             style=self.style,
             completer=self.completer,
             complete_while_typing=True,
             vi_mode=False,  # Can be made configurable
             key_bindings=bindings,
+            history=self.pt_history,  # Enable arrow key history navigation
+            search_ignore_case=True,
         )
         
-        # Setup history file
-        self.history_file = Path(workspace_path) / ".ii-agent-history" / "prompt_history.txt"
-        self.history_file.parent.mkdir(parents=True, exist_ok=True)
-        
-        # Load history
+        # Load history for internal list (backwards compatibility)
         self._load_history()
     
     def _get_commands(self) -> Dict[str, str]:
@@ -154,9 +221,28 @@ class RichPrompt:
     def _add_to_history(self, command: str) -> None:
         """Add command to history."""
         if command and (not self.history or command != self.history[-1]):
+            # Add to internal history list (for backwards compatibility)
             self.history.append(command)
             self.history_index = len(self.history)
-            self._save_history()
+            # Note: FileHistory automatically handles persistence, so no need to call _save_history()
+            # Let FileHistory manage the actual history file
+    
+    def _add_to_history_file(self, command: str) -> None:
+        """Add command to history file and memory."""
+        if command and command.strip():
+            # Don't add duplicates
+            try:
+                history_strings = list(self.pt_history.get_strings())
+                if not history_strings or history_strings[-1] != command:
+                    # CRITICAL: Add to InMemoryHistory for arrow key navigation
+                    self.pt_history.append_string(command)
+                    
+                    # Add to file for persistence
+                    with open(self.history_file, 'a', encoding='utf-8') as f:
+                        f.write(command + '\n')
+                    pass
+            except Exception as e:
+                pass
     
     async def get_input(self, prompt_text: str = "👤 You: ") -> str:
         """Get user input with enhanced prompt and paste detection."""
@@ -170,8 +256,9 @@ class RichPrompt:
             if user_input and ('\n' in user_input or len(user_input) > 200):
                 return await self._handle_paste_input(user_input)
             
+            # Since we're using InMemoryHistory, we need to manually save to file
             if user_input.strip():
-                self._add_to_history(user_input.strip())
+                self._add_to_history_file(user_input.strip())
             
             return user_input.strip()
             
@@ -197,8 +284,9 @@ class RichPrompt:
                 multiline=True,
             )
             
+            # Add multiline input to history as well
             if user_input.strip():
-                self._add_to_history(user_input.strip())
+                self._add_to_history_file(user_input.strip())
             
             return user_input.strip()
             
@@ -320,6 +408,36 @@ class RichPrompt:
             style="blue"
         )
         self.console.print(tips_panel)
+        
+        # Show keyboard shortcuts
+        self.show_keyboard_shortcuts()
+    
+    def show_keyboard_shortcuts(self) -> None:
+        """Display keyboard shortcuts help."""
+        shortcuts_panel = Panel(
+            "⌨️ [bold]Keyboard Shortcuts:[/bold]\n\n"
+            "[dim]Navigation:[/dim]\n"
+            "• ↑/↓ Arrow keys - Command history\n" 
+            "• ←/→ Arrow keys - Move cursor\n"
+            "• Ctrl+A/Home - Beginning of line\n"
+            "• Ctrl+E/End - End of line\n"
+            "• Alt+B - Word backward\n"
+            "• Alt+F - Word forward\n\n"
+            "[dim]Editing:[/dim]\n"
+            "• Ctrl+K - Delete to end of line\n"
+            "• Ctrl+U - Delete to beginning of line\n"
+            "• Ctrl+W - Delete word backward\n"
+            "• Tab - Auto-completion\n\n"
+            "[dim]Special:[/dim]\n"
+            "• Enter - Submit command\n"
+            "• Alt+Enter - Multiline mode\n"
+            "• Ctrl+C - Cancel/Interrupt\n"
+            "• Ctrl+D - Exit (EOF)\n"
+            "• Ctrl+R - Reverse history search",
+            title="Keyboard Shortcuts",
+            style="green"
+        )
+        self.console.print(shortcuts_panel)
     
     async def _handle_paste_input(self, pasted_text: str) -> str:
         """Handle pasted text input with confirmation."""
@@ -339,14 +457,14 @@ class RichPrompt:
         
         # Get confirmation
         if await self.get_confirmation("Use this pasted text as input?", default=True):
-            self._add_to_history(pasted_text)
+            # FileHistory will automatically handle this when the input is processed
             return pasted_text
         else:
             return "/exit"
     
     def cleanup(self) -> None:
         """Clean up resources."""
-        self._save_history()
+        # FileHistory automatically saves, no manual cleanup needed
 
 
 def create_rich_prompt(workspace_path: str, console: Console, command_handler=None) -> RichPrompt:
