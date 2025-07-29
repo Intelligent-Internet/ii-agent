@@ -13,19 +13,6 @@ import sys
 from pathlib import Path
 from ii_agent.cli.app import CLIApp
 from ii_agent.cli.config import setup_cli_config
-from ii_tool.core.config import (
-    WebSearchConfig,
-    WebVisitConfig,
-    FullStackDevConfig,
-    ImageSearchConfig,
-    VideoGenerateConfig,
-    ImageGenerateConfig,
-)
-from dotenv import load_dotenv
-
-# NOTE: This is a temporary fix to load the config
-# This should be removed once we move to onboarding module
-load_dotenv()
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -179,7 +166,9 @@ async def main_async() -> int:
     
     try:
         # Setup CLI configuration using the new pattern
-        config, llm_config, workspace_path = await setup_cli_config(
+        (config, llm_config, workspace_path, web_search_config, web_visit_config, 
+         fullstack_dev_config, image_search_config, video_generate_config, 
+         image_generate_config) = await setup_cli_config(
             session_id=session_id,
             workspace=args.workspace,
             model=args.llm_model,
@@ -197,13 +186,12 @@ async def main_async() -> int:
             llm_config=llm_config,
             workspace_path=workspace_path,
             minimal=args.minimal,
-            # TODO: Get these config from the onboarding module
-            web_search_config=WebSearchConfig(),
-            web_visit_config=WebVisitConfig(),
-            fullstack_dev_config=FullStackDevConfig(),
-            image_search_config=ImageSearchConfig(),
-            video_generate_config=VideoGenerateConfig(),
-            image_generate_config=ImageGenerateConfig(),
+            web_search_config=web_search_config,
+            web_visit_config=web_visit_config,
+            fullstack_dev_config=fullstack_dev_config,
+            image_search_config=image_search_config,
+            video_generate_config=video_generate_config,
+            image_generate_config=image_generate_config,
         )
         
         if args.command == "chat":
