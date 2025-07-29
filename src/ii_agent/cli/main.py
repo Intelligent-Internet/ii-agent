@@ -196,7 +196,7 @@ async def main_async() -> int:
             llm_config=llm_config,
             workspace_path=workspace_path,
             minimal=args.minimal,
-            enable_moa=args.moa
+            enable_moa=args.moa,
             web_search_config=web_search_config,
             web_visit_config=web_visit_config,
             fullstack_dev_config=fullstack_dev_config,
