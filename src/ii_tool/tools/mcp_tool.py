@@ -49,7 +49,7 @@ class MCPTool(BaseTool):
                             ImageContent(
                                 type="image",
                                 data=mcp_result.data,
-                                mimeType=mcp_result.mimeType,
+                                mime_type=mcp_result.mimeType,
                             )
                         )
                         user_display_content += f"\n[Redacted image]"
