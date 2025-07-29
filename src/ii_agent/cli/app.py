@@ -25,7 +25,7 @@ from ii_agent.llm.context_manager import LLMCompact
 from ii_agent.core.storage.settings.file_settings_store import FileSettingsStore
 from ii_agent.llm.token_counter import TokenCounter
 from ii_agent.core.logger import logger
-from ii_agent.prompts.system_prompt import SYSTEM_PROMPT
+from ii_agent.prompts import get_system_prompt
 from ii_agent.utils.constants import TOKEN_BUDGET
 from ii_agent.cli.state_persistence import (
     StateManager,
@@ -172,7 +172,7 @@ class CLIApp:
         # Create agent
         agent_config = AgentConfig(
             max_tokens_per_turn=self.config.max_output_tokens_per_turn,
-            system_prompt=SYSTEM_PROMPT,
+            system_prompt=get_system_prompt(self.workspace_path),
         )
 
         tool_manager = AgentToolManager()
