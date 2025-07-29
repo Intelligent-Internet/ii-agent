@@ -83,7 +83,7 @@ class FileEditTool(BaseTool):
 
     def should_confirm_execute(self, tool_input: dict[str, Any]) -> ToolConfirmationDetails | bool:
         return ToolConfirmationDetails(
-            type="file",
+            type="edit",
             message=f"Edit file {tool_input['file_path']} with the following changes:\n{tool_input['old_string']}\n---\n{tool_input['new_string']}"
         )
 
