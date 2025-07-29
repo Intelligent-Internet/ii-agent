@@ -1,7 +1,7 @@
 from typing import Any
 from fastmcp import Client, FastMCP
 from fastmcp.exceptions import ToolError
-from ii_tool.tools.base import BaseTool, ToolResult, TextContent, ImageContent
+from ii_tool.tools.base import BaseTool, ToolResult, TextContent, ImageContent, ToolConfirmationDetails
 
 
 class MCPTool(BaseTool):
@@ -24,6 +24,12 @@ class MCPTool(BaseTool):
         self.description = description
         self.input_schema = input_schema
         self.read_only = read_only
+
+    def should_confirm_execute(self, tool_input: dict[str, Any]) -> ToolConfirmationDetails | bool:
+        return ToolConfirmationDetails(
+            type="mcp", 
+            message=f"Do you want to execute the MCP tool {self.name} with input {tool_input}?"
+        )
 
     async def execute(self, tool_input: dict[str, Any]) -> ToolResult:
         try:
@@ -58,53 +64,3 @@ class MCPTool(BaseTool):
                 llm_content=f"Error while calling tool {self.name} with input {tool_input}: {str(e)}\n\nPlease analyze the error message to determine if it's due to incorrect input parameters or an internal tool issue. If the error is due to incorrect input, retry with the correct parameters. Otherwise, try an alternative approach and inform the user about the issue.",
                 user_display_content=f"Error while calling tool {self.name} with input {tool_input}: {str(e)}",
             )
-
-
-async def load_tools_from_mcp(transport: FastMCP | str) -> list[MCPTool]:
-    """Load tools from an MCP (Model Context Protocol) server.
-
-    This function establishes a connection to an MCP server, retrieves all available tools,
-    and wraps them in MCPTool instances for use within the application. Each tool includes
-    metadata such as name, description, input schema, and annotations that determine
-    display properties and read-only behavior.
-
-    Args:
-        transport (FastMCP | str): The transport mechanism for connecting to the MCP server.
-            Can be either:
-            - FastMCP server instance for in-memory/direct connection mode
-            - URL string (e.g., "http://localhost:8080") for HTTP-based connection
-
-    Returns:
-        list[MCPTool]: A list of MCPTool instances, each wrapping a tool from the MCP server
-            with its associated metadata and execution capabilities.
-
-    Raises:
-        AssertionError: If any tool from the server lacks a description.
-        Various connection exceptions: If the MCP server is unreachable or returns errors.
-    """
-    tools = []
-    mcp_client = Client(transport)
-
-    async with mcp_client:
-        mcp_tools = await mcp_client.list_tools()
-        for tool in mcp_tools:
-            assert tool.description is not None, f"Tool {tool.name} has no description"
-            tool_annotations = tool.annotations
-            if tool_annotations is None:
-                display_name = tool.name
-                read_only = False
-            else:
-                display_name = tool_annotations.title or tool.name
-                read_only = tool_annotations.readOnlyHint if tool_annotations.readOnlyHint is not None else False
-
-            tools.append(
-                MCPTool(
-                    mcp_client=mcp_client,
-                    name=tool.name,
-                    display_name=display_name,
-                    description=tool.description,
-                    input_schema=tool.inputSchema,
-                    read_only=read_only,
-                )
-            )
-    return tools

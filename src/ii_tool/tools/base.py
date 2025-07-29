@@ -17,12 +17,30 @@ class ToolResult(BaseModel):
     user_display_content: Optional[str] = None
     is_error: Optional[bool] = None
 
+class ToolConfirmationDetails(BaseModel):
+    type: Literal["edit", "bash", "mcp"]
+    message: str
+
 class BaseTool(ABC):
     name: str
     description: str
     input_schema: dict[str, Any]
     read_only: bool
     display_name: str
+
+    def should_confirm_execute(self, tool_input: dict[str, Any]) -> ToolConfirmationDetails | bool:
+        """
+        Determine if the tool execution should be confirmed.
+        In web application mode, the tool is executed without confirmation.
+        In CLI mode, some tools should be confirmed by the user before execution (e.g. file edit, shell command, etc.)
+
+        Args:
+            tool_input (dict[str, Any]): The input to the tool.
+
+        Returns:
+            ToolConfirmationDetails | bool: The confirmation details or a boolean indicating if the execution should be confirmed.        
+        """
+        return False
 
     @abstractmethod
     async def execute(self, tool_input: dict[str, Any]) -> ToolResult:

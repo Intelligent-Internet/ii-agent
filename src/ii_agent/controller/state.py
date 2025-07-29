@@ -16,7 +16,7 @@ from ii_agent.llm.base import (
     ToolFormattedResult,
     ImageBlock,
 )
-from ii_agent.tools import ToolCallParameters
+from ii_agent.controller.tool_manager import ToolCallParameters
 
 
 class State(BaseModel):

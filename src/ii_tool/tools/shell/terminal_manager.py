@@ -14,6 +14,7 @@ _DEFAULT_TIMEOUT = 30
 _POLL_INTERVAL = 0.5
 _DEFAULT_PROMPT_PREFIX = "root@sandbox:"
 _PROMPT_FORMAT = f"{_DEFAULT_PROMPT_PREFIX}$(pwd)\\$ "
+_PREFIX_SESSION_NAME = "II-AGENT-"
 
 # Shell error
 class ShellError(Exception):
@@ -227,7 +228,7 @@ class TmuxWindowManager(BaseShellManager):
 
         self._default_window_name = "main"
         self.session = self.server.new_session(
-            chat_session_id, 
+            f"{_PREFIX_SESSION_NAME}{chat_session_id}", 
             kill_session=True, 
             shell="/bin/bash", 
             x=999, 

@@ -1,6 +1,6 @@
 from typing import Any
 from ii_tool.tools.shell.terminal_manager import BaseShellManager, ShellCommandTimeoutError, ShellBusyError
-from ii_tool.tools.base import BaseTool, ToolResult
+from ii_tool.tools.base import BaseTool, ToolResult, ToolConfirmationDetails
 
 
 # Constants
@@ -87,6 +87,12 @@ class ShellRunCommand(BaseTool):
     
     def __init__(self, shell_manager: BaseShellManager) -> None:
         self.shell_manager = shell_manager
+
+    def should_confirm_execute(self, tool_input: dict[str, Any]) -> ToolConfirmationDetails | bool:
+        return ToolConfirmationDetails(
+            type="bash",
+            message=f"{tool_input['description']} - command: {tool_input['command']}"
+        )
 
     async def execute(
         self,

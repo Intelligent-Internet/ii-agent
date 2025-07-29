@@ -176,7 +176,9 @@ async def main_async() -> int:
     
     try:
         # Setup CLI configuration using the new pattern
-        config, llm_config, workspace_path = await setup_cli_config(
+        (config, llm_config, workspace_path, web_search_config, web_visit_config, 
+         fullstack_dev_config, image_search_config, video_generate_config, 
+         image_generate_config) = await setup_cli_config(
             session_id=session_id,
             workspace=args.workspace,
             model=args.llm_model,
@@ -189,7 +191,19 @@ async def main_async() -> int:
             return await handle_config_command(args, config, llm_config)
         
         # Create and run CLI app
-        app = CLIApp(config, llm_config, workspace_path, minimal=args.minimal, enable_moa=args.moa)
+        app = CLIApp(
+            config=config,
+            llm_config=llm_config,
+            workspace_path=workspace_path,
+            minimal=args.minimal,
+            enable_moa=args.moa
+            web_search_config=web_search_config,
+            web_visit_config=web_visit_config,
+            fullstack_dev_config=fullstack_dev_config,
+            image_search_config=image_search_config,
+            video_generate_config=video_generate_config,
+            image_generate_config=image_generate_config,
+        )
         
         if args.command == "chat":
             return await app.run_interactive_mode(

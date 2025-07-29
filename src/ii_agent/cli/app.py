@@ -27,18 +27,27 @@ from ii_agent.controller.state import State
 from ii_agent.llm.context_manager import LLMCompact
 from ii_agent.core.storage.settings.file_settings_store import FileSettingsStore
 from ii_agent.llm.token_counter import TokenCounter
-from ii_agent.utils.workspace_manager import WorkspaceManager
 from ii_agent.core.logger import logger
-from ii_agent.prompts.system_prompt import SYSTEM_PROMPT
+from ii_agent.prompts import get_system_prompt
 from ii_agent.utils.constants import TOKEN_BUDGET
 from ii_agent.cli.state_persistence import (
     StateManager,
     restore_agent_state,
     restore_configs,
 )
-from ii_agent.tools import AgentToolManager
+from ii_agent.controller.tool_manager import AgentToolManager
 from ii_agent.llm.base import ToolParam
-from ii_tool.mcp.server import create_mcp
+from ii_tool.utils import load_tools_from_mcp
+from ii_tool.tools.manager import get_default_tools
+from ii_tool.core import WorkspaceManager
+from ii_tool.core.config import (
+    WebSearchConfig, 
+    WebVisitConfig, 
+    ImageSearchConfig, 
+    VideoGenerateConfig, 
+    ImageGenerateConfig, 
+    FullStackDevConfig
+)
 
 
 class CLIApp:
@@ -46,18 +55,32 @@ class CLIApp:
 
     def __init__(
         self,
+        workspace_path: str,
         config: IIAgentConfig,
         llm_config: LLMConfig,
-        workspace_path: str,
+        web_search_config: WebSearchConfig,
+        web_visit_config: WebVisitConfig,
+        fullstack_dev_config: FullStackDevConfig,
+        image_search_config: ImageSearchConfig | None = None,
+        video_generate_config: VideoGenerateConfig | None = None,
+        image_generate_config: ImageGenerateConfig | None = None,
         minimal: bool = False,
         enable_moa: bool = False,
     ):
+        # config
         self.config = config
         self.llm_config = llm_config
-        self.workspace_manager = WorkspaceManager(Path(workspace_path))
+        self.web_search_config = web_search_config
+        self.web_visit_config = web_visit_config
+        self.fullstack_dev_config = fullstack_dev_config
+        self.image_search_config = image_search_config
+        self.video_generate_config = video_generate_config
+        self.image_generate_config = image_generate_config
+        # workspace
+        self.workspace_path = workspace_path
+        self.workspace_manager = WorkspaceManager(workspace_path)
         # Create state manager - we'll update it with continue_session later
         self.state_manager = None
-        self.workspace_path = workspace_path
         # Create event stream
         self.event_stream = AsyncEventStream(logger=logger)
         
@@ -156,24 +179,28 @@ class CLIApp:
         # Create agent
         agent_config = AgentConfig(
             max_tokens_per_turn=self.config.max_output_tokens_per_turn,
-            system_prompt=SYSTEM_PROMPT,
+            system_prompt=get_system_prompt(self.workspace_path),
         )
 
         tool_manager = AgentToolManager()
 
-        # Get system MCP tools
-        mcp_client = Client(await create_mcp(
-            workspace_dir=str(self.workspace_manager.root),
-            session_id=self.config.session_id,
-        ))
-        await tool_manager.register_mcp_tools(
-            mcp_client=mcp_client,
-            trust=True, # Trust the system MCP tools
+        # Get core tools
+        tool_manager.register_tools(
+            get_default_tools(
+                chat_session_id=self.config.session_id,
+                workspace_path=self.workspace_path,
+                web_search_config=self.web_search_config,
+                web_visit_config=self.web_visit_config,
+                fullstack_dev_config=self.fullstack_dev_config,
+                image_search_config=self.image_search_config,
+                video_generate_config=self.video_generate_config,
+                image_generate_config=self.image_generate_config,
+            )
         )
 
         if self.config.mcp_config:
-            # Don't trust the custom MCP tools by default
-            await tool_manager.register_mcp_tools(Client(self.config.mcp_config), trust=False)
+            mcp_tools = await load_tools_from_mcp(self.config.mcp_config)
+            tool_manager.register_tools(mcp_tools)
 
         # Get tools as ToolParam list
         tools = [ToolParam(name=tool.name, description=tool.description, input_schema=tool.input_schema) for tool in tool_manager.get_tools()]
@@ -243,7 +270,7 @@ class CLIApp:
 
         # Print configuration info
         self.console_subscriber.print_config_info(self.llm_config)
-        self.console_subscriber.print_workspace_info(str(self.workspace_manager.root))
+        self.console_subscriber.print_workspace_info(str(self.workspace_manager.get_workspace_path()))
 
         # Show previous conversation history if continuing from state
         if continue_from_state and saved_state_data:
@@ -442,7 +469,7 @@ class CLIApp:
                 agent_state=current_state,
                 config=self.config,
                 llm_config=self.llm_config,
-                workspace_path=str(self.workspace_manager.root),
+                workspace_path=str(self.workspace_manager.get_workspace_path()),
                 session_name=None,  # For --continue, we don't use session names
             )
 

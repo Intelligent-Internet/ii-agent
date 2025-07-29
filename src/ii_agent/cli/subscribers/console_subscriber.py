@@ -153,6 +153,7 @@ class ConsoleSubscriber:
             self.console.print(f"   Reason: {message}")
         
         # Show key parameters
+        #TODO: move confirmation information logic to the tool class
         if tool_input:
             self.console.print("   Parameters:")
             for key, value in tool_input.items():

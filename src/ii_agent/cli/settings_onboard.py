@@ -2,7 +2,27 @@
 Settings onboarding module for ii-agent CLI.
 
 This module provides interactive configuration setup for first-time users
-and runtime settings management, similar to OpenHands approach.
+and runtime settings management, with a focus on simplicity and user experience.
+
+ONBOARDING FLOW:
+1. LLM Configuration (required)
+   - Provider selection (Anthropic, OpenAI, Gemini)
+   - Model selection
+   - API key setup (with Vertex AI support)
+   
+2. Basic Tool Configuration (simple, optional)
+   - Web Search: Choose provider (Firecrawl, SerpAPI, Jina, Tavily)
+   - Web Visit: Choose provider (Firecrawl, Jina, Tavily)  
+   - Image Search: Optional SerpAPI setup
+   
+3. Advanced Google Cloud Tools (optional, separate flow)
+   - Video Generation: Google AI Studio OR GCP Vertex AI
+   - Image Generation: Google AI Studio OR GCP Vertex AI
+   - Shared setup option when configuring both
+   - Can be configured later via settings modification
+
+This separation keeps the main onboarding simple while allowing power users
+to configure complex tools when needed.
 """
 
 import os
@@ -18,9 +38,14 @@ from ii_agent.core.config.llm_config import LLMConfig, APITypes
 from ii_agent.core.storage.models.settings import Settings
 from ii_agent.core.storage.settings.file_settings_store import FileSettingsStore
 from ii_agent.utils.constants import DEFAULT_MODEL
-from dotenv import load_dotenv
-
-load_dotenv()
+from ii_tool.core.config import (
+    WebSearchConfig, 
+    WebVisitConfig, 
+    ImageSearchConfig, 
+    VideoGenerateConfig, 
+    ImageGenerateConfig, 
+    FullStackDevConfig
+)
 
 
 # Verified models for each provider
@@ -99,12 +124,25 @@ def display_settings(settings: Settings) -> None:
             ('   Vertex Project ID', default_llm.vertex_project_id or 'Not Set'),
         ])
     
+    # Add tool configurations status
+    labels_and_values.extend([
+        ('', ''),  # Empty line for separation
+        ('Basic Tools:', ''),
+        ('   Web Search', 'Configured' if has_tool_config_keys(settings.web_search_config) else 'Not Configured'),
+        ('   Web Visit', 'Configured' if has_tool_config_keys(settings.web_visit_config) else 'Not Configured'),
+        ('   Image Search', 'Configured' if settings.image_search_config and has_tool_config_keys(settings.image_search_config) else 'Not Configured'),
+        ('', ''),  # Empty line for separation
+        ('Advanced Google Cloud Tools:', ''),
+        ('   Video Generation', 'Configured' if settings.video_generate_config and has_tool_config_keys(settings.video_generate_config) else 'Not Configured'),
+        ('   Image Generation', 'Configured' if settings.image_generate_config and has_tool_config_keys(settings.image_generate_config) else 'Not Configured'),
+    ])
+    
     # Calculate max width for alignment
     max_label_width = max(len(label) for label, _ in labels_and_values)
     
     # Construct the summary text
     settings_lines = [
-        f'{label + ":":<{max_label_width + 1}} {value}'
+        f'{label + ":":<{max_label_width + 1}} {value}' if label and value else label + value
         for label, value in labels_and_values
     ]
     settings_text = '\n'.join(settings_lines)
@@ -123,6 +161,24 @@ def display_settings(settings: Settings) -> None:
     print_container(container)
 
 
+def has_tool_config_keys(config) -> bool:
+    """Check if a tool config has any API keys configured."""
+    if not config:
+        return False
+    
+    # Check for common API key attributes
+    api_key_attrs = [
+        'firecrawl_api_key', 'serpapi_api_key', 'jina_api_key', 'tavily_api_key',
+        'google_ai_studio_api_key', 'gcp_project_id', 'gcp_location', 'gcs_output_bucket'
+    ]
+    
+    for attr in api_key_attrs:
+        if hasattr(config, attr) and getattr(config, attr):
+            return True
+    
+    return False
+
+
 async def get_validated_input(
     session: PromptSession,
     prompt_text: str,
@@ -130,6 +186,7 @@ async def get_validated_input(
     validator=None,
     error_message: str = 'Input cannot be empty',
     is_password: bool = False,
+    allow_empty: bool = False,
 ) -> str:
     """Get validated input from user."""
     session.completer = completer
@@ -149,7 +206,7 @@ async def get_validated_input(
                     print_formatted_text(HTML(f'<red>{error_message}: {value}</red>'))
                     print_formatted_text('')
                     continue
-            elif not value:
+            elif not value and not allow_empty:
                 print_formatted_text('')
                 print_formatted_text(HTML(f'<red>{error_message}</red>'))
                 print_formatted_text('')
@@ -170,8 +227,365 @@ def save_settings_confirmation() -> bool:
     ) == 0
 
 
-async def setup_llm_configuration(settings_store: FileSettingsStore) -> None:
-    """Interactive setup for LLM configuration."""
+async def setup_web_search_configuration(settings_store: FileSettingsStore) -> WebSearchConfig:
+    """Interactive setup for web search configuration."""
+    session = PromptSession()
+    
+    print_formatted_text(HTML('\n<green>Setting up Web Search Configuration</green>'))
+    print_formatted_text(HTML('<grey>Choose your preferred web search provider:</grey>\n'))
+    
+    # Available search providers
+    search_providers = [
+        'Firecrawl',
+        'SerpAPI', 
+        'Jina',
+        'Tavily',
+    ]
+    
+    provider_choice = cli_confirm(
+        'Select Web Search Provider:',
+        search_providers
+    )
+    
+    # Get API key for selected provider
+    provider_name = search_providers[provider_choice]
+    api_key = await get_validated_input(
+        session,
+        f'Enter {provider_name} API Key: ',
+        error_message='API Key cannot be empty',
+        is_password=True
+    )
+    
+    # Create config with only the selected provider's key
+    config_kwargs = {}
+    if provider_choice == 0:  # Firecrawl
+        config_kwargs['firecrawl_api_key'] = api_key
+    elif provider_choice == 1:  # SerpAPI
+        config_kwargs['serpapi_api_key'] = api_key
+    elif provider_choice == 2:  # Jina
+        config_kwargs['jina_api_key'] = api_key
+    elif provider_choice == 3:  # Tavily
+        config_kwargs['tavily_api_key'] = api_key
+    
+    return WebSearchConfig(**config_kwargs)
+
+
+async def setup_web_visit_configuration(settings_store: FileSettingsStore) -> WebVisitConfig:
+    """Interactive setup for web visit configuration."""
+    session = PromptSession()
+    
+    print_formatted_text(HTML('\n<green>Setting up Web Visit Configuration</green>'))
+    print_formatted_text(HTML('<grey>Choose your preferred web visit provider:</grey>\n'))
+    
+    # Available web visit providers
+    web_visit_providers = [
+        'Firecrawl',
+        'Jina',
+        'Tavily',
+    ]
+    
+    provider_choice = cli_confirm(
+        'Select Web Visit Provider:',
+        web_visit_providers
+    )
+    
+    # Get API key for selected provider
+    provider_name = web_visit_providers[provider_choice]
+    api_key = await get_validated_input(
+        session,
+        f'Enter {provider_name} API Key: ',
+        error_message='API Key cannot be empty',
+        is_password=True
+    )
+    
+    # Create config with only the selected provider's key
+    config_kwargs = {}
+    if provider_choice == 0:  # Firecrawl
+        config_kwargs['firecrawl_api_key'] = api_key
+    elif provider_choice == 1:  # Jina
+        config_kwargs['jina_api_key'] = api_key
+    elif provider_choice == 2:  # Tavily
+        config_kwargs['tavily_api_key'] = api_key
+    
+    return WebVisitConfig(**config_kwargs)
+
+
+async def setup_image_search_configuration(settings_store: FileSettingsStore) -> ImageSearchConfig | None: 
+    """Interactive setup for image search configuration."""
+    session = PromptSession()
+    
+    print_formatted_text(HTML('\n<green>Setting up Image Search Configuration</green>'))
+    print_formatted_text(HTML('<grey>Configure image search provider:</grey>\n'))
+    
+    # Check if user wants to configure image search
+    if cli_confirm('Do you want to configure image search?', ['Yes, configure SerpAPI', 'Skip image search configuration']) == 1:
+        return None
+    
+    # Get SerpAPI key
+    serpapi_api_key = await get_validated_input(
+        session,
+        'Enter SerpAPI Key: ',
+        error_message='API Key cannot be empty',
+        is_password=True
+    )
+    
+    return ImageSearchConfig(
+        serpapi_api_key=serpapi_api_key,
+    )
+
+
+async def setup_video_generate_configuration(settings_store: FileSettingsStore) -> VideoGenerateConfig | None:
+    """Interactive setup for video generation configuration."""
+    session = PromptSession()
+    
+    print_formatted_text(HTML('\n<green>Setting up Video Generation Configuration</green>'))
+    print_formatted_text(HTML('<grey>Video generation requires either Google AI Studio or Google Cloud Platform setup.</grey>\n'))
+    
+    # Check if user wants to configure video generation
+    if cli_confirm('Do you want to configure video generation?', ['Yes, configure video generation', 'Skip video generation configuration']) == 1:
+        return None
+    
+    # Choose between Google AI Studio or GCP
+    provider_choice = cli_confirm(
+        'Choose video generation provider:',
+        ['Google AI Studio (API Key)', 'Google Cloud Platform (Vertex AI)', 'Skip video generation']
+    )
+    
+    if provider_choice == 2:  # Skip
+        return None
+    
+    if provider_choice == 0:  # Google AI Studio
+        print_formatted_text(HTML('<grey>Using Google AI Studio for video generation:</grey>\n'))
+        
+        google_ai_studio_api_key = await get_validated_input(
+            session,
+            'Enter Google AI Studio API Key: ',
+            error_message='Google AI Studio API Key cannot be empty',
+            is_password=True
+        )
+        
+        return VideoGenerateConfig(
+            google_ai_studio_api_key=google_ai_studio_api_key,
+        )
+    
+    else:  # GCP Vertex AI
+        print_formatted_text(HTML('<grey>Using Google Cloud Platform for video generation:</grey>'))
+        print_formatted_text(HTML('<grey>This requires GCP Project ID, Location, and GCS Output Bucket.</grey>\n'))
+        
+        gcp_project_id = await get_validated_input(
+            session,
+            'Enter GCP Project ID: ',
+            error_message='GCP Project ID cannot be empty'
+        )
+        
+        gcp_location = await get_validated_input(
+            session,
+            'Enter GCP Location (e.g., us-central1): ',
+            error_message='GCP Location cannot be empty'
+        )
+        
+        gcs_output_bucket = await get_validated_input(
+            session,
+            'Enter GCS Output Bucket (e.g., gs://my-bucket-name): ',
+            error_message='GCS Output Bucket cannot be empty'
+        )
+        
+        # Validate GCS bucket format
+        if not gcs_output_bucket.startswith('gs://'):
+            print_formatted_text(HTML('<yellow>Warning: GCS bucket should start with gs://. Adding prefix...</yellow>'))
+            gcs_output_bucket = f'gs://{gcs_output_bucket}'
+        
+        return VideoGenerateConfig(
+            gcp_project_id=gcp_project_id,
+            gcp_location=gcp_location,
+            gcs_output_bucket=gcs_output_bucket,
+        )
+
+
+async def setup_image_generate_configuration(settings_store: FileSettingsStore) -> ImageGenerateConfig | None:
+    """Interactive setup for image generation configuration."""
+    session = PromptSession()
+    
+    print_formatted_text(HTML('\n<green>Setting up Image Generation Configuration</green>'))
+    print_formatted_text(HTML('<grey>Image generation requires either Google AI Studio or Google Cloud Platform setup.</grey>\n'))
+    
+    # Check if user wants to configure image generation
+    if cli_confirm('Do you want to configure image generation?', ['Yes, configure image generation', 'Skip image generation configuration']) == 1:
+        return None
+    
+    # Choose between Google AI Studio or GCP
+    provider_choice = cli_confirm(
+        'Choose image generation provider:',
+        ['Google AI Studio (API Key)', 'Google Cloud Platform (Vertex AI)', 'Skip image generation']
+    )
+    
+    if provider_choice == 2:  # Skip
+        return None
+    
+    if provider_choice == 0:  # Google AI Studio
+        print_formatted_text(HTML('<grey>Using Google AI Studio for image generation:</grey>\n'))
+        
+        google_ai_studio_api_key = await get_validated_input(
+            session,
+            'Enter Google AI Studio API Key: ',
+            error_message='Google AI Studio API Key cannot be empty',
+            is_password=True
+        )
+        
+        return ImageGenerateConfig(
+            google_ai_studio_api_key=google_ai_studio_api_key,
+        )
+    
+    else:  # GCP Vertex AI
+        print_formatted_text(HTML('<grey>Using Google Cloud Platform for image generation:</grey>'))
+        print_formatted_text(HTML('<grey>This requires GCP Project ID and Location.</grey>\n'))
+        
+        gcp_project_id = await get_validated_input(
+            session,
+            'Enter GCP Project ID: ',
+            error_message='GCP Project ID cannot be empty'
+        )
+        
+        gcp_location = await get_validated_input(
+            session,
+            'Enter GCP Location (e.g., us-central1): ',
+            error_message='GCP Location cannot be empty'
+        )
+        
+        return ImageGenerateConfig(
+            gcp_project_id=gcp_project_id,
+            gcp_location=gcp_location,
+        )
+
+
+async def setup_tools_configuration(settings_store: FileSettingsStore) -> tuple[WebSearchConfig, WebVisitConfig, FullStackDevConfig, ImageSearchConfig, VideoGenerateConfig, ImageGenerateConfig]:
+    """Interactive setup for all tool configurations."""
+    print_formatted_text(HTML('\n<blue>Tool Configuration Setup</blue>'))
+    print_formatted_text(HTML('<grey>Configure API keys for basic tools. You can skip any tools you don\'t plan to use.</grey>\n'))
+    
+    # Configure simple tools only
+    web_search_config = await setup_web_search_configuration(settings_store)
+    web_visit_config = await setup_web_visit_configuration(settings_store)
+    image_search_config = await setup_image_search_configuration(settings_store)
+    fullstack_dev_config = FullStackDevConfig()  # No configuration needed for this one
+    
+    # Set complex tools to None for now
+    video_generate_config = None
+    image_generate_config = None
+    
+    # Ask if user wants to configure advanced Google Cloud tools
+    if cli_confirm('\nDo you want to configure advanced Google Cloud tools (video/image generation)?', ['No, keep it simple', 'Yes, configure advanced tools']) == 1:
+        video_generate_config, image_generate_config = await setup_advanced_google_tools(settings_store)
+    
+    return (
+        web_search_config,
+        web_visit_config,
+        fullstack_dev_config,
+        image_search_config,
+        video_generate_config,
+        image_generate_config,
+    )
+
+
+async def setup_advanced_google_tools(settings_store: FileSettingsStore) -> tuple[VideoGenerateConfig | None, ImageGenerateConfig | None]:
+    """Setup advanced Google Cloud tools (video and image generation)."""
+    print_formatted_text(HTML('\n<blue>Advanced Google Cloud Tools Setup</blue>'))
+    print_formatted_text(HTML('<grey>These tools require Google Cloud Platform or Google AI Studio setup.</grey>\n'))
+    
+    # Ask what the user wants to configure
+    tools_choice = cli_confirm(
+        'Which Google Cloud tools do you want to configure?',
+        ['Video generation only', 'Image generation only', 'Both video and image generation', 'Skip advanced tools']
+    )
+    
+    if tools_choice == 3:  # Skip
+        return None, None
+    
+    video_config = None
+    image_config = None
+    
+    # Determine if we need shared Google Cloud setup
+    need_video = tools_choice in [0, 2]  # Video only or both
+    need_image = tools_choice in [1, 2]  # Image only or both
+    
+    if need_video and need_image:
+        # Both tools - offer shared setup
+        shared_setup = cli_confirm(
+            'You selected both video and image generation. Do you want to use the same Google Cloud settings for both?',
+            ['Yes, use shared settings', 'No, configure separately']
+        ) == 0
+        
+        if shared_setup:
+            print_formatted_text(HTML('\n<green>Shared Google Cloud Setup</green>'))
+            print_formatted_text(HTML('<grey>These settings will be used for both video and image generation.</grey>\n'))
+            
+            provider_choice = cli_confirm(
+                'Choose your Google Cloud provider:',
+                ['Google AI Studio (API Key)', 'Google Cloud Platform (Vertex AI)']
+            )
+            
+            if provider_choice == 0:  # Google AI Studio
+                google_ai_studio_api_key = await get_validated_input(
+                    PromptSession(),
+                    'Enter Google AI Studio API Key: ',
+                    error_message='Google AI Studio API Key cannot be empty',
+                    is_password=True
+                )
+                
+                video_config = VideoGenerateConfig(google_ai_studio_api_key=google_ai_studio_api_key)
+                image_config = ImageGenerateConfig(google_ai_studio_api_key=google_ai_studio_api_key)
+                
+            else:  # GCP Vertex AI
+                print_formatted_text(HTML('<grey>Note: Video generation also requires a GCS bucket for temporary storage.</grey>\n'))
+                
+                session = PromptSession()
+                gcp_project_id = await get_validated_input(
+                    session,
+                    'Enter GCP Project ID: ',
+                    error_message='GCP Project ID cannot be empty'
+                )
+                
+                gcp_location = await get_validated_input(
+                    session,
+                    'Enter GCP Location (e.g., us-central1): ',
+                    error_message='GCP Location cannot be empty'
+                )
+                
+                gcs_output_bucket = await get_validated_input(
+                    session,
+                    'Enter GCS Output Bucket for video generation (e.g., gs://my-bucket): ',
+                    error_message='GCS Output Bucket cannot be empty'
+                )
+                
+                if not gcs_output_bucket.startswith('gs://'):
+                    gcs_output_bucket = f'gs://{gcs_output_bucket}'
+                
+                video_config = VideoGenerateConfig(
+                    gcp_project_id=gcp_project_id,
+                    gcp_location=gcp_location,
+                    gcs_output_bucket=gcs_output_bucket,
+                )
+                image_config = ImageGenerateConfig(
+                    gcp_project_id=gcp_project_id,
+                    gcp_location=gcp_location,
+                )
+        else:
+            # Configure separately
+            if need_video:
+                video_config = await setup_video_generate_configuration(settings_store)
+            if need_image:
+                image_config = await setup_image_generate_configuration(settings_store)
+    
+    elif need_video:
+        video_config = await setup_video_generate_configuration(settings_store)
+    elif need_image:
+        image_config = await setup_image_generate_configuration(settings_store)
+    
+    return video_config, image_config
+
+
+async def setup_llm_configuration(settings_store: FileSettingsStore) -> LLMConfig | None:
+    """Interactive setup for LLM configuration. Returns the config without saving."""
     session = PromptSession()
     
     try:
@@ -337,11 +751,7 @@ async def setup_llm_configuration(settings_store: FileSettingsStore) -> None:
             )
             temperature = float(temp_input)
         
-        # Confirm save
-        if not save_settings_confirmation():
-            return
-        
-        # Create and save configuration
+        # Create and return configuration (don't save yet)
         llm_config = LLMConfig(
             model=model,
             api_key=SecretStr(api_key),
@@ -352,33 +762,54 @@ async def setup_llm_configuration(settings_store: FileSettingsStore) -> None:
             api_type=api_type
         )
         
-        # Load existing settings or create new
-        settings = await settings_store.load()
-        if not settings:
-            settings = Settings()
-        
-        # Set as default LLM config
-        settings.llm_configs['default'] = llm_config
-        
-        # Save settings
-        await settings_store.store(settings)
-        
-        print_formatted_text(HTML('\n<green>✓ Settings saved successfully!</green>'))
+        print_formatted_text(HTML('\n<green>✓ LLM configuration ready!</green>'))
+        return llm_config
         
     except UserCancelledError:
-        print_formatted_text(HTML('\n<yellow>Setup cancelled by user.</yellow>'))
+        print_formatted_text(HTML('\n<yellow>LLM setup cancelled by user.</yellow>'))
+        return None
     except Exception as e:
-        print_formatted_text(HTML(f'\n<red>Error during setup: {e}</red>'))
+        print_formatted_text(HTML(f'\n<red>Error during LLM setup: {e}</red>'))
+        return None
 
 
 async def run_first_time_setup(settings_store: FileSettingsStore) -> bool:
     """Run the first-time setup flow."""
     print_formatted_text(HTML('\n<blue>Welcome to ii-agent!</blue>'))
-    print_formatted_text(HTML('<grey>No settings found. Let\'s set up your LLM configuration.</grey>\n'))
+    print_formatted_text(HTML('<grey>No settings found. Let\'s set up your configuration.</grey>\n'))
     
     try:
-        await setup_llm_configuration(settings_store)
-        return True
+        # First setup LLM configuration
+        llm_config = await setup_llm_configuration(settings_store)
+        if llm_config:
+            # Then setup tool configurations
+            (web_search_config, web_visit_config, fullstack_dev_config, 
+             image_search_config, video_generate_config, image_generate_config) = await setup_tools_configuration(settings_store)
+
+            # Confirm save for all configurations
+            if save_settings_confirmation():
+                # Create new settings with all configurations
+                settings = Settings(
+                    web_search_config=web_search_config,
+                    web_visit_config=web_visit_config,
+                    fullstack_dev_config=fullstack_dev_config,
+                    image_search_config=image_search_config,
+                    video_generate_config=video_generate_config,
+                    image_generate_config=image_generate_config,
+                )
+                
+                # Set the LLM config
+                settings.llm_configs['default'] = llm_config
+                
+                # Save all settings at once
+                await settings_store.store(settings)
+                print_formatted_text(HTML('\n<green>✓ Complete setup saved successfully!</green>'))
+                return True
+            else:
+                print_formatted_text(HTML('\n<yellow>Setup cancelled - settings not saved.</yellow>'))
+                return False
+        else:
+            return False
     except Exception as e:
         print_formatted_text(HTML(f'\n<red>Setup failed: {e}</red>'))
         return False
@@ -393,11 +824,50 @@ async def modify_settings(settings_store: FileSettingsStore) -> None:
         
         modify_choice = cli_confirm(
             '\nWhat would you like to modify?',
-            ['LLM Configuration', 'Go back']
+            ['LLM Configuration', 'Basic Tool Configurations', 'Advanced Google Cloud Tools', 'Go back']
         )
         
         if modify_choice == 0:
-            await setup_llm_configuration(settings_store)
+            llm_config = await setup_llm_configuration(settings_store)
+            if llm_config:
+                # Just update the LLM config, keep existing tool configs
+                settings.llm_configs['default'] = llm_config
+                
+                if save_settings_confirmation():
+                    await settings_store.store(settings)
+                    print_formatted_text(HTML('\n<green>✓ LLM configuration updated successfully!</green>'))
+        elif modify_choice == 1:
+            # Basic tools only
+            web_search_config = await setup_web_search_configuration(settings_store)
+            web_visit_config = await setup_web_visit_configuration(settings_store)
+            image_search_config = await setup_image_search_configuration(settings_store)
+            fullstack_dev_config = FullStackDevConfig()
+            
+            # Keep existing advanced tool configs
+            video_generate_config = settings.video_generate_config
+            image_generate_config = settings.image_generate_config
+            
+            # Update settings with new basic tool configurations
+            settings.web_search_config = web_search_config
+            settings.web_visit_config = web_visit_config
+            settings.image_search_config = image_search_config
+            settings.fullstack_dev_config = fullstack_dev_config
+            
+            if save_settings_confirmation():
+                await settings_store.store(settings)
+                print_formatted_text(HTML('\n<green>✓ Basic tool configurations updated successfully!</green>'))
+                
+        elif modify_choice == 2:
+            # Advanced Google Cloud tools
+            video_generate_config, image_generate_config = await setup_advanced_google_tools(settings_store)
+            
+            # Update settings with new advanced tool configurations
+            settings.video_generate_config = video_generate_config
+            settings.image_generate_config = image_generate_config
+            
+            if save_settings_confirmation():
+                await settings_store.store(settings)
+                print_formatted_text(HTML('\n<green>✓ Advanced tool configurations updated successfully!</green>'))
     else:
         print_formatted_text(HTML('<grey>No settings found. Running first-time setup...</grey>'))
         await run_first_time_setup(settings_store)

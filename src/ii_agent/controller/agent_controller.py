@@ -1,19 +1,20 @@
 import asyncio
 import time
+import base64
+
 from typing import Any, Optional, cast
 from functools import partial
-
 from ii_agent.controller.agent import Agent
+from ii_agent.controller.tool_manager import AgentToolManager, ToolCallParameters
+from ii_agent.controller.state import State
 from ii_agent.core.event import EventType, RealtimeEvent
 from ii_agent.core.event_stream import EventStream
-from ii_agent.llm.base import TextResult, AssistantContentBlock
-from ii_agent.controller.state import State
-from ii_agent.tools.utils import encode_image
-from ii_agent.tools import AgentToolManager, ToolCallParameters, ToolResult, ToolConfirmationDetails
-from ii_agent.utils.constants import COMPLETE_MESSAGE
-from ii_agent.utils.workspace_manager import WorkspaceManager
 from ii_agent.core.logger import logger
+from ii_agent.llm.base import TextResult, AssistantContentBlock
 from ii_agent.llm.context_manager.base import ContextManager
+from ii_agent.utils.constants import COMPLETE_MESSAGE
+from ii_tool.core import WorkspaceManager
+from ii_tool.tools.base import ToolResult, ToolConfirmationDetails
 
 TOOL_RESULT_INTERRUPT_MESSAGE = "[Request interrupted by user for tool use]"
 AGENT_INTERRUPT_MESSAGE = "Agent interrupted by user."
@@ -117,9 +118,8 @@ class AgentController:
             # First, list all attached files
             instruction = f"""{instruction}\n\nAttached files:\n"""
             for file in files:
-                relative_path = self.workspace_manager.relative_path(file)
-                instruction += f" - {relative_path}\n"
-                logger.debug(f"Attached file: {relative_path}")
+                instruction += f" - {file}\n"
+                logger.debug(f"Attached file: {file}")
 
             # Then process images for image blocks
             for file in files:
@@ -127,9 +127,8 @@ class AgentController:
                 if ext == "jpg":
                     ext = "jpeg"
                 if ext in ["png", "gif", "jpeg", "webp"]:
-                    base64_image = encode_image(
-                        str(self.workspace_manager.workspace_path(file))
-                    )
+                    with open(file, "rb") as image_file:
+                        base64_image = base64.b64encode(image_file.read()).decode("utf-8")
                     image_blocks.append(
                         {
                             "source": {
@@ -253,7 +252,7 @@ class AgentController:
             
             for tool_call in pending_tool_calls:
                 tool = self.tool_manager.get_tool(tool_call.tool_name)
-                confirmation_details = await tool.should_confirm_execute(tool_call.tool_input)
+                confirmation_details = tool.should_confirm_execute(tool_call.tool_input)
                 
                 # Check if tool should be auto-approved
                 if self._should_auto_approve_tool(tool_call.tool_name):
@@ -388,7 +387,7 @@ class AgentController:
     def add_tool_call_result(self, tool_call: ToolCallParameters, tool_result: ToolResult):
         """Add a tool call result to the history and send it to the message queue."""
         llm_content = tool_result.llm_content
-        user_display_content = tool_result.user_display_content
+        user_display_content = tool_result.user_display_content or llm_content
 
         if isinstance(llm_content, str):
             self.history.add_tool_call_result(tool_call, llm_content)

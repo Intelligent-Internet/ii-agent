@@ -1,12 +1,12 @@
 import asyncio
-from fastmcp import Client
-from pydantic import BaseModel
-from typing import List, Dict, Any
-from ii_agent.tools.base import BaseTool, ToolResult
-from ii_agent.utils.concurrent_execution import should_run_concurrently
-from ii_agent.core.logger import logger
-from ii_agent.tools.mcp_tool import MCPTool
 
+from pydantic import BaseModel
+from typing import List, Any
+from ii_agent.core.logger import logger
+from ii_tool.tools.base import BaseTool, ToolResult
+
+
+MAX_TOOL_CONCURRENCY = 10
 
 class ToolCallParameters(BaseModel):
     tool_call_id: str
@@ -16,7 +16,7 @@ class ToolCallParameters(BaseModel):
 
 class AgentToolManager:
     """
-    Manages the creation and execution of tools for the agent.
+    Manages the registration and execution of tools for the agent.
 
     This class is responsible for:
     - Initializing and managing all available tools
@@ -35,27 +35,6 @@ class AgentToolManager:
         self.tools.extend(tools)
         self._validate_tool_parameters()
 
-    async def register_mcp_tools(
-        self,
-        mcp_client: Client,
-        trust: bool = False,
-    ):
-        async with mcp_client:
-            mcp_tools = await mcp_client.list_tools()
-            for tool in mcp_tools:
-                assert tool.description is not None, f"Tool {tool.name} has no description"
-                tool_annotations = tool.annotations
-                self.tools.append(
-                    MCPTool(
-                        name=tool.name,
-                        description=tool.description,
-                        input_schema=tool.inputSchema,
-                        mcp_client=mcp_client,
-                        annotations=tool_annotations,
-                        trust=trust,
-                    )
-                )
-
     def _validate_tool_parameters(self):
         """Validate tool parameters and check for duplicates."""
         tool_names = [tool.name for tool in self.tools]
@@ -63,6 +42,29 @@ class AgentToolManager:
         for i in range(len(sorted_names) - 1):
             if sorted_names[i] == sorted_names[i + 1]:
                 raise ValueError(f"Tool {sorted_names[i]} is duplicated")
+
+    def _should_run_concurrently(self, tool_params: List[ToolCallParameters]) -> bool:
+        """
+        Determine if tools should run concurrently based on read-only status.
+        
+        Tools run concurrently ONLY if ALL tools are read-only.
+        
+        Args:
+            tools: List of tool call parameters
+            tool_manager: Tool manager instance to look up tools
+            
+        Returns:
+            True if all tools are read-only, False otherwise
+        """
+        try:
+            for tool_call in tool_params:
+                tool = self.get_tool(tool_call.tool_name)
+                if not tool.is_read_only():
+                    return False
+            return True
+        except Exception:
+            # If we can't determine read-only status, err on the side of caution
+            return False
 
     def get_tool(self, tool_name: str) -> BaseTool:
         """
@@ -130,7 +132,7 @@ class AgentToolManager:
             return [result]
         
         # Determine execution strategy based on read-only status
-        if should_run_concurrently(tool_calls, self):
+        if self._should_run_concurrently(tool_calls):
             logger.info(f"Running {len(tool_calls)} tools concurrently (all read-only)")
             return await self._run_tools_concurrently(tool_calls)
         else:
@@ -145,9 +147,6 @@ class AgentToolManager:
             """Wrapper for single tool execution."""
             result = await self.run_tool(tool_call)
             return result
-        
-        # Create tasks for all tools with concurrency limit
-        from ii_agent.utils.concurrent_execution import MAX_TOOL_CONCURRENCY
         
         if len(tool_calls) <= MAX_TOOL_CONCURRENCY:
             # All tools can run concurrently
