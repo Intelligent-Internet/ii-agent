@@ -110,9 +110,8 @@ class OpenAIDirectClient(LLMClient):
                 role = "user"
             elif str(type(internal_message)) == str(TextResult):
                 internal_message = cast(TextResult, internal_message)
-                # For TextResult (assistant), content is handled differently by OpenAI API
-                message_content_obj = {"type": "text", "text": internal_message.text}
-                openai_message = {"role": "assistant", "content": [message_content_obj]}
+                # For TextResult (assistant), OpenAI expects content as a string for regular messages
+                openai_message = {"role": "assistant", "content": internal_message.text}
                 openai_messages.append(openai_message)
                 continue # Move to next message in outer loop
             elif str(type(internal_message)) == str(ToolCall):
@@ -163,8 +162,8 @@ class OpenAIDirectClient(LLMClient):
                     final_text_for_user_message = f"{system_prompt}\n\n{current_message_text}"
                     system_prompt_applied = True # Mark as applied
                     
-                message_content_obj = {"type": "text", "text": final_text_for_user_message}
-                openai_message = {"role": role, "content": [message_content_obj]}
+                # For regular text messages, OpenAI expects content as a string
+                openai_message = {"role": role, "content": final_text_for_user_message}
                 openai_messages.append(openai_message)
 
         # If cot_model is True and system_prompt was provided but not applied (e.g., no user messages found, though unlikely for an agent)
@@ -173,7 +172,7 @@ class OpenAIDirectClient(LLMClient):
             # Or, one might argue it's an error condition for COT if no user prompt exists.
             # For now, let's log a warning and add it as a user message, as some COT models might expect user turn for instructions.
             logger.warning("COT mode: System prompt provided but no initial user message to prepend to. Adding as a separate user message.")
-            openai_messages.insert(0, {"role": "user", "content": [{"type": "text", "text": system_prompt}]})
+            openai_messages.insert(0, {"role": "user", "content": system_prompt})
 
         # Turn tool_choice into OpenAI tool_choice format
         if tool_choice is None:
@@ -299,8 +298,10 @@ class OpenAIDirectClient(LLMClient):
 
         if content:  # Changed from elif due to issue 134
             internal_messages.append(TextResult(text=content))
-        #else:
-        #    raise ValueError(f"Unknown message type: {openai_response_message}")
+        
+        if not content and not tool_calls:
+            logger.warning(f"Response has no content or tool_calls: {openai_response_message}")
+            internal_messages.append(TextResult(text=""))
 
         assert response.usage is not None
         message_metadata = {
