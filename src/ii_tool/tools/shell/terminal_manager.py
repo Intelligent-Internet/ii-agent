@@ -114,7 +114,7 @@ class TmuxSessionManager(BaseShellManager):
 
             # Customize the prompt for easier getting the state of the session
             pane = self._get_active_pane(session_name)
-            pane.send_keys(f'export PS1="{_PROMPT_FORMAT}"; clear')
+            pane.send_keys(f"export PS1='{_PROMPT_FORMAT}'; clear")
             self._wait_for_session_idle(session_name, timeout=timeout)
 
         except TmuxSessionExists:
@@ -256,7 +256,7 @@ class TmuxWindowManager(BaseShellManager):
 
     def _configure_session(self, session_name: str, timeout: int = _DEFAULT_TIMEOUT):
         pane = self._get_active_pane(session_name)
-        pane.send_keys(f'export PS1="{_PROMPT_FORMAT}"; clear')
+        pane.send_keys(f"export PS1='{_PROMPT_FORMAT}'; clear")
         self._wait_for_session_idle(session_name, timeout=timeout) # wait for the session to be idle
 
     def create_session(self, session_name: str, start_directory: str, timeout: int = _DEFAULT_TIMEOUT):
