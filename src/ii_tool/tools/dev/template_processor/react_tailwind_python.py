@@ -1,7 +1,7 @@
 import os
+import subprocess
 from ii_tool.tools.dev.template_processor.base_processor import BaseProcessor
 from ii_tool.tools.dev.template_processor.registry import WebProcessorRegistry
-from ii_tool.tools.shell.terminal_manager import BaseShellManager
 
 
 def deployment_rule(project_path: str) -> str:
@@ -71,42 +71,32 @@ class ReactTailwindPythonProcessor(BaseProcessor):
     def __init__(
         self,
         project_dir: str,
-        terminal_client: BaseShellManager,
-        bash_session: str,
     ):
-        super().__init__(project_dir, terminal_client, bash_session)
+        super().__init__(project_dir)
         self.project_rule = deployment_rule(project_dir)
 
     def install_dependencies(self):
         frontend_dir = os.path.join(self.project_dir, "frontend")
         backend_dir = os.path.join(self.project_dir, "backend")
 
-        install_result = self.terminal_client.run_command(
-            self.bash_session,
-            "bun install && echo 'Frontend dependencies installed successfully'",
-            run_dir=frontend_dir,
-            timeout=999999,
-            wait_for_output=True,
+        install_result = subprocess.run(
+            "bun install",
+            shell=True,
+            cwd=frontend_dir,
+            capture_output=True,
         )
-        if (
-            not install_result
-            or "Frontend dependencies installed successfully"
-            not in install_result.split("\n")[-2]
-        ):
+        if install_result.returncode != 0:
             raise Exception(
-                f"Failed to install frontend dependencies: {install_result}"
+                f"Failed to install frontend dependencies automatically: {install_result.stderr.decode('utf-8')}. Please fix the error and run `bun install` in the frontend directory manually"
             )
 
-        install_result = self.terminal_client.run_command(
-            self.bash_session,
-            "pip install -r requirements.txt && echo 'Dependencies installed successfully'",
-            run_dir=backend_dir,
-            timeout=999999,  # Quick fix: No Timeout
-            wait_for_output=True,
+        install_result = subprocess.run(
+            "pip install -r requirements.txt",
+            shell=True,
+            cwd=backend_dir,
+            capture_output=True,
         )
-        if (
-            not install_result
-            or "Dependencies installed successfully"
-            not in install_result.split("\n")[-2]
-        ):
-            raise Exception(f"Failed to install backend dependencies: {install_result}")
+        if install_result.returncode != 0:
+            raise Exception(
+                f"Failed to install backend dependencies automatically: {install_result.stderr.decode('utf-8')}. Please fix the error and run `pip install -r requirements.txt` in the backend directory manually"
+            )

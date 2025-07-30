@@ -1,4 +1,4 @@
-from ii_tool.tools.shell.terminal_manager import BaseShellManager
+import subprocess
 from ii_tool.tools.dev.template_processor.base_processor import BaseProcessor
 from ii_tool.tools.dev.template_processor.registry import WebProcessorRegistry
 
@@ -76,23 +76,18 @@ class NextShadcnProcessor(BaseProcessor):
     def __init__(
         self,
         project_dir: str,
-        terminal_client: BaseShellManager,
-        bash_session: str,
     ):
-        super().__init__(project_dir, terminal_client, bash_session)
+        super().__init__(project_dir)
         self.project_rule = deployment_rule(project_dir)
 
     def install_dependencies(self):
-        install_result = self.terminal_client.run_command(
-            self.bash_session,
-            "bun install && echo 'Dependencies installed successfully'",
-            run_dir=self.project_dir,
-            timeout=999999,
-            wait_for_output=True,
+        install_result = subprocess.run(
+            "bun install",
+            shell=True,
+            cwd=self.project_dir,
+            capture_output=True,
         )
-        if (
-            install_result is None
-            or "Dependencies installed successfully"
-            not in install_result.split("\n")[-2]
-        ):
-            raise Exception(f"Failed to install dependencies: {install_result}")
+        if install_result.returncode != 0:
+            raise Exception(
+                f"Failed to install dependencies automatically: {install_result.stderr.decode('utf-8')}. Please fix the error and run `bun install` in the project directory manually"
+            )

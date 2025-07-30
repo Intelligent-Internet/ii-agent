@@ -1,7 +1,6 @@
 from typing import Dict, Type
 
 from ii_tool.tools.dev.template_processor.base_processor import BaseProcessor
-from ii_tool.tools.shell.terminal_manager import BaseShellManager
 
 
 class WebProcessorRegistry:
@@ -24,8 +23,6 @@ class WebProcessorRegistry:
         cls,
         framework_name: str,
         project_dir: str,
-        terminal_client: BaseShellManager,
-        bash_session: str,
     ) -> BaseProcessor:
         """Create a processor instance."""
         processor_class = cls._registry.get(framework_name)
@@ -36,7 +33,7 @@ class WebProcessorRegistry:
                 f"Unknown framework '{framework_name}'. Available: {available}"
             )
 
-        return processor_class(project_dir, terminal_client, bash_session)
+        return processor_class(project_dir)
 
     @classmethod
     def list_frameworks(cls) -> list[str]:

@@ -100,27 +100,23 @@ class FullStackInitTool(BaseTool):
             )
 
         os.makedirs(project_dir, exist_ok=True)
-        init_session_id = BASH_SESSION + "_" + project_name
-        self.terminal_manager.create_session(init_session_id, str(project_dir))
 
         processor = WebProcessorRegistry.create(
             framework,
             project_dir,
-            self.terminal_manager,
-            init_session_id,
         )
         try:
             processor.start_up_project()
         except Exception as e:
             return ToolResult(
-                llm_content=f"Failed to start up project: {e}",
-                user_display_content="Failed to start up project",
+                llm_content=f"Failed to start up project in {project_dir}: {e}",
+                user_display_content=f"Failed to start up project in {project_dir}: {e}",
                 is_error=True,
             )
 
         return ToolResult(
-            llm_content=processor.get_project_rule(),
-            user_display_content="Successfully initialized fullstack web application",
+            llm_content=f"Successfully initialized fullstack web application in {project_dir}. Tool output: {processor.get_project_rule()}",
+            user_display_content=f"Successfully initialized fullstack web application in {project_dir}. Tool output: {processor.get_project_rule()}",
             is_error=False,
         )
 
