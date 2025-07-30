@@ -33,7 +33,7 @@ dependencies = [
     "pytest>=8.3.5",
     "python-dotenv>=1.1.0",
     "python-pptx>=1.0.2",
-    "rich==13.7.1",
+    "rich==14.1.0",
     "speechrecognition>=3.14.2",
     "tavily-python>=0.7.2",
     "tenacity>=9.1.2",
@@ -41,6 +41,8 @@ dependencies = [
     "uvicorn[standard]>=0.29.0,<0.30.0",
     "youtube-transcript-api>=1.0.3",
     "alembic>=1.16.1",
+    "fastmcp==2.10.6",
+    "libtmux==0.46.2",
 ]
 
 [project.optional-dependencies]

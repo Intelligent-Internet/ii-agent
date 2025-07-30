@@ -172,7 +172,7 @@ class CLIApp:
         # Create agent
         agent_config = AgentConfig(
             max_tokens_per_turn=self.config.max_output_tokens_per_turn,
-            system_prompt=get_system_prompt(self.workspace_path),
+            system_prompt=get_system_prompt(self.workspace_manager.get_workspace_path()),
         )
 
         tool_manager = AgentToolManager()
