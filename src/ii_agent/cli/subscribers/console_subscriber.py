@@ -138,43 +138,29 @@ class ConsoleSubscriber:
         self.console.print(error_text)
     
     def _handle_tool_confirmation_event(self, event: RealtimeEvent) -> None:
-        """Handle tool confirmation event with interactive prompt."""
+        """Handle tool confirmation event with enhanced interactive prompt."""
         content = event.content
         tool_call_id = content.get("tool_call_id", "")
         tool_name = content.get("tool_name", "unknown")
         tool_input = content.get("tool_input", {})
         message = content.get("message", "")
         
-        # Show the tool details
-        self.console.print()
-        self.console.print("🔒 [yellow]Tool Confirmation Required[/yellow]")
-        self.console.print(f"   Tool: [bold]{tool_name}[/bold]")
-        if message:
-            self.console.print(f"   Reason: {message}")
-        
-        # Show key parameters
-        #TODO: move confirmation information logic to the tool class
-        if tool_input:
-            self.console.print("   Parameters:")
-            for key, value in tool_input.items():
-                if isinstance(value, str) and len(value) > 100:
-                    value = value[:100] + "..."
-                self.console.print(f"     {key}: {value}")
-        
-        self.console.print()
+        # Enhanced tool information display
+        self._display_tool_confirmation_info(tool_name, tool_input, message)
         
         # Check if arrow navigation is enabled in CLI config
         use_arrow_navigation = True  # Default to enabled
         if self.settings and self.settings.cli_config:
             use_arrow_navigation = self.settings.cli_config.enable_arrow_navigation
         
+        choice = None
         if use_arrow_navigation:
-            # Use the new reliable select menu with arrow navigation
+            # Try to use the new enhanced confirmation dialog first
             try:
-                from ii_agent.cli.components.select_menu import create_tool_confirmation_menu
+                from ii_agent.cli.components.tool_confirmation import create_enhanced_tool_confirmation_dialog
                 
-                menu = create_tool_confirmation_menu(self.console)
-                choice_index = menu.select()
+                dialog = create_enhanced_tool_confirmation_dialog(self.console)
+                choice_index = dialog.show_confirmation(tool_name, tool_input, message)
                 
                 if choice_index is not None:
                     choice = str(choice_index + 1)  # Convert 0-based to 1-based
@@ -182,55 +168,207 @@ class ConsoleSubscriber:
                     choice = '4'  # Default to "no" if cancelled
                     
             except Exception as e:
-                # Fallback to traditional input
-                self.console.print(f"[dim]Arrow navigation unavailable: {e}[/dim]")
-                use_arrow_navigation = False
+                # Fallback to enhanced select menu
+                try:
+                    from ii_agent.cli.components.select_menu import create_tool_confirmation_menu
+                    
+                    menu = create_tool_confirmation_menu(self.console)
+                    choice_index = menu.select()
+                    
+                    if choice_index is not None:
+                        choice = str(choice_index + 1)  # Convert 0-based to 1-based
+                    else:
+                        choice = '4'  # Default to "no" if cancelled
+                        
+                except Exception as e2:
+                    # Last resort: traditional input
+                    self.console.print(f"[dim]Enhanced UI unavailable: {e2}[/dim]")
+                    use_arrow_navigation = False
         
         if not use_arrow_navigation:
-            # Traditional numbered input
-            self.console.print("Do you want to execute this tool?")
-            self.console.print("[bold green]1.[/bold green] Yes")
-            self.console.print("[bold blue]2.[/bold blue] Yes, and don't ask again for this tool this session")
-            self.console.print("[bold cyan]3.[/bold cyan] Yes, approve for all tools in this session")
-            self.console.print("[bold red]4.[/bold red] No, and tell ii-agent what to do differently")
-            self.console.print()
+            # Traditional numbered input with enhanced styling
+            self._display_traditional_confirmation_menu()
             choice = self._get_traditional_input()
         
-        # Handle the choice
+        # Handle the choice with enhanced feedback
+        self._process_confirmation_choice(choice, tool_call_id, tool_name)
+    
+    def _display_tool_confirmation_info(self, tool_name: str, tool_input: Dict[str, Any], message: str) -> None:
+        """Display enhanced tool confirmation information in a unified panel."""
+        from rich.panel import Panel
+        from rich.text import Text
+        from rich.columns import Columns
+        from rich import box
+        
+        # Create unified content for the panel with beautiful formatting
+        content = Text()
+        
+        # Header section with nice spacing
+        content.append("🔧 ", style="bold cyan")
+        content.append("Tool: ", style="bold cyan")
+        content.append(f"{tool_name}", style="bold white")
+        content.append("\n\n", style="")
+        
+        # Reason/message if provided with better formatting
+        if message:
+            content.append("💡 ", style="bold yellow")
+            content.append("Reason: ", style="bold yellow")
+            content.append(f"{message}", style="white")
+            content.append("\n\n", style="")
+        
+        # Parameters section with enhanced formatting
+        if tool_input:
+            content.append("📋 ", style="bold cyan")
+            content.append("Parameters:", style="bold cyan")
+            content.append("\n\n", style="")
+            
+            for key, value in tool_input.items():
+                formatted_value = self._format_parameter_value_for_display(key, value)
+                content.append("    • ", style="dim cyan")
+                content.append(f"{key}: ", style="cyan")
+                content.append(f"{formatted_value}", style="white")
+                content.append("\n", style="")
+            
+            content.append("\n", style="")
+        
+        # Beautiful separator with padding (adjusted for panel width)
+        separator_line = "═" * 78  # Adjusted to match the wider panel width
+        content.append(f"{separator_line}\n\n", style="dim blue")
+        
+        # Options section header with nice styling
+        content.append("🎯 ", style="bold cyan")
+        content.append("Choose your action:", style="bold cyan")
+        content.append("\n\n", style="")
+        
+        # Enhanced options with icons and colors
+        options = [
+            ("1", "✅ Execute Once", "green", "Run this tool once and ask again next time"),
+            ("2", "🔓 Always Allow This Tool", "blue", "Auto-approve this tool for the rest of this session"),
+            ("3", "⚡ Allow All Tools", "yellow", "Auto-approve ALL tools for the rest of this session"),
+            ("4", "❌ Deny & Provide Alternative", "red", "Don't execute and tell ii-agent what to do instead")
+        ]
+        
+        for num, text, color, desc in options:
+            content.append("    ", style="")
+            content.append(f"{num}. ", style="dim")
+            content.append(f"{text[0]} ", style=f"bold {color}")  # Icon
+            content.append(f"{text[2:]}", style=f"bold {color}")   # Text without icon
+            content.append("\n", style="")
+            content.append("      ", style="")
+            content.append(f"└─ {desc}", style="dim")
+            content.append("\n\n", style="")
+        
+        # Instructions with better formatting
+        content.append("═" * 78 + "\n", style="dim blue")
+        content.append("   ", style="")
+        content.append("⌨️  ", style="dim")
+        content.append("↑↓ Navigate", style="dim")
+        content.append(" • ", style="dim")
+        content.append("Enter Select", style="dim")
+        content.append(" • ", style="dim")
+        content.append("Esc Cancel", style="dim")
+        content.append(" • ", style="dim")
+        content.append("1-4 Shortcuts", style="dim")
+        
+        # Create the unified panel with enhanced styling
+        self.console.print()
+        unified_panel = Panel(
+            content,
+            title="🔒 Tool Execution Confirmation",
+            title_align="center",
+            border_style="bright_yellow",
+            box=box.DOUBLE,
+            padding=(2, 4),
+            width=90,
+            expand=False
+        )
+        self.console.print(unified_panel)
+        self.console.print()
+    
+    def _format_parameter_value_for_display(self, key: str, value: Any) -> str:
+        """Format parameter value for enhanced display."""
+        if isinstance(value, str):
+            # Special handling for file paths
+            if key.endswith('_path') or key == 'file_path' or ('/' in value or '\\' in value):
+                return self._format_file_path(value)
+            
+            # Truncate long strings
+            if len(value) > 80:
+                return f'"{value[:80]}..."'
+            else:
+                return f'"{value}"'
+        else:
+            return str(value)
+    
+    def _display_traditional_confirmation_menu(self) -> None:
+        """Display traditional confirmation menu with enhanced styling (now within unified panel)."""
+        # This is no longer needed since we display everything in the unified panel above
+        # But keeping for backward compatibility if the unified display fails
+        from rich.text import Text
+        
+        self.console.print("🎯 [bold cyan]Choose your action:[/bold cyan]")
+        self.console.print()
+        
+        # Enhanced options with icons and colors
+        options = [
+            ("1", "✅ Execute Once", "green", "Run this tool once and ask again next time"),
+            ("2", "🔓 Always Allow This Tool", "blue", "Auto-approve this tool for the rest of this session"),
+            ("3", "⚡ Allow All Tools", "yellow", "Auto-approve ALL tools for the rest of this session"),
+            ("4", "❌ Deny & Provide Alternative", "red", "Don't execute and tell ii-agent what to do instead")
+        ]
+        
+        for num, text, color, desc in options:
+            option_text = Text()
+            option_text.append(f"  {num}. {text}", style=f"bold {color}")
+            self.console.print(option_text)
+            
+            desc_text = Text()
+            desc_text.append(f"     {desc}", style="dim")
+            self.console.print(desc_text)
+            
+        self.console.print()
+        
+    def _process_confirmation_choice(self, choice: str, tool_call_id: str, tool_name: str) -> None:
+        """Process the confirmation choice with enhanced feedback."""
         approved = False
         alternative_instruction = ""
         
         if choice == '1':
-            self.console.print("✅ [green]Tool execution approved[/green]")
+            self.console.print("✅ [bold green]Tool execution approved[/bold green]")
             approved = True
             
         elif choice == '2':
-            self.console.print(f"✅ [blue]Tool '{tool_name}' approved for this session[/blue]")
+            self.console.print(f"🔓 [bold blue]Tool '{tool_name}' approved for this session[/bold blue]")
             approved = True
             # Add tool to allow_tools set
             if self.config:
                 self.config.allow_tools.add(tool_name)
             
         elif choice == '3':
-            self.console.print("✅ [cyan]All tools approved for this session[/cyan]")
+            self.console.print("⚡ [bold yellow]All tools approved for this session[/bold yellow]")
             approved = True
             # Set auto_approve_tools to True
             if self.config:
                 self.config.set_auto_approve_tools(True)
             
         elif choice == '4':
-            self.console.print("❌ [red]Tool execution denied[/red]")
+            self.console.print("❌ [bold red]Tool execution denied[/bold red]")
             approved = False
-            # Get alternative instruction
+            # Get alternative instruction with enhanced prompt
             try:
-                alternative = input("What should ii-agent do instead? ").strip()
+                from rich.prompt import Prompt
+                alternative = Prompt.ask(
+                    "\n[cyan]What should ii-agent do instead?[/cyan]",
+                    console=self.console
+                ).strip()
+                
                 if alternative:
-                    self.console.print(f"📝 Alternative instruction: {alternative}")
+                    self.console.print(f"📝 [green]Alternative instruction recorded:[/green] {alternative}")
                     alternative_instruction = alternative
                 else:
-                    self.console.print("📝 No alternative instruction provided")
+                    self.console.print("📝 [dim]No alternative instruction provided[/dim]")
             except (KeyboardInterrupt, EOFError):
-                self.console.print("📝 No alternative instruction provided")
+                self.console.print("📝 [dim]No alternative instruction provided[/dim]")
         
         # Send response back via callback
         if self.confirmation_callback:
@@ -300,32 +438,42 @@ class ConsoleSubscriber:
         self.console.print(message)
     
     def _print_response(self, text: str) -> None:
-        """Print agent response with clean formatting."""
+        """Print agent response with clean formatting and markdown rendering."""
         # Clear any status indicators immediately
         self._clear_thinking_indicator()
         
         if not self.minimal:
-            # Use simple prefix instead of heavy frames
             from rich.text import Text
+            from rich.markdown import Markdown
             
             # Add spacing before agent response
             self.console.print()
             
             # Create clean response with agent icon
-            response_text = Text()
-            response_text.append("🤖 Agent: ", style="green")
+            response_prefix = Text()
+            response_prefix.append("🤖 Agent: ", style="green")
+            self.console.print(response_prefix)
             
-            # Check if text contains code blocks
-            if "```" in text:
-                # For code blocks, just add the text and let Rich handle markdown
-                response_text.append(text)
-                self.console.print(response_text)
-            else:
-                response_text.append(text, style="white")
-                self.console.print(response_text)
+            # Always try to render as markdown first
+            try:
+                # Create markdown object and render it
+                markdown_content = Markdown(text)
+                self.console.print(markdown_content)
+            except Exception:
+                # Fallback to plain text if markdown parsing fails
+                self.console.print(text, style="white")
         else:
             self.console.print()
-            self.console.print(f"🤖 Agent: [white]{text}[/white]")
+            # For minimal mode, still try basic markdown rendering
+            try:
+                from rich.markdown import Markdown
+                markdown_prefix = f"🤖 Agent: "
+                self.console.print(markdown_prefix, style="green", end="")
+                markdown_content = Markdown(text)
+                self.console.print(markdown_content)
+            except Exception:
+                # Fallback to plain text
+                self.console.print(f"🤖 Agent: [white]{text}[/white]")
     
     def _print_tool_call(self, tool_name: str, tool_input: Dict[str, Any]) -> None:
         """Print clean tool call information."""

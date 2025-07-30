@@ -50,31 +50,47 @@ class SelectMenu:
             sys.stdout.flush()
             
     def _render_menu(self) -> None:
-        """Render the current menu state with simple, reliable output."""
+        """Render the current menu state with enhanced visual styling."""
         line_count = 0
         
-        # Title with simple formatting
+        # Title with enhanced formatting
         if self.title:
-            # Create a simple bordered title
-            title_line = f"╭─ {self.title} ─╮"
+            # Create a beautifully styled title
+            title_width = len(self.title) + 4
+            border_char = "─"
+            title_line = f"╭{border_char * (title_width + 2)}╮"
+            title_content = f"│ {self.title} │"
+            bottom_line = f"╰{border_char * (title_width + 2)}╯"
+            
             print(f"\033[96m{title_line}\033[0m")  # Cyan color
-            line_count += 1
+            print(f"\033[96m{title_content}\033[0m")
+            print(f"\033[96m{bottom_line}\033[0m")
+            line_count += 3
         
         # Add a blank line after title
         print()
         line_count += 1
         
-        # Options with simple formatting
+        # Options with enhanced formatting and icons
         for i, option in enumerate(self.options):
             if i == self.selected_index:
-                # Selected option with blue background
+                # Selected option with enhanced styling
                 if self.show_numbers:
                     text = f"▶ {i + 1}. {option}"
                 else:
                     text = f"▶ {option}"
-                print(f"\033[44m\033[97m{text}\033[0m")  # Blue background, white text
+                    
+                # Use gradient-like styling for selection
+                print(f"\033[44m\033[97m\033[1m{text}\033[0m")  # Blue background, white bold text
+                
+                # Add subtle description line for context
+                if hasattr(self, '_get_option_description'):
+                    desc = self._get_option_description(i)
+                    if desc:
+                        print(f"\033[90m     {desc}\033[0m")  # Dark gray description
+                        line_count += 1
             else:
-                # Normal option
+                # Normal option with subtle styling
                 if self.show_numbers:
                     text = f"  {i + 1}. {option}"
                 else:
@@ -82,9 +98,12 @@ class SelectMenu:
                 print(f"\033[37m{text}\033[0m")  # White text
             line_count += 1
         
-        # Instructions
+        # Enhanced instructions with better formatting
         print()
-        print(f"\033[90m↑↓ Navigate • Enter Select • Esc Cancel • 1-9 Shortcuts\033[0m")  # Dark gray
+        instruction_text = "↑↓ Navigate • Enter Select • Esc Cancel"
+        if self.show_numbers:
+            instruction_text += " • 1-9 Shortcuts"
+        print(f"\033[90m{instruction_text}\033[0m")  # Dark gray
         line_count += 2
         
         self._last_render_lines = line_count
@@ -217,26 +236,47 @@ class SelectMenu:
             sys.stdout.flush()
 
 
-def create_tool_confirmation_menu(console: Console) -> SelectMenu:
+class EnhancedToolConfirmationMenu(SelectMenu):
+    """Enhanced tool confirmation menu with better styling and descriptions."""
+    
+    def __init__(self, console: Optional[Console] = None):
+        options = [
+            "✅ Execute Once",
+            "🔓 Always Allow This Tool",
+            "⚡ Allow All Tools",
+            "❌ Deny & Provide Alternative"
+        ]
+        
+        super().__init__(
+            options=options,
+            title="🔒 Tool Execution Confirmation",
+            console=console,
+            show_numbers=True
+        )
+        
+        # Option descriptions for enhanced UX
+        self.option_descriptions = [
+            "Run this tool once and ask again next time",
+            "Auto-approve this tool for the rest of this session",
+            "Auto-approve ALL tools for the rest of this session",
+            "Don't execute and tell ii-agent what to do instead"
+        ]
+    
+    def _get_option_description(self, option_index: int) -> str:
+        """Get description for the given option index."""
+        if 0 <= option_index < len(self.option_descriptions):
+            return self.option_descriptions[option_index]
+        return ""
+
+
+def create_tool_confirmation_menu(console: Console) -> EnhancedToolConfirmationMenu:
     """
-    Create a select menu for tool confirmation.
+    Create an enhanced select menu for tool confirmation.
     
     Args:
         console: Rich console instance
         
     Returns:
-        Configured SelectMenu instance
+        Configured EnhancedToolConfirmationMenu instance
     """
-    options = [
-        "Yes",
-        "Yes, and don't ask again for this tool this session",
-        "Yes, approve for all tools in this session",
-        "No, and tell ii-agent what to do differently"
-    ]
-    
-    return SelectMenu(
-        options=options,
-        title="🔒 Do you want to execute this tool?",
-        console=console,
-        show_numbers=True
-    )
+    return EnhancedToolConfirmationMenu(console)

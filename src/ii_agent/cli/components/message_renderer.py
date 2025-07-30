@@ -68,14 +68,22 @@ class MessageRenderer:
             self.console.print(panel)
     
     def _render_assistant_message(self, content: str, metadata: Optional[Dict[str, Any]] = None) -> None:
-        """Render assistant message with enhanced formatting."""
+        """Render assistant message with enhanced formatting and markdown support."""
         if self.minimal:
-            self.console.print(f"🤖 [green]{content}[/green]")
+            # For minimal mode, try to render markdown without panel
+            try:
+                markdown_content = Markdown(content)
+                self.console.print(f"🤖 [green]Assistant:[/green]")
+                self.console.print(markdown_content)
+            except Exception:
+                # Fallback to plain text
+                self.console.print(f"🤖 [green]{content}[/green]")
         else:
-            # Check if content contains code blocks
-            if "```" in content:
+            # Always try to render as markdown first
+            try:
                 rendered_content = Markdown(content)
-            else:
+            except Exception:
+                # Fallback to plain text if markdown parsing fails
                 rendered_content = content
             
             # Add metadata if available

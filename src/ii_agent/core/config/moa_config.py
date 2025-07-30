@@ -168,7 +168,7 @@ def create_default_moa_config() -> MoAConfig:
         max_retries=3,
     )
     
-    #openai_config = None
+    openai_config = None
     
     return MoAConfig(
         enabled=True,
