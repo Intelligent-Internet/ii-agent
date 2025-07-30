@@ -61,9 +61,6 @@ INPUT_SCHEMA = {
     "required": ["project_name", "framework"],
 }
 
-BASH_SESSION = "fullstack_init_system"
-
-
 class FullStackInitTool(BaseTool):
     name = NAME
     display_name = DISPLAY_NAME
