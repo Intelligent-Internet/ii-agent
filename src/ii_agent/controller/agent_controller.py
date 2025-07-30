@@ -61,10 +61,15 @@ class AgentController:
         self.history = init_history
         self.event_stream = event_stream
         self.context_manager = context_manager
-        
+
         # Tool confirmation tracking
         self._pending_confirmations: dict[str, dict] = {}
         self._confirmation_responses: dict[str, dict] = {}
+        
+    @property
+    def state(self) -> State:
+        """Return the current conversation state/history."""
+        return self.history
 
     def add_confirmation_response(self, tool_call_id: str, approved: bool, alternative_instruction: str = "") -> None:
         """Add a confirmation response for a tool call."""

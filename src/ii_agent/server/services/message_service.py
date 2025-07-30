@@ -46,7 +46,7 @@ class MessageService:
         session: "ChatSession",
     ) -> None:
         """Process a WebSocket message and route to appropriate handler.
-        
+
         Args:
             message_type: Type of message to process
             content: Message content dictionary
@@ -84,7 +84,7 @@ class MessageService:
                 model_name=init_content.model_name,
                 session_id=session.session_uuid,
                 workspace_manager=session.workspace_manager,
-                websocket=session.websocket,
+                event_stream=session.get_event_stream(),
                 tool_args=init_content.tool_args,
             )
 
@@ -92,7 +92,9 @@ class MessageService:
             if init_content.thinking_tokens:
                 # Update the LLM config with thinking tokens
                 user_id = None
-                settings_store = await FileSettingsStore.get_instance(self.config, user_id)
+                settings_store = await FileSettingsStore.get_instance(
+                    self.config, user_id
+                )
                 settings = await settings_store.load()
                 llm_config = settings.llm_configs.get(init_content.model_name)
                 if llm_config:
@@ -103,17 +105,22 @@ class MessageService:
             session.agent_controller = controller
 
             # Check if reviewer is enabled
-            session.enable_reviewer = init_content.tool_args.get("enable_reviewer", False)
+            session.enable_reviewer = init_content.tool_args.get(
+                "enable_reviewer", False
+            )
             if session.enable_reviewer:
                 # Create reviewer agent
-                reviewer_agent, reviewer_controller = await self.agent_service.create_reviewer_agent(
+                (
+                    reviewer_agent,
+                    reviewer_controller,
+                ) = await self.agent_service.create_reviewer_agent(
                     model_name=init_content.model_name,
                     session_id=session.session_uuid,
                     workspace_manager=session.workspace_manager,
-                    websocket=session.websocket,
+                    event_stream=session.get_event_stream(),
                     tool_args=init_content.tool_args,
                 )
-                
+
                 session.reviewer_agent = reviewer_agent
                 session.reviewer_controller = reviewer_controller
 
@@ -185,7 +192,9 @@ class MessageService:
                 )
             )
 
-    async def _handle_workspace_info(self, content: dict, session: "ChatSession") -> None:
+    async def _handle_workspace_info(
+        self, content: dict, session: "ChatSession"
+    ) -> None:
         """Handle workspace info request."""
         await session.send_event(
             RealtimeEvent(
@@ -284,11 +293,13 @@ class MessageService:
                 )
             )
 
-    async def _handle_enhance_prompt(self, content: dict, session: "ChatSession") -> None:
+    async def _handle_enhance_prompt(
+        self, content: dict, session: "ChatSession"
+    ) -> None:
         """Handle prompt enhancement request."""
         try:
             enhance_content = EnhancePromptContent(**content)
-            
+
             # Create LLM client
             user_id = None
             settings_store = await FileSettingsStore.get_instance(self.config, user_id)
@@ -296,8 +307,10 @@ class MessageService:
 
             llm_config = settings.llm_configs.get(enhance_content.model_name)
             if not llm_config:
-                raise ValueError(f"LLM config not found for model: {enhance_content.model_name}")
-            
+                raise ValueError(
+                    f"LLM config not found for model: {enhance_content.model_name}"
+                )
+
             client = get_client(llm_config)
 
             # Enhance the prompt
@@ -333,7 +346,9 @@ class MessageService:
                 )
             )
 
-    async def _handle_review_result(self, content: dict, session: "ChatSession") -> None:
+    async def _handle_review_result(
+        self, content: dict, session: "ChatSession"
+    ) -> None:
         """Handle reviewer's feedback."""
         try:
             if not session.agent_controller:
@@ -396,10 +411,14 @@ class MessageService:
                 )
             )
         finally:
+            # Save session state after agent turn completes
+            session.save_session_state()
             # Clean up task reference
             session.active_task = None
 
-    async def _run_reviewer_async(self, user_input: str, session: "ChatSession") -> None:
+    async def _run_reviewer_async(
+        self, user_input: str, session: "ChatSession"
+    ) -> None:
         """Run the reviewer agent to analyze the main agent's output."""
         if not session.reviewer_controller:
             await session.send_event(
@@ -414,7 +433,7 @@ class MessageService:
             # Extract final result from main agent's history
             final_result = ""
             found = False
-            
+
             for message in session.agent_controller.state._message_lists[::-1]:
                 for sub_message in message:
                     if (
@@ -427,7 +446,7 @@ class MessageService:
                         break
                 if found:
                     break
-            
+
             if not found:
                 logger.warning("No final result found from agent to review")
                 return

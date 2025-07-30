@@ -33,30 +33,32 @@ class SessionService:
         self,
         websocket: WebSocket,
         session_uuid: Optional[uuid.UUID] = None,
+        device_id: Optional[str] = None,
     ) -> ChatSession:
         """Create a new chat session.
-        
+
         Args:
             websocket: WebSocket connection
             session_uuid: Optional session UUID, will generate if not provided
-            
+            device_id: Optional device ID for session tracking
+
         Returns:
             ChatSession instance
         """
         # Generate session UUID if not provided
         if session_uuid is None:
             session_uuid = uuid.uuid4()
-        
+
         # Create workspace for this session
         workspace_path = Path(self.config.workspace_root).resolve()
         connection_workspace = workspace_path / str(session_uuid)
         connection_workspace.mkdir(parents=True, exist_ok=True)
-        
+
         workspace_manager = WorkspaceManager(
             root=connection_workspace,
             container_workspace=self.config.use_container_workspace,
         )
-        
+
         # Create chat session
         session = ChatSession(
             websocket=websocket,
@@ -66,6 +68,7 @@ class SessionService:
             message_service=self.message_service,
             file_store=self.file_store,
             config=self.config,
+            device_id=device_id,
         )
-        
+
         return session

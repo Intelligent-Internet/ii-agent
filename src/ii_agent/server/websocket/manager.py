@@ -33,12 +33,16 @@ class ConnectionManager:
         if session_uuid is not None:
             session_uuid = uuid.UUID(session_uuid)
 
+        # Get device ID from query params
+        device_id = websocket.query_params.get("device_id")
+
         # Create a new chat session using the session service
         session = self.session_service.create_session(
             websocket=websocket,
             session_uuid=session_uuid,
+            device_id=device_id,
         )
-        
+
         self.sessions[websocket] = session
 
         logger.info(
