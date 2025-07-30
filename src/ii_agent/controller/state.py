@@ -13,10 +13,10 @@ from ii_agent.llm.base import (
     TextPrompt,
     TextResult,
     ToolCall,
-    ToolCallParameters,
     ToolFormattedResult,
     ImageBlock,
 )
+from ii_agent.controller.tool_manager import ToolCallParameters
 
 
 class State(BaseModel):
@@ -177,12 +177,13 @@ class State(BaseModel):
                 )
         return tool_calls
 
-    def add_tool_call_result(self, parameters: ToolCallParameters, result: str):
+    def add_tool_call_result(self, parameters: ToolCallParameters, result: str | list[dict[str, Any]]):
         """Add the result of a tool call to the dialog."""
+        # NOTE: the result is in form of list of dicts when there are images in the tool result
         self.add_tool_call_results([parameters], [result])
 
     def add_tool_call_results(
-        self, parameters: list[ToolCallParameters], results: list[str]
+        self, parameters: list[ToolCallParameters], results: list[str | list[dict[str, Any]]]
     ):
         """Add the result of a tool call to the dialog."""
         self.message_lists.append(

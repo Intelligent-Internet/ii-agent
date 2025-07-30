@@ -15,12 +15,10 @@ from ii_agent.core.storage.settings.file_settings_store import FileSettingsStore
 from ii_agent.llm import get_client
 from ii_agent.llm.context_manager.llm_summarizing import LLMSummarizingContextManager
 from ii_agent.llm.token_counter import TokenCounter
-from ii_agent.prompts.system_prompt import (
-    SYSTEM_PROMPT,
-    SYSTEM_PROMPT_WITH_SEQ_THINKING,
-)
-from ii_agent.tools import get_system_tools
+from ii_agent.prompts import get_system_prompt
+from ii_agent.subscribers.websocket_subscriber import WebSocketSubscriber
 from ii_agent.utils.workspace_manager import WorkspaceManager
+from ii_tool.tools import get_default_tools
 
 logger = logging.getLogger(__name__)
 
@@ -73,33 +71,20 @@ class AgentService:
 
         # Determine system prompt
         if system_prompt is None:
-            system_prompt = (
-                SYSTEM_PROMPT_WITH_SEQ_THINKING
-                if tool_args.get("sequential_thinking", False)
-                else SYSTEM_PROMPT
-            )
-
+            system_prompt = get_system_prompt(workspace_manager.root)
+        
         # Create agent config
         agent_config = AgentConfig(
             max_tokens_per_turn=self.config.max_output_tokens_per_turn,
             system_prompt=system_prompt,
             temperature=getattr(self.config, "temperature", 0.7),
         )
-
-        # Get tools
-        tools = get_system_tools(
-            client=llm_client,
-            workspace_manager=workspace_manager,
-            settings=settings,
-            container_id=self.config.docker_container_id,
-            tool_args=tool_args,
-        )
-
+        
         # Create agent
         agent = FunctionCallAgent(
             llm=llm_client,
             config=agent_config,
-            tools=tools,
+            tools=[], # NOTE: Temporary fix
         )
 
         # Create context manager
@@ -120,7 +105,7 @@ class AgentService:
         # Create controller
         controller = AgentController(
             agent=agent,
-            tools=tools,
+            tools=[], # NOTE: Temporary fix
             init_history=state,
             workspace_manager=workspace_manager,
             event_stream=event_stream,

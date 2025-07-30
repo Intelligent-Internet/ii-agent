@@ -1,19 +1,20 @@
 import asyncio
-from typing import Any, Optional, List
-from functools import partial
+import time
+import base64
 
+from typing import Any, Optional, cast
+from functools import partial
 from ii_agent.controller.agent import Agent
+from ii_agent.controller.tool_manager import AgentToolManager, ToolCallParameters
+from ii_agent.controller.state import State
 from ii_agent.core.event import EventType, RealtimeEvent
 from ii_agent.core.event_stream import EventStream
-from ii_agent.llm.base import TextResult, ToolCallParameters
-from ii_agent.controller.state import State
-from ii_agent.tools.base import ToolImplOutput, LLMTool
-from ii_agent.tools.utils import encode_image
-from ii_agent.tools import AgentToolManager
-from ii_agent.utils.constants import COMPLETE_MESSAGE
-from ii_agent.utils.workspace_manager import WorkspaceManager
 from ii_agent.core.logger import logger
+from ii_agent.llm.base import TextResult, AssistantContentBlock
 from ii_agent.llm.context_manager.base import ContextManager
+from ii_agent.utils.constants import COMPLETE_MESSAGE
+from ii_tool.core import WorkspaceManager
+from ii_tool.tools.base import ImageContent, TextContent, ToolResult, ToolConfirmationDetails
 
 TOOL_RESULT_INTERRUPT_MESSAGE = "[Request interrupted by user for tool use]"
 AGENT_INTERRUPT_MESSAGE = "Agent interrupted by user."
@@ -27,13 +28,14 @@ class AgentController:
     def __init__(
         self,
         agent: Agent,
-        tools: List[LLMTool],
+        tool_manager: AgentToolManager,
         init_history: State,
         workspace_manager: WorkspaceManager,
         event_stream: EventStream,
         context_manager: ContextManager,
         max_turns: int = 200,
         interactive_mode: bool = True,
+        config: Optional[Any] = None,
     ):
         """Initialize the agent.
 
@@ -50,11 +52,8 @@ class AgentController:
         super().__init__()
         self.workspace_manager = workspace_manager
         self.agent = agent
-        self.tool_manager = AgentToolManager(
-            tools=tools,
-            logger_for_agent_logs=logger,
-            interactive_mode=interactive_mode,
-        )
+        self.tool_manager = tool_manager
+        self.config = config
 
         self.max_turns = max_turns
         self.interactive_mode = interactive_mode
@@ -63,26 +62,58 @@ class AgentController:
         self.event_stream = event_stream
         self.context_manager = context_manager
 
+        # Tool confirmation tracking
+        self._pending_confirmations: dict[str, dict] = {}
+        self._confirmation_responses: dict[str, dict] = {}
+        
     @property
     def state(self) -> State:
         """Return the current conversation state/history."""
         return self.history
 
-    def _validate_tool_parameters(self):
-        """Validate tool parameters and check for duplicates."""
-        tool_params = [tool.get_tool_param() for tool in self.tool_manager.tools]
-        tool_names = [param.name for param in tool_params]
-        sorted_names = sorted(tool_names)
-        for i in range(len(sorted_names) - 1):
-            if sorted_names[i] == sorted_names[i + 1]:
-                raise ValueError(f"Tool {sorted_names[i]} is duplicated")
-        return tool_params
+    def add_confirmation_response(self, tool_call_id: str, approved: bool, alternative_instruction: str = "") -> None:
+        """Add a confirmation response for a tool call."""
+        self._confirmation_responses[tool_call_id] = {
+            "approved": approved,
+            "alternative_instruction": alternative_instruction
+        }
+
+    def _should_auto_approve_tool(self, tool_name: str) -> bool:
+        """Check if a tool should be auto-approved based on config."""
+        if not self.config:
+            return False
+        
+        # Check if all tools are auto-approved
+        if getattr(self.config, 'auto_approve_tools', False):
+            return True
+        
+        # Check if this specific tool is in the allow list
+        allow_tools = getattr(self.config, 'allow_tools', set())
+        return tool_name in allow_tools
+
+    async def _wait_for_confirmation(self, tool_call_id: str, timeout: float = 300.0) -> dict:
+        """Wait for confirmation response for a specific tool call."""
+        start_time = time.time()
+        
+        while time.time() - start_time < timeout:
+            if tool_call_id in self._confirmation_responses:
+                response = self._confirmation_responses.pop(tool_call_id)
+                return response
+            
+            # Check for interruption
+            if self.interrupted:
+                return {"approved": False, "alternative_instruction": "Operation interrupted"}
+            
+            await asyncio.sleep(0.1)
+        
+        # Timeout - default to deny
+        return {"approved": False, "alternative_instruction": "Confirmation timeout"}
 
     async def run_impl(
         self,
         tool_input: dict[str, Any],
         state: Optional[State] = None,
-    ) -> ToolImplOutput:
+    ) -> ToolResult:
         instruction = tool_input["instruction"]
         files = tool_input["files"]
 
@@ -92,9 +123,8 @@ class AgentController:
             # First, list all attached files
             instruction = f"""{instruction}\n\nAttached files:\n"""
             for file in files:
-                relative_path = self.workspace_manager.relative_path(file)
-                instruction += f" - {relative_path}\n"
-                logger.debug(f"Attached file: {relative_path}")
+                instruction += f" - {file}\n"
+                logger.debug(f"Attached file: {file}")
 
             # Then process images for image blocks
             for file in files:
@@ -102,9 +132,8 @@ class AgentController:
                 if ext == "jpg":
                     ext = "jpeg"
                 if ext in ["png", "gif", "jpeg", "webp"]:
-                    base64_image = encode_image(
-                        str(self.workspace_manager.workspace_path(file))
-                    )
+                    with open(file, "rb") as image_file:
+                        base64_image = base64.b64encode(image_file.read()).decode("utf-8")
                     image_blocks.append(
                         {
                             "source": {
@@ -123,14 +152,13 @@ class AgentController:
             self.truncate_history()
             remaining_turns -= 1
 
-            self._validate_tool_parameters()
 
             if self.interrupted:
                 # Handle interruption during model generation or other operations
                 self.add_fake_assistant_turn(AGENT_INTERRUPT_FAKE_MODEL_RSP)
-                return ToolImplOutput(
-                    tool_output=AGENT_INTERRUPT_MESSAGE,
-                    tool_result_message=AGENT_INTERRUPT_MESSAGE,
+                return ToolResult(
+                    llm_content=AGENT_INTERRUPT_MESSAGE,
+                    user_display_content=AGENT_INTERRUPT_MESSAGE,
                 )
 
             # Only show token count in debug mode, not in interactive CLI
@@ -155,7 +183,7 @@ class AgentController:
                 model_response = [TextResult(text=COMPLETE_MESSAGE)]
 
             # Add the raw response to the canonical history
-            self.history.add_assistant_turn(model_response)
+            self.history.add_assistant_turn(cast(list[AssistantContentBlock], model_response))
 
             # Process all TextResult blocks first
             text_results = [
@@ -187,21 +215,23 @@ class AgentController:
                             content={"text": "Task completed"},
                         )
                     )
-                return ToolImplOutput(
-                    tool_output=self.history.get_last_assistant_text_response()
-                    or "Task completed",
-                    tool_result_message="Task completed",
+                return ToolResult(
+                    llm_content=self.history.get_last_assistant_text_response() or "Task completed",
+                    user_display_content="Task completed",
                 )
 
             # Check for interruption before tool execution
             if self.interrupted:
                 # Handle interruption during tool execution
                 for tool_call in pending_tool_calls:
-                    self.add_tool_call_result(tool_call, TOOL_RESULT_INTERRUPT_MESSAGE)
+                    self.add_tool_call_result(tool_call, ToolResult(
+                        llm_content=TOOL_RESULT_INTERRUPT_MESSAGE,
+                        user_display_content=TOOL_RESULT_INTERRUPT_MESSAGE,
+                    ))
                 self.add_fake_assistant_turn(TOOL_CALL_INTERRUPT_FAKE_MODEL_RSP)
-                return ToolImplOutput(
-                    tool_output=TOOL_RESULT_INTERRUPT_MESSAGE,
-                    tool_result_message=TOOL_RESULT_INTERRUPT_MESSAGE,
+                return ToolResult(
+                    llm_content=TOOL_RESULT_INTERRUPT_MESSAGE,
+                    user_display_content=TOOL_RESULT_INTERRUPT_MESSAGE,
                 )
 
             # Execute all tool calls using batch approach
@@ -220,21 +250,74 @@ class AgentController:
                     )
                 )
 
-            # Execute tools in batch (handles both single and multiple tools)
-            tool_results = await self.tool_manager.run_tools_batch(
-                pending_tool_calls, self.history
-            )
-
-            # Add all results to history in order
-            for tool_call, tool_result in zip(pending_tool_calls, tool_results):
-                self.add_tool_call_result(tool_call, tool_result)
+            # Handle tool confirmation and execution
+            approved_tool_calls = []
+            denied_tool_calls = []
+            alternative_instructions = []
+            
+            for tool_call in pending_tool_calls:
+                tool = self.tool_manager.get_tool(tool_call.tool_name)
+                confirmation_details = tool.should_confirm_execute(tool_call.tool_input)
+                
+                # Check if tool should be auto-approved
+                if self._should_auto_approve_tool(tool_call.tool_name):
+                    approved_tool_calls.append(tool_call)
+                elif isinstance(confirmation_details, ToolConfirmationDetails):
+                    # Send confirmation event and wait for response
+                    self.event_stream.add_event(
+                        RealtimeEvent(type=EventType.TOOL_CONFIRMATION, content={
+                            "tool_call_id": tool_call.tool_call_id,
+                            "tool_name": tool_call.tool_name,
+                            "tool_input": tool_call.tool_input,
+                            "message": confirmation_details.message,
+                        })
+                    )
+                    
+                    # Wait for confirmation response
+                    confirmation_response = await self._wait_for_confirmation(tool_call.tool_call_id)
+                    
+                    if confirmation_response["approved"]:
+                        approved_tool_calls.append(tool_call)
+                    else:
+                        denied_tool_calls.append(tool_call)
+                        if confirmation_response["alternative_instruction"]:
+                            alternative_instructions.append(confirmation_response["alternative_instruction"])
+                else:
+                    # No confirmation needed, approve by default
+                    approved_tool_calls.append(tool_call)
+            
+            # Handle denied tools
+            if denied_tool_calls:
+                denial_message = f"Tool execution denied for: {', '.join([tc.tool_name for tc in denied_tool_calls])}"
+                if alternative_instructions:
+                    denial_message += f"\nAlternative instructions: {'; '.join(alternative_instructions)}"
+                
+                # Add denial results to history
+                for tool_call in denied_tool_calls:
+                    self.add_tool_call_result(tool_call, ToolResult(
+                        llm_content=denial_message,
+                        user_display_content=denial_message,
+                    ))
+            
+            # Execute approved tools in batch
+            if approved_tool_calls:
+                tool_results = await self.tool_manager.run_tools_batch(approved_tool_calls)
+                
+                for tool_call, tool_result in zip(approved_tool_calls, tool_results):
+                    self.add_tool_call_result(tool_call, tool_result)
+            
+            # If all tools were denied and we have alternative instructions, add them to history
+            if not approved_tool_calls and alternative_instructions:
+                alt_instruction_text = "User provided alternative instructions: " + "; ".join(alternative_instructions)
+                self.history.add_user_prompt(alt_instruction_text)
 
         agent_answer = "Agent did not complete after max turns"
         self.event_stream.add_event(
             RealtimeEvent(type=EventType.AGENT_RESPONSE, content={"text": agent_answer})
         )
-        return ToolImplOutput(
-            tool_output=agent_answer, tool_result_message=agent_answer
+        return ToolResult(
+            llm_content=agent_answer,
+            user_display_content=agent_answer
         )
 
     def get_tool_start_message(self, tool_input: dict[str, Any]) -> str:
@@ -246,7 +329,7 @@ class AgentController:
         files: list[str] | None = None,
         resume: bool = False,
         orientation_instruction: str | None = None,
-    ) -> ToolImplOutput:
+    ) -> ToolResult:
         """Start a new agent run asynchronously.
 
         Args:
@@ -277,7 +360,7 @@ class AgentController:
         files: list[str] | None = None,
         resume: bool = False,
         orientation_instruction: str | None = None,
-    ) -> ToolImplOutput:
+    ) -> ToolResult:
         """Start a new agent run synchronously.
 
         Args:
@@ -306,9 +389,42 @@ class AgentController:
         self.interrupted = True
         logger.debug("Agent cancellation requested")
 
-    def add_tool_call_result(self, tool_call: ToolCallParameters, tool_result: str):
+    def add_tool_call_result(self, tool_call: ToolCallParameters, tool_result: ToolResult):
         """Add a tool call result to the history and send it to the message queue."""
-        self.history.add_tool_call_result(tool_call, tool_result)
+        llm_content = tool_result.llm_content
+        user_display_content = tool_result.user_display_content or llm_content
+
+        if isinstance(llm_content, str):
+            self.history.add_tool_call_result(tool_call, llm_content)
+        # NOTE: the current tool output is maximum 1 text block and 1 image block
+        # TODO: handle this better, may be move the logic to each LLM client
+        elif isinstance(llm_content, list):
+            if len(llm_content) == 1 and isinstance(llm_content[0], TextContent):
+                llm_content_text = llm_content[0].text
+                self.history.add_tool_call_result(tool_call, llm_content_text)
+            else:
+                llm_content_fmt = []
+                for content in llm_content:
+                    if isinstance(content, TextContent):
+                        llm_content_fmt.append({
+                            "type": "text",
+                            "text": content.text,
+                        })
+                    elif isinstance(content, ImageContent):
+                        llm_content_fmt.append({
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": content.mime_type,
+                                "data": content.data,
+                            }
+                        })
+                    else:
+                        raise ValueError(f"Unknown content type: {type(content)}")
+
+                self.history.add_tool_call_result(tool_call, llm_content_fmt)
+        else:
+            raise ValueError(f"Unknown content type: {type(llm_content)}")
 
         self.event_stream.add_event(
             RealtimeEvent(
@@ -316,14 +432,14 @@ class AgentController:
                 content={
                     "tool_call_id": tool_call.tool_call_id,
                     "tool_name": tool_call.tool_name,
-                    "result": tool_result,
+                    "result": user_display_content
                 },
             )
         )
 
     def add_fake_assistant_turn(self, text: str):
         """Add a fake assistant turn to the history and send it to the message queue."""
-        self.history.add_assistant_turn([TextResult(text=text)])
+        self.history.add_assistant_turn(cast(list[AssistantContentBlock], [TextResult(text=text)]))
         if self.interrupted:
             rsp_type = EventType.AGENT_RESPONSE_INTERRUPTED
         else:
