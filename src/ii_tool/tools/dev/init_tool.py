@@ -2,7 +2,6 @@ import os
 
 from typing import Any
 from ii_tool.tools.dev.template_processor.registry import WebProcessorRegistry
-from ii_tool.tools.shell.terminal_manager import BaseShellManager
 from ii_tool.core.config import FullStackDevConfig
 from ii_tool.tools.base import BaseTool, ToolResult
 from ii_tool.core.workspace import WorkspaceManager
@@ -75,12 +74,10 @@ class FullStackInitTool(BaseTool):
     def __init__(
         self,
         workspace_manager: WorkspaceManager,
-        terminal_manager: BaseShellManager,
         settings: FullStackDevConfig,
     ) -> None:
         super().__init__()
         self.workspace_manager = workspace_manager
-        self.terminal_manager = terminal_manager
         self.settings = settings
 
     async def execute(
