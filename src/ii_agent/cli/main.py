@@ -72,7 +72,7 @@ def create_parser() -> argparse.ArgumentParser:
         "--resume", 
         "-r", 
         action="store_true", 
-        help="Resume from previous session"
+        help="Select and resume from a previous session"
     )
     chat_parser.add_argument(
         "--continue", 

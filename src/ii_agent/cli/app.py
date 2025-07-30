@@ -35,6 +35,7 @@ from ii_agent.cli.state_persistence import (
     restore_agent_state,
     restore_configs,
 )
+from ii_agent.cli.components.session_selector import SessionSelector
 from ii_agent.controller.tool_manager import AgentToolManager
 from ii_agent.llm.base import ToolParam
 from ii_tool.utils import load_tools_from_mcp
@@ -127,7 +128,7 @@ class CLIApp:
         else:
             logger.debug(f"Tool confirmation received but no agent controller: {tool_call_id} -> approved={approved}")
         
-    async def initialize_agent(self, continue_from_state: bool = False) -> None:
+    async def initialize_agent(self, continue_from_state: bool = False, resume_session_data: Optional[Dict] = None) -> None:
         """Initialize the agent controller."""
         if self.agent_controller is not None:
             return
@@ -150,28 +151,35 @@ class CLIApp:
         # Update console subscriber with settings
         self.console_subscriber.settings = settings
 
-        # Load saved state if --continue flag is used
+        # Load saved state - prioritize resume_session_data, then continue_from_state
         saved_state_data = None
-        if continue_from_state:
+        if resume_session_data:
+            saved_state_data = resume_session_data
+            self.console_subscriber.console.print(
+                f"🔄 [cyan]Resuming session {saved_state_data.get('session_id', 'unknown')}...[/cyan]"
+            )
+        elif continue_from_state:
             saved_state_data = self.state_manager.load_state()
             if saved_state_data:
                 self.console_subscriber.console.print(
                     "🔄 [cyan]Continuing from previous state...[/cyan]"
                 )
-                # Update configurations from saved state if available
-                config_data, llm_config_data = restore_configs(saved_state_data)
-                if config_data:
-                    for key, value in config_data.items():
-                        if hasattr(self.config, key):
-                            setattr(self.config, key, value)
-                if llm_config_data:
-                    for key, value in llm_config_data.items():
-                        if hasattr(self.llm_config, key):
-                            setattr(self.llm_config, key, value)
             else:
                 self.console_subscriber.console.print(
                     "⚠️ [yellow]No saved state found, starting fresh...[/yellow]"
                 )
+        
+        # Update configurations from saved state if available
+        if saved_state_data:
+            config_data, llm_config_data = restore_configs(saved_state_data)
+            if config_data:
+                for key, value in config_data.items():
+                    if hasattr(self.config, key):
+                        setattr(self.config, key, value)
+            if llm_config_data:
+                for key, value in llm_config_data.items():
+                    if hasattr(self.llm_config, key):
+                        setattr(self.llm_config, key, value)
 
         # Create LLM client based on configuration
         llm_client = get_client(self.llm_config)
@@ -286,14 +294,27 @@ class CLIApp:
     ) -> int:
         """Run interactive chat mode."""
         try:
-            await self.initialize_agent(continue_from_state)
+            # Handle resume flag - let user select session
+            selected_session_data = None
+            if resume:
+                selected_session_data = await self._handle_resume_selection()
+                if selected_session_data:
+                    # Initialize agent with the selected session data
+                    await self.initialize_agent(continue_from_state=False, resume_session_data=selected_session_data)
+                else:
+                    # User chose new session or selection failed
+                    await self.initialize_agent(continue_from_state)
+            else:
+                await self.initialize_agent(continue_from_state)
 
             self.console_subscriber.print_welcome()
             self.console_subscriber.print_session_info(session_name)
 
-            # Load session if resuming
-            if resume and session_name:
-                self._load_session(session_name)
+            # Show session history if we resumed from a selected session
+            if selected_session_data:
+                self.console_subscriber.render_conversation_history(
+                    self.agent_controller.history
+                )
 
             while True:
                 try:
@@ -368,6 +389,46 @@ class CLIApp:
 
             traceback.print_exc()
             return 1
+
+    async def _handle_resume_selection(self) -> Optional[Dict[str, Any]]:
+        """Handle session selection for --resume flag."""
+        try:
+            # Create a temporary state manager to list sessions
+            temp_state_manager = StateManager(
+                workspace_path=Path(self.workspace_path),
+                continue_session=False
+            )
+            
+            # Get available sessions
+            available_sessions = temp_state_manager.list_available_sessions()
+            
+            if not available_sessions:
+                self.console_subscriber.console.print("[yellow]No previous sessions found. Starting new session.[/yellow]")
+                return None
+            
+            # Show session selector
+            session_selector = SessionSelector(self.console_subscriber.console)
+            selected_session_id = session_selector.select_session(available_sessions)
+            
+            if not selected_session_id:
+                # User chose new session or cancelled
+                return None
+            
+            # Load the selected session
+            selected_session_data = temp_state_manager.load_specific_session(selected_session_id)
+            
+            if selected_session_data:
+                # Display session info
+                session_info = next((s for s in available_sessions if s["session_id"] == selected_session_id), None)
+                if session_info:
+                    session_selector.display_session_info(session_info)
+            
+            return selected_session_data
+            
+        except Exception as e:
+            logger.error(f"Error handling resume selection: {e}")
+            self.console_subscriber.console.print(f"[red]Error selecting session: {e}. Starting new session.[/red]")
+            return None
 
     def _read_instruction_from_file(self, file_path: str) -> str:
         """Read instruction from file."""

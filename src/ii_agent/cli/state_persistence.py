@@ -9,7 +9,7 @@ import json
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 
 from ii_agent.core.config.ii_agent_config import IIAgentConfig
 from ii_agent.core.config.llm_config import LLMConfig
@@ -200,6 +200,89 @@ class StateManager:
             
         except Exception as e:
             logger.error(f"Error getting state info: {e}")
+            return None
+    
+    def list_available_sessions(self) -> List[Dict[str, Any]]:
+        """List all available sessions with their basic info."""
+        sessions = []
+        try:
+            # List all session directories in the sessions folder
+            sessions_dir = Path(self.file_store.root) / "sessions"
+            if not sessions_dir.exists():
+                return sessions
+            
+            for session_dir in sessions_dir.iterdir():
+                if session_dir.is_dir():
+                    try:
+                        session_id = session_dir.name
+                        metadata_filename = get_conversation_metadata_filename(session_id)
+                        
+                        # Check if metadata file exists before trying to read it
+                        metadata_file_path = Path(self.file_store.root) / metadata_filename
+                        if not metadata_file_path.exists():
+                            continue  # Skip sessions without metadata (old format)
+                        
+                        metadata_json = self.file_store.read(metadata_filename)
+                        metadata = json.loads(metadata_json)
+                        
+                        # Parse timestamp for sorting
+                        timestamp_str = metadata.get("timestamp", "")
+                        try:
+                            timestamp = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+                        except:
+                            timestamp = datetime.min
+                        
+                        session_info = {
+                            "session_id": session_id,
+                            "timestamp": timestamp_str,
+                            "timestamp_obj": timestamp,
+                            "session_name": metadata.get("session_name"),
+                            "workspace_path": metadata.get("workspace_path", ""),
+                            "message_count": metadata.get("agent_state", {}).get("message_count", 0),
+                            "version": metadata.get("version", "1.0")
+                        }
+                        sessions.append(session_info)
+                    except Exception as e:
+                        logger.warning(f"Error reading session {session_dir.name}: {e}")
+                        continue
+            
+            # Sort by timestamp (newest first)
+            sessions.sort(key=lambda x: x["timestamp_obj"], reverse=True)
+            
+        except Exception as e:
+            logger.error(f"Error listing sessions: {e}")
+        
+        return sessions
+    
+    def load_specific_session(self, session_id: str) -> Optional[Dict[str, Any]]:
+        """Load a specific session by ID."""
+        try:
+            # Create a new State object and restore from session
+            state = State()
+            state.restore_from_session(session_id, self.file_store)
+            
+            # Load metadata
+            metadata_filename = get_conversation_metadata_filename(session_id)
+            metadata_json = self.file_store.read(metadata_filename)
+            metadata = json.loads(metadata_json)
+            
+            # Combine state and metadata into return format
+            return {
+                "version": metadata.get("version", "2.0"),
+                "timestamp": metadata.get("timestamp"),
+                "workspace_path": metadata.get("workspace_path"),
+                "session_name": metadata.get("session_name"),
+                "session_id": metadata.get("session_id"),
+                "agent_state": {
+                    "message_lists": state.message_lists,
+                    "last_user_prompt_index": state.last_user_prompt_index
+                },
+                "config": metadata.get("config", {}),
+                "llm_config": metadata.get("llm_config", {})
+            }
+                
+        except Exception as e:
+            logger.error(f"Error loading session {session_id}: {e}")
             return None
 
 
