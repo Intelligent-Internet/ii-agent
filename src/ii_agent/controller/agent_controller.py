@@ -14,7 +14,7 @@ from ii_agent.llm.base import TextResult, AssistantContentBlock
 from ii_agent.llm.context_manager.base import ContextManager
 from ii_agent.utils.constants import COMPLETE_MESSAGE
 from ii_tool.core import WorkspaceManager
-from ii_tool.tools.base import ToolResult, ToolConfirmationDetails
+from ii_tool.tools.base import ImageContent, TextContent, ToolResult, ToolConfirmationDetails
 
 TOOL_RESULT_INTERRUPT_MESSAGE = "[Request interrupted by user for tool use]"
 AGENT_INTERRUPT_MESSAGE = "Agent interrupted by user."
@@ -61,10 +61,15 @@ class AgentController:
         self.history = init_history
         self.event_stream = event_stream
         self.context_manager = context_manager
-        
+
         # Tool confirmation tracking
         self._pending_confirmations: dict[str, dict] = {}
         self._confirmation_responses: dict[str, dict] = {}
+        
+    @property
+    def state(self) -> State:
+        """Return the current conversation state/history."""
+        return self.history
 
     def add_confirmation_response(self, tool_call_id: str, approved: bool, alternative_instruction: str = "") -> None:
         """Add a confirmation response for a tool call."""
@@ -391,12 +396,35 @@ class AgentController:
 
         if isinstance(llm_content, str):
             self.history.add_tool_call_result(tool_call, llm_content)
+        # NOTE: the current tool output is maximum 1 text block and 1 image block
+        # TODO: handle this better, may be move the logic to each LLM client
+        elif isinstance(llm_content, list):
+            if len(llm_content) == 1 and isinstance(llm_content[0], TextContent):
+                llm_content_text = llm_content[0].text
+                self.history.add_tool_call_result(tool_call, llm_content_text)
+            else:
+                llm_content_fmt = []
+                for content in llm_content:
+                    if isinstance(content, TextContent):
+                        llm_content_fmt.append({
+                            "type": "text",
+                            "text": content.text,
+                        })
+                    elif isinstance(content, ImageContent):
+                        llm_content_fmt.append({
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": content.mime_type,
+                                "data": content.data,
+                            }
+                        })
+                    else:
+                        raise ValueError(f"Unknown content type: {type(content)}")
+
+                self.history.add_tool_call_result(tool_call, llm_content_fmt)
         else:
-            # TODO: add support for multiple text/image blocks
-            # Currently, we will support only the text blocks
-            llm_content_text = [item.text for item in llm_content if item.type == "text"]
-            llm_content_text = "\n".join(llm_content_text)
-            self.history.add_tool_call_result(tool_call, llm_content_text)
+            raise ValueError(f"Unknown content type: {type(llm_content)}")
 
         self.event_stream.add_event(
             RealtimeEvent(
