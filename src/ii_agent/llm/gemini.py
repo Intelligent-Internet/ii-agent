@@ -149,9 +149,24 @@ class GeminiDirectClient(LLMClient):
                     raise e
 
         internal_messages = []
-        if response.text:
-            internal_messages.append(TextResult(text=response.text))
-
+        
+        # Process response parts directly to avoid warning
+        if response.candidates and len(response.candidates) > 0:
+            candidate = response.candidates[0]
+            if candidate.content and candidate.content.parts:
+                for part in candidate.content.parts:
+                    if part.text:
+                        internal_messages.append(TextResult(text=part.text))
+                    elif part.function_call:
+                        fn_call = part.function_call
+                        response_message_content = ToolCall(
+                            tool_call_id=fn_call.id if fn_call.id else generate_tool_call_id(),
+                            tool_name=fn_call.name,
+                            tool_input=fn_call.args,
+                        )
+                        internal_messages.append(response_message_content)
+        
+        # Keep this for backward compatibility, but it shouldn't execute now
         if response.function_calls:
             for fn_call in response.function_calls:
                 response_message_content = ToolCall(

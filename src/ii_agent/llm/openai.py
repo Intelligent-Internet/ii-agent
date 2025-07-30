@@ -222,6 +222,7 @@ class OpenAIDirectClient(LLMClient):
                     tool_choice=tool_choice_param,
                     max_tokens=openai_max_tokens,
                     extra_body=extra_body,
+                    temperature=openai_temperature,
                 )
                 break
             except (
@@ -254,6 +255,10 @@ class OpenAIDirectClient(LLMClient):
         # Handle text content first (if present)
         if content:
             internal_messages.append(TextResult(text=content))
+        
+        if not content and not tool_calls:
+            logger.warning(f"Response has no content or tool_calls: {openai_response_message}")
+            internal_messages.append(TextResult(text=""))
         
         # Handle tool calls (if present)
         if tool_calls:
