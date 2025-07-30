@@ -72,7 +72,7 @@ class MessageRenderer:
         if self.minimal:
             # For minimal mode, try to render markdown without panel
             try:
-                markdown_content = Markdown(content)
+                markdown_content = Markdown(content, justify="left")
                 self.console.print(f"🤖 [green]Assistant:[/green]")
                 self.console.print(markdown_content)
             except Exception:
@@ -81,7 +81,7 @@ class MessageRenderer:
         else:
             # Always try to render as markdown first
             try:
-                rendered_content = Markdown(content)
+                rendered_content = Markdown(content, justify="left")
             except Exception:
                 # Fallback to plain text if markdown parsing fails
                 rendered_content = content

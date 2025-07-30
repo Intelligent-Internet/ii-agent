@@ -5,6 +5,7 @@ from .file_write_tool import FileWriteTool
 from .file_edit_tool import FileEditTool
 from .multi_edit_tool import MultiEditTool
 from .ls_tool import LSTool
+from .read_many_files_tool import ReadManyFilesTool
 
 
 __all__ = [
@@ -15,4 +16,5 @@ __all__ = [
     "FileEditTool",
     "MultiEditTool",
     "LSTool",
+    "ReadManyFilesTool",
 ]

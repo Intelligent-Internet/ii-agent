@@ -24,6 +24,7 @@ from ii_tool.tools.file_system import (
     FileWriteTool,
     FileEditTool,
     MultiEditTool,
+    ReadManyFilesTool,
 )
 from ii_tool.tools.productivity import TodoReadTool, TodoWriteTool
 from ii_tool.tools.web import WebSearchTool, WebVisitTool, ImageSearchTool
@@ -70,6 +71,7 @@ def get_default_tools(
         FileWriteTool(workspace_manager),
         FileEditTool(workspace_manager),
         MultiEditTool(workspace_manager),
+        ReadManyFilesTool(workspace_manager),
         # Todo tools
         TodoReadTool(),
         TodoWriteTool(),
