@@ -25,6 +25,7 @@ from openai._types import (
 
 from ii_agent.core.config.llm_config import LLMConfig
 from ii_agent.llm.base import (
+    ImageBlock,
     LLMClient,
     AssistantContentBlock,
     LLMMessages,
@@ -112,6 +113,17 @@ class OpenAIDirectClient(LLMClient):
                 internal_message = cast(TextResult, internal_message)
                 # For TextResult (assistant), OpenAI expects content as a string for regular messages
                 openai_message = {"role": "assistant", "content": internal_message.text}
+                openai_messages.append(openai_message)
+                continue # Move to next message in outer loop
+            elif str(type(internal_message)) == str(ImageBlock):
+                internal_message = cast(ImageBlock, internal_message)
+                content = {
+                    "type": "image_url", 
+                    "image_url": {
+                        "url": f"data:{internal_message.source['media_type']};base64,{internal_message.source['data']}"
+                    }
+                }
+                openai_message = {"role": "user", "content": [content]}
                 openai_messages.append(openai_message)
                 continue # Move to next message in outer loop
             elif str(type(internal_message)) == str(ToolCall):

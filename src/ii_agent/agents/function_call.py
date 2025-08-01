@@ -244,20 +244,6 @@ try breaking down the task into smaller steps. After call this tool to update or
             # Handle tool calls
             pending_tool_calls = self.history.get_pending_tool_calls()
 
-            if len(pending_tool_calls) == 0:
-                # No tools were called, so assume the task is complete
-                self.logger_for_agent_logs.info("[no tools were called]")
-                self.message_queue.put_nowait(
-                    RealtimeEvent(
-                        type=EventType.AGENT_RESPONSE,
-                        content={"text": "Task completed"},
-                    )
-                )
-                return ToolImplOutput(
-                    tool_output=self.history.get_last_assistant_text_response(),
-                    tool_result_message="Task completed",
-                )
-
             text_results = [
                 item
                 for item in model_response
@@ -283,6 +269,21 @@ try breaking down the task into smaller steps. After call this tool to update or
                         content={"text": text},
                     )
                 )
+
+            if len(pending_tool_calls) == 0:
+                # No tools were called, so assume the task is complete
+                self.logger_for_agent_logs.info("[no tools were called]")
+                self.message_queue.put_nowait(
+                    RealtimeEvent(
+                        type=EventType.AGENT_RESPONSE,
+                        content={"text": "Task completed"},
+                    )
+                )
+                return ToolImplOutput(
+                    tool_output="",
+                    tool_result_message="Task completed",
+                )
+
 
             if len(pending_tool_calls) > 1:
                 raise ValueError("Only one tool call per turn is supported")
