@@ -42,7 +42,7 @@ def get_default_tools(
     workspace_path: str,
     web_search_config: WebSearchConfig,
     web_visit_config: WebVisitConfig,
-    fullstack_dev_config: FullStackDevConfig,
+    fullstack_dev_config: FullStackDevConfig | None = None,
     image_search_config: ImageSearchConfig | None = None,
     video_generate_config: VideoGenerateConfig | None = None,
     image_generate_config: ImageGenerateConfig | None = None,
@@ -76,9 +76,11 @@ def get_default_tools(
         # Web tools
         WebSearchTool(settings=web_search_config),
         WebVisitTool(settings=web_visit_config),
-        # Dev tools
-        FullStackInitTool(workspace_manager, fullstack_dev_config),
     ]
+
+    # Dev tools
+    if fullstack_dev_config is not None:
+        tools.append(FullStackInitTool(workspace_manager, fullstack_dev_config))
 
     if image_search_config is not None:
         tools.append(ImageSearchTool(settings=image_search_config))

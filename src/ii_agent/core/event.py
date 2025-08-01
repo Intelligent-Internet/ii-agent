@@ -24,6 +24,11 @@ class EventType(str, enum.Enum):
     PROMPT_GENERATED = "prompt_generated"
     TOOL_CONFIRMATION = "tool_confirmation"
 
+    # Agent As Tool (AST)
+    AST_RESPONSE = "ast_response"
+    AST_TOOL_CALL = "ast_tool_call"
+    AST_TOOL_RESULT = "ast_tool_result"
+
 
 class RealtimeEvent(BaseModel):
     type: EventType

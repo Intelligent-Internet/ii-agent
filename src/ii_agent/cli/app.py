@@ -45,6 +45,7 @@ from ii_tool.core.config import (
     ImageGenerateConfig, 
     FullStackDevConfig
 )
+from ii_tool.tools.agent import TaskAgentTool, TASK_AGENT_SYSTEM_PROMPT
 
 
 class CLIApp:
@@ -194,6 +195,38 @@ class CLIApp:
         if self.config.mcp_config:
             mcp_tools = await load_tools_from_mcp(self.config.mcp_config)
             tool_manager.register_tools(mcp_tools)
+
+        # Add TaskAgent tool
+        # ---------------------------------------------------------------------
+        task_agent_config = AgentConfig(
+            max_tokens_per_turn=self.config.max_output_tokens_per_turn,
+            system_prompt=TASK_AGENT_SYSTEM_PROMPT,
+        )
+        task_agent_list_tools = get_default_tools(
+            chat_session_id=f"TASK-AGENT-{self.config.session_id}",
+            workspace_path=self.workspace_path,
+            web_search_config=self.web_search_config,
+            web_visit_config=self.web_visit_config,
+        )
+        task_agent_tool = TaskAgentTool(
+            agent=FunctionCallAgent(
+                llm=llm_client,
+                config=task_agent_config,
+                tools=[ToolParam(name=tool.name, description=tool.description, input_schema=tool.input_schema) for tool in task_agent_list_tools]
+            ),
+            tools=task_agent_list_tools,
+            context_manager=LLMCompact(
+                client=llm_client,
+                token_counter=TokenCounter(),
+                token_budget=TOKEN_BUDGET,  # Default token budget
+            ),
+            event_stream=self.event_stream,
+            workspace_manager=self.workspace_manager,
+        )
+
+        tool_manager.register_tools([task_agent_tool])
+        # ---------------------------------------------------------------------
+
 
         agent = FunctionCallAgent(
             llm=llm_client, 

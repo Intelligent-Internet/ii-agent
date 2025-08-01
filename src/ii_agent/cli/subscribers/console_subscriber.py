@@ -65,6 +65,12 @@ class ConsoleSubscriber:
                 self._handle_processing_event(event)
             elif event.type == EventType.TOOL_CONFIRMATION:
                 self._handle_tool_confirmation_event(event)
+            elif event.type == EventType.AST_RESPONSE:
+                self._handle_ast_response_event(event)
+            elif event.type == EventType.AST_TOOL_CALL:
+                self._handle_ast_tool_call_event(event)
+            elif event.type == EventType.AST_TOOL_RESULT:
+                self._handle_ast_tool_result_event(event)
     
     def _handle_thinking_event(self, event: RealtimeEvent) -> None:
         """Handle agent thinking event."""
@@ -775,6 +781,38 @@ class ConsoleSubscriber:
             # Tool result - use same formatting as _print_tool_result
             self._print_tool_result(message.tool_name if hasattr(message, 'tool_name') else "Unknown", message.tool_output)
     
+    def _handle_ast_response_event(self, event: RealtimeEvent) -> None:
+        """Handle agent-as-tool response event."""
+        content = event.content
+        agent_name = content.get("name", "Agent")
+        text = content.get("text", "")
+        task_description = content.get("task_description", "")
+        
+        # Create unique agent key using agent name + description
+        agent_key = f"{agent_name}({task_description}): {text}"
+
+        self.console.print(f"🤖🔧 [cyan]{agent_key}[/cyan]")
+        
+    
+    def _handle_ast_tool_call_event(self, event: RealtimeEvent) -> None:
+        """Handle agent-as-tool tool call event."""
+        content = event.content
+        agent_name = content.get("name", "Agent")
+        tool_name = content.get("tool_name", "unknown")
+        tool_input = content.get("tool_input", {})
+        task_description = content.get("task_description", "")
+        
+        # Create unique agent key using agent name + description
+        agent_key = f"{agent_name}({task_description}): {tool_name}"
+        
+        self.console.print(f"🤖🔧 [cyan]{agent_key}[/cyan]")
+
+    
+    def _handle_ast_tool_result_event(self, event: RealtimeEvent) -> None:
+        """Handle agent-as-tool tool result event."""
+        # TODO: handle this
+        pass
+
     def cleanup(self) -> None:
         """Clean up resources."""
         # Clean up spinner if active
