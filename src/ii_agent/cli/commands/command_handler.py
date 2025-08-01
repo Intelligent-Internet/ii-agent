@@ -28,6 +28,8 @@ class CommandHandler:
         from .compact_command import CompactCommand
         from .settings_command import SettingsCommand
         from .moa_command import MoACommand
+        from .plan_command import PlanCommand
+        from .implement_command import ImplementCommand
         
         default_commands = [
             HelpCommand(self.console),
@@ -36,6 +38,8 @@ class CommandHandler:
             CompactCommand(self.console),
             SettingsCommand(self.console),
             MoACommand(self.console),
+            PlanCommand(self.console),
+            ImplementCommand(self.console),
         ]
         
         for command in default_commands:

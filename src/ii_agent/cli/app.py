@@ -35,6 +35,7 @@ from ii_agent.cli.state_persistence import (
     restore_agent_state,
     restore_configs,
 )
+from ii_agent.cli.plan_state import PlanStateManager
 from ii_agent.cli.components.session_selector import SessionSelector
 from ii_agent.controller.tool_manager import AgentToolManager
 from ii_agent.llm.base import ToolParam
@@ -111,6 +112,14 @@ class CLIApp:
         
         # Store for pending tool confirmations
         self._tool_confirmations: Dict[str, Dict[str, Any]] = {}
+        
+        # Initialize plan state manager
+        self.plan_state_manager = PlanStateManager(workspace_path)
+        
+        # Ensure plans directory exists
+        plans_dir = self.plan_state_manager.get_plans_directory()
+        plans_dir.mkdir(exist_ok=True)
+        logger.info(f"Plans directory initialized: {plans_dir}")
         
     def _handle_tool_confirmation(self, tool_call_id: str, tool_name: str, approved: bool, alternative_instruction: str) -> None:
         """Handle tool confirmation response from console subscriber."""
@@ -332,6 +341,7 @@ class CLIApp:
                             "config": self.config,
                             "agent_controller": self.agent_controller,
                             "workspace_manager": self.workspace_manager,
+                            "plan_state_manager": self.plan_state_manager,
                             "session_name": session_name,
                             "should_exit": False,
                         }
