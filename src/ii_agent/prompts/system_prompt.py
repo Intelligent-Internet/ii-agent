@@ -518,6 +518,7 @@ Today is {today}. Answer the user's request using the relevant tool(s), if they 
 """
 
 
+
 def get_system_prompt(workspace_path: str) -> str:    
     return SYSTEM_PROMPT.format(
         workspace_path=workspace_path,
