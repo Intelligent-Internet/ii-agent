@@ -22,6 +22,7 @@ TOOL_CALL_INTERRUPT_FAKE_MODEL_RSP = "[Request interrupted by user for tool use]
 AGENT_INTERRUPT_FAKE_MODEL_RSP = (
     "Agent interrupted by user. You can resume by providing a new instruction."
 )
+DEFAULT_AGENT_TOOL_NAME = "AgentTool"
 
 
 class AgentController:
@@ -36,6 +37,8 @@ class AgentController:
         max_turns: int = 200,
         interactive_mode: bool = True,
         config: Optional[Any] = None,
+        agent_as_tool: bool = False,
+        agent_tool_name: Optional[str] = None,
     ):
         """Initialize the agent.
 
@@ -65,6 +68,10 @@ class AgentController:
         # Tool confirmation tracking
         self._pending_confirmations: dict[str, dict] = {}
         self._confirmation_responses: dict[str, dict] = {}
+
+        # Agent as tool
+        self.agent_as_tool = agent_as_tool
+        self.agent_tool_name = agent_tool_name or DEFAULT_AGENT_TOOL_NAME
         
     @property
     def state(self) -> State:
@@ -161,7 +168,7 @@ class AgentController:
                 )
 
             # Only show token count in debug mode, not in interactive CLI
-            if not self.interactive_mode:
+            if not self.interactive_mode and not self.agent_as_tool:
                 logger.info(f"(Current token count: {self.count_tokens()})\n")
 
             # Emit thinking event before model response
@@ -193,12 +200,24 @@ class AgentController:
                     f"Top-level agent planning next step: {text_result.text}\n",
                 )
                 # Emit event for each TextResult to be displayed in console
-                self.event_stream.add_event(
-                    RealtimeEvent(
-                        type=EventType.AGENT_RESPONSE,
-                        content={"text": text_result.text},
+                if self.agent_as_tool:
+                    self.event_stream.add_event(
+                        RealtimeEvent(
+                            type=EventType.AST_RESPONSE, # AST stands for Agent As Tool
+                            content={
+                                "name": self.agent_tool_name,
+                                "task_description": tool_input.get("description"),
+                                "text": text_result.text,
+                            },
+                        )
                     )
-                )
+                else:
+                    self.event_stream.add_event(
+                        RealtimeEvent(
+                            type=EventType.AGENT_RESPONSE,
+                            content={"text": text_result.text},
+                        )
+                    )
 
             # Handle tool calls
             pending_tool_calls = self.history.get_pending_tool_calls()
@@ -208,12 +227,24 @@ class AgentController:
                 logger.debug("[no tools were called]")
                 # Only emit "Task completed" if there were no text results
                 if not text_results:
-                    self.event_stream.add_event(
-                        RealtimeEvent(
-                            type=EventType.AGENT_RESPONSE,
-                            content={"text": "Task completed"},
+                    if self.agent_as_tool:
+                        self.event_stream.add_event(
+                            RealtimeEvent(
+                                type=EventType.AST_RESPONSE,
+                                content={
+                                    "name": self.agent_tool_name,
+                                    "task_description": tool_input.get("description"),
+                                    "text": "Task completed",
+                                },
+                            )
                         )
-                    )
+                    else:
+                        self.event_stream.add_event(
+                            RealtimeEvent(
+                                type=EventType.AGENT_RESPONSE,
+                                content={"text": "Task completed"},
+                            )
+                        )
                 return ToolResult(
                     llm_content=self.history.get_last_assistant_text_response() or "Task completed",
                     user_display_content="Task completed",
@@ -238,16 +269,31 @@ class AgentController:
 
             # Send events for all tool calls
             for tool_call in pending_tool_calls:
-                self.event_stream.add_event(
-                    RealtimeEvent(
-                        type=EventType.TOOL_CALL,
-                        content={
-                            "tool_call_id": tool_call.tool_call_id,
-                            "tool_name": tool_call.tool_name,
-                            "tool_input": tool_call.tool_input,
-                        },
+                if self.agent_as_tool:
+                    self.event_stream.add_event(
+                        RealtimeEvent(
+                            type=EventType.AST_TOOL_CALL, # AST stands for Agent As Tool
+                            content={
+                                "name": self.agent_tool_name,
+                                "task_description": tool_input.get("description"),
+                                "tool_call_id": tool_call.tool_call_id,
+                                "tool_name": tool_call.tool_name,
+                                "tool_input": tool_call.tool_input,
+                            },
+                        )
                     )
-                )
+
+                else:
+                    self.event_stream.add_event(
+                        RealtimeEvent(
+                            type=EventType.TOOL_CALL,
+                            content={
+                                "tool_call_id": tool_call.tool_call_id,
+                                "tool_name": tool_call.tool_name,
+                                "tool_input": tool_call.tool_input,
+                            },
+                        )
+                    )
 
             # Handle tool confirmation and execution
             approved_tool_calls = []
@@ -425,16 +471,29 @@ class AgentController:
         else:
             raise ValueError(f"Unknown content type: {type(llm_content)}")
 
-        self.event_stream.add_event(
-            RealtimeEvent(
-                type=EventType.TOOL_RESULT,
-                content={
-                    "tool_call_id": tool_call.tool_call_id,
-                    "tool_name": tool_call.tool_name,
-                    "result": user_display_content
-                },
+        if self.agent_as_tool:
+            self.event_stream.add_event(
+                RealtimeEvent(
+                    type=EventType.AST_TOOL_RESULT,
+                    content={
+                        "name": self.agent_tool_name,
+                        "tool_call_id": tool_call.tool_call_id,
+                        "tool_name": tool_call.tool_name,
+                        "result": user_display_content,
+                    },
+                )
             )
-        )
+        else:    
+            self.event_stream.add_event(
+                RealtimeEvent(
+                    type=EventType.TOOL_RESULT,
+                    content={
+                        "tool_call_id": tool_call.tool_call_id,
+                        "tool_name": tool_call.tool_name,
+                        "result": user_display_content
+                    },
+                )
+            )
 
     def add_fake_assistant_turn(self, text: str):
         """Add a fake assistant turn to the history and send it to the message queue."""
