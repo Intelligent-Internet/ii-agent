@@ -368,18 +368,7 @@ class ConsoleSubscriber:
                 else:
                     self.console.print("📝 [dim]No alternative instruction provided[/dim]")
             except (KeyboardInterrupt, EOFError):
-                self.console.print("📝 [dim]No alternative instruction provided[/dim]"
-            # Get alternative instruction
-            try:
-                alternative = input("What should ii-agent do instead? ").strip()
-                if alternative:
-                    self.console.print(f"📝 Alternative instruction: {alternative}")
-                    alternative_instruction = alternative
-                else:
-                    self.console.print("📝 No alternative instruction provided")
-            except (KeyboardInterrupt, EOFError):
-                self.console.print("📝 No alternative instruction provided")
->>>>>>> feat/split_agent_controller
+                self.console.print("📝 [dim]No alternative instruction provided[/dim]")
         
         # Send response back via callback
         if self.confirmation_callback:
