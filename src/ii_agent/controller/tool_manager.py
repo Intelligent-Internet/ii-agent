@@ -59,7 +59,7 @@ class AgentToolManager:
         try:
             for tool_call in tool_params:
                 tool = self.get_tool(tool_call.tool_name)
-                if not tool.is_read_only():
+                if not tool.read_only:
                     return False
             return True
         except Exception:
