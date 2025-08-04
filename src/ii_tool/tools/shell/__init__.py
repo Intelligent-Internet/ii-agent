@@ -4,6 +4,7 @@ from .shell_view import ShellView
 from .shell_kill import ShellKill
 from .shell_stop_command import ShellStopCommand
 from .shell_list import ShellList
+from .shell_write_to_process import ShellWriteToProcess
 from .terminal_manager import TmuxWindowManager
 
 __all__ = [
@@ -14,4 +15,5 @@ __all__ = [
     "ShellStopCommand",
     "ShellList",
     "TmuxWindowManager",
+    "ShellWriteToProcess",
 ]

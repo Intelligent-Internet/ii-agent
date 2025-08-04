@@ -256,6 +256,9 @@ class TmuxWindowManager(BaseShellManager):
 
     def _configure_session(self, session_name: str, timeout: int = _DEFAULT_TIMEOUT):
         pane = self._get_active_pane(session_name)
+        time.sleep(0.1)
+        pane.send_keys("C-m")
+        time.sleep(0.2)
         pane.send_keys(f"export PS1='{_PROMPT_FORMAT}'; clear")
         self._wait_for_session_idle(session_name, timeout=timeout) # wait for the session to be idle
 
@@ -335,6 +338,13 @@ class TmuxWindowManager(BaseShellManager):
 
         if wait_for_output:
             self._wait_for_session_idle(session_name, timeout=timeout)
+
+        return self.get_session_output(session_name)
+
+    def write_to_process(self, session_name: str, content: str, press_enter: bool = True):
+        pane = self._get_active_pane(session_name)
+        pane.send_keys(content, enter=press_enter)
+        time.sleep(0.1)
 
         return self.get_session_output(session_name)
 

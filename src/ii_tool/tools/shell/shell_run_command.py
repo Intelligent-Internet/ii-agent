@@ -15,6 +15,7 @@ DESCRIPTION = """Executes a given bash command in a persistent shell session wit
 
 Try to avoid shell commands that are likely to require user interaction (e.g. `git rebase -i`). Use non-interactive versions of commands (e.g. `npm init -y` instead of `npm init`) when available, and otherwise remind the user that interactive shell commands are not supported and may cause hangs until canceled by the user.
 If you hit a command that requires user interaction, stop and re-run the non-interactive version of the command.
+To run a inbackground task, set `wait_for_output` to False, avoid using `&` or `nohup`. Then use `BashView` to get the output of running command.
 
 Before executing the command, please follow these steps:
 
@@ -71,7 +72,7 @@ INPUT_SCHEMA = {
         },
         "wait_for_output": {
             "type": "boolean",
-            "description": "Whether to wait for the command to finish and return the output within the timeout. For deployment or long running commands, it is recommended to set this to False and use `ShellView` to get the output.",
+            "description": "Whether to wait for the command to finish and return the output within the timeout. For deployment or long running commands, it is recommended to set this to False and use `BashView` to get the output.",
             "default": True
         }
     },
@@ -108,7 +109,7 @@ class ShellRunCommand(BaseTool):
         all_current_sessions = self.shell_manager.get_all_sessions()
         if session_name not in all_current_sessions:
             return ToolResult(
-                llm_content=f"Session '{session_name}' is not initialized. Use `ShellInit` to initialize a session. Available sessions: {all_current_sessions}",
+                llm_content=f"Session '{session_name}' is not initialized. Use `BashInit` to initialize a session. Available sessions: {all_current_sessions}",
                 is_error=True
             )
             
@@ -116,7 +117,6 @@ class ShellRunCommand(BaseTool):
             result = self.shell_manager.run_command(session_name, command, timeout=timeout, wait_for_output=wait_for_output)
             return ToolResult(
                 llm_content=result,
-                user_display_content=description,
                 is_error=False
             )
         except ShellCommandTimeoutError:
@@ -127,7 +127,7 @@ class ShellRunCommand(BaseTool):
         except ShellBusyError:
             current_output = self.shell_manager.get_session_output(session_name)
             return ToolResult(
-                llm_content=f"The last command is not finished. Current view:\n\n{current_output}",
+                llm_content=f"The previous command is not finished or a blocking command (deployment, requires user input, etc.) is running. Current view:\n\n{current_output}",
                 is_error=True
             )
 
