@@ -14,6 +14,7 @@ from ii_tool.tools.shell import (
     ShellKill,
     ShellStopCommand,
     ShellList,
+    ShellWriteToProcess,
     TmuxWindowManager,
 )
 from ii_tool.tools.file_system import (
@@ -63,6 +64,7 @@ def get_default_tools(
         ShellKill(terminal_manager),
         ShellStopCommand(terminal_manager),
         ShellList(terminal_manager),
+        ShellWriteToProcess(terminal_manager),
         # File system tools
         GlobTool(workspace_manager),
         GrepTool(workspace_manager),
