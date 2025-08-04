@@ -43,6 +43,10 @@ dependencies = [
     "alembic>=1.16.1",
     "fastmcp==2.10.6",
     "libtmux==0.46.2",
+    "bcrypt>=4.0.0",
+    "PyJWT>=2.8.0",
+    "email-validator>=2.0.0",
+    "cryptography>=42.0.0",
 ]
 
 [project.optional-dependencies]
