@@ -34,7 +34,7 @@ class AgentController:
         workspace_manager: WorkspaceManager,
         event_stream: EventStream,
         context_manager: ContextManager,
-        max_turns: int = 200,
+        max_turns: int = 1000,
         interactive_mode: bool = True,
         config: Optional[Any] = None,
         agent_as_tool: bool = False,
@@ -307,8 +307,8 @@ class AgentController:
                 # Check if tool should be auto-approved
                 if self._should_auto_approve_tool(tool_call.tool_name):
                     approved_tool_calls.append(tool_call)
-                elif isinstance(confirmation_details, ToolConfirmationDetails):
-                    # Send confirmation event and wait for response
+                elif isinstance(confirmation_details, ToolConfirmationDetails) and not self.agent_as_tool:
+                    # Send confirmation event and wait for response (only in interactive mode)
                     self.event_stream.add_event(
                         RealtimeEvent(type=EventType.TOOL_CONFIRMATION, content={
                             "tool_call_id": tool_call.tool_call_id,
@@ -329,6 +329,7 @@ class AgentController:
                             alternative_instructions.append(confirmation_response["alternative_instruction"])
                 else:
                     # No confirmation needed, approve by default
+                    # This includes agent-as-tool mode where confirmations are bypassed
                     approved_tool_calls.append(tool_call)
             
             # Handle denied tools

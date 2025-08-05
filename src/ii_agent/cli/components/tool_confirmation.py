@@ -15,6 +15,7 @@ from rich.text import Text
 from rich.columns import Columns
 from rich.box import ROUNDED
 from rich import box
+from rich.live import Live
 
 
 class ToolConfirmationDialog:
@@ -83,55 +84,23 @@ class ToolConfirmationDialog:
             Selected option index (0-based) or None if cancelled
         """
         try:
-            # Hide cursor
-            sys.stdout.write('\033[?25l')
-            sys.stdout.flush()
-            
-            # Store the tool info for re-rendering
+            # Store the tool info
             self._tool_name = tool_name
             self._tool_input = tool_input
             self._message = message
             
-            # Initial render of the unified panel
-            self._render_unified_panel()
+            # Show the panel once
+            panel = self._create_panel()
+            self.console.print()
+            self.console.print(panel)
             
-            # Show interactive selection within the panel
-            return self._show_unified_interactive_menu()
+            # Simple interactive menu below the panel
+            return self._simple_interactive_menu()
             
         except KeyboardInterrupt:
-            self._clear_previous_render()
             self.console.print("❌ [red]Confirmation cancelled[/red]")
             return None
-            
-        finally:
-            # Show cursor and restore cursor position
-            sys.stdout.write('\033[?25h')
-            sys.stdout.flush()
     
-    def _render_confirmation_panel(self, 
-                                  tool_name: str, 
-                                  tool_input: Dict[str, Any], 
-                                  message: str) -> None:
-        """Render the unified confirmation panel with all information."""
-        
-        # Create unified content including tool info AND options
-        unified_content = self._create_unified_content(tool_name, tool_input, message)
-        
-        # Create the single unified panel
-        main_panel = Panel(
-            unified_content,
-            title="🔒 Tool Execution Confirmation",
-            title_align="center",
-            border_style="bright_yellow",
-            box=box.DOUBLE,
-            padding=(2, 4),
-            width=90,
-            expand=False
-        )
-        
-        self.console.print()
-        self.console.print(main_panel)
-        self.console.print()
     
     def _create_unified_content(self, 
                                tool_name: str, 
@@ -184,39 +153,21 @@ class ToolConfirmationDialog:
         
         # Enhanced options with better spacing and visual hierarchy
         for i, option in enumerate(self.options):
-            # Create a visual block for each option
-            if i == self.selected_index:
-                # Selected option with enhanced highlighting
-                content.append("  ▶ ", style="bold yellow")
-                content.append(f"{option['key']}. ", style="bold white")
-                content.append(f"{option['icon']} ", style=f"bold {option['style']}")
-                content.append(f"{option['text']}", style=f"bold {option['style']}")
-                content.append("\n", style="")
-                content.append("      ", style="")
-                content.append(f"└─ {option['description']}", style="dim italic")
-            else:
-                # Normal option with subtle styling
-                content.append("    ", style="")
-                content.append(f"{option['key']}. ", style="dim")
-                content.append(f"{option['icon']} ", style=f"{option['style']}")
-                content.append(f"{option['text']}", style=f"bold {option['style']}")
-                content.append("\n", style="")
-                content.append("      ", style="")
-                content.append(f"└─ {option['description']}", style="dim")
-            
+            # All options use the same styling (no selection highlighting)
+            content.append("    ", style="")
+            content.append(f"{option['key']}. ", style="dim")
+            content.append(f"{option['icon']} ", style=f"{option['style']}")
+            content.append(f"{option['text']}", style=f"bold {option['style']}")
+            content.append("\n", style="")
+            content.append("      ", style="")
+            content.append(f"└─ {option['description']}", style="dim")
             content.append("\n\n", style="")
         
         # Instructions with better formatting
         content.append("═" * 78 + "\n", style="dim blue")
         content.append("   ", style="")
         content.append("⌨️  ", style="dim")
-        content.append("↑↓ Navigate", style="dim")
-        content.append(" • ", style="dim")
-        content.append("Enter Select", style="dim")
-        content.append(" • ", style="dim")
-        content.append("Esc Cancel", style="dim")
-        content.append(" • ", style="dim")
-        content.append("1-4 Shortcuts", style="dim")
+        content.append("Type 1-4 to choose", style="dim")
         
         return content
     
@@ -283,24 +234,26 @@ class ToolConfirmationDialog:
         
         return path
     
-    def _render_unified_panel(self) -> None:
-        """Render the unified panel with current selection state."""
-        # Clear the entire screen and move to top for consistent rendering
-        if hasattr(self, '_initial_render_done'):
-            # Clear from current position to end of screen
-            sys.stdout.write('\033[0J')
-            # Move cursor to saved position
-            sys.stdout.write('\033[u')
-            sys.stdout.flush()
-        else:
-            # First render - save the cursor position
-            sys.stdout.write('\033[s')
-            self._initial_render_done = True
-        
-        # Create and render the unified panel
+    def _simple_interactive_menu(self) -> Optional[int]:
+        """Simple interactive menu using traditional input."""
+        while True:
+            try:
+                choice = input("\nEnter your choice (1-4): ").strip()
+                if choice in ['1', '2', '3', '4']:
+                    choice_index = int(choice) - 1
+                    selected_option = self.options[choice_index]
+                    self._show_selection_confirmation(selected_option)
+                    return choice_index
+                else:
+                    self.console.print("[red]Please enter 1, 2, 3, or 4[/red]")
+            except (KeyboardInterrupt, EOFError):
+                return None
+    
+    def _create_panel(self) -> Panel:
+        """Create and return the unified panel with current selection state."""
         unified_content = self._create_unified_content(self._tool_name, self._tool_input, self._message)
         
-        main_panel = Panel(
+        return Panel(
             unified_content,
             title="🔒 Tool Execution Confirmation",
             title_align="center",
@@ -310,47 +263,7 @@ class ToolConfirmationDialog:
             width=90,
             expand=False
         )
-        
-        self.console.print()
-        self.console.print(main_panel)
     
-    def _show_unified_interactive_menu(self) -> Optional[int]:
-        """Show interactive menu within the unified panel."""
-        while True:
-            key = self._get_key()
-            
-            if key is None:
-                continue
-            
-            # Handle key presses
-            if key == 'up':
-                self.selected_index = (self.selected_index - 1) % len(self.options)
-                self._render_unified_panel()
-                
-            elif key == 'down':
-                self.selected_index = (self.selected_index + 1) % len(self.options)
-                self._render_unified_panel()
-                
-            elif key == 'enter':
-                self._clear_previous_render()
-                selected_option = self.options[self.selected_index]
-                self._show_selection_confirmation(selected_option)
-                return self.selected_index
-                
-            elif key in ('escape', 'ctrl_c'):
-                self._clear_previous_render()
-                self.console.print("❌ [red]Confirmation cancelled[/red]")
-                return None
-                
-            elif key.isdigit():
-                # Number shortcut
-                num = int(key) - 1
-                if 0 <= num < len(self.options):
-                    self.selected_index = num
-                    self._clear_previous_render()
-                    selected_option = self.options[self.selected_index]
-                    self._show_selection_confirmation(selected_option)
-                    return self.selected_index
     
     def _show_interactive_menu(self) -> Optional[int]:
         """Show the interactive option selection menu."""
@@ -495,14 +408,6 @@ class ToolConfirmationDialog:
             sys.stdout.write('\033[0J')
             sys.stdout.flush()
     
-    def _clear_previous_render(self) -> None:
-        """Clear the previous rendering from terminal."""
-        if hasattr(self, '_last_render_lines') and self._last_render_lines > 0:
-            # Move up and clear more lines to account for the panel structure
-            sys.stdout.write(f'\033[{self._last_render_lines + 1}A')
-            sys.stdout.write('\033[0J')
-            sys.stdout.flush()
-            self._last_render_lines = 0
     
     def _get_key(self) -> Optional[str]:
         """

@@ -12,6 +12,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.syntax import Syntax
 from rich.markdown import Markdown
+from ii_agent.cli.components.markdown_renderer import render_markdown, preprocess_markdown_content
 
 
 class MessageType(Enum):
@@ -72,16 +73,19 @@ class MessageRenderer:
         if self.minimal:
             # For minimal mode, try to render markdown without panel
             try:
-                markdown_content = Markdown(content, justify="left")
+                # Preprocess and render with custom markdown renderer
+                processed_content = preprocess_markdown_content(content)
                 self.console.print(f"🤖 [green]Assistant:[/green]")
-                self.console.print(markdown_content)
+                render_markdown(processed_content, self.console)
             except Exception:
                 # Fallback to plain text
                 self.console.print(f"🤖 [green]{content}[/green]")
         else:
             # Always try to render as markdown first
             try:
-                rendered_content = Markdown(content, justify="left")
+                # Preprocess and render with custom markdown renderer
+                processed_content = preprocess_markdown_content(content)
+                rendered_content = render_markdown(processed_content, in_panel=True)
             except Exception:
                 # Fallback to plain text if markdown parsing fails
                 rendered_content = content

@@ -21,6 +21,7 @@ from ii_agent.core.storage.models.settings import Settings
 from ii_agent.cli.components.spinner import AnimatedSpinner
 from ii_agent.cli.components.token_usage import TokenUsageDisplay
 from ii_agent.cli.components.todo_panel import TodoPanel
+from ii_agent.cli.components.markdown_renderer import render_markdown, preprocess_markdown_content
 
 
 class ConsoleSubscriber:
@@ -151,9 +152,6 @@ class ConsoleSubscriber:
         tool_input = content.get("tool_input", {})
         message = content.get("message", "")
         
-        # Enhanced tool information display
-        self._display_tool_confirmation_info(tool_name, tool_input, message)
-        
         # Check if arrow navigation is enabled in CLI config
         use_arrow_navigation = True  # Default to enabled
         if self.settings and self.settings.cli_config:
@@ -193,7 +191,7 @@ class ConsoleSubscriber:
         
         if not use_arrow_navigation:
             # Traditional numbered input with enhanced styling
-            self._display_traditional_confirmation_menu()
+            self._display_tool_confirmation_info(tool_name, tool_input, message)
             choice = self._get_traditional_input()
         
         # Handle the choice with enhanced feedback
@@ -308,31 +306,8 @@ class ConsoleSubscriber:
     
     def _display_traditional_confirmation_menu(self) -> None:
         """Display traditional confirmation menu with enhanced styling (now within unified panel)."""
-        # This is no longer needed since we display everything in the unified panel above
-        # But keeping for backward compatibility if the unified display fails
-        from rich.text import Text
-        
-        self.console.print("🎯 [bold cyan]Choose your action:[/bold cyan]")
-        self.console.print()
-        
-        # Enhanced options with icons and colors
-        options = [
-            ("1", "✅ Execute Once", "green", "Run this tool once and ask again next time"),
-            ("2", "🔓 Always Allow This Tool", "blue", "Auto-approve this tool for the rest of this session"),
-            ("3", "⚡ Allow All Tools", "yellow", "Auto-approve ALL tools for the rest of this session"),
-            ("4", "❌ Deny & Provide Alternative", "red", "Don't execute and tell ii-agent what to do instead")
-        ]
-        
-        for num, text, color, desc in options:
-            option_text = Text()
-            option_text.append(f"  {num}. {text}", style=f"bold {color}")
-            self.console.print(option_text)
-            
-            desc_text = Text()
-            desc_text.append(f"     {desc}", style="dim")
-            self.console.print(desc_text)
-            
-        self.console.print()
+        # This method is deprecated - menu is now shown in _display_tool_confirmation_info
+        pass
         
     def _process_confirmation_choice(self, choice: str, tool_call_id: str, tool_name: str) -> None:
         """Process the confirmation choice with enhanced feedback."""
@@ -450,7 +425,6 @@ class ConsoleSubscriber:
         
         if not self.minimal:
             from rich.text import Text
-            from rich.markdown import Markdown
             
             # Add spacing before agent response
             self.console.print()
@@ -462,9 +436,9 @@ class ConsoleSubscriber:
             
             # Always try to render as markdown first
             try:
-                # Create markdown object and render it
-                markdown_content = Markdown(text)
-                self.console.print(markdown_content)
+                # Preprocess and render with custom markdown renderer
+                processed_text = preprocess_markdown_content(text)
+                render_markdown(processed_text, self.console)
             except Exception:
                 # Fallback to plain text if markdown parsing fails
                 self.console.print(text, style="white")
@@ -472,11 +446,11 @@ class ConsoleSubscriber:
             self.console.print()
             # For minimal mode, still try basic markdown rendering
             try:
-                from rich.markdown import Markdown
                 markdown_prefix = f"🤖 Agent: "
                 self.console.print(markdown_prefix, style="green", end="")
-                markdown_content = Markdown(text)
-                self.console.print(markdown_content)
+                # Preprocess and render with custom markdown renderer
+                processed_text = preprocess_markdown_content(text)
+                render_markdown(processed_text, self.console)
             except Exception:
                 # Fallback to plain text
                 self.console.print(f"🤖 Agent: [white]{text}[/white]")
