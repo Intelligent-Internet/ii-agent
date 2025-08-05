@@ -1,14 +1,17 @@
-from contextlib import contextmanager
-from typing import Optional, Generator, List
+from contextlib import asynccontextmanager
+from typing import AsyncGenerator, Optional, List
 import uuid
 from pathlib import Path
-from sqlalchemy import asc, create_engine, text
-from sqlalchemy.orm import Session as DBSession, sessionmaker
-from ii_agent.core.config.utils import load_ii_agent_config
+from sqlalchemy import asc, text, select
+from sqlalchemy.orm import selectinload
+from ii_agent.core.config.ii_agent_config import config
 from ii_agent.db.models import Session, Event
 from ii_agent.core.event import EventType, RealtimeEvent
 from ii_agent.core.config.ii_agent_config import II_AGENT_DIR
 from ii_agent.core.logger import logger
+from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.ext.asyncio import async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession as DBSession
 
 
 def run_migrations():
@@ -26,33 +29,37 @@ def run_migrations():
         logger.error(f"Error running migrations: {e}")
         raise
 
+
 run_migrations()
 
-engine = create_engine(load_ii_agent_config().database_url, connect_args={"check_same_thread": False})
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine, expire_on_commit=False)
+# engine = create_engine(load_ii_agent_config().database_url, connect_args={"check_same_thread": False})
+# SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine, expire_on_commit=False)
+engine = create_async_engine(config.database_url, echo=True, future=True)
+SessionLocal = async_sessionmaker(bind=engine, expire_on_commit=False)
 
-@contextmanager
-def get_db() -> Generator[DBSession, None, None]:
+
+@asynccontextmanager
+async def get_db() -> AsyncGenerator[DBSession, None]:
     """Get a database session as a context manager.
 
     Yields:
         A database session that will be automatically committed or rolled back
     """
-    db = SessionLocal()
-    try:
-        yield db
-        db.commit()
-    except Exception:
-        db.rollback()
-        raise
-    finally:
-        db.close()
+    async with SessionLocal() as db:
+        try:
+            yield db
+            await db.commit()
+        except Exception:
+            await db.rollback()
+            raise
+        finally:
+            await db.close()
 
 
 class SessionsTable:
     """Table class for session operations following Open WebUI pattern."""
 
-    def create_session(
+    async def create_session(
         self,
         session_uuid: uuid.UUID,
         workspace_path: Path,
@@ -69,16 +76,16 @@ class SessionsTable:
             A tuple of (session_uuid, workspace_path)
         """
         # Create session in database
-        with get_db() as db:
+        async with get_db() as db:
             db_session = Session(
                 id=session_uuid, workspace_dir=str(workspace_path), device_id=device_id
             )
             db.add(db_session)
-            db.flush()  # This will populate the id field
+            await db.flush()  # This will populate the id field
 
         return session_uuid, workspace_path
 
-    def get_session_by_workspace(self, workspace_dir: str) -> Optional[Session]:
+    async def get_session_by_workspace(self, workspace_dir: str) -> Optional[Session]:
         """Get a session by its workspace directory.
 
         Args:
@@ -87,14 +94,13 @@ class SessionsTable:
         Returns:
             The session if found, None otherwise
         """
-        with get_db() as db:
-            return (
-                db.query(Session)
-                .filter(Session.workspace_dir == workspace_dir)
-                .first()
+        async with get_db() as db:
+            result = await db.execute(
+                select(Session).where(Session.workspace_dir == workspace_dir)
             )
+            return result.scalar_one_or_none()
 
-    def get_session_by_id(self, session_id: uuid.UUID) -> Optional[Session]:
+    async def get_session_by_id(self, session_id: uuid.UUID) -> Optional[Session]:
         """Get a session by its UUID.
 
         Args:
@@ -103,10 +109,13 @@ class SessionsTable:
         Returns:
             The session if found, None otherwise
         """
-        with get_db() as db:
-            return db.query(Session).filter(Session.id == str(session_id)).first()
+        async with get_db() as db:
+            result = await db.execute(
+                select(Session).where(Session.id == str(session_id))
+            )
+            return result.scalar_one_or_none()
 
-    def get_session_by_device_id(self, device_id: str) -> Optional[Session]:
+    async def get_session_by_device_id(self, device_id: str) -> Optional[Session]:
         """Get a session by its device ID.
 
         Args:
@@ -115,34 +124,41 @@ class SessionsTable:
         Returns:
             The session if found, None otherwise
         """
-        with get_db() as db:
-            return db.query(Session).filter(Session.device_id == device_id).first()
+        async with get_db() as db:
+            result = await db.execute(
+                select(Session).where(Session.device_id == device_id)
+            )
+            return result.scalar_one_or_none()
 
-    def update_session_name(self, session_id: uuid.UUID, name: str) -> None:
+    async def update_session_name(self, session_id: uuid.UUID, name: str) -> None:
         """Update the name of a session.
 
         Args:
             session_id: The UUID of the session to update
             name: The new name for the session
         """
-        with get_db() as db:
-            db_session = db.query(Session).filter(Session.id == str(session_id)).first()
+        async with get_db() as db:
+            result = await db.execute(
+                select(Session).where(Session.id == str(session_id))
+            )
+            db_session = result.scalar_one_or_none()
             if db_session:
                 db_session.name = name
-                db.flush()
+                await db.flush()
 
-    def get_sessions_by_device_id(self, device_id: str) -> List[dict]:
+    async def get_sessions_by_device_id(self, device_id: str) -> List[dict]:
         """Get all sessions for a specific device ID, sorted by creation time descending.
-        
+
         Args:
             device_id: The device identifier to look up sessions for
 
         Returns:
             A list of session dictionaries with their details, sorted by creation time descending
         """
-        with get_db() as db:
+        async with get_db() as db:
             # Use raw SQL query to get sessions by device_id
-            query = text("""
+            query = text(
+                """
             SELECT 
                 session.id,
                 session.workspace_dir,
@@ -152,10 +168,11 @@ class SessionsTable:
             FROM session
             WHERE session.device_id = :device_id
             ORDER BY session.created_at DESC
-            """)
+            """
+            )
 
             # Execute the raw query with parameters
-            result = db.execute(query, {"device_id": device_id})
+            result = await db.execute(query, {"device_id": device_id})
 
             # Convert result to a list of dictionaries
             sessions = []
@@ -175,7 +192,9 @@ class SessionsTable:
 class EventsTable:
     """Table class for event operations following Open WebUI pattern."""
 
-    def save_event(self, session_id: uuid.UUID, event: RealtimeEvent) -> uuid.UUID:
+    async def save_event(
+        self, session_id: uuid.UUID, event: RealtimeEvent
+    ) -> uuid.UUID:
         """Save an event to the database.
 
         Args:
@@ -185,17 +204,17 @@ class EventsTable:
         Returns:
             The UUID of the created event
         """
-        with get_db() as db:
+        async with get_db() as db:
             db_event = Event(
                 session_id=session_id,
                 event_type=event.type.value,
                 event_payload=event.model_dump(),
             )
             db.add(db_event)
-            db.flush()  # This will populate the id field
+            await db.flush()  # This will populate the id field
             return uuid.UUID(db_event.id)
 
-    def get_session_events(self, session_id: uuid.UUID) -> list[Event]:
+    async def get_session_events(self, session_id: uuid.UUID) -> list[Event]:
         """Get all events for a session.
 
         Args:
@@ -204,52 +223,67 @@ class EventsTable:
         Returns:
             A list of events for the session
         """
-        with get_db() as db:
-            return (
-                db.query(Event).filter(Event.session_id == str(session_id)).all()
+        async with get_db() as db:
+            result = await db.execute(
+                select(Event).where(Event.session_id == str(session_id))
             )
+            return result.scalars().all()
 
-    def delete_session_events(self, session_id: uuid.UUID) -> None:
+    async def delete_session_events(self, session_id: uuid.UUID) -> None:
         """Delete all events for a session.
 
         Args:
             session_id: The UUID of the session to delete events for
         """
-        with get_db() as db:
-            db.query(Event).filter(Event.session_id == str(session_id)).delete()
+        async with get_db() as db:
+            await db.execute(select(Event).where(Event.session_id == str(session_id)))
+            # For delete operations, we need to fetch and delete each item
+            result = await db.execute(
+                select(Event).where(Event.session_id == str(session_id))
+            )
+            for event in result.scalars():
+                await db.delete(event)
 
-    def delete_events_from_last_to_user_message(self, session_id: uuid.UUID) -> None:
+    async def delete_events_from_last_to_user_message(
+        self, session_id: uuid.UUID
+    ) -> None:
         """Delete events from the most recent event backwards to the last user message (inclusive).
         This preserves the conversation history before the last user message.
-        
+
         Args:
             session_id: The UUID of the session to delete events for
         """
-        with get_db() as db:
+        async with get_db() as db:
             # Find the last user message event
-            last_user_event = (
-                db.query(Event)
-                .filter(
+            result = await db.execute(
+                select(Event)
+                .where(
                     Event.session_id == str(session_id),
                     Event.event_type == EventType.USER_MESSAGE.value,
                 )
                 .order_by(Event.timestamp.desc())
-                .first()
             )
+            last_user_event = result.scalar_one_or_none()
 
             if last_user_event:
                 # Delete all events after the last user message (inclusive)
-                db.query(Event).filter(
-                    Event.session_id == str(session_id),
-                    Event.timestamp >= last_user_event.timestamp,
-                ).delete()
+                result = await db.execute(
+                    select(Event).where(
+                        Event.session_id == str(session_id),
+                        Event.timestamp >= last_user_event.timestamp,
+                    )
+                )
+                for event in result.scalars():
+                    await db.delete(event)
             else:
                 # If no user message found, delete all events
-                db.query(Event).filter(
-                    Event.session_id == str(session_id)
-                ).delete()
+                result = await db.execute(
+                    select(Event).where(Event.session_id == str(session_id))
+                )
+                for event in result.scalars():
+                    await db.delete(event)
 
-    def get_session_events_with_details(self, session_id: str) -> List[dict]:
+    async def get_session_events_with_details(self, session_id: str) -> List[dict]:
         """Get all events for a specific session ID with session details, sorted by timestamp ascending.
 
         Args:
@@ -258,13 +292,14 @@ class EventsTable:
         Returns:
             A list of event dictionaries with their details, sorted by timestamp ascending
         """
-        with get_db() as db:
-            events = (
-                db.query(Event)
-                .filter(Event.session_id == session_id)
+        async with get_db() as db:
+            result = await db.execute(
+                select(Event)
+                .where(Event.session_id == session_id)
                 .order_by(asc(Event.timestamp))
-                .all()
+                .options(selectinload(Event.session))
             )
+            events = result.scalars().all()
 
             # Convert events to a list of dictionaries
             event_list = []

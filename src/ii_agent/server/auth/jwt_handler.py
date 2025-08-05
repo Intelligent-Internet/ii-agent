@@ -23,14 +23,15 @@ class JWTHandler:
 
     def create_access_token(self, user_id: str, email: str, role: str = "user") -> str:
         """Create a new access token."""
+        now = datetime.now(timezone.utc)
+        exp_time = now + timedelta(minutes=self.access_token_expire_minutes)
         payload = {
             "user_id": user_id,
             "email": email,
             "role": role,
             "type": "access",
-            "exp": datetime.now(timezone.utc)
-            + timedelta(minutes=self.access_token_expire_minutes),
-            "iat": datetime.now(timezone.utc),
+            "exp": int(exp_time.timestamp()),
+            "iat": int(now.timestamp()),
         }
         return jwt.encode(payload, self.secret_key, algorithm=self.algorithm)
 

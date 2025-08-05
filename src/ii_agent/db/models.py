@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 from sqlalchemy import (
     Column,
@@ -25,7 +25,6 @@ class User(Base):
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     email = Column(VARCHAR(255), unique=True, nullable=False)
-    username = Column(VARCHAR(100), unique=True, nullable=False)
     password_hash = Column(VARCHAR(255), nullable=True)
     first_name = Column(VARCHAR(100), nullable=True)
     last_name = Column(VARCHAR(100), nullable=True)
@@ -33,10 +32,14 @@ class User(Base):
     subscription_tier = Column(VARCHAR(50), default="free")
     is_active = Column(Boolean, default=True)
     email_verified = Column(Boolean, default=False)
-    created_at = Column(TIMESTAMP, default=datetime.utcnow)
-    updated_at = Column(TIMESTAMP, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(TIMESTAMP, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(
+        TIMESTAMP,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
     last_login_at = Column(TIMESTAMP, nullable=True)
-    metadata = Column(SQLiteJSON, nullable=True)
+    user_metadata = Column("metadata", SQLiteJSON, nullable=True)
     login_provider = Column(VARCHAR(50), nullable=True)
     organization = Column(VARCHAR(50), nullable=True)
 
@@ -56,10 +59,7 @@ class User(Base):
     )
 
     # Add index for email lookup
-    __table_args__ = (
-        Index("idx_users_email", "email"),
-        Index("idx_users_username", "username"),
-    )
+    __table_args__ = (Index("idx_users_email", "email"),)
 
 
 class IIKey(Base):
@@ -78,7 +78,7 @@ class IIKey(Base):
     expires_at = Column(TIMESTAMP, nullable=True)
     last_used_at = Column(TIMESTAMP, nullable=True)
     is_active = Column(Boolean, default=True)
-    created_at = Column(TIMESTAMP, default=datetime.utcnow)
+    created_at = Column(TIMESTAMP, default=lambda: datetime.now(timezone.utc))
     usage_count = Column(Integer, default=0)
 
     # Relationships
@@ -103,10 +103,14 @@ class LLMSetting(Base):
     encrypted_api_key = Column(VARCHAR(500), nullable=True)
     base_url = Column(VARCHAR(500), nullable=True)
     is_active = Column(Boolean, default=True)
-    created_at = Column(TIMESTAMP, default=datetime.utcnow)
-    updated_at = Column(TIMESTAMP, default=datetime.utcnow, onupdate=datetime.utcnow)
-    metadata = Column(
-        SQLiteJSON, nullable=True
+    created_at = Column(TIMESTAMP, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(
+        TIMESTAMP,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+    llm_metadata = Column(
+        "metadata", SQLiteJSON, nullable=True
     )  # For Azure deployment names, Bedrock config, etc.
 
     # Relationships
@@ -127,8 +131,12 @@ class MCPSetting(Base):
     )
     mcp_config = Column(SQLiteJSON, nullable=False)
     is_active = Column(Boolean, default=True)
-    created_at = Column(TIMESTAMP, default=datetime.utcnow)
-    updated_at = Column(TIMESTAMP, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(TIMESTAMP, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(
+        TIMESTAMP,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
 
     # Relationships
     user = relationship("User", back_populates="mcp_settings")
@@ -154,8 +162,12 @@ class Session(Base):
 
     # Timestamps
     last_message_at = Column(TIMESTAMP, nullable=True)
-    created_at = Column(TIMESTAMP, default=datetime.utcnow)
-    updated_at = Column(TIMESTAMP, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(TIMESTAMP, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(
+        TIMESTAMP,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
     deleted_at = Column(TIMESTAMP, nullable=True)
 
     # Legacy fields (keeping for compatibility)
@@ -204,10 +216,10 @@ class Event(Base):
     type = Column(String, nullable=False)
     content = Column(SQLiteJSON, nullable=False)
     source = Column(String, nullable=True)
-    created_at = Column(TIMESTAMP, default=datetime.utcnow)
+    created_at = Column(TIMESTAMP, default=lambda: datetime.now(timezone.utc))
 
     # Legacy fields (keeping for compatibility)
-    timestamp = Column(DateTime, default=datetime.utcnow)
+    timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     event_type = Column(String, nullable=True)
     event_payload = Column(SQLiteJSON, nullable=True)
 
@@ -259,10 +271,10 @@ class Sandbox(Base):
     memory_limit = Column(Integer, default=512)  # MB
     disk_limit = Column(Integer, default=1024)  # MB
     network_enabled = Column(Boolean, default=True)
-    metadata = Column(SQLiteJSON, nullable=True)
+    sandbox_metadata = Column("metadata", SQLiteJSON, nullable=True)
 
     # Timestamps
-    created_at = Column(TIMESTAMP, default=datetime.utcnow)
+    created_at = Column(TIMESTAMP, default=lambda: datetime.now(timezone.utc))
     started_at = Column(TIMESTAMP, nullable=True)
     stopped_at = Column(TIMESTAMP, nullable=True)
     last_activity_at = Column(TIMESTAMP, nullable=True)

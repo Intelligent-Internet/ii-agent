@@ -21,7 +21,9 @@ class IIAgentConfig(BaseSettings):
         file_store_path: The path to the file store.
     """
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=".env", env_file_encoding="utf-8", extra="ignore"
+    )
     file_store: str = Field(default="local")
     file_store_path: str = Field(default="~/.ii_agent")
     use_container_workspace: bool = Field(default=False)
@@ -33,18 +35,31 @@ class IIAgentConfig(BaseSettings):
     database_url: Optional[str] = None
     mcp_config: Optional[Dict[str, Any]] = None
 
+    # Google OAuth configuration
+    google_client_id: str = Field(default="")
+    google_client_secret: str = Field(default="")
+    google_redirect_uri: str = Field(
+        default="http://localhost:8000/auth/oauth/google/callback"
+    )
+
     # Per session config
     # TODO: move to a separate class
-    session_id: str
-    auto_approve_tools: bool = False # Global tool approval setting. If True, all tools will be automatically approved.
-    allow_tools: set[str] = set() # Tools that are confirmed by the user
+    session_id: Optional[str] = None
+    auto_approve_tools: bool = False  # Global tool approval setting. If True, all tools will be automatically approved.
+    allow_tools: set[str] = set()  # Tools that are confirmed by the user
 
-    @model_validator(mode='after')
+    @model_validator(mode="after")
     def set_database_url(self) -> "IIAgentConfig":
         if self.database_url is None:
-            self.database_url = f"sqlite:///{os.path.expanduser(self.file_store_path)}/ii_agent.db"
+            self.database_url = f"sqlite+aiosqlite:///{os.path.expanduser(self.file_store_path)}/ii_agent.db"
 
         return self
+
+    @computed_field
+    @property
+    def sync_database_url(self) -> str:
+        """Return the synchronous database URL."""
+        return self.database_url.replace("+aiosqlite", "")
 
     @computed_field
     @property
@@ -55,21 +70,21 @@ class IIAgentConfig(BaseSettings):
     @property
     def logs_path(self) -> str:
         return os.path.join(self.file_store_path, "logs")
- 
-    @field_validator('file_store_path')
+
+    @field_validator("file_store_path")
     def expand_path(cls, v):
-        if v.startswith('~'):
+        if v.startswith("~"):
             return os.path.expanduser(v)
         return v
 
     def set_auto_approve_tools(self, value: bool) -> None:
         """Set the auto_approve_tools field value.
-        
+
         Args:
             value: Whether to automatically approve tool executions in CLI mode
         """
         self.auto_approve_tools = value
 
-if __name__ == "__main__":
-    config = IIAgentConfig(session_id="test")
-    print(config.workspace_root)
+
+config = IIAgentConfig()
+print(config)

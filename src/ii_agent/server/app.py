@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import os
 from fastapi.staticfiles import StaticFiles
 
-from .api import upload_router, sessions_router, settings_router
+from .api import upload_router, sessions_router, settings_router, auth_router
 from ii_agent.server import shared
 
 logger = logging.getLogger(__name__)
@@ -33,12 +33,11 @@ def create_app() -> FastAPI:
     # Store global args in app state for access in endpoints
     app.state.workspace = shared.config.workspace_root
 
-    
-
     # Include API routers
     app.include_router(upload_router)
     app.include_router(sessions_router)
     app.include_router(settings_router)
+    app.include_router(auth_router)
 
     # Setup workspace static files
     setup_workspace(app, shared.config.workspace_root)

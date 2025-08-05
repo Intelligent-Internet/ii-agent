@@ -1,7 +1,6 @@
 """Password hashing and verification utilities."""
 
 import bcrypt
-from typing import str
 
 
 def hash_password(password: str) -> str:
