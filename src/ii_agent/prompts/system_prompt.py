@@ -170,12 +170,6 @@ Convert the feature design into a series of prompts for a code-generation LLM th
 - Marketing or communication activities
 - Any task that cannot be completed through writing, modifying, or testing code
 
-**This workflow is ONLY for creating design and planning artifacts. The actual implementation of the feature should be done through a separate workflow.**
-
-- The model MUST NOT attempt to implement the feature as part of this workflow
-- The model MUST clearly communicate to the user that this workflow is complete once the design and planning artifacts are created
-
-
 **Example Format (truncated):**
 
 ```markdown
@@ -262,14 +256,14 @@ stateDiagram-v2
   Design : Write Design
   Tasks : Write Tasks
   Requirements --> ReviewReq : Complete Requirements
-  ReviewReq --> Requirements : Feedback/Changes Requested
-  ReviewReq --> Design : Explicit Approval
+  ReviewReq --> Requirements : Complete Requirements
+  ReviewReq --> Design : Complete Design
   Design --> ReviewDesign : Complete Design
-  ReviewDesign --> Design : Feedback/Changes Requested
-  ReviewDesign --> Tasks : Explicit Approval
+  ReviewDesign --> Design : Complete Design
+  ReviewDesign --> Tasks : Complete Tasks
   Tasks --> ReviewTasks : Complete Tasks
-  ReviewTasks --> Tasks : Feedback/Changes Requested
-  ReviewTasks --> [*] : Explicit Approval
+  ReviewTasks --> Tasks : Complete Tasks
+  ReviewTasks --> [*] : Complete Tasks
   Execute : Execute Task
   state "Entry Points" as EP {{
       [*] --> Requirements : Update
@@ -279,7 +273,6 @@ stateDiagram-v2
   }}
   Execute --> [*] : Complete
 ```
-
 
 4. Approach to Work
 - Fulfill the user's request using all the tools available to you.

@@ -23,8 +23,10 @@ from ii_agent.agents.function_call import FunctionCallAgent
 from ii_agent.agents.moa_agent import create_moa_agent
 from ii_agent.core.config.moa_config import create_default_moa_config
 from ii_agent.llm import get_client
+from ii_agent.llm.base import LLMClient
 from ii_agent.controller.state import State
-from ii_agent.llm.context_manager import LLMCompact
+from ii_agent.llm.context_manager import LLMCompact, TodoAwareContextManager
+from ii_agent.llm.context_manager.base import ContextManager
 from ii_agent.core.storage.settings.file_settings_store import FileSettingsStore
 from ii_agent.llm.token_counter import TokenCounter
 from ii_agent.core.logger import logger
@@ -69,6 +71,7 @@ class CLIApp:
         image_generate_config: ImageGenerateConfig | None = None,
         minimal: bool = False,
         enable_moa: bool = False,
+        context_manager_type: str = "todo_aware",
     ):
         # config
         self.config = config
@@ -108,6 +111,9 @@ class CLIApp:
         # Store MoA preference
         self.enable_moa = enable_moa
         
+        # Store context manager preference
+        self.context_manager_type = context_manager_type
+        
         # Agent controller will be created when needed
         self.agent_controller: Optional[AgentController] = None
         
@@ -121,6 +127,28 @@ class CLIApp:
         plans_dir = self.plan_state_manager.get_plans_directory()
         plans_dir.mkdir(exist_ok=True)
         logger.info(f"Plans directory initialized: {plans_dir}")
+    
+    def _create_context_manager(self, client: LLMClient, token_counter: TokenCounter) -> ContextManager:
+        """Create a context manager based on configuration."""
+        if self.context_manager_type == "todo_aware":
+            return TodoAwareContextManager(
+                client=client,
+                token_counter=token_counter,
+                token_budget=TOKEN_BUDGET,
+            )
+        elif self.context_manager_type == "compact":
+            return LLMCompact(
+                client=client,
+                token_counter=token_counter,
+                token_budget=TOKEN_BUDGET,
+            )
+        else:
+            # Fallback to todo_aware as default
+            return TodoAwareContextManager(
+                client=client,
+                token_counter=token_counter,
+                token_budget=TOKEN_BUDGET,
+            )
         
     def _handle_tool_confirmation(self, tool_call_id: str, tool_name: str, approved: bool, alternative_instruction: str) -> None:
         """Handle tool confirmation response from console subscriber."""
@@ -239,10 +267,9 @@ class CLIApp:
                 tools=[ToolParam(name=tool.name, description=tool.description, input_schema=tool.input_schema) for tool in task_agent_list_tools]
             ),
             tools=task_agent_list_tools,
-            context_manager=LLMCompact(
+            context_manager=self._create_context_manager(
                 client=llm_client,
-                token_counter=TokenCounter(),
-                token_budget=TOKEN_BUDGET,  # Default token budget
+                token_counter=TokenCounter()
             ),
             event_stream=self.event_stream,
             workspace_manager=self.workspace_manager,
@@ -267,10 +294,9 @@ class CLIApp:
         
         # Create context manager
         token_counter = TokenCounter()
-        context_manager = LLMCompact(
+        context_manager = self._create_context_manager(
             client=llm_client,
-            token_counter=token_counter,
-            token_budget=TOKEN_BUDGET,  # Default token budget
+            token_counter=token_counter
         )
 
         # Create message history - restore from saved state if available

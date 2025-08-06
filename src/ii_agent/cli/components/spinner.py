@@ -93,9 +93,7 @@ class AnimatedSpinner:
         text = Text()
         text.append(f"{spinner_char} ", style="cyan")
         text.append(f"{self.message}… ", style="cyan")
-        text.append(f"({elapsed}s · ", style="dim")
-        text.append("esc", style="bold dim")
-        text.append(" to interrupt)", style="dim")
+        text.append(f"{elapsed}s", style="dim")
         
         return text
     

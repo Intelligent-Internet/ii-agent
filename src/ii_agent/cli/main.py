@@ -140,6 +140,12 @@ def create_parser() -> argparse.ArgumentParser:
         action="store_true", 
         help="Enable Mixture-of-Agents (MoA) for enhanced AI responses"
     )
+    parser.add_argument(
+        "--context-manager",
+        choices=["compact", "todo_aware"],
+        default="todo_aware",
+        help="Context management strategy: 'todo_aware' (default) for task-based summarization or 'compact' for full conversation summarization"
+    )
     
     return parser
 
@@ -202,6 +208,7 @@ async def main_async() -> int:
             workspace_path=workspace_path,
             minimal=args.minimal,
             enable_moa=args.moa,
+            context_manager_type=args.context_manager,
             web_search_config=web_search_config,
             web_visit_config=web_visit_config,
             fullstack_dev_config=fullstack_dev_config,
