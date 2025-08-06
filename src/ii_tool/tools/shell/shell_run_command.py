@@ -108,10 +108,16 @@ class ShellRunCommand(BaseTool):
         
         all_current_sessions = self.shell_manager.get_all_sessions()
         if session_name not in all_current_sessions:
-            return ToolResult(
-                llm_content=f"Session '{session_name}' is not initialized. Use `BashInit` to initialize a session. Available sessions: {all_current_sessions}",
-                is_error=True
-            )
+            # Try to auto-create the session with current working directory
+            try:
+                import os
+                current_dir = os.getcwd()
+                self.shell_manager.create_session(session_name, current_dir)
+            except Exception as create_error:
+                return ToolResult(
+                    llm_content=f"Session '{session_name}' is not initialized and auto-creation failed: {str(create_error)}. Use `BashInit` to initialize a session manually. Available sessions: {all_current_sessions}",
+                    is_error=True
+                )
             
         try:
             result = self.shell_manager.run_command(session_name, command, timeout=timeout, wait_for_output=wait_for_output)
@@ -125,9 +131,17 @@ class ShellRunCommand(BaseTool):
                 is_error=True
             )
         except ShellBusyError:
-            current_output = self.shell_manager.get_session_output(session_name)
+            try:
+                current_output = self.shell_manager.get_session_output(session_name)
+            except ShellSessionNotFoundError:
+                current_output = f"Session '{session_name}' not found"
             return ToolResult(
                 llm_content=f"The previous command is not finished or a blocking command (deployment, requires user input, etc.) is running. Current view:\n\n{current_output}",
+                is_error=True
+            )
+        except ShellSessionNotFoundError as e:
+            return ToolResult(
+                llm_content=str(e),
                 is_error=True
             )
 

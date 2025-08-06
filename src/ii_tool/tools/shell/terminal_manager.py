@@ -214,8 +214,11 @@ class TmuxSessionManager(BaseShellManager):
         """Wait for the session to be idle."""
         start_time = time.time()
         while time.time() - start_time < timeout:
-            if self.get_session_state(session_name) == SessionState.IDLE:
-                break
+            try:
+                if self.get_session_state(session_name) == SessionState.IDLE:
+                    break
+            except ShellSessionNotFoundError:
+                raise ShellSessionNotFoundError(f"Session '{session_name}' not found while waiting for idle state")
             time.sleep(poll_interval)
         else:
             raise ShellCommandTimeoutError("Session creation timed out")
@@ -376,8 +379,11 @@ class TmuxWindowManager(BaseShellManager):
         """Wait for the session to be idle."""
         start_time = time.time()
         while time.time() - start_time < timeout:
-            if self.get_session_state(session_name) == SessionState.IDLE:
-                break
+            try:
+                if self.get_session_state(session_name) == SessionState.IDLE:
+                    break
+            except ShellSessionNotFoundError:
+                raise ShellSessionNotFoundError(f"Session '{session_name}' not found while waiting for idle state")
             time.sleep(poll_interval)
         else:
             raise ShellCommandTimeoutError("Session creation timed out")
