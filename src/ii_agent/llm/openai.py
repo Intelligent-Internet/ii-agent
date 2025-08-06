@@ -58,6 +58,7 @@ class OpenAIDirectClient(LLMClient):
                 max_retries=llm_config.max_retries,
             )
         self.model_name = llm_config.model
+        self.stop_sequence = llm_config.stop_sequence
         self.max_retries = llm_config.max_retries
         self.cot_model = llm_config.cot_model
 
@@ -222,6 +223,7 @@ class OpenAIDirectClient(LLMClient):
                     tool_choice=tool_choice_param,
                     max_tokens=openai_max_tokens,
                     extra_body=extra_body,
+                    stop=self.stop_sequence,
                 )
                 break
             except (

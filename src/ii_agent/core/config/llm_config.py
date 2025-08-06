@@ -41,6 +41,7 @@ class LLMConfig(BaseModel):
     azure_endpoint: str | None = Field(default=None)
     azure_api_version: str | None = Field(default=None)
     cot_model: bool = Field(default=False)
+    stop_sequence: list[str] = Field(default=[])
 
 
     @field_serializer('api_key')
