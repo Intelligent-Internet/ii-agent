@@ -46,6 +46,9 @@ async def google_callback(
     """Handle Google SSO callback and login."""
 
     user_info = await google_sso.verify_and_process(request)
+    if not user_info:
+        raise ValueError("Failed to get user info from Google SSO")
+
     result = await db.execute(select(User).where(User.email == user_info.email))
     user_stored = result.scalar_one_or_none()
     if not user_stored:
@@ -53,8 +56,8 @@ async def google_callback(
         new_user = User(
             id=str(uuid.uuid4()),
             email=user_info.email,
-            first_name=user_info.first_name,
-            last_name=user_info.last_name,
+            first_name=user_info.first_name or "",
+            last_name=user_info.last_name or "",
             role="user",
             subscription_tier="free",
             is_active=True,
@@ -67,10 +70,12 @@ async def google_callback(
         user_stored = new_user
 
     access_token = jwt_handler.create_access_token(
-        user_id=user_stored.id, email=user_stored.email, role=user_stored.role
+        user_id=str(user_stored.id),
+        email=str(user_stored.email),
+        role=str(user_stored.role),
     )
 
-    refresh_token = jwt_handler.create_refresh_token(user_id=user_stored.id)
+    refresh_token = jwt_handler.create_refresh_token(user_id=str(user_stored.id))
 
     return TokenResponse(
         access_token=access_token,

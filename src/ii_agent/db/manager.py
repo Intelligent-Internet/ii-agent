@@ -32,8 +32,6 @@ def run_migrations():
 
 run_migrations()
 
-# engine = create_engine(load_ii_agent_config().database_url, connect_args={"check_same_thread": False})
-# SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine, expire_on_commit=False)
 engine = create_async_engine(config.database_url, echo=True, future=True)
 SessionLocal = async_sessionmaker(bind=engine, expire_on_commit=False)
 
