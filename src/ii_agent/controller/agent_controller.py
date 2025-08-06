@@ -13,8 +13,12 @@ from ii_agent.core.logger import logger
 from ii_agent.llm.base import TextResult, AssistantContentBlock
 from ii_agent.llm.context_manager.base import ContextManager
 from ii_agent.utils.constants import COMPLETE_MESSAGE
-from ii_tool.core import WorkspaceManager
-from ii_tool.tools.base import ImageContent, TextContent, ToolResult, ToolConfirmationDetails
+from ii_tool.tools.base import (
+    ImageContent,
+    TextContent,
+    ToolResult,
+    ToolConfirmationDetails,
+)
 
 TOOL_RESULT_INTERRUPT_MESSAGE = "[Request interrupted by user for tool use]"
 AGENT_INTERRUPT_MESSAGE = "Agent interrupted by user."
@@ -30,7 +34,6 @@ class AgentController:
         agent: Agent,
         tool_manager: AgentToolManager,
         init_history: State,
-        workspace_manager: WorkspaceManager,
         event_stream: EventStream,
         context_manager: ContextManager,
         max_turns: int = 200,
@@ -43,14 +46,12 @@ class AgentController:
             agent: The agent to use
             tools: List of tools to use
             init_history: Initial history to use
-            workspace_manager: Workspace manager for file operations
             event_stream: Event stream for publishing events
             context_manager: Context manager for token counting and truncation
             max_turns: Maximum number of turns
             interactive_mode: Whether to use interactive mode
         """
         super().__init__()
-        self.workspace_manager = workspace_manager
         self.agent = agent
         self.tool_manager = tool_manager
         self.config = config
@@ -65,61 +66,67 @@ class AgentController:
         # Tool confirmation tracking
         self._pending_confirmations: dict[str, dict] = {}
         self._confirmation_responses: dict[str, dict] = {}
-        
+
     @property
     def state(self) -> State:
         """Return the current conversation state/history."""
         return self.history
 
-    def add_confirmation_response(self, tool_call_id: str, approved: bool, alternative_instruction: str = "") -> None:
+    def add_confirmation_response(
+        self, tool_call_id: str, approved: bool, alternative_instruction: str = ""
+    ) -> None:
         """Add a confirmation response for a tool call."""
         self._confirmation_responses[tool_call_id] = {
             "approved": approved,
-            "alternative_instruction": alternative_instruction
+            "alternative_instruction": alternative_instruction,
         }
 
     def _should_auto_approve_tool(self, tool_name: str) -> bool:
         """Check if a tool should be auto-approved based on config."""
         if not self.config:
             return False
-        
+
         # Check if all tools are auto-approved
-        if getattr(self.config, 'auto_approve_tools', False):
+        if getattr(self.config, "auto_approve_tools", False):
             return True
-        
+
         # Check if this specific tool is in the allow list
-        allow_tools = getattr(self.config, 'allow_tools', set())
+        allow_tools = getattr(self.config, "allow_tools", set())
         return tool_name in allow_tools
 
-    async def _wait_for_confirmation(self, tool_call_id: str, timeout: float = 300.0) -> dict:
+    async def _wait_for_confirmation(
+        self, tool_call_id: str, timeout: float = 300.0
+    ) -> dict:
         """Wait for confirmation response for a specific tool call."""
         start_time = time.time()
-        
+
         while time.time() - start_time < timeout:
             if tool_call_id in self._confirmation_responses:
                 response = self._confirmation_responses.pop(tool_call_id)
                 return response
-            
+
             # Check for interruption
             if self.interrupted:
-                return {"approved": False, "alternative_instruction": "Operation interrupted"}
-            
+                return {
+                    "approved": False,
+                    "alternative_instruction": "Operation interrupted",
+                }
+
             await asyncio.sleep(0.1)
-        
+
         # Timeout - default to deny
         return {"approved": False, "alternative_instruction": "Confirmation timeout"}
 
     async def run_impl(
         self,
         tool_input: dict[str, Any],
-        state: Optional[State] = None,
     ) -> ToolResult:
         instruction = tool_input["instruction"]
         files = tool_input["files"]
 
         # Add instruction to dialog before getting model response
         image_blocks = []
-        if files:
+        if files:  # FIX: fix, not work for sandbox mode anymore
             # First, list all attached files
             instruction = f"""{instruction}\n\nAttached files:\n"""
             for file in files:
@@ -133,7 +140,9 @@ class AgentController:
                     ext = "jpeg"
                 if ext in ["png", "gif", "jpeg", "webp"]:
                     with open(file, "rb") as image_file:
-                        base64_image = base64.b64encode(image_file.read()).decode("utf-8")
+                        base64_image = base64.b64encode(image_file.read()).decode(
+                            "utf-8"
+                        )
                     image_blocks.append(
                         {
                             "source": {
@@ -151,7 +160,6 @@ class AgentController:
         while remaining_turns > 0:
             self.truncate_history()
             remaining_turns -= 1
-
 
             if self.interrupted:
                 # Handle interruption during model generation or other operations
@@ -183,7 +191,9 @@ class AgentController:
                 model_response = [TextResult(text=COMPLETE_MESSAGE)]
 
             # Add the raw response to the canonical history
-            self.history.add_assistant_turn(cast(list[AssistantContentBlock], model_response))
+            self.history.add_assistant_turn(
+                cast(list[AssistantContentBlock], model_response)
+            )
 
             # Process all TextResult blocks first
             text_results = [
@@ -216,7 +226,8 @@ class AgentController:
                         )
                     )
                 return ToolResult(
-                    llm_content=self.history.get_last_assistant_text_response() or "Task completed",
+                    llm_content=self.history.get_last_assistant_text_response()
+                    or "Task completed",
                     user_display_content="Task completed",
                 )
 
@@ -224,10 +235,13 @@ class AgentController:
             if self.interrupted:
                 # Handle interruption during tool execution
                 for tool_call in pending_tool_calls:
-                    self.add_tool_call_result(tool_call, ToolResult(
-                        llm_content=TOOL_RESULT_INTERRUPT_MESSAGE,
-                        user_display_content=TOOL_RESULT_INTERRUPT_MESSAGE,
-                    ))
+                    self.add_tool_call_result(
+                        tool_call,
+                        ToolResult(
+                            llm_content=TOOL_RESULT_INTERRUPT_MESSAGE,
+                            user_display_content=TOOL_RESULT_INTERRUPT_MESSAGE,
+                        ),
+                    )
                 self.add_fake_assistant_turn(TOOL_CALL_INTERRUPT_FAKE_MODEL_RSP)
                 return ToolResult(
                     llm_content=TOOL_RESULT_INTERRUPT_MESSAGE,
@@ -254,71 +268,83 @@ class AgentController:
             approved_tool_calls = []
             denied_tool_calls = []
             alternative_instructions = []
-            
+
             for tool_call in pending_tool_calls:
                 tool = self.tool_manager.get_tool(tool_call.tool_name)
                 confirmation_details = tool.should_confirm_execute(tool_call.tool_input)
-                
+
                 # Check if tool should be auto-approved
                 if self._should_auto_approve_tool(tool_call.tool_name):
                     approved_tool_calls.append(tool_call)
                 elif isinstance(confirmation_details, ToolConfirmationDetails):
                     # Send confirmation event and wait for response
                     self.event_stream.add_event(
-                        RealtimeEvent(type=EventType.TOOL_CONFIRMATION, content={
-                            "tool_call_id": tool_call.tool_call_id,
-                            "tool_name": tool_call.tool_name,
-                            "tool_input": tool_call.tool_input,
-                            "message": confirmation_details.message,
-                        })
+                        RealtimeEvent(
+                            type=EventType.TOOL_CONFIRMATION,
+                            content={
+                                "tool_call_id": tool_call.tool_call_id,
+                                "tool_name": tool_call.tool_name,
+                                "tool_input": tool_call.tool_input,
+                                "message": confirmation_details.message,
+                            },
+                        )
                     )
-                    
+
                     # Wait for confirmation response
-                    confirmation_response = await self._wait_for_confirmation(tool_call.tool_call_id)
-                    
+                    confirmation_response = await self._wait_for_confirmation(
+                        tool_call.tool_call_id
+                    )
+
                     if confirmation_response["approved"]:
                         approved_tool_calls.append(tool_call)
                     else:
                         denied_tool_calls.append(tool_call)
                         if confirmation_response["alternative_instruction"]:
-                            alternative_instructions.append(confirmation_response["alternative_instruction"])
+                            alternative_instructions.append(
+                                confirmation_response["alternative_instruction"]
+                            )
                 else:
                     # No confirmation needed, approve by default
                     approved_tool_calls.append(tool_call)
-            
+
             # Handle denied tools
             if denied_tool_calls:
                 denial_message = f"Tool execution denied for: {', '.join([tc.tool_name for tc in denied_tool_calls])}"
                 if alternative_instructions:
                     denial_message += f"\nAlternative instructions: {'; '.join(alternative_instructions)}"
-                
+
                 # Add denial results to history
                 for tool_call in denied_tool_calls:
-                    self.add_tool_call_result(tool_call, ToolResult(
-                        llm_content=denial_message,
-                        user_display_content=denial_message,
-                    ))
-            
+                    self.add_tool_call_result(
+                        tool_call,
+                        ToolResult(
+                            llm_content=denial_message,
+                            user_display_content=denial_message,
+                        ),
+                    )
+
             # Execute approved tools in batch
             if approved_tool_calls:
-                tool_results = await self.tool_manager.run_tools_batch(approved_tool_calls)
-                
+                tool_results = await self.tool_manager.run_tools_batch(
+                    approved_tool_calls
+                )
+
                 for tool_call, tool_result in zip(approved_tool_calls, tool_results):
                     self.add_tool_call_result(tool_call, tool_result)
-            
+
             # If all tools were denied and we have alternative instructions, add them to history
             if not approved_tool_calls and alternative_instructions:
-                alt_instruction_text = "User provided alternative instructions: " + "; ".join(alternative_instructions)
+                alt_instruction_text = (
+                    "User provided alternative instructions: "
+                    + "; ".join(alternative_instructions)
+                )
                 self.history.add_user_prompt(alt_instruction_text)
 
         agent_answer = "Agent did not complete after max turns"
         self.event_stream.add_event(
             RealtimeEvent(type=EventType.AGENT_RESPONSE, content={"text": agent_answer})
         )
-        return ToolResult(
-            llm_content=agent_answer,
-            user_display_content=agent_answer
-        )
+        return ToolResult(llm_content=agent_answer, user_display_content=agent_answer)
 
     def get_tool_start_message(self, tool_input: dict[str, Any]) -> str:
         return f"Agent started with instruction: {tool_input['instruction']}"
@@ -352,7 +378,7 @@ class AgentController:
         }
         if orientation_instruction:
             tool_input["orientation_instruction"] = orientation_instruction
-        return await self.run_impl(tool_input, self.history)
+        return await self.run_impl(tool_input)
 
     def run_agent(
         self,
@@ -389,7 +415,9 @@ class AgentController:
         self.interrupted = True
         logger.debug("Agent cancellation requested")
 
-    def add_tool_call_result(self, tool_call: ToolCallParameters, tool_result: ToolResult):
+    def add_tool_call_result(
+        self, tool_call: ToolCallParameters, tool_result: ToolResult
+    ):
         """Add a tool call result to the history and send it to the message queue."""
         llm_content = tool_result.llm_content
         user_display_content = tool_result.user_display_content or llm_content
@@ -406,19 +434,23 @@ class AgentController:
                 llm_content_fmt = []
                 for content in llm_content:
                     if isinstance(content, TextContent):
-                        llm_content_fmt.append({
-                            "type": "text",
-                            "text": content.text,
-                        })
-                    elif isinstance(content, ImageContent):
-                        llm_content_fmt.append({
-                            "type": "image",
-                            "source": {
-                                "type": "base64",
-                                "media_type": content.mime_type,
-                                "data": content.data,
+                        llm_content_fmt.append(
+                            {
+                                "type": "text",
+                                "text": content.text,
                             }
-                        })
+                        )
+                    elif isinstance(content, ImageContent):
+                        llm_content_fmt.append(
+                            {
+                                "type": "image",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": content.mime_type,
+                                    "data": content.data,
+                                },
+                            }
+                        )
                     else:
                         raise ValueError(f"Unknown content type: {type(content)}")
 
@@ -432,14 +464,16 @@ class AgentController:
                 content={
                     "tool_call_id": tool_call.tool_call_id,
                     "tool_name": tool_call.tool_name,
-                    "result": user_display_content
+                    "result": user_display_content,
                 },
             )
         )
 
     def add_fake_assistant_turn(self, text: str):
         """Add a fake assistant turn to the history and send it to the message queue."""
-        self.history.add_assistant_turn(cast(list[AssistantContentBlock], [TextResult(text=text)]))
+        self.history.add_assistant_turn(
+            cast(list[AssistantContentBlock], [TextResult(text=text)])
+        )
         if self.interrupted:
             rsp_type = EventType.AGENT_RESPONSE_INTERRUPTED
         else:

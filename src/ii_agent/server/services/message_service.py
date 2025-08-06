@@ -79,8 +79,8 @@ class MessageService:
         try:
             init_content = InitAgentContent(**content)
 
-            # Create main agent
-            agent, controller = await self.agent_service.create_agent(
+            # Store controller in session
+            session.agent_controller = await self.agent_service.create_agent(
                 model_name=init_content.model_name,
                 session_id=session.session_uuid,
                 workspace_manager=session.workspace_manager,
@@ -96,13 +96,11 @@ class MessageService:
                     self.config, user_id
                 )
                 settings = await settings_store.load()
+                if not settings:
+                    raise ValueError("Settings not found for user")
                 llm_config = settings.llm_configs.get(init_content.model_name)
                 if llm_config:
                     llm_config.thinking_tokens = init_content.thinking_tokens
-
-            # Store agent and controller in session
-            session.agent = agent
-            session.agent_controller = controller
 
             # Check if reviewer is enabled
             session.enable_reviewer = init_content.tool_args.get(
@@ -110,19 +108,15 @@ class MessageService:
             )
             if session.enable_reviewer:
                 # Create reviewer agent
-                (
-                    reviewer_agent,
-                    reviewer_controller,
-                ) = await self.agent_service.create_reviewer_agent(
-                    model_name=init_content.model_name,
-                    session_id=session.session_uuid,
-                    workspace_manager=session.workspace_manager,
-                    event_stream=session.get_event_stream(),
-                    tool_args=init_content.tool_args,
+                session.reviewer_controller = (
+                    await self.agent_service.create_reviewer_agent(
+                        model_name=init_content.model_name,
+                        session_id=session.session_uuid,
+                        workspace_manager=session.workspace_manager,
+                        event_stream=session.get_event_stream(),
+                        tool_args=init_content.tool_args,
+                    )
                 )
-
-                session.reviewer_agent = reviewer_agent
-                session.reviewer_controller = reviewer_controller
 
             await session.send_event(
                 RealtimeEvent(
@@ -158,7 +152,7 @@ class MessageService:
             # Set session name from first message
             if session.first_message and query_content.text.strip():
                 session_name = query_content.text.strip()[:100]
-                Sessions.update_session_name(session.session_uuid, session_name)
+                await Sessions.update_session_name(session.session_uuid, session_name)
                 session.first_message = False
 
             # Check if there's an active task
@@ -193,7 +187,7 @@ class MessageService:
             )
 
     async def _handle_workspace_info(
-        self, content: dict, session: "ChatSession"
+        self, _content: dict, session: "ChatSession"
     ) -> None:
         """Handle workspace info request."""
         await session.send_event(
@@ -203,11 +197,11 @@ class MessageService:
             )
         )
 
-    async def _handle_ping(self, content: dict, session: "ChatSession") -> None:
+    async def _handle_ping(self, _content: dict, session: "ChatSession") -> None:
         """Handle ping message."""
         await session.send_event(RealtimeEvent(type=EventType.PONG, content={}))
 
-    async def _handle_cancel(self, content: dict, session: "ChatSession") -> None:
+    async def _handle_cancel(self, _content: dict, session: "ChatSession") -> None:
         """Handle query cancellation."""
         if not session.agent_controller:
             await session.send_event(
@@ -248,8 +242,8 @@ class MessageService:
             # Delete events from database
             if hasattr(session.agent_controller, "session_id"):
                 try:
-                    Events.delete_events_from_last_to_user_message(
-                        session.agent_controller.session_id
+                    await Events.delete_events_from_last_to_user_message(
+                        session.session_uuid
                     )
                     await session.send_event(
                         RealtimeEvent(
@@ -304,6 +298,9 @@ class MessageService:
             user_id = None
             settings_store = await FileSettingsStore.get_instance(self.config, user_id)
             settings = await settings_store.load()
+
+            if not settings:
+                raise ValueError("Settings not found for user")
 
             llm_config = settings.llm_configs.get(enhance_content.model_name)
             if not llm_config:
@@ -420,6 +417,15 @@ class MessageService:
         self, user_input: str, session: "ChatSession"
     ) -> None:
         """Run the reviewer agent to analyze the main agent's output."""
+        if not session.agent_controller:
+            await session.send_event(
+                RealtimeEvent(
+                    type=EventType.ERROR,
+                    content={"message": "Agent not initialized for this session"},
+                )
+            )
+            return
+
         if not session.reviewer_controller:
             await session.send_event(
                 RealtimeEvent(
@@ -434,12 +440,14 @@ class MessageService:
             final_result = ""
             found = False
 
-            for message in session.agent_controller.state._message_lists[::-1]:
+            for message in session.agent_controller.state.message_lists[
+                ::-1
+            ]:  # FIX: Bad practice, should be refactored
                 for sub_message in message:
                     if (
-                        hasattr(sub_message, "tool_name")
+                        isinstance(sub_message, ToolCall)
+                        and hasattr(sub_message, "tool_name")
                         and sub_message.tool_name == "message_user"
-                        and isinstance(sub_message, ToolCall)
                     ):
                         found = True
                         final_result = sub_message.tool_input["text"]
@@ -485,7 +493,7 @@ Now your turn to review the general agent's work.
                 resume=False,
             )
 
-            if reviewer_feedback and reviewer_feedback.strip():
+            if reviewer_feedback and isinstance(reviewer_feedback.llm_content, str):
                 # Send feedback to main agent for improvement
                 await session.send_event(
                     RealtimeEvent(

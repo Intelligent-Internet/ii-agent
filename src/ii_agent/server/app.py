@@ -44,7 +44,7 @@ def create_app() -> FastAPI:
 
     # WebSocket endpoint
     @app.websocket("/ws")
-    async def websocket_handler(websocket: WebSocket):
+    async def websocket_handler(websocket: WebSocket):  # pyright: ignore[reportUnusedFunction]
         session = await shared.connection_manager.connect(websocket)
         await session.start_chat_loop()
 

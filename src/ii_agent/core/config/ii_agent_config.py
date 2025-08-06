@@ -5,6 +5,15 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from ii_agent.utils.constants import TOKEN_BUDGET
 from pathlib import Path
 
+from ii_tool.core.config import (
+    FullStackDevConfig,
+    ImageGenerateConfig,
+    ImageSearchConfig,
+    VideoGenerateConfig,
+    WebSearchConfig,
+    WebVisitConfig,
+)
+
 # Constants
 MAX_OUTPUT_TOKENS_PER_TURN = 32000
 MAX_TURNS = 200
@@ -22,7 +31,11 @@ class IIAgentConfig(BaseSettings):
     """
 
     model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", extra="ignore"
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+        env_nested_delimiter="__",
+        nested_model_default_partial_update=True,
     )
     file_store: str = Field(default="local")
     file_store_path: str = Field(default="~/.ii_agent")
@@ -34,6 +47,14 @@ class IIAgentConfig(BaseSettings):
     token_budget: int = TOKEN_BUDGET
     database_url: Optional[str] = None
     mcp_config: Optional[Dict[str, Any]] = None
+
+    # Our tools configuration
+    web_search_config: WebSearchConfig = Field(default_factory=WebSearchConfig)
+    web_visit_config: WebVisitConfig = Field(default_factory=WebVisitConfig)
+    fullstack_dev_config: FullStackDevConfig = Field(default_factory=FullStackDevConfig)
+    image_search_config: ImageSearchConfig | None = None
+    video_generate_config: VideoGenerateConfig | None = None
+    image_generate_config: ImageGenerateConfig | None = None
 
     # Google OAuth configuration
     google_client_id: str = Field(default="")

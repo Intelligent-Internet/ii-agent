@@ -2,7 +2,7 @@
 
 import logging
 import uuid
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, Optional
 
 from ii_agent.agents.function_call import FunctionCallAgent
 from ii_agent.controller.agent_controller import AgentController
@@ -13,10 +13,14 @@ from ii_agent.core.event_stream import AsyncEventStream
 from ii_agent.core.storage.files import FileStore
 from ii_agent.core.storage.settings.file_settings_store import FileSettingsStore
 from ii_agent.llm import get_client
-from ii_agent.llm.context_manager.llm_summarizing import LLMSummarizingContextManager
+from ii_agent.llm.context_manager import LLMCompact
 from ii_agent.llm.token_counter import TokenCounter
 from ii_agent.prompts import get_system_prompt
 from ii_agent.utils.workspace_manager import WorkspaceManager
+from ii_agent.controller.tool_manager import AgentToolManager
+from ii_agent.llm.base import ToolParam
+from ii_tool.utils import load_tools_from_mcp
+from ii_tool.tools.manager import get_default_tools
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +44,7 @@ class AgentService:
         event_stream: AsyncEventStream,
         tool_args: Dict[str, Any],
         system_prompt: Optional[str] = None,
-    ) -> Tuple[FunctionCallAgent, AgentController]:
+    ) -> AgentController:
         """Create a new agent instance following CLI patterns.
 
         Args:
@@ -52,12 +56,15 @@ class AgentService:
             system_prompt: Optional custom system prompt
 
         Returns:
-            Tuple of (FunctionCallAgent, AgentController)
+            AgentController: The controller for the created agent
         """
         # Get settings
         user_id = None  # TODO: Support user id
         settings_store = await FileSettingsStore.get_instance(self.config, user_id)
         settings = await settings_store.load()
+
+        if not settings:
+            raise ValueError("Settings not found. Ensure the configuration is correct.")
 
         # Get LLM configuration
         llm_config = settings.llm_configs.get(model_name)
@@ -69,7 +76,9 @@ class AgentService:
 
         # Determine system prompt
         if system_prompt is None:
-            system_prompt = get_system_prompt(workspace_manager.root)
+            system_prompt = get_system_prompt(
+                workspace_manager.root.absolute().as_posix()
+            )
 
         # Create agent config
         agent_config = AgentConfig(
@@ -77,16 +86,46 @@ class AgentService:
             system_prompt=system_prompt,
             temperature=getattr(self.config, "temperature", 0.7),
         )
-        # Create agent
+
+        # Create tool manager and register tools
+        tool_manager = AgentToolManager()
+
+        # Get core tools
+        tool_manager.register_tools(
+            get_default_tools(
+                chat_session_id=str(session_id),
+                workspace_path="",
+                web_search_config=self.config.web_search_config,
+                web_visit_config=self.config.web_visit_config,
+                fullstack_dev_config=self.config.fullstack_dev_config,
+                image_search_config=self.config.image_search_config,
+                video_generate_config=self.config.video_generate_config,
+                image_generate_config=self.config.image_generate_config,
+            )
+        )
+
+        # Load MCP tools if configured
+        if self.config.mcp_config:
+            mcp_tools = await load_tools_from_mcp(self.config.mcp_config)
+            tool_manager.register_tools(mcp_tools)
+
+        # Create agent with proper tools
         agent = FunctionCallAgent(
             llm=llm_client,
             config=agent_config,
-            tools=[],  # NOTE: Temporary fix
+            tools=[
+                ToolParam(
+                    name=tool.name,
+                    description=tool.description,
+                    input_schema=tool.input_schema,
+                )
+                for tool in tool_manager.get_tools()
+            ],
         )
 
         # Create context manager
         token_counter = TokenCounter()
-        context_manager = LLMSummarizingContextManager(
+        context_manager = LLMCompact(
             client=llm_client,
             token_counter=token_counter,
             token_budget=self.config.token_budget,
@@ -99,21 +138,15 @@ class AgentService:
         except FileNotFoundError:
             logger.info(f"No history found for session {session_id}")
 
-        # Create controller
-        controller = AgentController(
+        return AgentController(
             agent=agent,
-            tools=[],  # NOTE: Temporary fix
+            tool_manager=tool_manager,
             init_history=state,
-            workspace_manager=workspace_manager,
             event_stream=event_stream,
             context_manager=context_manager,
             interactive_mode=True,
+            config=self.config,
         )
-
-        # Store session ID for tracking
-        controller.session_id = session_id
-
-        return agent, controller
 
     async def create_reviewer_agent(
         self,
@@ -122,7 +155,7 @@ class AgentService:
         workspace_manager: WorkspaceManager,
         event_stream: AsyncEventStream,
         tool_args: Dict[str, Any],
-    ) -> Tuple[FunctionCallAgent, AgentController]:
+    ) -> AgentController:
         """Create a reviewer agent using FunctionCallAgent with reviewer prompt.
 
         Args:
@@ -133,7 +166,7 @@ class AgentService:
             tool_args: Tool configuration arguments
 
         Returns:
-            Tuple of (FunctionCallAgent, AgentController) configured for reviewing
+            AgentController: The controller for the reviewer agent
         """
         reviewer_prompt = self.get_reviewer_system_prompt()
 

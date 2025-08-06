@@ -1,5 +1,4 @@
 import json
-from pathlib import Path
 
 from typing import Optional, cast, Any
 
@@ -107,7 +106,7 @@ class State(BaseModel):
             filename = get_conversation_agent_history_filename(session_id)
             json_data = file_store.read(filename)
             state_dict = json.loads(json_data)
-            
+
             # Use Pydantic's model_validate to restore the entire state
             restored_state = State.model_validate(state_dict)
             self.message_lists = restored_state.message_lists
@@ -120,7 +119,7 @@ class State(BaseModel):
     def save_to_session(self, session_id: str, file_store: FileStore):
         """Save only core state as JSON"""
         filename = get_conversation_agent_history_filename(session_id)
-        
+
         try:
             # Use Pydantic's model_dump to serialize the entire state
             json_data = json.dumps(self.model_dump(), indent=2, ensure_ascii=False)
@@ -153,9 +152,7 @@ class State(BaseModel):
     def add_assistant_turn(self, messages: list[AssistantContentBlock]):
         """Adds an assistant turn (text response and/or tool calls)."""
         # Allow multiple tool calls per turn for parallel execution
-        self.message_lists.append(
-            cast(list[GeneralContentBlock], messages)
-        )
+        self.message_lists.append(cast(list[GeneralContentBlock], messages))
 
     def get_messages_for_llm(self) -> LLMMessages:  # TODO: change name to get_messages
         """Returns messages formatted for the LLM client."""
@@ -177,13 +174,17 @@ class State(BaseModel):
                 )
         return tool_calls
 
-    def add_tool_call_result(self, parameters: ToolCallParameters, result: str | list[dict[str, Any]]):
+    def add_tool_call_result(
+        self, parameters: ToolCallParameters, result: str | list[dict[str, Any]]
+    ):
         """Add the result of a tool call to the dialog."""
         # NOTE: the result is in form of list of dicts when there are images in the tool result
         self.add_tool_call_results([parameters], [result])
 
     def add_tool_call_results(
-        self, parameters: list[ToolCallParameters], results: list[str | list[dict[str, Any]]]
+        self,
+        parameters: list[ToolCallParameters],
+        results: list[str | list[dict[str, Any]]],
     ):
         """Add the result of a tool call to the dialog."""
         self.message_lists.append(
@@ -259,4 +260,3 @@ class State(BaseModel):
     def set_message_list(self, message_list: list[list[GeneralContentBlock]]):
         """Sets the message list and ensures tool call integrity."""
         self.message_lists = State._ensure_tool_call_integrity(message_list)
-
