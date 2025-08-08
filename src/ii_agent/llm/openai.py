@@ -24,6 +24,7 @@ from openai._types import (
 
 from ii_agent.core.config.llm_config import LLMConfig
 from ii_agent.llm.base import (
+    ImageBlock,
     LLMClient,
     AssistantContentBlock,
     LLMMessages,
@@ -121,7 +122,33 @@ class OpenAIDirectClient(LLMClient):
                             "tool_call_id": internal_message.tool_call_id,
                             "content": internal_message.tool_output,
                         }
+                        #TODO: Move parse logic in client instead. Quick fix only
+                        if isinstance(internal_message.tool_output, list):
+                            updated_content = []
+                            for block in internal_message.tool_output:
+                                if isinstance(block, dict) and block.get("type") == "image":
+                                    new_block = {
+                                        "type": "image_url", 
+                                        "image_url": {
+                                            "url": f"data:{block['source']['media_type']};base64,{block['source']['data']}"
+                                        }
+                                    }
+                                    updated_content.append(new_block)
+                                else:
+                                    updated_content.append(block)
+                            tool_result_message["content"] = updated_content
                         openai_messages.append(tool_result_message)
+                        continue
+                    elif str(type(internal_message)) == str(ImageBlock):
+                        internal_message = cast(ImageBlock, internal_message)
+                        content = {
+                            "type": "image_url", 
+                            "image_url": {
+                                "url": f"data:{internal_message.source['media_type']};base64,{internal_message.source['data']}"
+                            }
+                        }
+                        image_message = {"role": "user", "content": [content]}
+                        openai_messages.append(image_message)
                         continue
                 
                 # Add user text message if present
