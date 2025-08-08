@@ -2,7 +2,7 @@
 
 import asyncio
 from typing import Optional, Any
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from ii_agent.llm.base import (
     GeneralContentBlock,
     LLMClient,
@@ -30,6 +30,9 @@ class TodoSegment:
     is_completed: bool
     message_count: int
     has_todo_write: bool
+    completed_task_ids: list[str] = field(default_factory=list)
+    completion_rate: float = 0.0
+    in_progress_task_ids: list[str] = field(default_factory=list)
 
 
 class TodoAwareContextManager(ContextManager):
@@ -62,10 +65,87 @@ class TodoAwareContextManager(ContextManager):
         self.preserve_recent_segments = preserve_recent_segments
         self._last_summarized_index = 0
     
+    def _extract_todos_from_messages(
+        self, message_list: list[GeneralContentBlock]
+    ) -> dict[str, dict[str, Any]]:
+        """Extract todo states from a message list.
+        
+        Args:
+            message_list: List of messages to extract todos from
+            
+        Returns:
+            Dictionary mapping todo IDs to todo states
+        """
+        todos = {}
+        for message in message_list:
+            if isinstance(message, ToolCall) and message.tool_name == "TodoWrite":
+                if "todos" in message.tool_input:
+                    for todo in message.tool_input.get("todos", []):
+                        todo_id = todo.get("id")
+                        if todo_id:
+                            todos[todo_id] = {
+                                "id": todo_id,
+                                "content": todo.get("content"),
+                                "status": todo.get("status", "pending"),
+                                "priority": todo.get("priority", "medium")
+                            }
+        return todos
+    
+    def _find_completed_tasks(
+        self, previous_todos: dict[str, dict], current_todos: dict[str, dict]
+    ) -> list[str]:
+        """Find tasks that transitioned from in_progress to completed.
+        
+        Args:
+            previous_todos: Previous todo states
+            current_todos: Current todo states
+            
+        Returns:
+            List of task IDs that were completed
+        """
+        completed_ids = []
+        for todo_id, current_state in current_todos.items():
+            if todo_id in previous_todos:
+                prev_status = previous_todos[todo_id].get("status")
+                curr_status = current_state.get("status")
+                # Check if task transitioned from in_progress to completed
+                if prev_status == "in_progress" and curr_status == "completed":
+                    completed_ids.append(todo_id)
+        return completed_ids
+    
+    def _calculate_completion_metrics(
+        self, todos: dict[str, dict]
+    ) -> tuple[float, list[str], list[str]]:
+        """Calculate completion metrics for a set of todos.
+        
+        Args:
+            todos: Dictionary of todo states
+            
+        Returns:
+            Tuple of (completion_rate, completed_ids, in_progress_ids)
+        """
+        if not todos:
+            return 0.0, [], []
+        
+        completed_ids = []
+        in_progress_ids = []
+        
+        for todo_id, todo in todos.items():
+            status = todo.get("status", "pending")
+            if status == "completed":
+                completed_ids.append(todo_id)
+            elif status == "in_progress":
+                in_progress_ids.append(todo_id)
+        
+        completion_rate = len(completed_ids) / len(todos) if todos else 0.0
+        return completion_rate, completed_ids, in_progress_ids
+    
     def _find_todo_segments(
         self, message_lists: list[list[GeneralContentBlock]]
     ) -> list[TodoSegment]:
-        """Find and analyze segments between TodoWrite calls with success messages.
+        """Find and analyze segments based on task status transitions.
+        
+        Creates segments when tasks transition from in_progress to completed.
         
         Args:
             message_lists: List of message lists to analyze
@@ -75,62 +155,94 @@ class TodoAwareContextManager(ContextManager):
         """
         segments = []
         current_start = 0
+        previous_todos = {}
         
         for idx, message_list in enumerate(message_lists):
-            has_todo_write = False
-            has_success_message = False
-            todo_states = []
+            # Extract current todos from this message list
+            current_todos = self._extract_todos_from_messages(message_list)
+            has_todo_write = bool(current_todos)
             
-            for message in message_list:
-                if isinstance(message, ToolCall) and message.tool_name == "TodoWrite":
-                    has_todo_write = True
-                    if "todos" in message.tool_input:
-                        todos = message.tool_input.get("todos", [])
-                        for todo in todos:
-                            todo_states.append({
-                                "id": todo.get("id"),
-                                "content": todo.get("content"),
-                                "status": todo.get("status", "pending"),
-                                "priority": todo.get("priority", "medium")
-                            })
-                
-                # Check for TodoWrite success message (ToolFormattedResult)
-                elif isinstance(message, ToolFormattedResult) and message.tool_name == "TodoWrite":
-                    has_success_message = True
+            # Check for TodoWrite success message
+            has_success_message = any(
+                isinstance(msg, ToolFormattedResult) and msg.tool_name == "TodoWrite"
+                for msg in message_list
+            )
             
-            # Create segment when we find a TodoWrite success message (not just the call)
-            if has_success_message and idx > current_start:
-                # Segment is considered "completed" if it has a success message
-                # This indicates the TodoWrite operation was successful
-                is_completed = True
+            # If we have todos and previous todos, check for task completions
+            if current_todos and previous_todos:
+                completed_tasks = self._find_completed_tasks(previous_todos, current_todos)
                 
-                segments.append(TodoSegment(
-                    start_idx=current_start,
-                    end_idx=idx,
-                    todo_states=todo_states,
-                    is_completed=is_completed,
-                    message_count=idx - current_start + 1,
-                    has_todo_write=has_todo_write
-                ))
-                current_start = idx + 1
+                # Create a segment when tasks complete (transition from in_progress to completed)
+                if completed_tasks and idx > current_start:
+                    # Calculate metrics for the segment
+                    completion_rate, all_completed, in_progress = self._calculate_completion_metrics(current_todos)
+                    
+                    segments.append(TodoSegment(
+                        start_idx=current_start,
+                        end_idx=idx,
+                        todo_states=list(current_todos.values()),
+                        is_completed=bool(completed_tasks),  # Has completed tasks
+                        message_count=idx - current_start + 1,
+                        has_todo_write=True,
+                        completed_task_ids=completed_tasks,
+                        completion_rate=completion_rate,
+                        in_progress_task_ids=in_progress
+                    ))
+                    current_start = idx + 1
+                    
+                    logger.info(
+                        f"Created segment {len(segments)-1} for completed tasks: {completed_tasks}, "
+                        f"completion rate: {completion_rate:.1%}"
+                    )
+            
+            # Update previous todos if we found new ones
+            if current_todos:
+                previous_todos = current_todos
         
-        # Handle the final segment
+        # Handle the final segment (current/active work)
         if current_start < len(message_lists):
+            # Get the latest todos for metrics
+            final_todos = previous_todos if previous_todos else {}
+            completion_rate, completed, in_progress = self._calculate_completion_metrics(final_todos)
+            
             segments.append(TodoSegment(
                 start_idx=current_start,
                 end_idx=len(message_lists) - 1,
-                todo_states=[],
-                is_completed=False,  # Current work is never completed
+                todo_states=list(final_todos.values()),
+                is_completed=False,  # Current work is never considered completed
                 message_count=len(message_lists) - current_start,
-                has_todo_write=False
+                has_todo_write=bool(final_todos),
+                completed_task_ids=completed,
+                completion_rate=completion_rate,
+                in_progress_task_ids=in_progress
             ))
         
+        # If no segments were created but we have messages, create a single segment
+        if not segments and message_lists:
+            segments.append(TodoSegment(
+                start_idx=0,
+                end_idx=len(message_lists) - 1,
+                todo_states=[],
+                is_completed=False,
+                message_count=len(message_lists),
+                has_todo_write=False,
+                completed_task_ids=[],
+                completion_rate=0.0,
+                in_progress_task_ids=[]
+            ))
+        
+        logger.info(f"Found {len(segments)} task-based segments in conversation")
         return segments
     
     def _should_summarize_segment(
         self, segment: TodoSegment, segment_index: int, total_segments: int
     ) -> bool:
-        """Determine if a segment should be summarized.
+        """Determine if a segment should be summarized based on sub-task completion.
+        
+        A segment represents a completed sub-task and should be summarized if:
+        - It has completed tasks (represents finished work)
+        - It's not the current/active segment
+        - It meets minimum size requirements
         
         Args:
             segment: The segment to evaluate
@@ -140,20 +252,30 @@ class TodoAwareContextManager(ContextManager):
         Returns:
             True if segment should be summarized
         """
-        # Never summarize the current/active segment
+        # Never summarize the current/active segment (last segment)
         if segment_index >= total_segments - 1:
             return False
         
-        # Preserve recent segments based on configuration
-        if segment_index >= total_segments - self.preserve_recent_segments - 1:
+        # Don't summarize very small segments (likely noise)
+        if segment.message_count < self.min_segment_size:
+            logger.debug(
+                f"Segment {segment_index} too small ({segment.message_count} messages), skipping"
+            )
             return False
         
-        # Summarize segments that ended with a TodoWrite success message
-        # This indicates the task segment was successfully completed
-        if not segment.is_completed:
-            return False
+        # Summarize segments that represent completed sub-tasks
+        if segment.is_completed and segment.completed_task_ids:
+            logger.debug(
+                f"Segment {segment_index} represents completed sub-task(s): {segment.completed_task_ids}, "
+                f"summarizing"
+            )
+            return True
         
-        return True
+        # Don't summarize segments without completed tasks
+        logger.debug(
+            f"Segment {segment_index} has no completed tasks, preserving full context"
+        )
+        return False
     
     def _generate_segment_summary(
         self, 
@@ -174,12 +296,23 @@ class TodoAwareContextManager(ContextManager):
         # Build prompt for segment summarization using LLMCompact style
         prompt = TASK_SEGMENT_SUMMARY_PROMPT
         
+        # Add task completion context
+        if segment.completed_task_ids:
+            prompt += "\n<completed_tasks>\n"
+            prompt += f"Tasks completed in this segment: {', '.join(segment.completed_task_ids)}\n"
+            prompt += f"Completion rate: {segment.completion_rate:.1%}\n"
+            prompt += "</completed_tasks>\n\n"
+        
         # Add todo context if available
         if segment.todo_states:
             prompt += "\n<todos_context>\n"
             for todo in segment.todo_states:
                 status_emoji = "✓" if todo.get("status") == "completed" else "○"
-                prompt += f"{status_emoji} [{todo.get('priority')}] {todo.get('content')} - Status: {todo.get('status')}\n"
+                # Highlight if this was a completed task in this segment
+                if todo.get("id") in (segment.completed_task_ids or []):
+                    prompt += f"→ {status_emoji} [{todo.get('priority')}] {todo.get('content')} - COMPLETED IN THIS SEGMENT\n"
+                else:
+                    prompt += f"{status_emoji} [{todo.get('priority')}] {todo.get('content')} - Status: {todo.get('status')}\n"
             prompt += "</todos_context>\n\n"
         
         # Add the segment content
