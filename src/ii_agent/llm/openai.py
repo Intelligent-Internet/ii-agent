@@ -19,7 +19,7 @@ from openai import (
     RateLimitError as OpenAI_RateLimitError,
 )
 from openai._types import (
-    NOT_GIVEN as OpenAI_NOT_GIVEN,  # pyright: ignore[reportPrivateImportUsage]
+    NOT_GIVEN as OpenAI_NOT_GIVEN,
 )
 
 from ii_agent.core.config.llm_config import LLMConfig
@@ -235,21 +235,12 @@ class OpenAIDirectClient(LLMClient):
         response = None
         for retry in range(self.max_retries):
             try:
-                extra_body = {}
-                openai_max_tokens = max_tokens
-                openai_temperature = temperature
-                if self.cot_model:
-                    extra_body["max_completion_tokens"] = max_tokens
-                    openai_max_tokens = OpenAI_NOT_GIVEN
-                    openai_temperature = OpenAI_NOT_GIVEN
                 response = self.client.chat.completions.create(
                     model=self.model_name,
                     messages=openai_messages,
                     tools=openai_tools if len(openai_tools) > 0 else OpenAI_NOT_GIVEN,
-                    tool_choice=tool_choice_param,
-                    max_tokens=openai_max_tokens,
-                    extra_body=extra_body,
-                    temperature=openai_temperature,
+                    max_completion_tokens=max_tokens,
+                    reasoning_effort="medium",
                 )
                 break
             except (
