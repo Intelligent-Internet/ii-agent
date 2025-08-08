@@ -34,6 +34,11 @@ class AgentToolManager:
     def register_tools(self, tools: List[BaseTool]):
         self.tools.extend(tools)
         self._validate_tool_parameters()
+    
+    def unregister_tool(self, tool_name: str):
+        """Remove a tool from the registered tools list."""
+        self.tools = [t for t in self.tools if t.name != tool_name]
+        logger.info(f"Unregistered tool: {tool_name}")
 
     def _validate_tool_parameters(self):
         """Validate tool parameters and check for duplicates."""
