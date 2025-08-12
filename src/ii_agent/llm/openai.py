@@ -158,6 +158,21 @@ class OpenAIDirectClient(LLMClient):
                         "tool_call_id": internal_message.tool_call_id,
                         "content": internal_message.tool_output,
                     }
+                content = internal_message.tool_output
+                if isinstance(internal_message.tool_output, list):
+                    content = []
+                    for block in internal_message.tool_output:
+                        if isinstance(block, dict) and block.get("type") == "image":
+                            new_block = {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:{block['source']['media_type']};base64,{block['source']['data']}"
+                                }
+                            }
+                            content.append(new_block)
+                        else:
+                            content.append(block)
+                openai_message["content"] = content
                 openai_messages.append(openai_message)
                 continue # Move to next message in outer loop
             else:
@@ -231,7 +246,7 @@ class OpenAIDirectClient(LLMClient):
                     messages=openai_messages,
                     tools=openai_tools if len(openai_tools) > 0 else OpenAI_NOT_GIVEN,
                     tool_choice=tool_choice_param,
-                    max_tokens=openai_max_tokens,
+                    max_completion_tokens=openai_max_tokens,
                     extra_body=extra_body,
                 )
                 assert response is not None, "OpenAI response is None"

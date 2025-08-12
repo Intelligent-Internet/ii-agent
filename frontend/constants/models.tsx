@@ -18,31 +18,11 @@ export const PROVIDER_MODELS: { [key: string]: IModel[] } = {
   ],
   openai: [
     {
-      model_name: "gpt-4-turbo",
-      provider: "openai",
-    },
-    {
-      model_name: "gpt-4-1106-preview",
-      provider: "openai",
-    },
-    {
-      model_name: "gpt-4",
-      provider: "openai",
-    },
-    {
-      model_name: "gpt-3.5-turbo",
+      model_name: "gpt-5",
       provider: "openai",
     },
     {
       model_name: "gpt-4.1",
-      provider: "openai",
-    },
-    {
-      model_name: "gpt-4.1-mini",
-      provider: "openai",
-    },
-    {
-      model_name: "gpt-4.1-nano",
       provider: "openai",
     },
     {
@@ -55,10 +35,6 @@ export const PROVIDER_MODELS: { [key: string]: IModel[] } = {
     },
     {
       model_name: "o3-mini",
-      provider: "openai",
-    },
-    {
-      model_name: "o3-pro",
       provider: "openai",
     },
     {
