@@ -384,7 +384,10 @@ class TodoAwareContextManager(ContextManager):
             return message_lists
         
         # Find todo segments
-        segments = self._find_todo_segments(message_lists)
+        try:
+            segments = self._find_todo_segments(message_lists)
+        except:
+            return self._llm_compact_fallback(message_lists)
         
         if not segments:
             # Fall back to LLMCompact if no segments found
@@ -448,6 +451,11 @@ class TodoAwareContextManager(ContextManager):
             f"({original_count - new_count} consolidated into summaries)"
         )
         
+        # IMPORTANT: Ensure tool call integrity after truncation
+        # This ensures that all tool calls have matching results and vice versa
+        from ii_agent.controller.state import State
+        new_messages = State._ensure_tool_call_integrity(new_messages)
+        
         return new_messages
     
     def _llm_compact_fallback(
@@ -461,6 +469,10 @@ class TodoAwareContextManager(ContextManager):
         Returns:
             LLMCompact truncated message lists
         """
+        # Ensure tool call integrity before summarization
+        from ii_agent.controller.state import State
+        message_lists = State._ensure_tool_call_integrity(message_lists)
+        
         # Create summary request by appending COMPACT_PROMPT as user message
         summary_request_message = [TextPrompt(text=COMPACT_PROMPT)]
         messages_for_summary = message_lists + [summary_request_message]

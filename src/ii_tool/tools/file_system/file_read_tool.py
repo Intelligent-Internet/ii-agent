@@ -217,7 +217,7 @@ class FileReadTool(BaseTool):
                 is_error=True
             )
         
-        if limit is not None and limit <= 0:
+        if limit is not None and limit < 0:
             return ToolResult(
                 llm_content="ERROR: Limit must be a positive number",
                 is_error=True

@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 import json
-from typing import Any, Tuple
+from typing import Any, Optional, Tuple
 from pydantic import BaseModel
 from typing import Literal
 
@@ -24,6 +24,7 @@ class ToolCall(BaseModel):
     tool_call_id: str
     tool_name: str
     tool_input: Any
+    tool_id: Optional[str] = None
 
     def __str__(self) -> str:
         return f"{self.tool_name} with input: {self.tool_input}"
@@ -95,7 +96,7 @@ class TextResult(BaseModel):
 
     text: str
     type: Literal["text_result"] = "text_result"
-
+    id: Optional[str] = None
 
 class RedactedThinkingBlock(BaseModel):
     """Internal representation of redacted thinking block."""
