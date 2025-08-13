@@ -32,6 +32,7 @@ class IIAgentConfig(BaseSettings):
     token_budget: int = TOKEN_BUDGET
     database_url: Optional[str] = None
     mcp_config: Optional[Dict[str, Any]] = None
+    enable_workflow_agent: bool = False
 
     # Per session config
     # TODO: move to a separate class

@@ -351,6 +351,11 @@ class AgentController:
                 
                 for tool_call, tool_result in zip(approved_tool_calls, tool_results):
                     self.add_tool_call_result(tool_call, tool_result)
+                    
+                    # Unregister WorkflowAgent after successful execution
+                    if tool_call.tool_name == "WorkflowAgent" and not tool_result.is_error:
+                        self.tool_manager.unregister_tool("WorkflowAgent")
+                        logger.info("WorkflowAgent unregistered after successful execution")
             
             # If all tools were denied and we have alternative instructions, add them to history
             if not approved_tool_calls and alternative_instructions:

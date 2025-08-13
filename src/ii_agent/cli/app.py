@@ -52,7 +52,12 @@ from ii_tool.core.config import (
     ImageGenerateConfig, 
     FullStackDevConfig
 )
-from ii_tool.tools.agent import TaskAgentTool, TASK_AGENT_SYSTEM_PROMPT
+from ii_tool.tools.agent import (
+    TaskAgentTool, 
+    TASK_AGENT_SYSTEM_PROMPT,
+    WorkflowAgentTool,
+    WORKFLOW_AGENT_SYSTEM_PROMPT
+)
 
 
 class CLIApp:
@@ -276,7 +281,36 @@ class CLIApp:
         )
 
         tool_manager.register_tools([task_agent_tool])
-        # ---------------------------------------------------------------------
+        if self.config.enable_workflow_agent:
+            # Add WorkflowAgent tool
+            # ---------------------------------------------------------------------
+            workflow_agent_config = AgentConfig(
+                max_tokens_per_turn=self.config.max_output_tokens_per_turn,
+                system_prompt=WORKFLOW_AGENT_SYSTEM_PROMPT,
+            )
+            workflow_agent_list_tools = get_default_tools(
+                chat_session_id=f"WORKFLOW-AGENT-{self.config.session_id}",
+                workspace_path=self.workspace_path,
+                web_search_config=self.web_search_config,
+                web_visit_config=self.web_visit_config,
+            )
+            workflow_agent_tool = WorkflowAgentTool(
+                agent=FunctionCallAgent(
+                    llm=llm_client,
+                    config=workflow_agent_config,
+                    tools=[ToolParam(name=tool.name, description=tool.description, input_schema=tool.input_schema) for tool in workflow_agent_list_tools]
+                ),
+                tools=workflow_agent_list_tools,
+                context_manager=self._create_context_manager(
+                    client=llm_client,
+                    token_counter=TokenCounter()
+                ),
+                event_stream=self.event_stream,
+                workspace_manager=self.workspace_manager,
+            )
+            
+            tool_manager.register_tools([workflow_agent_tool])
+            # ---------------------------------------------------------------------
 
         # Get tools as ToolParam list
         tools = [ToolParam(name=tool.name, description=tool.description, input_schema=tool.input_schema) for tool in tool_manager.get_tools()]
