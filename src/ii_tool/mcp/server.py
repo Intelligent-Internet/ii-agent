@@ -18,7 +18,7 @@ async def create_mcp(workspace_dir: str, session_id: str):
     image_generate_config = ImageGenerateConfig()
     fullstack_dev_config = FullStackDevConfig()
     
-    tools = get_default_tools(
+    tools, _ = get_default_tools(
         chat_session_id=session_id,
         workspace_path=workspace_dir,
         web_search_config=web_search_config,

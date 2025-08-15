@@ -7,7 +7,9 @@ from libtmux._internal.query_list import ObjectDoesNotExist
 from libtmux.exc import TmuxSessionExists
 from enum import Enum
 from abc import ABC, abstractmethod
-from typing import List
+from typing import List, Dict, Optional
+from .output_cleaner import ShellOutputCleaner
+from ii_agent.llm.base import LLMClient
 
 # This is a marker that indicates the end of the command output
 _DEFAULT_TIMEOUT = 30
@@ -78,10 +80,26 @@ class BaseShellManager(ABC):
 
 # Tmux Shell Manager Based on Session
 class TmuxSessionManager(BaseShellManager):
-    def __init__(self):
+    def __init__(self, 
+                 client: Optional[LLMClient] = None,
+                 max_output_length: int = 5000,
+                 enable_output_cleaning: bool = True):
         self.server = libtmux.Server()
         # Test server connection
         self.server.sessions
+        # Track last command per session for output cleaning context
+        self._last_commands: Dict[str, str] = {}
+        # Initialize output cleaner
+        self.output_cleaner = ShellOutputCleaner(
+            client=client,
+            max_output_length=max_output_length,
+            enabled=enable_output_cleaning
+        )
+    
+    def set_llm_client(self, client: LLMClient):
+        """Set the LLM client for output cleaning after initialization."""
+        self.output_cleaner.client = client
+        self.output_cleaner.llm_available = client is not None
     
     def _validate_directory(self, directory: str) -> str:
         """Validate and normalize directory path."""
@@ -138,7 +156,11 @@ class TmuxSessionManager(BaseShellManager):
         
         full_output = "\n".join(capture)
         
-        return full_output
+        # Apply output cleaning if enabled
+        last_command = self._last_commands.get(session_name, "")
+        cleaned_output = self.output_cleaner.clean_output(full_output, last_command)
+        
+        return cleaned_output
 
     def get_session_state(self, session_name: str) -> SessionState:        
         pane = self._get_active_pane(session_name)
@@ -176,6 +198,9 @@ class TmuxSessionManager(BaseShellManager):
 
         pane.send_keys(command)
         time.sleep(0.1)
+        
+        # Store the command for output cleaning context
+        self._last_commands[session_name] = command
 
         if wait_for_output:
             self._wait_for_session_idle(session_name, timeout=timeout)
@@ -226,7 +251,11 @@ class TmuxSessionManager(BaseShellManager):
 
 # Tmux Shell Manager Based on Window
 class TmuxWindowManager(BaseShellManager):
-    def __init__(self, chat_session_id: str):
+    def __init__(self, 
+                 chat_session_id: str,
+                 client: Optional[LLMClient] = None,
+                 max_output_length: int = 5000,
+                 enable_output_cleaning: bool = True):
         self.server = libtmux.Server()
 
         self._default_window_name = "main"
@@ -238,6 +267,19 @@ class TmuxWindowManager(BaseShellManager):
             y=999,
             window_name=self._default_window_name) # default window name
         self._configure_session(self._default_window_name)
+        # Track last command per session for output cleaning context
+        self._last_commands: Dict[str, str] = {}
+        # Initialize output cleaner
+        self.output_cleaner = ShellOutputCleaner(
+            client=client,
+            max_output_length=max_output_length,
+            enabled=enable_output_cleaning
+        )
+    
+    def set_llm_client(self, client: LLMClient):
+        """Set the LLM client for output cleaning after initialization."""
+        self.output_cleaner.client = client
+        self.output_cleaner.llm_available = client is not None
     
     def _validate_directory(self, directory: str) -> str:
         """Validate and normalize directory path."""
@@ -300,7 +342,11 @@ class TmuxWindowManager(BaseShellManager):
         
         full_output = "\n".join(capture)
         
-        return full_output
+        # Apply output cleaning if enabled
+        last_command = self._last_commands.get(session_name, "")
+        cleaned_output = self.output_cleaner.clean_output(full_output, last_command)
+         
+        return cleaned_output
 
     def get_session_state(self, session_name: str) -> SessionState:        
         pane = self._get_active_pane(session_name)
@@ -338,6 +384,9 @@ class TmuxWindowManager(BaseShellManager):
 
         pane.send_keys(command)
         time.sleep(0.1)
+        
+        # Store the command for output cleaning context
+        self._last_commands[session_name] = command
 
         if wait_for_output:
             self._wait_for_session_idle(session_name, timeout=timeout)

@@ -240,7 +240,7 @@ class OpenAIDirectClient(LLMClient):
                     params["tool_choice"] = tool_choice_param
                     
                 # Reasoning configuration
-                reasoning_effort = "medium"
+                reasoning_effort = "high"
                 params["reasoning"] = {"effort": reasoning_effort, "summary": "auto"}
                 try:
                     response = self.client.responses.create(**params)

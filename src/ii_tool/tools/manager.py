@@ -48,12 +48,19 @@ def get_default_tools(
     image_search_config: ImageSearchConfig | None = None,
     video_generate_config: VideoGenerateConfig | None = None,
     image_generate_config: ImageGenerateConfig | None = None,
+    enable_shell_output_cleaning: bool = True,
+    max_shell_output_length: int = 5000,
 ):
     """
     Get the default tools for the workspace manager and terminal manager.
     """
 
-    terminal_manager = TmuxWindowManager(chat_session_id)
+    terminal_manager = TmuxWindowManager(
+        chat_session_id, 
+        client=None,  # Will be set later via set_llm_client()
+        max_output_length=max_shell_output_length,
+        enable_output_cleaning=enable_shell_output_cleaning
+    )
     workspace_manager = WorkspaceManager(workspace_path)
 
     tools = [
@@ -101,4 +108,12 @@ def get_default_tools(
     if image_generate_config is not None:
         tools.append(ImageGenerateTool(workspace_manager, image_generate_config))
 
-    return tools
+    return tools, terminal_manager
+
+
+def get_terminal_manager_from_tools(tools):
+    """Helper function to get the terminal manager from a list of tools."""
+    for tool in tools:
+        if hasattr(tool, 'shell_manager') and isinstance(tool.shell_manager, TmuxWindowManager):
+            return tool.shell_manager
+    return None

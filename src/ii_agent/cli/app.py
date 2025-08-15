@@ -76,7 +76,7 @@ class CLIApp:
         image_generate_config: ImageGenerateConfig | None = None,
         minimal: bool = False,
         enable_moa: bool = False,
-        context_manager_type: str = "todo_aware",
+        context_manager_type: str = "compact",
     ):
         # config
         self.config = config
@@ -236,18 +236,20 @@ class CLIApp:
         tool_manager = AgentToolManager()
 
         # Get core tools
-        tool_manager.register_tools(
-            get_default_tools(
-                chat_session_id=self.config.session_id,
-                workspace_path=self.workspace_path,
-                web_search_config=self.web_search_config,
-                web_visit_config=self.web_visit_config,
-                fullstack_dev_config=self.fullstack_dev_config,
-                image_search_config=self.image_search_config,
-                video_generate_config=self.video_generate_config,
-                image_generate_config=self.image_generate_config,
-            )
+        core_tools, main_terminal_manager = get_default_tools(
+            chat_session_id=self.config.session_id,
+            workspace_path=self.workspace_path,
+            web_search_config=self.web_search_config,
+            web_visit_config=self.web_visit_config,
+            fullstack_dev_config=self.fullstack_dev_config,
+            image_search_config=self.image_search_config,
+            video_generate_config=self.video_generate_config,
+            image_generate_config=self.image_generate_config,
         )
+        tool_manager.register_tools(core_tools)
+        
+        # Set the LLM client for shell output cleaning
+        main_terminal_manager.set_llm_client(llm_client)
 
         if self.config.mcp_config:
             mcp_tools = await load_tools_from_mcp(self.config.mcp_config)
@@ -259,12 +261,14 @@ class CLIApp:
             max_tokens_per_turn=self.config.max_output_tokens_per_turn,
             system_prompt=TASK_AGENT_SYSTEM_PROMPT,
         )
-        task_agent_list_tools = get_default_tools(
+        task_agent_list_tools, task_terminal_manager = get_default_tools(
             chat_session_id=f"TASK-AGENT-{self.config.session_id}",
             workspace_path=self.workspace_path,
             web_search_config=self.web_search_config,
             web_visit_config=self.web_visit_config,
         )
+        # Set LLM client for task agent terminal manager
+        task_terminal_manager.set_llm_client(llm_client)
         task_agent_tool = TaskAgentTool(
             agent=FunctionCallAgent(
                 llm=llm_client,
@@ -288,12 +292,14 @@ class CLIApp:
                 max_tokens_per_turn=self.config.max_output_tokens_per_turn,
                 system_prompt=WORKFLOW_AGENT_SYSTEM_PROMPT,
             )
-            workflow_agent_list_tools = get_default_tools(
+            workflow_agent_list_tools, workflow_terminal_manager = get_default_tools(
                 chat_session_id=f"WORKFLOW-AGENT-{self.config.session_id}",
                 workspace_path=self.workspace_path,
                 web_search_config=self.web_search_config,
                 web_visit_config=self.web_visit_config,
             )
+            # Set LLM client for workflow agent terminal manager
+            workflow_terminal_manager.set_llm_client(llm_client)
             workflow_agent_tool = WorkflowAgentTool(
                 agent=FunctionCallAgent(
                     llm=llm_client,

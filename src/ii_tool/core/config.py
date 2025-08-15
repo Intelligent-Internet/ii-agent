@@ -69,6 +69,19 @@ class ImageGenerateConfig(BaseSettings):
         extra="ignore"
     )
 
+# --- Shell Config ---
+class ShellConfig(BaseSettings):
+    enable_output_cleaning: bool = True
+    openai_api_key: str | None = None
+    output_cleaning_model: str = "gpt-4o-mini"
+    max_output_length: int = 5000
+    
+    model_config = ConfigDict(
+        env_prefix="SHELL_",
+        env_file=".env",
+        extra="ignore"
+    )
+
 # --- Full Stack Dev Config ---
 class FullStackDevConfig(BaseSettings):
     template_path: str = ".templates/react-tailwind-python"
