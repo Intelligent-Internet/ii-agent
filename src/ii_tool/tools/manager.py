@@ -76,9 +76,18 @@ def get_default_tools(
         TodoReadTool(),
         TodoWriteTool(),
         # Web tools
-        WebSearchTool(settings=web_search_config),
-        WebVisitTool(settings=web_visit_config),
+        
     ]
+
+    if web_search_config is not None:
+        tools.append(
+            WebSearchTool(settings=web_search_config)
+        )
+    if web_visit_config is not None:
+        tools.append(
+            WebVisitTool(settings=web_visit_config)
+        )
+    
 
     # Dev tools
     if fullstack_dev_config is not None:

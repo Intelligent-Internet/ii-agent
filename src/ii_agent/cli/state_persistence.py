@@ -5,6 +5,7 @@ This module provides functionality to save and restore the complete agent state
 including conversation history, configuration, and workspace context.
 """
 
+import os
 import json
 import uuid
 from datetime import datetime
@@ -22,13 +23,13 @@ from ii_agent.core.storage.locations import get_conversation_metadata_filename
 class StateManager:
     """Manages saving and loading of agent state for --continue functionality."""
     
-    def __init__(self, workspace_path: Path, continue_session: bool = False):
+    def __init__(self, workspace_path: Path, continue_session: bool = False, session_id: str = None, local_file_storage="~/.ii_agent"):
         self.workspace_path = str(workspace_path)
         self.ii_agent_dir = workspace_path / ".ii_agent"
         self.ii_agent_dir.mkdir(exist_ok=True)
         self.current_state_link = self.ii_agent_dir / "current_state.json"
         # Use the global file store location
-        self.file_store = LocalFileStore("~/.ii_agent")
+        self.file_store = LocalFileStore(local_file_storage)
         
         # Determine session ID based on whether we're continuing or starting fresh
         if continue_session and self.current_state_link.exists():
@@ -47,6 +48,8 @@ class StateManager:
                 self.session_id = uuid.uuid4().hex
         else:
             self.session_id = uuid.uuid4().hex
+            if session_id is not None:
+                self.session_id = session_id
             if not continue_session:
                 logger.info(f"Starting new session: {self.session_id}")
     
@@ -56,7 +59,8 @@ class StateManager:
         config: IIAgentConfig,
         llm_config: LLMConfig,
         workspace_path: str,
-        session_name: Optional[str] = None
+        session_name: Optional[str] = None,
+        agent_state_global: State = None
     ) -> None:
         """Save state and metadata using the new JSON format."""
         try:

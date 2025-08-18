@@ -90,12 +90,113 @@ GOOGLE_CLIENT_SECRET=<your_google_client_secret> # Optional, for Google Drive in
 ```
 docker compose up
 ```
-Our II-Agent supports popular models such as Claude, Gemini, and OpenAI. If you’d like to use a model from OpenRouter, simply configure your OpenAI endpoint with your OpenRouter API key.
+Our II-Agent supports popular models such as Claude, Gemini, and OpenAI. If you'd like to use a model from OpenRouter, simply configure your OpenAI endpoint with your OpenRouter API key.
 If you are using Vertex, run with these variables
 
 ```
 GOOGLE_APPLICATION_CREDENTIALS=absolute-path-to-credential docker compose up
 ```
+
+### Running II-Agent with MCP Docker Support
+
+II-Agent supports running with MCP (Model Context Protocol) servers in Docker containers, providing additional tool capabilities in security mode.
+
+#### Prerequisites
+
+1. Build the backend Docker image:
+```bash
+sudo docker build -f docker/backend/DockerfileBackEndOnly.dockerfile -t ii-agent-backend:0.2 .
+```
+
+2. Create a Python virtual environment and install dependencies:
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e .
+pip install datasets docker
+```
+
+3. Configure your settings in `scripts/settings.json` (see example provided) or create your own settings file.
+
+#### Running with MCP Docker
+
+Execute ii-agent with MCP Docker support using the inference script:
+
+```bash
+python3 scripts/inference_with_docker.py \
+  --query "your task description here" \
+  --setting-path scripts/settings.json \
+  --workspace-path your_workspace_directory \
+  --session-id your_session_id
+```
+
+**Example:**
+```bash
+python3 scripts/inference_with_docker.py \
+  --query "create the simple calculator web project" \
+  --setting-path scripts/settings.json \
+  --workspace-path scripts/calculator_workspace \
+  --session-id trace_00
+```
+
+#### MCP Configuration
+
+The MCP configuration is defined in `setting_mcp.json` and includes:
+- **Playwright MCP Server**: Provides web automation capabilities including browser interaction, page navigation, and element manipulation
+
+#### Parameters
+
+- `--query`: Task description for the agent to execute
+- `--setting-path`: Path to your settings JSON file containing LLM configuration
+- `--workspace-path`: Directory where the agent will work and store files
+- `--session-id`: Unique identifier for the session (useful for tracking and continuation)
+- `--keep-running-docker`: Keep Docker container running after completion (useful for inspecting running services)
+- `--image-name`: Docker image name to use (default: ii-agent-backend:0.2)
+
+### Collecting Traces and Output
+
+After running ii-agent with MCP Docker, you can collect traces and outputs from several locations:
+
+#### 1. Workspace Directory
+The main working directory specified by `--workspace-path` contains:
+- All files created/modified by the agent
+- Project artifacts and code
+- Configuration files in `.ii_agent/` subdirectory
+
+#### 2. Agent Output Directory
+The `ii_agent_output/` directory contains:
+- Extracted agent data and logs
+- Session state information
+- Tool execution traces
+
+#### 3. Container Logs and Data
+If using `--keep-running-docker`, you can access the running container to inspect:
+- Live application state (e.g., running web servers)
+
+#### 4. Session State Files
+Located in `{workspace-path}/.ii_agent/`:
+- `settings.json`: Agent configuration
+- `other_config.json`: System prompt and tool definitions
+- Session state data for continuation
+
+#### Example: Extracting Complete Traces
+
+```bash
+# Run with session tracking
+python3 scripts/inference_with_docker.py \
+  --query "create and deploy a web application" \
+  --setting-path scripts/settings.json \
+  --workspace-path ./traces/web_app_session \
+  --session-id web_app_001 \
+  --keep-running-docker
+
+# After completion, find your traces in:
+# - ./traces/web_app_session/ (workspace files)
+# - ./ii_agent_output/ (agent execution data)
+# - Container logs via Docker commands
+```
+
+This approach provides comprehensive tracing of the agent's execution, including all intermediate steps, tool usage, and final outputs.
 
 ### Manual Installation
 

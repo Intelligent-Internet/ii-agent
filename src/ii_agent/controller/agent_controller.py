@@ -1,6 +1,7 @@
 import asyncio
 import time
 import base64
+import json
 
 from typing import Any, Optional, cast
 from functools import partial
@@ -10,7 +11,7 @@ from ii_agent.controller.state import State
 from ii_agent.core.event import EventType, RealtimeEvent
 from ii_agent.core.event_stream import EventStream
 from ii_agent.core.logger import logger
-from ii_agent.llm.base import TextResult, AssistantContentBlock
+from ii_agent.llm.base import TextResult, AssistantContentBlock, SummaryBlock
 from ii_agent.llm.context_manager.base import ContextManager
 from ii_agent.utils.constants import COMPLETE_MESSAGE
 from ii_tool.core import WorkspaceManager
@@ -39,6 +40,7 @@ class AgentController:
         config: Optional[Any] = None,
         agent_as_tool: bool = False,
         agent_tool_name: Optional[str] = None,
+        history_global: State = None
     ):
         """Initialize the agent.
 
@@ -62,6 +64,10 @@ class AgentController:
         self.interactive_mode = interactive_mode
         self.interrupted = False
         self.history = init_history
+        if history_global is None:
+            self.history_global = self.history.model_copy(deep=True)
+        else:
+            self.history_global = history_global
         self.event_stream = event_stream
         self.context_manager = context_manager
 
@@ -152,12 +158,32 @@ class AgentController:
                     )
 
         self.history.add_user_prompt(instruction, image_blocks)
+        self.history_global.add_user_prompt(instruction, image_blocks)
+
         self.interrupted = False
 
         remaining_turns = self.max_turns
         while remaining_turns > 0:
+            current_history_dump = json.dumps(self.history.model_dump(), indent=2, ensure_ascii=False)
+
             self.truncate_history()
             remaining_turns -= 1
+            after_compress_dump = json.dumps(self.history.model_dump(), indent=2, ensure_ascii=False)
+            # We will check if the history were compressed
+            # Easy way using model dump
+            if current_history_dump != after_compress_dump:
+                # We will add the all new_messages to history_global
+                # How to detect the summary point from history_global
+                # From pipeline view: A->B->C->Summary-point(D)->E->F 
+                # We mark current messages as Summary-point(D) 
+                messages_list = self.history.get_messages_for_llm()[-1]
+                summary_state = SummaryBlock(
+                    data=messages_list,
+                    type=self.context_manager.context_manager_type
+                )
+                self.history_global.add_assistant_turn(cast(list[SummaryBlock], [summary_state]))
+
+
 
 
             if self.interrupted:
@@ -191,6 +217,9 @@ class AgentController:
 
             # Add the raw response to the canonical history
             self.history.add_assistant_turn(cast(list[AssistantContentBlock], model_response))
+            self.history_global.add_assistant_turn(
+                cast(list[AssistantContentBlock], model_response)
+            )
 
             # Process all TextResult blocks first
             text_results = [
@@ -356,6 +385,7 @@ class AgentController:
             if not approved_tool_calls and alternative_instructions:
                 alt_instruction_text = "User provided alternative instructions: " + "; ".join(alternative_instructions)
                 self.history.add_user_prompt(alt_instruction_text)
+                self.history_global.add_user_prompt(alt_instruction_text)
 
         agent_answer = "Agent did not complete after max turns"
         self.event_stream.add_event(
@@ -390,6 +420,7 @@ class AgentController:
         """
         if not resume:
             self.history.clear()
+            self.history_global.clear()
             self.interrupted = False
 
         tool_input = {
@@ -428,6 +459,7 @@ class AgentController:
         Note: This does NOT clear the file manager, preserving file context.
         """
         self.history.clear()
+        self.history_global.clear()
         self.interrupted = False
 
     def cancel(self):
@@ -442,12 +474,16 @@ class AgentController:
 
         if isinstance(llm_content, str):
             self.history.add_tool_call_result(tool_call, llm_content)
+            self.history_global.add_tool_call_result(tool_call, llm_content)
+
         # NOTE: the current tool output is maximum 1 text block and 1 image block
         # TODO: handle this better, may be move the logic to each LLM client
         elif isinstance(llm_content, list):
             if len(llm_content) == 1 and isinstance(llm_content[0], TextContent):
                 llm_content_text = llm_content[0].text
                 self.history.add_tool_call_result(tool_call, llm_content_text)
+                self.history_global.add_tool_call_result(tool_call, llm_content_text)
+
             else:
                 llm_content_fmt = []
                 for content in llm_content:
@@ -469,6 +505,8 @@ class AgentController:
                         raise ValueError(f"Unknown content type: {type(content)}")
 
                 self.history.add_tool_call_result(tool_call, llm_content_fmt)
+                self.history_global.add_tool_call_result(tool_call, llm_content_fmt)
+
         else:
             raise ValueError(f"Unknown content type: {type(llm_content)}")
 
@@ -499,6 +537,9 @@ class AgentController:
     def add_fake_assistant_turn(self, text: str):
         """Add a fake assistant turn to the history and send it to the message queue."""
         self.history.add_assistant_turn(cast(list[AssistantContentBlock], [TextResult(text=text)]))
+        self.history_global.add_assistant_turn(cast(list[AssistantContentBlock], [TextResult(text=text)]))
+
+
         if self.interrupted:
             rsp_type = EventType.AGENT_RESPONSE_INTERRUPTED
         else:

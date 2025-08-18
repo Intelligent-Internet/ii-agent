@@ -1,5 +1,5 @@
 import uuid
-
+import os
 from mcp.types import ToolAnnotations
 from fastmcp import FastMCP
 from argparse import ArgumentParser
@@ -10,12 +10,23 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-async def create_mcp(workspace_dir: str, session_id: str):
-    web_search_config = WebSearchConfig()
-    web_visit_config = WebVisitConfig()
-    image_search_config = ImageSearchConfig()
-    video_generate_config = VideoGenerateConfig()
-    image_generate_config = ImageGenerateConfig()
+async def create_mcp(workspace_dir: str, session_id: str, args):
+    if args.enable_web_tools:
+        web_search_config = WebSearchConfig()
+        web_visit_config = WebVisitConfig()
+    else:
+        web_search_config = None
+        web_visit_config = None
+    
+    if args.enable_media_tools:
+        image_search_config = ImageSearchConfig()
+        video_generate_config = VideoGenerateConfig()
+        image_generate_config = ImageGenerateConfig()
+    else:
+        image_search_config = None
+        video_generate_config = None
+        image_generate_config = None
+    
     fullstack_dev_config = FullStackDevConfig()
     
     tools = get_default_tools(
@@ -53,17 +64,25 @@ async def main():
     parser.add_argument("--workspace_dir", type=str)
     parser.add_argument("--session_id", type=str, default=None)
     parser.add_argument("--port", type=int, default=6060)
-    
+    parser.add_argument(
+        "--enable-web-tools", type=bool, default=False
+    )
+    parser.add_argument(
+        "--enable-media-tools", type=bool, default=False
+    )
     args = parser.parse_args()
 
     workspace_dir = args.workspace_dir
     session_id = args.session_id
+    workspace_dir = args.workspace_dir
+    os.makedirs(workspace_dir, exist_ok=True)
     if not session_id:
         session_id = str(uuid.uuid4())
     
     mcp = await create_mcp(
         workspace_dir=workspace_dir,
         session_id=session_id,
+        args=args
     )
     await mcp.run_async(transport="http", host="0.0.0.0", port=args.port)
 

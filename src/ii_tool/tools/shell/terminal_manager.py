@@ -107,17 +107,17 @@ class TmuxSessionManager(BaseShellManager):
             raise ShellInvalidSessionNameError("Invalid session name. Only alphanumeric characters, hyphens, and underscores are allowed.")
         
         start_directory = self._validate_directory(start_directory)
-        
+        print(start_directory, " start_directory")
         try:
             # Create session with bash shell and maximize the window
             self.server.new_session(session_name, start_directory=start_directory, shell="/bin/bash", x=999, y=999)
-
+            print("new session done")
             # Customize the prompt for easier getting the state of the session
             pane = self._get_active_pane(session_name)
             pane.send_keys(f"export PS1='{_PROMPT_FORMAT}'; clear")
             self._wait_for_session_idle(session_name, timeout=timeout)
 
-        except TmuxSessionExists:
+        except Exception as e:
             raise ShellSessionExistsError(f"Session '{session_name}' already exists")
 
     def delete_session(self, session_name: str):        
@@ -143,12 +143,13 @@ class TmuxSessionManager(BaseShellManager):
     def get_session_state(self, session_name: str) -> SessionState:        
         pane = self._get_active_pane(session_name)
         current_view = pane.capture_pane(start="-", end="-")
-        
+        print(current_view)
         if not isinstance(current_view, list):
             return SessionState.IDLE
             
         last_line = current_view[-1]
-        if _DEFAULT_PROMPT_PREFIX in last_line and last_line.endswith("$"):
+        print(last_line)
+        if _DEFAULT_PROMPT_PREFIX in last_line and (last_line.endswith("$") or last_line.endswith("#")) :
             return SessionState.IDLE
         return SessionState.BUSY
 
@@ -307,7 +308,7 @@ class TmuxWindowManager(BaseShellManager):
             return SessionState.IDLE
             
         last_line = current_view[-1]
-        if _DEFAULT_PROMPT_PREFIX in last_line and last_line.endswith("$"):
+        if _DEFAULT_PROMPT_PREFIX in last_line and (last_line.endswith("$") or last_line.endswith("#")):
             return SessionState.IDLE
         return SessionState.BUSY
 
