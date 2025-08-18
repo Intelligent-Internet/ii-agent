@@ -97,7 +97,50 @@ If you are using Vertex, run with these variables
 GOOGLE_APPLICATION_CREDENTIALS=absolute-path-to-credential docker compose up
 ```
 
-### Running II-Agent with MCP Docker Support
+### Manual Installation
+
+1. Clone the repository
+2. Set up Python environment:
+
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+   pip install -e .
+   ```
+
+3. Set up frontend (optional):
+   ```bash
+   cd frontend
+   npm install
+   ```
+
+### Web Interface
+
+1. Start the WebSocket server:
+
+When using Anthropic client:
+
+```bash
+STATIC_FILE_BASE_URL=http://localhost:8000 python ws_server.py --port 8000
+```
+
+When using Vertex:
+
+```bash
+GOOGLE_APPLICATION_CREDENTIALS=path-to-your-credential STATIC_FILE_BASE_URL=http://localhost:8000 python ws_server.py --port 8000
+```
+
+2. Start the frontend (in a separate terminal):
+
+```bash
+cd frontend
+npm run dev
+```
+
+3. Open your browser to http://localhost:3000
+
+
+## Running II-Agent with MCP Docker Support
 
 II-Agent supports running with MCP (Model Context Protocol) servers in Docker containers, providing additional tool capabilities in security mode.
 
@@ -138,11 +181,6 @@ python3 scripts/inference_with_docker.py \
   --workspace-path scripts/calculator_workspace \
   --session-id trace_00
 ```
-
-#### MCP Configuration
-
-The MCP configuration is defined in `setting_mcp.json` and includes:
-- **Playwright MCP Server**: Provides web automation capabilities including browser interaction, page navigation, and element manipulation
 
 #### Parameters
 
@@ -198,47 +236,6 @@ python3 scripts/inference_with_docker.py \
 
 This approach provides comprehensive tracing of the agent's execution, including all intermediate steps, tool usage, and final outputs.
 
-### Manual Installation
-
-1. Clone the repository
-2. Set up Python environment:
-
-   ```bash
-   python -m venv .venv
-   source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-   pip install -e .
-   ```
-
-3. Set up frontend (optional):
-   ```bash
-   cd frontend
-   npm install
-   ```
-
-### Web Interface
-
-1. Start the WebSocket server:
-
-When using Anthropic client:
-
-```bash
-STATIC_FILE_BASE_URL=http://localhost:8000 python ws_server.py --port 8000
-```
-
-When using Vertex:
-
-```bash
-GOOGLE_APPLICATION_CREDENTIALS=path-to-your-credential STATIC_FILE_BASE_URL=http://localhost:8000 python ws_server.py --port 8000
-```
-
-2. Start the frontend (in a separate terminal):
-
-```bash
-cd frontend
-npm run dev
-```
-
-3. Open your browser to http://localhost:3000
 
 ## Project Structure
 
