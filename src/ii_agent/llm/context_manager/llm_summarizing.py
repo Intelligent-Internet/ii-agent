@@ -31,6 +31,10 @@ class LLMSummarizingContextManager(ContextManager):
         self.keep_first = 1
         self.max_event_length = max_event_length
 
+    @property
+    def context_manager_type(self) -> str:
+        return 'llm-summarizing'
+
     def _truncate_content(self, content: str) -> str:
         """Truncate the content to fit within the specified maximum event length."""
         if len(content) <= self.max_event_length:

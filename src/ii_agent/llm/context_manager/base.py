@@ -32,6 +32,10 @@ class ContextManager(ABC):
         """Return the token budget."""
         return self._token_budget
 
+    @property
+    def context_manager_type(self) -> str:
+        return 'base'
+
     def count_tokens(self, message_lists: list[list[GeneralContentBlock]]) -> int:
         """Counts tokens, ignoring thinking blocks except in the very last message."""
         total_tokens = 0

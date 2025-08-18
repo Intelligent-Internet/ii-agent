@@ -16,6 +16,10 @@ class LLMCompact(ContextManager):
         self.client = client
         self.token_counter = token_counter
 
+    @property
+    def context_manager_type(self) -> str:
+        return 'llm-compact'
+
     def apply_truncation(
         self, message_lists: list[list[GeneralContentBlock]]
     ) -> list[list[GeneralContentBlock]]:
