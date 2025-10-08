@@ -8,12 +8,24 @@ export const PROVIDER_MODELS: { [key: string]: IModel[] } = {
       provider: "anthropic",
     },
     {
+      model_name: "claude-sonnet-4-5",
+      provider: "anthropic",
+      label: "Claude Sonnet 4.5",
+    },
+    {
       model_name: "claude-opus-4-20250514",
       provider: "anthropic",
     },
     {
       model_name: "claude-3-7-sonnet-20250219",
       provider: "anthropic",
+    },
+  ],
+  xai: [
+    {
+      model_name: "grok-4-fast-reasoning",
+      provider: "xai",
+      label: "Grok 4 Fast (Reasoning)",
     },
   ],
   openai: [
