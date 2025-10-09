@@ -50,6 +50,13 @@ export default function HomeContent() {
   const searchParams = useSearchParams();
 
   const { deviceId } = useDeviceId();
+  const selectedModelId = useMemo(() => {
+    if (!state.selectedModel) {
+      return undefined;
+    }
+    const segments = state.selectedModel.split(/[:/]/);
+    return segments[segments.length - 1];
+  }, [state.selectedModel]);
 
   // Use the Session Manager hook
   const {
@@ -135,13 +142,19 @@ export default function HomeContent() {
 
     const { thinking_tokens, ...tool_args } = state.toolSettings;
 
+    // Disable deep_research for xAI models (token inefficient)
+    const isXAIModel = selectedModelId?.startsWith("grok");
+    const modifiedToolArgs = isXAIModel
+      ? { ...tool_args, deep_research: false }
+      : tool_args;
+
     // Only send init_agent event if agent is not already initialized
     if (!state.isAgentInitialized) {
       sendMessage({
         type: "init_agent",
         content: {
           model_name: state.selectedModel,
-          tool_args,
+          tool_args: modifiedToolArgs,
           thinking_tokens,
         },
       });
@@ -200,6 +213,12 @@ export default function HomeContent() {
     }
     const { thinking_tokens, ...tool_args } = state.toolSettings;
 
+    // Disable deep_research for xAI models (token inefficient)
+    const isXAIModel = selectedModelId?.startsWith("grok");
+    const modifiedToolArgs = isXAIModel
+      ? { ...tool_args, deep_research: false }
+      : tool_args;
+
     dispatch({ type: "SET_LOADING", payload: true });
     dispatch({ type: "SET_COMPLETED", payload: false });
 
@@ -209,7 +228,7 @@ export default function HomeContent() {
         type: "init_agent",
         content: {
           model_name: state.selectedModel,
-          tool_args,
+          tool_args: modifiedToolArgs,
           thinking_tokens,
         },
       });

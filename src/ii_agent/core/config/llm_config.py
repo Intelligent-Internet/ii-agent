@@ -1,5 +1,13 @@
 from enum import Enum
-from pydantic import BaseModel, Field, SecretStr, SerializationInfo, field_serializer
+from pydantic import (
+    BaseModel,
+    Field,
+    SecretStr,
+    SerializationInfo,
+    field_serializer,
+    field_validator,
+)
+from pydantic_core import PydanticUndefined
 from pydantic.json import pydantic_encoder
 
 from ii_agent.utils.constants import DEFAULT_MODEL
@@ -9,6 +17,7 @@ class APITypes(Enum):
     OPENAI = 'openai'
     ANTHROPIC = 'anthropic'
     GEMINI = 'gemini'
+    XAI = 'xai'
 
 class LLMConfig(BaseModel):
     """Configuration for the LLM.
@@ -34,6 +43,21 @@ class LLMConfig(BaseModel):
     azure_api_version: str | None = Field(default=None)
     cot_model: bool = Field(default=False)
 
+    @field_validator("api_type", mode="before")
+    @classmethod
+    def _normalize_api_type(cls, api_type: APITypes | str | None) -> APITypes:
+        """Ensure api_type values are coerced into the APITypes enum."""
+        if api_type is None or api_type is PydanticUndefined:
+            return APITypes.ANTHROPIC
+        if isinstance(api_type, APITypes):
+            return api_type
+        if isinstance(api_type, str):
+            normalized = api_type.strip().lower()
+            try:
+                return APITypes(normalized)
+            except ValueError as exc:
+                raise ValueError(f"Unsupported api_type '{api_type}'") from exc
+        raise ValueError(f"Unsupported api_type type '{type(api_type)}'")
 
     @field_serializer('api_key')
     def api_key_serializer(self, api_key: SecretStr | None, info: SerializationInfo):
@@ -49,4 +73,3 @@ class LLMConfig(BaseModel):
             return api_key.get_secret_value()
 
         return pydantic_encoder(api_key)
-

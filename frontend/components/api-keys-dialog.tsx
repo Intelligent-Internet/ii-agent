@@ -271,6 +271,18 @@ const ApiKeysDialog = ({
     return `${selectedProvider}/${model.model_name}`;
   };
 
+  const parseModelKey = (modelKey: string) => {
+    if (modelKey.includes("/")) {
+      const [provider, ...rest] = modelKey.split("/");
+      return { provider, modelName: rest.join("/") };
+    }
+    if (modelKey.includes(":")) {
+      const [provider, ...rest] = modelKey.split(":");
+      return { provider, modelName: rest.join(":") };
+    }
+    return { provider: modelKey, modelName: "" };
+  };
+
   // Handle model selection
   const handleModelChange = (model: {
     model_name: string;
@@ -418,8 +430,7 @@ const ApiKeysDialog = ({
 
   // Function to open edit dialog for a specific config
   const handleEditConfig = (modelKey: string, config: LLMConfig) => {
-    const [provider, ...rest] = modelKey.split("/");
-    const modelName = rest.join("/");
+    const { provider, modelName } = parseModelKey(modelKey);
 
     if (provider === "custom") {
       setSelectedProvider("openai");
@@ -648,9 +659,11 @@ const ApiKeysDialog = ({
                   ) : (
                     <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
                       {Object.entries(llmConfig).map(([modelKey, config]) => {
-                        const [provider, modelName] = modelKey.split(":");
+                        const { provider, modelName } = parseModelKey(modelKey);
                         const displayName =
-                          modelName === "custom" ? config.model : modelName;
+                          modelName === "custom" || modelName === ""
+                            ? config.model
+                            : modelName;
 
                         return (
                           <div
@@ -1090,6 +1103,7 @@ const ApiKeysDialog = ({
                 <SelectContent className="bg-[#35363a] border-[#ffffff0f]">
                   <SelectItem value="anthropic">Anthropic</SelectItem>
                   <SelectItem value="openai">OpenAI</SelectItem>
+                  <SelectItem value="xai">xAI</SelectItem>
                   <SelectItem value="gemini">Gemini</SelectItem>
                   <SelectItem value="vertex">Vertex AI</SelectItem>
                   <SelectItem value="azure">Azure</SelectItem>
@@ -1222,6 +1236,53 @@ const ApiKeysDialog = ({
                       selectedModel.model_name === "custom" &&
                       !customModelName.trim()
                     }
+                  />
+                </div>
+              </div>
+            )}
+
+            {selectedProvider === "xai" && (
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="api-key">API Key</Label>
+                  <Input
+                    id="api-key"
+                    type="password"
+                    value={editingConfig?.config.api_key || ""}
+                    onChange={(e) => {
+                      if (editingConfig) {
+                        setEditingConfig({
+                          ...editingConfig,
+                          config: {
+                            ...editingConfig.config,
+                            api_key: e.target.value,
+                          },
+                        });
+                      }
+                    }}
+                    placeholder="Enter xAI API Key"
+                    className="bg-[#35363a] border-[#ffffff0f]"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="base-url">Base URL (Optional)</Label>
+                  <Input
+                    id="base-url"
+                    type="text"
+                    value={editingConfig?.config.base_url || ""}
+                    onChange={(e) => {
+                      if (editingConfig) {
+                        setEditingConfig({
+                          ...editingConfig,
+                          config: {
+                            ...editingConfig.config,
+                            base_url: e.target.value,
+                          },
+                        });
+                      }
+                    }}
+                    placeholder="https://api.x.ai/v1"
+                    className="bg-[#35363a] border-[#ffffff0f]"
                   />
                 </div>
               </div>
