@@ -1,0 +1,19 @@
+{
+  "name": "ii-agent-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "frontend"
+  ],
+  "scripts": {
+    "build:safe": "npm run build:scr && npm run build:ii",
+    "build:scr": "echo 'TypeScript check for SCRIBE code (placeholder)'",
+    "build:ii": "cd frontend && npm run build",
+    "test": "echo 'Tests placeholder'"
+  },
+  "description": "II-Agent monorepo with vendored frontend",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/ii-agent.git"
+  }
+}

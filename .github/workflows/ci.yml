@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop, chore/*]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [20.x]
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build (SCRIBE + vendored frontend)
+        run: npm run build:safe
+
+      - name: Run boundary checks
+        run: |
+          VIOLATIONS=$(grep -rn "from ['\"].*agents/scribe-agent\|require(['\"].*agents/scribe-agent" . \
+            --include="*.ts" --include="*.tsx" --include="*.js" --include="*.jsx" \
+            --exclude-dir=node_modules --exclude-dir=agents --exclude-dir=frontend || true)
+          if [ -n "$VIOLATIONS" ]; then
+            echo "❌ Boundary violation detected:"
+            echo "$VIOLATIONS"
+            exit 1
+          fi
+          echo "✅ No boundary violations found"
