@@ -83,3 +83,13 @@ grep -rn "from ['\"].*agents/scribe-agent\|require(['\"].*agents/scribe-agent" .
 - Original error: Module not found `@/providers`
 - Resolution: Config-based alias fix + minimal shim file
 - No functional changes to upstream vendored code
+
+---
+
+## Change Log
+
+### 2025-10-10: Frontend alias resolution to support '@/providers' (tsconfig/webpack alias)
+- Created `frontend/providers.tsx` shim to mirror theme provider exports
+- Updated `frontend/tsconfig.json` with baseUrl and enhanced paths mapping
+- Updated `frontend/next.config.ts` with webpack alias for @ resolution
+- No logic changes to vendored source; config-only fix plus minimal re-export shim
