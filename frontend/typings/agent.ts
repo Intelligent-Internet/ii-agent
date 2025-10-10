@@ -6,10 +6,13 @@ export enum TAB {
 
 export const AVAILABLE_MODELS = [
   "claude-sonnet-4@20250514",
+  "claude-sonnet-4-5",
   "claude-opus-4@20250514",
   "claude-3-7-sonnet@20250219",
   "gemini-2.5-pro-preview-05-06",
   "gpt-4.1",
+  "grok-4-fast-reasoning",
+  "grok-3",
 ];
 
 export enum WebSocketConnectionState {
@@ -80,6 +83,7 @@ export enum TOOL {
 
   GET_DATABASE_CONNECTION = "get_database_connection",
   GET_OPENAI_KEY = "get_openai_api_key",
+  OPENAI_CODEX_CLI = "openai_codex_cli",
   // browser tools
   BROWSER_VIEW = "browser_view",
   BROWSER_NAVIGATION = "browser_navigation",
@@ -199,4 +203,5 @@ export interface LLMConfig {
 export interface IModel {
   model_name: string;
   provider: string;
+  label?: string;
 }

@@ -27,6 +27,11 @@ export const PROVIDER_MODELS: { [key: string]: IModel[] } = {
       provider: "xai",
       label: "Grok 4 Fast (Reasoning)",
     },
+    {
+      model_name: "grok-3",
+      provider: "xai",
+      label: "Grok 3",
+    },
   ],
   openai: [
     {
