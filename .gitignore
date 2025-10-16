@@ -192,4 +192,8 @@ data/logs
 data/events.db
 output/
 
+.claude/task_queue.json
+.claude/budget_ledger.jsonl
+/reference/obsidian_mirror/.obsidian/
+
 .vscode/
