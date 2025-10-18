@@ -1,46 +1,86 @@
 #!/usr/bin/env python3
-import json
-import os
-import sys
+import json, os, sys, subprocess, time
 
-def load_queue(path):
-    try:
-        with open(path) as handle:
-            return json.load(handle)
-    except Exception:
-        return {}
+ROOT = os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd())
+QUEUE = os.path.join(ROOT, ".claude", "task_queue.json")
+LEDGER = os.path.join(ROOT, ".claude", "budget_ledger.jsonl")
+SPAWNER = os.path.join(ROOT, "scripts", "spawn_new_session.sh")
 
-def update_queue(path, queue_data):
+THRESHOLD = float(os.environ.get("CLAUDE_SESSION_BUDGET", "0.60"))  # 60%
+
+def read_last_percent():
+    if not os.path.exists(LEDGER): return None
     try:
-        with open(path, "w") as handle:
-            json.dump(queue_data, handle)
+        *_, last = open(LEDGER, "r").read().strip().splitlines()
+        j = json.loads(last)
+        return float(j.get("percent_of_window"))
     except Exception:
-        pass
+        return None
+
+def next_task_and_advance():
+    if not os.path.exists(QUEUE): return None
+    try:
+        q = json.load(open(QUEUE))
+        queue  = q.get("queue", [])
+        cursor = int(q.get("cursor", 0))
+        if cursor < len(queue):
+            nxt = queue[cursor]
+            q["cursor"] = cursor + 1
+            json.dump(q, open(QUEUE, "w"))
+            return nxt
+        return None
+    except Exception:
+        return None
+
+def spawn_new_session(next_task):
+    # You can customize the CLI via env CLAUDE_CMD, defaults below.
+    cmd = os.environ.get("CLAUDE_CMD", "claude --dangerously-skip-permission")
+    sid = os.environ.get("CLAUDE_NEW_SESSION_ID") or f"scribe-{int(time.time())}"
+    env = os.environ.copy()
+    env["CLAUDE_PROJECT_DIR"] = ROOT
+    env["CLAUDE_NEW_SESSION_ID"] = sid
+    # Optional: pass a bootstrap instruction via STDIN if your CLI supports it.
+    boot = f"Resume at {next_task}. Keep each block ≤60% context. Use the existing queue and plan."
+    launcher = SPAWNER if os.path.exists(SPAWNER) else None
+    try:
+        if launcher:
+            subprocess.Popen([launcher, next_task or ""], env=env, stdin=subprocess.DEVNULL,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        else:
+            # Start detached; adjust to your CLI if needed
+            subprocess.Popen(cmd, shell=True, env=env, stdin=subprocess.DEVNULL,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # Write handoff note so the new session has a crisp starting cue
+        with open(os.path.join(ROOT, ".claude", "handoff.md"), "w") as f:
+            f.write(f"NEXT: {next_task}\n{boot}\n")
+        return True
+    except Exception:
+        return False
 
 def main():
-    root = os.environ.get("CLAUDE_PROJECT_DIR", "")
-    queue_path = os.path.join(root, ".claude", "task_queue.json")
-    try:
-        _ = json.load(sys.stdin)
+    # Validate input from Claude hooks engine (not used, but ensures well-formed)
+    try: _ = json.load(sys.stdin)
     except Exception:
-        print(json.dumps({"decision": None}), end="")
-        sys.exit(0)
+        print(json.dumps({"decision": None}), end=""); return
 
-    queue_data = load_queue(queue_path)
-    queue = queue_data.get("queue", [])
-    cursor = int(queue_data.get("cursor", 0))
+    percent = read_last_percent()
+    nxt = next_task_and_advance()
 
-    next_task = None
-    if cursor < len(queue):
-        next_task = queue[cursor]
-        queue_data["cursor"] = cursor + 1
-        update_queue(queue_path, queue_data)
+    # If we exceeded the budget, roll over to a new session and ALLOW stop
+    if percent is not None and percent >= THRESHOLD:
+        if nxt:
+            spawn_new_session(nxt)
+        print(json.dumps({"decision": None}), end="")   # end this session
+        return
 
-    if next_task:
-        reason = f"Continue with next task: {next_task}. Stay under 60% of context, then Stop again."
-        print(json.dumps({"decision": "block", "reason": reason}), end="")
-    else:
-        print(json.dumps({"decision": None}), end="")
+    # Otherwise, if there’s a next task, BLOCK stop and auto-continue
+    if nxt:
+        print(json.dumps({"decision": "block",
+                          "reason": f"Continue with next task: {nxt}. Stay under 60% of context, then Stop again."}), end="")
+        return
+
+    # No next task → allow stop
+    print(json.dumps({"decision": None}), end="")
 
 if __name__ == "__main__":
     main()

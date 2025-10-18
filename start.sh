@@ -47,7 +47,7 @@ EOF
     echo "─────────────────────────────"
   fi
 
-  echo "Ready to start II-Agent. add --build to the end of the command to rebuild when you change your credentials or host IP"
+  echo "Ready to start Scribe. add --build to the end of the command to rebuild when you change your credentials or host IP"
   echo "Check your credential and press enter to start"
   read -r
 }

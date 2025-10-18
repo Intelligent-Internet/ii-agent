@@ -136,7 +136,7 @@ const SidebarButton = ({ className, workspaceInfo }: SidebarButtonProps) => {
                   <span
                     className={`text-white text-lg font-semibold font-serif ${kumbh_sans.className}`}
                   >
-                    II-Agent
+                    Scribe
                   </span>
                 </div>
               </div>

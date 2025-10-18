@@ -26,6 +26,10 @@ def main():
         print("Dangerous command blocked (chmod 777).", file=sys.stderr)
         sys.exit(2)
 
+    if "src/ii_agent/" in command:
+        print("II-Agent is read-only; implement in /scribe/**", file=sys.stderr)
+        sys.exit(2)
+
     for abs_path in re.findall(r"\s(/[^ \t;]+)", command):
         real_path = os.path.realpath(abs_path)
         if not real_path.startswith(root + os.sep):

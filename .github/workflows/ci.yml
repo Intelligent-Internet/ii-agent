@@ -40,3 +40,6 @@ jobs:
             exit 1
           fi
           echo "✅ No boundary violations found"
+
+      - name: Run legacy namespace guard
+        run: ./scripts/ci/no-legacy-namespace.sh

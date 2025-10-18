@@ -1,0 +1,39 @@
+services:
+  neutts:
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 2g
+    environment:
+      NEUTTS_CONCURRENCY: "1"
+      NEUTTS_MAX_QUEUE: "2"
+      NEUTTS_THREADS: "2"
+      NEUTTS_SAMPLE_RATE: "22050"
+      NEUTTS_LAZY_LOAD: "1"
+      NEUTTS_CACHE_TTS: "1"
+      NEUTTS_DISABLE_CUDA: "1"
+
+  supabase-postgres:
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1g
+    volumes:
+      - ./ops/pg-dev.conf:/etc/postgresql/custom.conf
+    command: ["-c", "config_file=/etc/postgresql/custom.conf"]
+
+  supabase-studio:
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512m
+
+  supabase-realtime:
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512m

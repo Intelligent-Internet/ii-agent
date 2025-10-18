@@ -3,8 +3,8 @@ import "./globals.css";
 import Providers from "@/providers";
 
 export const metadata: Metadata = {
-  title: "II-Agent",
-  description: "II-Agent is a tool for in-depth analysis and research.",
+  title: "Scribe",
+  description: "Scribe is a tool for in-depth analysis and research.",
 };
 
 export default function RootLayout({

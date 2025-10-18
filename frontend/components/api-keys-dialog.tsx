@@ -25,7 +25,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { IModel, LLMConfig } from "@/typings/agent";
-import { PROVIDER_MODELS } from "@/constants/models";
+import { PROVIDER_MODELS, getModelsForProvider } from "@/constants/models";
 
 interface ApiKeysDialogProps {
   isOpen: boolean;
@@ -259,7 +259,7 @@ const ApiKeysDialog = ({
   const handleProviderChange = (provider: string) => {
     setSelectedProvider(provider);
     setSelectedModel(
-      PROVIDER_MODELS[provider as keyof typeof PROVIDER_MODELS][0]
+      getModelsForProvider(provider)[0]
     );
     setCustomModelName(""); // Reset custom model name when provider changes
   };
@@ -441,7 +441,7 @@ const ApiKeysDialog = ({
       setSelectedModel({
         model_name: modelName,
         provider:
-          PROVIDER_MODELS.vertex.find((m) => m.model_name === modelName)
+          getModelsForProvider("vertex").find((m) => m.model_name === modelName)
             ?.provider || "",
       });
     } else if (provider === "azure") {
@@ -449,7 +449,7 @@ const ApiKeysDialog = ({
       setSelectedModel({
         model_name: modelName,
         provider:
-          PROVIDER_MODELS.azure.find((m) => m.model_name === modelName)
+          getModelsForProvider("azure").find((m) => m.model_name === modelName)
             ?.provider || "",
       });
     } else {
@@ -471,7 +471,7 @@ const ApiKeysDialog = ({
   // Function to add a new config
   const handleAddConfig = () => {
     setSelectedProvider("anthropic");
-    setSelectedModel(PROVIDER_MODELS.anthropic[0]);
+    setSelectedModel(getModelsForProvider("anthropic")[0]);
     setCustomModelName("");
     // Initialize editingConfig with empty values for a new model
     setEditingConfig({
@@ -480,7 +480,7 @@ const ApiKeysDialog = ({
         api_key: undefined,
         base_url: undefined,
         api_type: "anthropic",
-        model: PROVIDER_MODELS.anthropic[0].model_name,
+        model: getModelsForProvider("anthropic")[0]?.model_name,
       },
     });
     setIsEditDialogOpen(true);
@@ -1104,6 +1104,7 @@ const ApiKeysDialog = ({
                   <SelectItem value="anthropic">Anthropic</SelectItem>
                   <SelectItem value="openai">OpenAI</SelectItem>
                   <SelectItem value="xai">xAI</SelectItem>
+                  <SelectItem value="amazon">Amazon</SelectItem>
                   <SelectItem value="gemini">Gemini</SelectItem>
                   <SelectItem value="vertex">Vertex AI</SelectItem>
                   <SelectItem value="azure">Azure</SelectItem>
@@ -1117,9 +1118,7 @@ const ApiKeysDialog = ({
                 <Select
                   value={selectedModel.model_name}
                   onValueChange={(value) => {
-                    const model = PROVIDER_MODELS[
-                      selectedProvider as keyof typeof PROVIDER_MODELS
-                    ].find((m) => m.model_name === value);
+                    const model = getModelsForProvider(selectedProvider).find((m) => m.model_name === value);
                     if (model) {
                       handleModelChange(model);
                     }
@@ -1129,9 +1128,7 @@ const ApiKeysDialog = ({
                     <SelectValue placeholder="Select Model" />
                   </SelectTrigger>
                   <SelectContent className="bg-[#35363a] border-[#ffffff0f]">
-                    {PROVIDER_MODELS[
-                      selectedProvider as keyof typeof PROVIDER_MODELS
-                    ].map((model) => (
+                    {getModelsForProvider(selectedProvider).map((model) => (
                       <SelectItem
                         key={model.model_name}
                         value={model.model_name}
@@ -1282,6 +1279,53 @@ const ApiKeysDialog = ({
                       }
                     }}
                     placeholder="https://api.x.ai/v1"
+                    className="bg-[#35363a] border-[#ffffff0f]"
+                  />
+                </div>
+              </div>
+            )}
+
+            {selectedProvider === "amazon" && (
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="api-key">API Key (AWS Bearer Token)</Label>
+                  <Input
+                    id="api-key"
+                    type="password"
+                    value={editingConfig?.config.api_key || ""}
+                    onChange={(e) => {
+                      if (editingConfig) {
+                        setEditingConfig({
+                          ...editingConfig,
+                          config: {
+                            ...editingConfig.config,
+                            api_key: e.target.value,
+                          },
+                        });
+                      }
+                    }}
+                    placeholder="Enter AWS Bearer Token"
+                    className="bg-[#35363a] border-[#ffffff0f]"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="base-url">Base URL (Optional)</Label>
+                  <Input
+                    id="base-url"
+                    type="text"
+                    value={editingConfig?.config.base_url || ""}
+                    onChange={(e) => {
+                      if (editingConfig) {
+                        setEditingConfig({
+                          ...editingConfig,
+                          config: {
+                            ...editingConfig.config,
+                            base_url: e.target.value,
+                          },
+                        });
+                      }
+                    }}
+                    placeholder="https://bedrock-runtime.us-east-1.amazonaws.com/openai/v1"
                     className="bg-[#35363a] border-[#ffffff0f]"
                   />
                 </div>

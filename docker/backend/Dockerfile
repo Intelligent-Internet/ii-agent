@@ -45,7 +45,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # Place executables in the environment at the front of the path
 ENV PATH="/app/.venv/bin:$PATH"
 
-ENV FILE_STORE_PATH=/.ii_agent
+ENV FILE_STORE_PATH=/.scribe
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
@@ -59,4 +59,4 @@ EXPOSE 8000
 ENTRYPOINT []
 
 # Run the application
-CMD ["xvfb-run", "--auto-servernum", "python", "ws_server.py"]
+CMD ["python", "-m", "uvicorn", "apps.scribe_api.app:app", "--host", "0.0.0.0", "--port", "8000"]

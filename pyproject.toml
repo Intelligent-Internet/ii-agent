@@ -1,7 +1,7 @@
 [project]
-name = "ii-agent"
+name = "scribe-ai-salon"
 version = "0.1.0"
-description = "Intelligent Agent platform providing CLI and WebSocket interfaces"
+description = "Scribe AI-Salon"
 readme = "README.md"
 authors = [
     { name = "Intelligent Internet", email = "info@ii.inc" }
@@ -43,6 +43,7 @@ dependencies = [
     "docker>=7.1.0",
     "e2b-code-interpreter==1.2.0b5",
     "alembic>=1.16.1",
+    "gui-agents>=0.1.3",
 ]
 
 [project.optional-dependencies]
@@ -61,7 +62,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/ii_agent"]
+packages = ["src/scribe_agents", "src/scribe_core"]
 [dependency-groups]
 dev = [
     "pytest-asyncio>=1.0.0",

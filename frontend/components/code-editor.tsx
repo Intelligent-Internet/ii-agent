@@ -12,7 +12,7 @@ import {
 import { useRef, useState, useEffect } from "react";
 import { ActionStep, TAB } from "@/typings/agent";
 
-const ROOT_NAME = "ii-agent";
+const ROOT_NAME = "scribe";
 
 // Map file extensions to Monaco editor language IDs
 const languageMap: { [key: string]: string } = {

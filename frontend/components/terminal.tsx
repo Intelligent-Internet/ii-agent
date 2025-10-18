@@ -56,7 +56,7 @@ const Terminal = (
         term.open(container);
         fitAddon.fit();
 
-        term.writeln(chalk.hex("#BAE9F4")("Welcome to II-Agent!"));
+        term.writeln(chalk.hex("#BAE9F4")("Welcome to Scribe!"));
         prompt(term);
 
         term.onKey(({ key, domEvent }) => {

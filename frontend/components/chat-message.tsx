@@ -377,7 +377,7 @@ const ChatMessage = ({
             <div className="flex gap-x-2 items-center bg-[#25BA3B1E] text-green-600 text-sm p-2 rounded-full">
               <div className="flex gap-x-2 items-center">
                 <Check className="size-4" />
-                <span>II-Agent has completed the current task.</span>
+                <span>Scribe has completed the current task.</span>
               </div>
             </div>
             {state.toolSettings?.enable_reviewer && (
@@ -393,7 +393,7 @@ const ChatMessage = ({
                   <div className="flex items-center gap-x-1.5 flex-1">
                     <SearchCheck className="size-5 text-white" />
                     <span className="text-neutral-100 flex-1 font-medium group-hover:text-white">
-                      Allow II-Agent to review the results
+                      Allow Scribe to review the results
                     </span>
                   </div>
                   <Button
@@ -413,7 +413,7 @@ const ChatMessage = ({
         {state.isStopped && (
           <div className="flex gap-x-2 items-center bg-[#ffbf361f] text-yellow-300 text-sm p-2 rounded-full">
             <CircleStop className="size-4" />
-            <span>II-Agent has stopped, send a new message to continue.</span>
+            <span>Scribe has stopped, send a new message to continue.</span>
           </div>
         )}
 
@@ -447,7 +447,7 @@ const ChatMessage = ({
                   <div className="h-2 w-2 bg-white rounded-full"></div>
                 </div>
                 <span className="text-white">
-                  II-Agent is replaying the task...
+                  Scribe is replaying the task...
                 </span>
               </div>
               <div className="flex gap-2">

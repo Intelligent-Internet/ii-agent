@@ -33,6 +33,13 @@ export const PROVIDER_MODELS: { [key: string]: IModel[] } = {
       label: "Grok 3",
     },
   ],
+  amazon: [
+    {
+      model_name: "openai.gpt-oss-120b-1:0",
+      provider: "amazon",
+      label: "Amazon GPT-OSS 120B",
+    },
+  ],
   openai: [
     {
       model_name: "gpt-5",
@@ -129,4 +136,8 @@ export const PROVIDER_MODELS: { [key: string]: IModel[] } = {
       provider: "openai",
     },
   ],
+};
+
+export const getModelsForProvider = (provider: string): IModel[] => {
+  return PROVIDER_MODELS[provider] ?? [];
 };
