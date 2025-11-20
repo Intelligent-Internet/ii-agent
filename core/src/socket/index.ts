@@ -190,7 +190,8 @@ async function handleLLMInteraction(io: Server, sessionId: string, messages: Mes
                      let result = "Error: Tool not found";
                      if (handler) {
                          try {
-                            const output = await handler(tc.tool_input);
+                            // Pass context (sessionId) to tools
+                            const output = await handler(tc.tool_input, { sessionId });
                             result = JSON.stringify(output);
                          } catch (e) {
                              result = `Error executing tool: ${e}`;

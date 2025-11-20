@@ -4,6 +4,7 @@ import { Server } from 'socket.io';
 import dotenv from 'dotenv';
 import { setupSocket } from './socket/index.js';
 import { authRoutes } from './routes/auth.js';
+import { fileRoutes } from './routes/files.js';
 
 dotenv.config();
 
@@ -18,6 +19,7 @@ fastify.register(cors, {
 
 // Register Routes
 fastify.register(authRoutes, { prefix: '/auth' });
+fastify.register(fileRoutes, { prefix: '/files' });
 
 const start = async () => {
   try {

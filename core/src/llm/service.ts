@@ -39,7 +39,15 @@ export class LangChainProvider implements LLMProvider {
         // Handle multimodal content for LangChain
         const content = (m.content as any[]).map(c => {
             if (c.type === 'text_prompt') return { type: 'text', text: c.text };
-            if (c.type === 'image') return { type: 'image_url', image_url: { url: c.source.data }};
+            if (c.type === 'image') {
+                let url = c.source.data;
+                // Ensure base64 data is properly formatted as a data URI if it's raw base64
+                if (!url.startsWith('http') && !url.startsWith('data:')) {
+                    const mediaType = c.source.media_type || 'image/jpeg';
+                    url = `data:${mediaType};base64,${url}`;
+                }
+                return { type: 'image_url', image_url: { url }};
+            }
             return c;
         });
         return new HumanMessage({ content });

@@ -1,5 +1,6 @@
 import { ToolParam } from '../llm/types.js';
 import { weatherToolDefinition } from './weather.js';
+import { fsDefinitions, fsHandlers } from './fs.js';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 
 export const tools: ToolParam[] = [
@@ -9,10 +10,17 @@ export const tools: ToolParam[] = [
     description: weatherToolDefinition.description,
     // @ts-ignore - Zod version mismatch issue potentially, usually works
     input_schema: zodToJsonSchema(weatherToolDefinition.schema) as any
-  }
+  },
+  ...fsDefinitions.map(def => ({
+      type: 'function' as const,
+      name: def.name,
+      description: def.description,
+      // @ts-ignore
+      input_schema: zodToJsonSchema(def.schema) as any
+  }))
 ];
 
-export const toolMap: Record<string, (input: any) => Promise<any>> = {
+export const toolMap: Record<string, (input: any, context?: any) => Promise<any>> = {
   [weatherToolDefinition.name]: async (input: any) => {
     // Mock implementation
     return {
@@ -20,5 +28,6 @@ export const toolMap: Record<string, (input: any) => Promise<any>> = {
       unit: input.unit || 'celsius',
       description: 'Sunny'
     };
-  }
+  },
+  ...fsHandlers
 };

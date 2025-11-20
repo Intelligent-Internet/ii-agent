@@ -19,6 +19,17 @@ export default defineConfig({
         watch: {
             // 3. tell vite to ignore watching `src-tauri`
             ignored: ['**/src-tauri/**']
+        },
+        proxy: {
+            '/auth': {
+                target: 'http://localhost:3000',
+                changeOrigin: true,
+            },
+            '/api': {
+                target: 'http://localhost:3000',
+                changeOrigin: true,
+                rewrite: (path) => path.replace(/^\/api/, '')
+            }
         }
     },
 
