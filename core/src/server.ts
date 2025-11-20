@@ -5,6 +5,8 @@ import dotenv from 'dotenv';
 import { setupSocket } from './socket/index.js';
 import { authRoutes } from './routes/auth.js';
 import { fileRoutes } from './routes/files.js';
+import { sessionRoutes } from './routes/sessions.js';
+import { settingsRoutes } from './routes/settings.js';
 
 dotenv.config();
 
@@ -20,6 +22,8 @@ fastify.register(cors, {
 // Register Routes
 fastify.register(authRoutes, { prefix: '/auth' });
 fastify.register(fileRoutes, { prefix: '/files' });
+fastify.register(sessionRoutes, { prefix: '/sessions' });
+fastify.register(settingsRoutes, { prefix: '/user-settings' });
 
 const start = async () => {
   try {
