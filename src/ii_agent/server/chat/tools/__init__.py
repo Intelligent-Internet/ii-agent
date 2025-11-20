@@ -6,6 +6,8 @@ from .image_search import ImageSearchTool
 from .web_visit import WebVisitTool
 from .code_interperter import CodeInterpreter
 from .file_search import FileSearchTool
+from .recall_context import RecallContextTool
+from .microcontext_subroutine import MicrocontextSubroutineTool
 
 __all__ = [
     "BaseTool",
@@ -17,4 +19,6 @@ __all__ = [
     "WebVisitTool",
     "CodeInterpreter",
     "FileSearchTool",
+    "RecallContextTool",
+    "MicrocontextSubroutineTool",
 ]

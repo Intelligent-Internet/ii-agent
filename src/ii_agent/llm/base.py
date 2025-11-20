@@ -36,6 +36,10 @@ class ToolCall(BaseModel):
         return f"{self.tool_name} with input: {self.tool_input}"
 
 
+# Backward compatibility alias for older tools
+ToolCallParameters = ToolCall
+
+
 class ToolResult(BaseModel):
     """Internal representation of LLM tool result."""
 

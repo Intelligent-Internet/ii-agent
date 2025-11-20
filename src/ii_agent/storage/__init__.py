@@ -4,6 +4,7 @@ from .hashtable import HashtableStorage
 from .memvid import MemvidStorage
 from .cached_memvid import CachedMemvidStorage
 from .factory import create_storage_client
+from .context_modes import ContextModeManager, ContextMode, ContextState
 
 
 __all__ = [
@@ -13,4 +14,7 @@ __all__ = [
     "MemvidStorage",
     "CachedMemvidStorage",
     "create_storage_client",
+    "ContextModeManager",
+    "ContextMode",
+    "ContextState",
 ]

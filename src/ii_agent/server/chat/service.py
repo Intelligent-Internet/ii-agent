@@ -16,6 +16,7 @@ from ii_agent.db.manager import APIKeys
 from ii_agent.db.agent import AgentRunTask, RunStatus
 from ii_agent.metrics.models import ModelPricing, LLMMetrics, TokenUsage
 from ii_agent.server.chat.context_manager import ContextWindowManager
+from ii_agent.storage import ContextModeManager
 from ii_agent.server.chat.llm import LLMProviderFactory
 from ii_agent.server.chat.message_service import MessageService
 from ii_agent.server.chat.models import (
@@ -37,6 +38,8 @@ from ii_agent.server.chat.tools import (
     FileSearchTool,
     ToolCallInput,
 )
+from ii_agent.server.chat.tools.recall_context import RecallContextTool
+from ii_agent.server.chat.tools.microcontext_subroutine import MicrocontextSubroutineTool
 from ii_agent.server.credits.service import (
     has_sufficient_credits,
     deduct_user_credits,
@@ -57,6 +60,8 @@ logger = logging.getLogger(__name__)
 
 class ChatService:
     """Service for managing chat conversations."""
+
+    _context_mode_manager: ContextModeManager = ContextModeManager()
 
     @staticmethod
     def _truncate_session_name(query: str, max_length: int = 50) -> str:
@@ -335,6 +340,18 @@ class ChatService:
             summary_message_id=session.summary_message_id,
         )
 
+        # Check if should dump and generate tiles (at 33% context threshold)
+        dump_result = await ContextWindowManager.dump_and_tile_if_needed(
+            messages=messages,
+            model_id=model_id,
+        )
+        if dump_result:
+            logger.info(
+                f"Dumped context at 33%: slab {dump_result.get('current_slab_id')}, "
+                f"{len(dump_result.get('tiles_generated', []))} tiles, "
+                f"{len(dump_result.get('retained_breadcrumbs', []))} breadcrumbs retained"
+            )
+
         # Create user message with TextContent part
         user_text_part = TextContent(text=chat_request.content)
         user_message = await MessageService.create_message(
@@ -428,10 +445,18 @@ class ChatService:
                         )
                     ),
                 )
+
             # Filter to only enabled tools (excluding built-in code interpreter when container in use)
             enabled_tools: List[BaseTool] = [
                 tool for tool in all_search_tools if tools.get(tool.name, False)
             ]
+
+            # Add context management tools (always available, not user-toggleable)
+            context_tools: List[BaseTool] = [
+                RecallContextTool(),
+                MicrocontextSubroutineTool(),
+            ]
+            enabled_tools.extend(context_tools)
 
             if not enabled_tools:
                 logger.warning(f"No tools enabled in request: {tools}")
@@ -455,32 +480,41 @@ class ChatService:
                     }
                 )
         try:
-            # Outer loop: continue until no more tool calls
+            # ============================================================
+            # REACT LOOP FSM - This pattern can be matched by REPL
+            # ============================================================
+            # States: WAITING_FOR_LLM -> (TOOL_USE | COMPLETE)
+            #         TOOL_USE -> EXECUTING_TOOLS -> WAITING_FOR_LLM
+            #         COMPLETE -> EXIT
+            # ============================================================
             while True:
-                # Check for cancellation before starting new turn
+                # [PRESENTATION] Cancellation check (web-specific)
                 await cancel.raise_if_cancelled(run_id)
 
+                # [BUSINESS LOGIC] Token management
                 messages = ContextWindowManager.reduce_message_tokens(messages)
-                # Accumulate parts for this assistant turn
+
+                # [FSM STATE] WAITING_FOR_LLM
                 run_response: RunResponseOutput = None
                 file_parts = []
-                # Stream LLM response with tools
+
+                # [FSM TRANSITION] Call LLM
                 async for event in provider.stream(
                     messages=messages,
                     tools=tools_to_pass,
                     is_code_interpreter_enabled=is_code_interpreter_enabled,
                     session_id=session_id,
                 ):
-                    # Handle COMPLETE event separately (stores response)
                     if event.type == EventType.COMPLETE:
+                        # [FSM] Store response for state transition decision
                         run_response = event.response
                     else:
-                        # Convert event to SSE format and yield
+                        # [PRESENTATION] Yield SSE events to web UI
                         sse_event = event.to_sse_event()
                         if sse_event is not None:
                             yield sse_event
 
-                # Yield usage event for this LLM turn
+                # [PRESENTATION] Yield usage metrics to web UI
                 if run_response:
                     yield {
                         "type": "usage",
@@ -495,10 +529,10 @@ class ChatService:
                 if run_response.files:
                     file_parts.extend(run_response.files)
 
-                # Check for cancellation before saving message
+                # [PRESENTATION] Cancellation check (web-specific)
                 await cancel.raise_if_cancelled(run_id)
 
-                # Save assistant message with ContentParts
+                # [PERSISTENCE] Save assistant message to DB
                 assistant_message = await MessageService.create_message(
                     db_session=db_session,
                     session_id=session_id,
@@ -514,26 +548,53 @@ class ChatService:
                     else None,
                 )
 
-                # Check for cancellation after saving message
+                # [PRESENTATION] Cancellation check (web-specific)
                 await cancel.raise_if_cancelled(run_id)
 
-                # Add assistant message to history
+                # [FSM STATE UPDATE] Add message to conversation history
                 messages.append(assistant_message)
 
-                # Check if we need to execute tools
+                # [CONTEXT MANAGEMENT] Check if checkpoint needed (at model-specific threshold)
+                checkpoint_id = await ContextWindowManager.create_checkpoint_if_needed(
+                    messages=messages,
+                    model_id=model_id,
+                )
+                if checkpoint_id:
+                    # Retrieve microkernel from checkpoint metadata
+                    checkpoint_system = ContextWindowManager.get_checkpoint_system()
+                    microkernel = checkpoint_system.checkpoint_metadata.get(
+                        checkpoint_id, {}
+                    ).get("microkernel", {})
+
+                    logger.info(
+                        f"Created checkpoint {checkpoint_id} at threshold "
+                        f"(context NOT evicted, indexed for recall). "
+                        f"Microkernel: {len(microkernel.get('tasks', []))} tasks, "
+                        f"{len(microkernel.get('goals', []))} goals"
+                    )
+
+                    # Transition to SUSPENDED mode with microkernel
+                    mode_status = cls._context_mode_manager.transition_to_suspended(
+                        checkpoint_id, microkernel
+                    )
+                    logger.info(f"Context mode transition: {mode_status}")
+
+                # [FSM STATE TRANSITION] Decide next state based on finish_reason
                 if run_response.finish_reason == FinishReason.TOOL_USE:
-                    # extract tool_call from accumulated_response
+                    # [FSM STATE] TOOL_USE -> EXECUTING_TOOLS
+
+                    # [FSM] Extract tool calls from response
                     tool_calls_to_execute = [
                         part
                         for part in run_response.content
                         if isinstance(part, ToolCall) and not part.provider_executed
                     ]
 
-                    # Execute tools and collect results
+                    # [FSM] Execute tools and collect results
                     tool_result_parts = []
 
                     for tool_call in tool_calls_to_execute:
-                        # Execute tool - returns ToolResult ContentPart directly
+                        # [FSM] Execute tool
                         tool_result = await cls._execute_tool(
                             tool_call_id=tool_call.id,
                             tool_name=tool_call.name,
@@ -541,7 +602,7 @@ class ChatService:
                             tool_registry=tool_registry,
                         )
 
-                        # Yield tool_result event to frontend
+                        # [PRESENTATION] Yield tool result to web UI
                         yield {
                             "type": "tool_result",
                             "tool_call_id": tool_result.tool_call_id,
@@ -549,10 +610,10 @@ class ChatService:
                             "output": tool_result.output.model_dump(),
                         }
 
-                        # Add ToolResult ContentPart directly to list
+                        # [FSM] Collect tool results
                         tool_result_parts.append(tool_result)
 
-                    # Save tool results as a message
+                    # [PERSISTENCE] Save tool results to DB
                     tool_results_message = await MessageService.create_message(
                         db_session=db_session,
                         session_id=session_id,
@@ -562,16 +623,19 @@ class ChatService:
                         model_id=chat_request.model_id,
                     )
 
-                    # Add tool results to history
+                    # [FSM STATE UPDATE] Add tool results to conversation history
                     messages.append(tool_results_message)
+
+                    # [PERSISTENCE] Commit transaction
                     await db_session.commit()
 
-                    # Continue loop - call LLM again with tool results
+                    # [FSM TRANSITION] EXECUTING_TOOLS -> WAITING_FOR_LLM (loop back)
                     continue
 
                 else:
-                    # No more tool calls - exit loop
-                    # Deduct credits for system-provided models (skips user models)
+                    # [FSM STATE] COMPLETE (terminal state)
+
+                    # [BUSINESS LOGIC] Deduct credits for usage
                     await cls._deduct_credits_for_llm_usage(
                         db_session=db_session,
                         user_id=user_id,
@@ -580,15 +644,15 @@ class ChatService:
                         usage=run_response.usage,
                     )
 
+                    # [PERSISTENCE] Commit credits deduction
                     await db_session.commit()
 
-                    # Update AgentRunTask status to COMPLETED
-                    # Refresh to avoid StaleDataError
+                    # [PERSISTENCE] Update run task status
                     await db_session.refresh(agent_task)
                     agent_task.status = RunStatus.COMPLETED
                     await db_session.commit()
 
-                    # Send complete event
+                    # [PRESENTATION] Send completion event to web UI
                     yield {
                         "type": "complete",
                         "message_id": assistant_message.id,
@@ -596,11 +660,11 @@ class ChatService:
                         "files": file_parts,
                     }
 
-                    # Cleanup run tracking on successful completion
+                    # [PRESENTATION] Cleanup web-specific tracking
                     await cancel.cleanup_run(run_id)
                     logger.info(f"Completed chat run {run_id} for session {session_id}")
 
-                    # Exit loop
+                    # [FSM TRANSITION] EXIT loop (terminal state reached)
                     break
 
         except (cancel.RunCancelledException, Exception) as e:
