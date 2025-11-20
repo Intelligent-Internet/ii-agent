@@ -2,10 +2,39 @@ import { FastifyInstance } from 'fastify';
 import { db } from '../db/index.js';
 import { Session, SessionSchema } from '../db/schema.js';
 import { chatService } from '../services/chat.js';
+import { agentService } from '../services/agent.js';
+import { SSEStreamAdapter } from '../utils/stream.js';
 import { Message } from '../llm/types.js';
 import { v4 as uuidv4 } from 'uuid';
 
 export async function sessionRoutes(fastify: FastifyInstance) {
+
+    // POST /sessions/:id/chat (Hybrid REST/SSE endpoint)
+    fastify.post('/:id/chat', async (request, reply) => {
+        const userId = (request as any).user?.id;
+        if (!userId) return reply.status(401).send({ error: 'Unauthorized' });
+        const { id } = request.params as { id: string };
+
+        // Validate session ownership
+        const doc = db.get<Session>(id);
+        if (!doc) return reply.status(404).send({ error: 'Session not found' });
+        if (doc.content.user_id !== userId) return reply.status(403).send({ error: 'Forbidden' });
+
+        const body = request.body as any;
+        const content = body.content || '';
+        const attachments = body.file_ids || []; // In future, map file IDs to attachment objects if needed
+
+        // We might need to resolve file_ids to actual attachment data or pass IDs to agent
+        // For now, pass as empty or basic structure
+
+        const streamAdapter = new SSEStreamAdapter(reply);
+
+        // We MUST await this to keep the connection open until streaming finishes
+        await agentService.runChat(id, content, streamAdapter, attachments);
+
+        // Return the reply object to satisfy Fastify typings, though the response is already handled via raw writes
+        return reply;
+    });
 
     // GET /sessions
     fastify.get('/', async (request, reply) => {
@@ -218,6 +247,20 @@ export async function sessionRoutes(fastify: FastifyInstance) {
         if (doc.content.user_id !== userId) return reply.status(403).send({ error: 'Forbidden' });
 
         db.update<Session>(id, { is_public: false });
+        return { success: true };
+    });
+
+    // POST /sessions/:id/stop
+    fastify.post('/:id/stop', async (request, reply) => {
+        const userId = (request as any).user?.id;
+        if (!userId) return reply.status(401).send({ error: 'Unauthorized' });
+        const { id } = request.params as { id: string };
+
+        const doc = db.get<Session>(id);
+        if (!doc) return reply.status(404).send({ error: 'Session not found' });
+        if (doc.content.user_id !== userId) return reply.status(403).send({ error: 'Forbidden' });
+
+        agentService.stopSession(id);
         return { success: true };
     });
 }

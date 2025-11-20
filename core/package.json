@@ -33,6 +33,10 @@
     "zod-to-json-schema": "^3.25.0"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.13"
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/supertest": "^6.0.3",
+    "socket.io-client": "^4.8.1",
+    "supertest": "^7.1.4",
+    "vitest": "^4.0.12"
   }
 }

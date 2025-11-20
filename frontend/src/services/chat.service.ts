@@ -39,7 +39,7 @@ class ChatService {
 
     async getChatHistory(sessionId: string): Promise<ChatHistoryResponse> {
         const response = await axiosInstance.get<ChatHistoryResponse>(
-            `/v1/chat/conversations/${sessionId}`
+            `/sessions/${sessionId}/events`
         )
         return response.data
     }
@@ -48,13 +48,13 @@ class ChatService {
         sessionId: string
     ): Promise<ChatHistoryResponse> {
         const response = await axiosInstance.get<ChatHistoryResponse>(
-            `/v1/chat/conversations/${sessionId}/public`
+            `/sessions/${sessionId}/public/events`
         )
         return response.data
     }
 
     async stopConversation(sessionId: string): Promise<void> {
-        await axiosInstance.post(`/v1/chat/conversations/${sessionId}/stop`)
+        await axiosInstance.post(`/sessions/${sessionId}/stop`)
     }
 
     async streamQuery(
@@ -86,14 +86,14 @@ class ChatService {
         }
 
         const response = await fetch(
-            `${getApiBaseUrl()}/v1/chat/conversations`,
+            `${getApiBaseUrl()}/sessions/${payload.session_id}/chat`,
             {
                 method: 'POST',
                 headers,
                 body: JSON.stringify({
                     content: payload.text,
                     model_id: payload.model_id,
-                    session_id: payload.session_id,
+                    // session_id is in URL now
                     file_ids: payload.files,
                     tools: payload.tools ?? {
                         web_search: true,
