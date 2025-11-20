@@ -7,6 +7,8 @@ import { authRoutes } from './routes/auth.js';
 import { fileRoutes } from './routes/files.js';
 import { sessionRoutes } from './routes/sessions.js';
 import { settingsRoutes } from './routes/settings.js';
+import { connectorRoutes } from './routes/connectors.js';
+import { billingRoutes } from './routes/billing.js';
 
 dotenv.config();
 
@@ -24,6 +26,8 @@ fastify.register(authRoutes, { prefix: '/auth' });
 fastify.register(fileRoutes, { prefix: '/files' });
 fastify.register(sessionRoutes, { prefix: '/sessions' });
 fastify.register(settingsRoutes, { prefix: '/user-settings' });
+fastify.register(connectorRoutes, { prefix: '/connectors' });
+fastify.register(billingRoutes, { prefix: '/billing' });
 
 const start = async () => {
   try {

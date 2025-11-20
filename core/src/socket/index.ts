@@ -8,6 +8,7 @@ import { LangChainProvider } from '../llm/service.js';
 import { Message, ToolCall } from '../llm/types.js';
 import { z } from 'zod';
 import { tools, toolMap } from '../tools/index.js';
+import { getMCPTools, handleMCPToolCall } from '../tools/mcp.js';
 
 // Simple in-memory session store for active sockets
 const sessionSockets = new Map<string, Set<string>>(); // session_id -> Set<socket_id>
@@ -147,12 +148,27 @@ async function handleLLMInteraction(io: Server, sessionId: string, messages: Mes
     };
 
     try {
+        // Fetch active MCP tools for this user
+        // We need user_id. Session has user_id.
+        const sessionDoc = db.get<Session>(sessionId);
+        const userId = sessionDoc?.content.user_id;
+
+        let activeTools = [...tools];
+        if (userId) {
+            try {
+                const mcpTools = await getMCPTools(userId);
+                activeTools = [...activeTools, ...mcpTools];
+            } catch (e) {
+                console.error("Error fetching MCP tools:", e);
+            }
+        }
+
         let currentMessages = [...messages];
         let keepGoing = true;
 
         while (keepGoing) {
             keepGoing = false;
-            const stream = provider.generateStream(currentMessages, config, tools);
+            const stream = provider.generateStream(currentMessages, config, activeTools);
 
             let fullResponse = "";
             let toolCalls: ToolCall[] = [];
@@ -186,16 +202,20 @@ async function handleLLMInteraction(io: Server, sessionId: string, messages: Mes
                  await chatService.addMessage(sessionId, assistantMsg);
 
                  for (const tc of toolCalls) {
-                     const handler = toolMap[tc.tool_name];
                      let result = "Error: Tool not found";
-                     if (handler) {
-                         try {
-                            // Pass context (sessionId) to tools
-                            const output = await handler(tc.tool_input, { sessionId });
-                            result = JSON.stringify(output);
-                         } catch (e) {
-                             result = `Error executing tool: ${e}`;
+
+                     try {
+                         if (toolMap[tc.tool_name]) {
+                             // Local tool
+                             const output = await toolMap[tc.tool_name](tc.tool_input, { sessionId });
+                             result = typeof output === 'string' ? output : JSON.stringify(output);
+                         } else if (userId) {
+                             // Try MCP tool
+                             const output = await handleMCPToolCall(userId, tc.tool_name, tc.tool_input);
+                             result = typeof output === 'string' ? output : JSON.stringify(output);
                          }
+                     } catch (e) {
+                         result = `Error executing tool: ${e}`;
                      }
 
                      // Send tool output to client
