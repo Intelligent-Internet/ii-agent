@@ -6,68 +6,92 @@ readme = "README.md"
 authors = [{ name = "Intelligent Internet", email = "info@ii.inc" }]
 requires-python = ">=3.10"
 dependencies = [
+  # Core agent
+  "anthropic>=0.72.0",
+  "litellm>=1.63.14",
+  "openai>=1.68.2",
+  "pydantic>=2.11.7",
+
+  # MCP/Tools
+  "fastmcp==2.10.6",
+  "libtmux==0.46.2",
+
+  # REPL
+  "prompt-toolkit>=3.0.51",
+  "rich==14.1.0",
+
+  # File processing
   "dataclasses-json>=0.6.7",
-  "duckduckgo-search>=8.0.1",
-  "fastapi>=0.115.12",
-  "google-cloud-aiplatform>=1.90.0",
-  "google-genai>=1.14.0",
-  "ii-researcher>=0.1.5",
   "jsonschema>=4.23.0",
+  "langchain-text-splitters>=1.0.0",
   "mammoth>=1.9.0",
   "markdownify>=1.1.0",
   "pandas>=2.2.3",
   "pathvalidate>=3.2.3",
   "pdfminer-six>=20250506",
-  "openai>=1.68.2",
-  "pexpect>=4.9.0",
   "pillow>=11.2.1",
-  "pip>=25.1.1",
-  "playwright==1.55.0",
-  "prompt-toolkit>=3.0.51",
   "puremagic>=1.29",
-  "pydub>=0.25.1",
   "pymupdf>=1.25.5",
-  "pytest>=8.3.5",
-  "python-dotenv>=1.1.0",
+  "pypdf>=6.1.1",
+  "python-magic>=0.4.27",
   "python-pptx>=1.0.2",
-  "rich==14.1.0",
-  "speechrecognition>=3.14.2",
+  "weasyprint>=66.0",
+
+  # Search/Web
+  "ddgs>=9.9.1",
+  "duckduckgo-search>=8.0.1",
   "tavily-python>=0.7.2",
+  "youtube-transcript-api>=1.0.3",
+
+  # Utils
+  "pexpect>=4.9.0",
+  "pip>=25.1.1",
+  "python-dotenv>=1.1.0",
   "tenacity>=9.1.2",
   "termcolor>=3.0.1",
-  "uvicorn[standard]>=0.29.0,<0.30.0",
-  "youtube-transcript-api>=1.0.3",
-  "alembic>=1.16.1",
-  "fastmcp==2.10.6",
-  "libtmux==0.46.2",
-  "bcrypt>=4.0.0",
-  "PyJWT>=2.8.0",
-  "email-validator>=2.0.0",
-  "cryptography>=42.0.0",
-  "fastapi-sso>=0.16.0",
-  "aiosqlite>=0.21.0",
-  "pydantic==2.11.7",
-  "e2b-code-interpreter==1.2.0b5",
-  "python-socketio>=5.13.0",
-  "gcloud-aio-storage==9.5.0",
-  "transformers>=4.44.0",
-  "weasyprint>=66.0",
-  "python-magic>=0.4.27",
-  "asyncpg>=0.30.0",
-  "stripe>=11.1.0",
-  "python-crontab>=2.7.1",
-  "psycopg2-binary>=2.9.10",
+
+  # AST/Code tools
   "ast-grep-cli>=0.39.5",
-  "starlette[full]>=0.46.2",
+
+  # Server mode
+  "alembic>=1.16.1",
+  "aiosqlite>=0.21.0",
+  "asyncpg>=0.30.0",
+  "psycopg2-binary>=2.9.10",
   "redis>=5.0.0",
-  "pypdf>=6.1.1",
-  "apscheduler>=3.11.0",
-  "litellm>=1.63.14",
+  "fastapi>=0.115.12",
+  "fastapi-sso>=0.16.0",
+  "python-socketio>=5.13.0",
+  "starlette[full]>=0.46.2",
+  "uvicorn[standard]>=0.29.0,<0.30.0",
+
+  # Auth/Security
+  "bcrypt>=4.0.0",
+  "cryptography>=42.0.0",
+  "email-validator>=2.0.0",
+  "PyJWT>=2.8.0",
+  "stripe>=11.1.0",
+
+  # GCP
   "anthropic[vertex]>=0.72.0",
-  "langchain-text-splitters>=1.0.0",
-  "google-auth-oauthlib>=1.2.3",
+  "gcloud-aio-storage==9.5.0",
   "google-api-python-client>=2.150.0",
-  "ddgs>=9.9.1",
+  "google-auth-oauthlib>=1.2.3",
+  "google-cloud-aiplatform>=1.90.0",
+  "google-genai>=1.14.0",
+
+  # Sandboxing
+  "e2b-code-interpreter==1.2.0b5",
+  "playwright==1.55.0",
+
+  # Extra tools
+  "apscheduler>=3.11.0",
+  "ii-researcher>=0.1.5",
+  "pydub>=0.25.1",
+  "pytest>=8.3.5",
+  "python-crontab>=2.7.1",
+  "speechrecognition>=3.14.2",
+  "transformers>=4.44.0",
 ]
 
 [project.optional-dependencies]

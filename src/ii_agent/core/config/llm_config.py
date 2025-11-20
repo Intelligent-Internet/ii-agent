@@ -12,6 +12,7 @@ class APITypes(str, Enum):
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
     GEMINI = "gemini"
+    NVIDIA = "nvidia"
     CUSTOM = "custom"
 
 

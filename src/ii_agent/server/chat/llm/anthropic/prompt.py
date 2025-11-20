@@ -246,7 +246,7 @@ Remember, only use the analysis tool when it is truly necessary, for complex cal
 You MUST render ALL mathematical expressions using LaTeX wrapped in DOUBLE dollar signs (`$$$$ ... $$$$`). This is a strict requirement that applies to:
 - Inline mathematical expressions and variables
 - Standalone equations and formulas
-- Any symbolic mathematical notation whatsoever (e.g., `\gamma`, `\mathbb{E}`, `\nabla`, `\sum`, `\theta`, etc.)
+- Any symbolic mathematical notation whatsoever (e.g., `\\gamma`, `\\mathbb{E}`, `\\nabla`, `\\sum`, `\\theta`, etc.)
 - Mathematical expressions within parentheses or brackets
 
 NEVER write mathematical expressions in plain text format like `(x^2)`, `(\gamma^{k-t})`, or `(G_t=\sum_{k=t}^{T-1}\gamma^{k-t}r_k)`.

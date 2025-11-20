@@ -1,6 +1,7 @@
 """Generic Redis pub/sub service for distributed messaging."""
 
 import asyncio
+import inspect
 import json
 import logging
 from typing import Any, Callable, Dict, Optional
@@ -197,7 +198,7 @@ class RedisPubSub:
 
                     if handler:
                         try:
-                            if asyncio.iscoroutinefunction(handler):
+                            if inspect.iscoroutinefunction(handler):
                                 await handler(message_data)
                             else:
                                 handler(message_data)

@@ -5,9 +5,9 @@ slug: /required-environment-variables/core-infra
 sidebar_position: 18
 ---
 
-These variables cover databases, caches, and host port mappings used by the Docker stack. Most of them can stay at their defaults unless you have port conflicts or custom credentials.
+These variables cover databases, caches, and host port mappings. For local development without Docker, SQLite is used by default with no configuration required. For Docker deployments, configure PostgreSQL as described below.
 
-## Postgres (`POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `POSTGRES_PORT`)
+## Postgres (Docker Only) (`POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `POSTGRES_PORT`)
 
 1. Pick credentials you are comfortable using for local development. Example:
    ```bash
@@ -21,8 +21,15 @@ These variables cover databases, caches, and host port mappings used by the Dock
 
 ## `DATABASE_URL`
 
-- Async connection string used by the backend (e.g., `postgresql+asyncpg://app:changeme@postgres:5432/ii`).
-- Ensure the host matches the service name inside Docker (`postgres` by default) instead of `localhost`.
+**Default (Local Development):** SQLite at `~/.ii_agent/ii_agent.sqlite` - no setup required.
+
+**Docker/Production (PostgreSQL):**
+- Async connection string: `postgresql+asyncpg://app:changeme@postgres:5432/ii`
+- Ensure the host matches the service name inside Docker (`postgres` by default) instead of `localhost`
+
+**Other Options:**
+- DuckDB: `duckdb:///~/.ii_agent/ii_agent.duckdb`
+- In-memory SQLite (testing): `sqlite+aiosqlite:///:memory:`
 
 ## Sandbox database (`SANDBOX_DB_NAME`, `SANDBOX_DATABASE_URL`)
 

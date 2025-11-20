@@ -1,0 +1,6 @@
+# Memvid storage dependencies
+qrcode[pil]>=7.0.0
+opencv-python>=4.8.0
+numpy>=1.24.0
+pyzbar>=0.1.9
+Pillow>=9.0.0

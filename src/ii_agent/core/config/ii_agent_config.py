@@ -18,9 +18,9 @@ II_AGENT_DIR = Path(__file__).parent.parent.parent
 
 
 class ResearcherAgentConfig(BaseSettings):
-    researcher: LLMConfig
-    report_builder: LLMConfig
-    final_report_builder: LLMConfig
+    researcher: LLMConfig = Field(default_factory=LLMConfig)
+    report_builder: LLMConfig = Field(default_factory=LLMConfig)
+    final_report_builder: LLMConfig = Field(default_factory=LLMConfig)
 
 
 class IIAgentConfig(BaseSettings):
@@ -75,8 +75,8 @@ class IIAgentConfig(BaseSettings):
     _storage: BaseStorage | None = PrivateAttr(default=None)
 
     # TODO: LLM configuration
-    llm_configs: dict[str, LLMConfig]
-    researcher_agent_config: ResearcherAgentConfig
+    llm_configs: dict[str, LLMConfig] = Field(default_factory=dict)
+    researcher_agent_config: ResearcherAgentConfig = Field(default_factory=lambda: ResearcherAgentConfig())
     # Google OAuth configuration
     google_client_id: str = Field(default="")
     google_client_secret: str = Field(default="")
@@ -169,11 +169,12 @@ class IIAgentConfig(BaseSettings):
     @model_validator(mode="after")
     def set_database_url(self) -> "IIAgentConfig":
         if self.database_url is None:
-            # Default to PostgreSQL connection
-            # You can set DATABASE_URL environment variable or it will use this default
+            # Default to SQLite - no external dependencies, file-based
+            # Set DATABASE_URL environment variable to opt-in to PostgreSQL or other databases
+            db_path = os.path.expanduser("~/.ii_agent/ii_agent.sqlite")
             self.database_url = os.getenv(
                 "DATABASE_URL",
-                "postgresql+asyncpg://postgres:postgres@localhost:5432/ii_agent",
+                f"sqlite+aiosqlite:///{db_path}",
             )
 
         return self

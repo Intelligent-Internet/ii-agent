@@ -1,4 +1,5 @@
-from unittest.mock import Mock
+import pytest
+from unittest.mock import Mock, AsyncMock
 
 from ii_agent.llm.base import (
     TextPrompt,
@@ -9,9 +10,11 @@ from ii_agent.llm.context_manager.llm_compact import LLMCompact, COMPACT_USER_ME
 from ii_agent.llm.token_counter import TokenCounter
 
 
-def test_llm_compact_no_truncation_needed():
-    """Test that no truncation occurs when only one message list exists."""
+@pytest.mark.asyncio
+async def test_llm_compact_no_truncation_needed():
+    """Test that compact compression creates a summary for all message lists."""
     mock_llm_client = Mock(spec=LLMClient)
+    mock_llm_client.agenerate = AsyncMock(return_value=([TextResult(text="Summary")], None))
     token_counter = TokenCounter()
 
     context_manager = LLMCompact(
@@ -20,21 +23,23 @@ def test_llm_compact_no_truncation_needed():
         token_budget=1000,
     )
 
-    # Single message list should not trigger truncation
+    # Single message list will be compressed
     message_lists = [[TextPrompt(text="Hello")]]
-    result = context_manager.apply_truncation(message_lists)
+    result = await context_manager.apply_truncation(message_lists)
 
-    assert result == message_lists
-    # Should not call LLM for single message
-    mock_llm_client.generate.assert_not_called()
+    # Should compress to a single message with summary
+    assert len(result) == 1
+    # Should have called LLM to generate summary
+    mock_llm_client.agenerate.assert_called_once()
 
 
-def test_llm_compact_basic_truncation():
+@pytest.mark.asyncio
+async def test_llm_compact_basic_truncation():
     """Test basic compact truncation with multiple message lists."""
     mock_llm_client = Mock(spec=LLMClient)
 
-    # Mock the generate method to return a summary response
-    def mock_generate(
+    # Mock the agenerate method to return a summary response
+    async def mock_agenerate(
         messages, max_tokens=None, thinking_tokens=None, system_prompt=None
     ):
         return [
@@ -43,7 +48,7 @@ def test_llm_compact_basic_truncation():
             )
         ], None
 
-    mock_llm_client.generate.side_effect = mock_generate
+    mock_llm_client.agenerate = AsyncMock(side_effect=mock_agenerate)
     token_counter = TokenCounter()
 
     context_manager = LLMCompact(
@@ -61,21 +66,20 @@ def test_llm_compact_basic_truncation():
         [TextResult(text="Assistant: Of course!")],
     ]
 
-    result = context_manager.apply_truncation(message_lists)
+    result = await context_manager.apply_truncation(message_lists)
 
-    # Should return user message + assistant summary
-    assert len(result) == 2
-    assert isinstance(result[0][0], TextPrompt)  # User message about compact command
-    assert result[0][0].text == COMPACT_USER_MESSAGE
-    assert isinstance(result[1][0], TextResult)  # Assistant summary
-    assert "This is a detailed summary" in result[1][0].text
+    # Should return a single summarized message
+    assert len(result) == 1
+    assert isinstance(result[0][0], TextPrompt)  # Summary message
+    assert "This is a detailed summary" in result[0][0].text
 
 
-def test_llm_compact_llm_call_parameters():
+@pytest.mark.asyncio
+async def test_llm_compact_llm_call_parameters():
     """Test that LLM is called with correct parameters during compact truncation."""
     llm_calls = []
 
-    def spy_generate(
+    async def spy_agenerate(
         messages, max_tokens=None, thinking_tokens=None, system_prompt=None
     ):
         call_info = {
@@ -88,7 +92,7 @@ def test_llm_compact_llm_call_parameters():
         return [TextResult(text="Summary of the conversation.")], None
 
     mock_llm_client = Mock(spec=LLMClient)
-    mock_llm_client.generate.side_effect = spy_generate
+    mock_llm_client.agenerate = AsyncMock(side_effect=spy_agenerate)
     token_counter = TokenCounter()
 
     context_manager = LLMCompact(
@@ -103,15 +107,15 @@ def test_llm_compact_llm_call_parameters():
         [TextResult(text="Assistant: Hi!")],
     ]
 
-    context_manager.apply_truncation(message_lists)
+    await context_manager.apply_truncation(message_lists)
 
     # Verify LLM was called once
     assert len(llm_calls) == 1
     call = llm_calls[0]
 
     # Check parameters
-    assert call["max_tokens"] == 4000  # SUMMARY_MAX_TOKENS
-    assert call["thinking_tokens"] == 0
+    assert call["max_tokens"] == 8192  # SUMMARY_MAX_TOKENS
+    # thinking_tokens is not passed, so it won't be in the call
 
     # Check messages structure
     messages = call["messages"]
@@ -121,10 +125,11 @@ def test_llm_compact_llm_call_parameters():
     )  # COMPACT_PROMPT
 
 
-def test_llm_compact_error_handling():
+@pytest.mark.asyncio
+async def test_llm_compact_error_handling():
     """Test error handling when LLM generation fails."""
     mock_llm_client = Mock(spec=LLMClient)
-    mock_llm_client.generate.side_effect = Exception("LLM service unavailable")
+    mock_llm_client.agenerate = AsyncMock(side_effect=Exception("LLM service unavailable"))
 
     token_counter = TokenCounter()
 
@@ -140,21 +145,16 @@ def test_llm_compact_error_handling():
         [TextResult(text="Assistant: Hi!")],
     ]
 
-    result = context_manager.apply_truncation(message_lists)
-
-    # Should return user message + error message as assistant
-    assert len(result) == 2
-    assert isinstance(result[0][0], TextPrompt)  # User message about compact command
-    assert result[0][0].text == COMPACT_USER_MESSAGE
-    assert isinstance(result[1][0], TextResult)  # Error message as assistant
-    assert "Failed to generate summary due to error" in result[1][0].text
-    assert "LLM service unavailable" in result[1][0].text
+    # Exception should propagate
+    with pytest.raises(Exception, match="LLM service unavailable"):
+        await context_manager.apply_truncation(message_lists)
 
 
-def test_llm_compact_empty_response_handling():
+@pytest.mark.asyncio
+async def test_llm_compact_empty_response_handling():
     """Test handling when LLM returns empty response."""
     mock_llm_client = Mock(spec=LLMClient)
-    mock_llm_client.generate.return_value = ([], None)  # Empty response
+    mock_llm_client.agenerate = AsyncMock(return_value=([], None))  # Empty response
 
     token_counter = TokenCounter()
 
@@ -169,11 +169,8 @@ def test_llm_compact_empty_response_handling():
         [TextPrompt(text="User: Hello")],
     ]
 
-    result = context_manager.apply_truncation(message_lists)
+    result = await context_manager.apply_truncation(message_lists)
 
-    # Should use fallback message
-    assert len(result) == 2
-    assert isinstance(result[0][0], TextPrompt)  # User message about compact command
-    assert result[0][0].text == COMPACT_USER_MESSAGE
-    assert isinstance(result[1][0], TextResult)  # Fallback message as assistant
-    assert "Conversation summary could not be generated." in result[1][0].text
+    # Should create a summary even with empty LLM response
+    assert len(result) == 1
+    assert isinstance(result[0][0], TextPrompt)  # Summary message

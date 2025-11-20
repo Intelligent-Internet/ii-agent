@@ -20,6 +20,7 @@ from .api import (
     billing_router,
     chat_router,
     connectors_router,
+    nvidia_models_router,
 )
 from .slides.views import router as slides_router
 from .slides.template_views import router as slide_templates_router
@@ -118,6 +119,7 @@ def create_app():
     app.include_router(billing_router)  # /billing/*
     app.include_router(chat_router)  # /chat/*
     app.include_router(connectors_router)  # /connectors/*
+    app.include_router(nvidia_models_router)  # /nvidia/*
     app.include_router(health_router)
 
     # Create Socket.IO server with increased timeout settings
@@ -136,3 +138,7 @@ def create_app():
     socket_app = socketio.ASGIApp(sio, app)
 
     return socket_app
+
+
+# Create app instance for uvicorn workers
+app = create_app()

@@ -2,7 +2,7 @@
 
 import mimetypes
 import pymupdf
-import imghdr
+import puremagic
 
 from pathlib import Path
 from typing import Optional, Any
@@ -165,7 +165,13 @@ def _read_image_file(path: Path):
     """Read an image and return base64 encoded content."""
 
     # Detect actual image format from file content
-    actual_format = imghdr.what(path)
+    try:
+        # puremagic.from_file returns a list of matches, get the first one
+        magic_info = puremagic.from_file(str(path))[0]
+        actual_format = magic_info.extension.lstrip('.').lower()
+    except (IndexError, Exception):
+        # Fallback to extension-based detection if puremagic fails
+        actual_format = path.suffix.lstrip('.').lower()
 
     # Map imghdr format to MIME type
     format_to_mime = {

@@ -155,6 +155,10 @@ class CustomProvider(LLMClient):
         if llm_config.api_type == APITypes.GEMINI:
             dummy_llm_config.model = f"gemini/{dummy_llm_config.model}"
             dummy_llm_config.api_type = APITypes.CUSTOM
+        elif llm_config.api_type == APITypes.NVIDIA:
+            dummy_llm_config.base_url = "https://integrate.api.nvidia.com/v1"
+            dummy_llm_config.model = f"nvidia/{dummy_llm_config.model}"
+            dummy_llm_config.api_type = APITypes.CUSTOM
         self.llm_config = dummy_llm_config
         self.model_name = dummy_llm_config.model
         self.base_url = dummy_llm_config.base_url
