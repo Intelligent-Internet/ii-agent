@@ -229,20 +229,42 @@ class ModelCompleter(Completer):
                         # Fetch models dynamically
                         models = self.model_fetcher.get_models(provider)
 
+                        # Group models by next path segment (like bash cd)
+                        # e.g., nvidia/qwen/model and nvidia/meta/model -> show qwen/, meta/
+                        seen_prefixes = set()
+
                         for model in models:
                             # For NVIDIA models that already have provider/ prefix
                             if "/" in model:
                                 model_slug = model.split("/", 1)[1]
-                                full_model = f"{provider}/{model_slug}"
                             else:
-                                full_model = f"{provider}/{model}"
+                                model_slug = model
+
+                            full_model = f"{provider}/{model_slug}"
 
                             if full_model.lower().startswith(word.lower()):
-                                yield Completion(
-                                    full_model,
-                                    start_position=-len(word),
-                                    display=full_model,
-                                )
+                                # Extract the part after what user has typed
+                                remaining = full_model[len(word):]
+
+                                # If there's another slash, only show up to next slash
+                                if "/" in remaining:
+                                    next_segment = remaining.split("/", 1)[0]
+                                    prefix = word + next_segment + "/"
+
+                                    if prefix not in seen_prefixes:
+                                        seen_prefixes.add(prefix)
+                                        yield Completion(
+                                            prefix,
+                                            start_position=-len(word),
+                                            display=prefix,
+                                        )
+                                else:
+                                    # Final model name, show it
+                                    yield Completion(
+                                        full_model,
+                                        start_position=-len(word),
+                                        display=full_model,
+                                    )
 
             # "/model <provider> " or "/model <provider> <model>" (old format support)
             elif len(parts) >= 2 and "/" not in parts[1]:
@@ -251,17 +273,37 @@ class ModelCompleter(Completer):
 
                 if provider in self.available_providers and self.available_providers[provider]:
                     models = self.model_fetcher.get_models(provider)
+                    seen_prefixes = set()
+
                     for model in models:
                         # Strip provider prefix if present for old format
                         if "/" in model:
-                            model = model.split("/", 1)[1]
+                            model_slug = model.split("/", 1)[1]
+                        else:
+                            model_slug = model
 
-                        if model.lower().startswith(word.lower()):
-                            yield Completion(
-                                model,
-                                start_position=-len(word),
-                                display=model,
-                            )
+                        if model_slug.lower().startswith(word.lower()):
+                            # Show only up to next slash (directory-like completion)
+                            remaining = model_slug[len(word):]
+
+                            if "/" in remaining:
+                                next_segment = remaining.split("/", 1)[0]
+                                prefix = word + next_segment + "/"
+
+                                if prefix not in seen_prefixes:
+                                    seen_prefixes.add(prefix)
+                                    yield Completion(
+                                        prefix,
+                                        start_position=-len(word),
+                                        display=prefix,
+                                    )
+                            else:
+                                # Final model name
+                                yield Completion(
+                                    model_slug,
+                                    start_position=-len(word),
+                                    display=model_slug,
+                                )
 
 
 class LocalSession:
