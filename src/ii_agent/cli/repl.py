@@ -106,36 +106,92 @@ def _calculate_model_specific_threshold(model_id: str):
         return 0.9
 
 
+class FileCompleter(Completer):
+    """File path completer for /add and /drop commands."""
+
+    def __init__(self, workspace: str):
+        self.workspace = Path(workspace).resolve()
+
+    def get_completions(self, document: Document, complete_event):
+        """Generate file path completions."""
+        text = document.text_before_cursor
+
+        if not text.startswith(("/add", "/drop")):
+            return
+
+        parts = text.split(maxsplit=1)
+        if len(parts) < 2:
+            # Just the command, suggest files from workspace
+            partial = ""
+        else:
+            partial = parts[1]
+
+        # Expand ~ and resolve path
+        if partial.startswith("~"):
+            partial = str(Path(partial).expanduser())
+
+        # Determine the directory to search
+        if "/" in partial:
+            base_dir = Path(partial).parent
+            prefix = Path(partial).name
+        else:
+            base_dir = self.workspace
+            prefix = partial
+
+        # Make base_dir absolute
+        if not base_dir.is_absolute():
+            base_dir = self.workspace / base_dir
+
+        # List matching files and directories
+        try:
+            if base_dir.exists() and base_dir.is_dir():
+                for item in sorted(base_dir.iterdir()):
+                    # Skip hidden files unless explicitly requested
+                    if item.name.startswith(".") and not prefix.startswith("."):
+                        continue
+
+                    # Get relative path from workspace
+                    try:
+                        rel_path = item.relative_to(self.workspace)
+                        display_path = str(rel_path)
+                    except ValueError:
+                        # Outside workspace
+                        display_path = str(item)
+
+                    # Check if it matches the prefix
+                    if item.name.startswith(prefix):
+                        # Add trailing slash for directories
+                        completion_text = display_path + ("/" if item.is_dir() else "")
+
+                        yield Completion(
+                            completion_text,
+                            start_position=-len(partial),
+                            display=display_path + ("/" if item.is_dir() else ""),
+                        )
+        except (PermissionError, OSError):
+            pass
+
+
+class CompositeCompleter(Completer):
+    """Composite completer that combines multiple completers."""
+
+    def __init__(self, completers: List[Completer]):
+        self.completers = completers
+
+    def get_completions(self, document: Document, complete_event):
+        """Get completions from all child completers."""
+        for completer in self.completers:
+            yield from completer.get_completions(document, complete_event)
+
+
 class ModelCompleter(Completer):
     """Custom completer for /model command with provider and model suggestions."""
 
     def __init__(self, available_providers: Dict[str, bool]):
         self.available_providers = available_providers
-        self.model_suggestions = {
-            "anthropic": [
-                "claude-sonnet-4",
-                "claude-opus-4",
-                "claude-sonnet-3.5",
-            ],
-            "openai": [
-                "gpt-4",
-                "gpt-4-turbo",
-                "gpt-4o",
-                "gpt-3.5-turbo",
-            ],
-            "gemini": [
-                "gemini-2.0-flash-exp",
-                "gemini-1.5-pro",
-                "gemini-1.5-flash",
-            ],
-            "nvidia": [
-                "qwen/qwen3-coder-480b-a35b-instruct",
-                "meta/llama-3.1-405b-instruct",
-                "meta/llama-3.1-70b-instruct",
-                "kimi/kimi2-0905",
-                "nvidia/llama-3.1-nemotron-70b-instruct",
-            ],
-        }
+        # Import model fetcher lazily
+        from ii_agent.cli.model_fetcher import get_model_fetcher
+        self.model_fetcher = get_model_fetcher()
 
     def get_completions(self, document: Document, complete_event):
         """Generate completions based on current input."""
@@ -150,27 +206,56 @@ class ModelCompleter(Completer):
         if text.startswith("/model"):
             parts = text.split()
 
-            # Just "/model" or "/model " -> suggest providers
-            if len(parts) == 1 or (len(parts) == 2 and text.endswith(" ")):
+            # Just "/model" or "/model " -> suggest providers or provider/model formats
+            if len(parts) == 1 or (len(parts) == 2 and not "/" in parts[1] if len(parts) == 2 else True):
                 word = parts[1] if len(parts) == 2 else ""
-                available = [p for p, avail in self.available_providers.items() if avail]
 
-                for provider in available:
-                    if provider.startswith(word.lower()):
-                        yield Completion(
-                            provider,
-                            start_position=-len(word),
-                            display=f"{provider} ✓",
-                        )
+                # If no slash yet, suggest providers first
+                if "/" not in word:
+                    available = [p for p, avail in self.available_providers.items() if avail]
+                    for provider in available:
+                        if provider.startswith(word.lower()):
+                            yield Completion(
+                                provider + "/",
+                                start_position=-len(word),
+                                display=f"{provider}/ (→ models)",
+                            )
+                # If slash present, fetch and suggest models for that provider
+                else:
+                    provider_part, model_part = word.split("/", 1) if "/" in word else (word, "")
+                    provider = provider_part.strip()
 
-            # "/model <provider>" or "/model <provider> " -> suggest models
-            elif len(parts) >= 2:
+                    if provider in self.available_providers and self.available_providers[provider]:
+                        # Fetch models dynamically
+                        models = self.model_fetcher.get_models(provider)
+
+                        for model in models:
+                            # For NVIDIA models that already have provider/ prefix
+                            if "/" in model:
+                                model_slug = model.split("/", 1)[1]
+                                full_model = f"{provider}/{model_slug}"
+                            else:
+                                full_model = f"{provider}/{model}"
+
+                            if full_model.lower().startswith(word.lower()):
+                                yield Completion(
+                                    full_model,
+                                    start_position=-len(word),
+                                    display=full_model,
+                                )
+
+            # "/model <provider> " or "/model <provider> <model>" (old format support)
+            elif len(parts) >= 2 and "/" not in parts[1]:
                 provider = parts[1]
                 word = parts[2] if len(parts) >= 3 else ""
 
-                if provider in self.model_suggestions:
-                    models = self.model_suggestions[provider]
+                if provider in self.available_providers and self.available_providers[provider]:
+                    models = self.model_fetcher.get_models(provider)
                     for model in models:
+                        # Strip provider prefix if present for old format
+                        if "/" in model:
+                            model = model.split("/", 1)[1]
+
                         if model.lower().startswith(word.lower()):
                             yield Completion(
                                 model,
@@ -520,8 +605,11 @@ class AgentREPL:
         }
 
     def _get_completer(self) -> Completer:
-        """Get custom completer with model completion support."""
-        return ModelCompleter(self.available_providers)
+        """Get custom completer with model and file completion support."""
+        return CompositeCompleter([
+            FileCompleter(self.workspace),
+            ModelCompleter(self.available_providers),
+        ])
 
     def _get_style(self) -> Style:
         """Get prompt style with ANSI colors."""
@@ -616,15 +704,26 @@ class AgentREPL:
                 self.console.print(f"{Color.DIM}Unavailable (no API key): {', '.join(unavailable)}{Color.RESET}")
             return
 
-        # Parse provider and model
+        # Parse provider and model - support both formats:
+        # 1. /model provider/model-slug/sub-slug
+        # 2. /model provider model (legacy)
         if len(parts) == 1:
-            new_model = parts[0]
-            new_provider = self.session.provider
+            # Check if it contains a slash (provider/model format)
+            if "/" in parts[0]:
+                provider_model = parts[0]
+                # Split only on first slash to preserve model slugs with slashes
+                slash_idx = provider_model.index("/")
+                new_provider = provider_model[:slash_idx]
+                new_model = provider_model[slash_idx+1:]
+            else:
+                # Just model name, use current provider
+                new_model = parts[0]
+                new_provider = self.session.provider
         elif len(parts) == 2:
             new_provider = parts[0]
             new_model = parts[1]
         else:
-            self.console.print("[red]Usage: /model [provider] <model>[/red]")
+            self.console.print("[red]Usage: /model provider/model-slug or /model [provider] <model>[/red]")
             return
 
         # Check if provider has API key

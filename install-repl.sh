@@ -18,8 +18,31 @@ cat > ~/.local/bin/ii-repl << 'EOF'
 #!/bin/bash
 # ii-agent REPL launcher with memvid and duckdb support
 
-# Get the directory where ii-agent is installed
-II_AGENT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && cd ../.. && pwd)/work/ii-agent"
+# Determine the default II_AGENT_DIR
+# Priority: $II_AGENT_DIR env var > script-provided path > ~/work/ii-agent
+if [ -n "$II_AGENT_DIR" ]; then
+    # Use user-provided env var
+    :
+else
+    # Try to autodetect via git: look for a parent dir named ii-agent by walking up
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    # If install script was run near the repo, try to use ~/work/ii-agent or parent directories
+    POSSIBLE="$SCRIPT_DIR/../../.. $PWD $HOME/work/ii-agent"
+    for p in $POSSIBLE; do
+        if [ -d "$p" ] && [ -f "$p/pyproject.toml" ]; then
+            II_AGENT_DIR="$p"
+            break
+        fi
+    done
+fi
+
+# If still not found, set a default but warn
+if [ -z "$II_AGENT_DIR" ]; then
+    II_AGENT_DIR="$HOME/work/ii-agent"
+    if [ ! -d "$II_AGENT_DIR" ]; then
+        echo "Warning: ii-agent directory not found at $II_AGENT_DIR. To set the correct path, set II_AGENT_DIR=/path/to/ii-agent and re-run install-repl.sh"
+    fi
+fi
 
 # Set PYTHONPATH to include ii-agent source
 export PYTHONPATH="$II_AGENT_DIR/src:$PYTHONPATH"
@@ -34,7 +57,7 @@ if [ -f "$II_AGENT_DIR/.venv/bin/activate" ]; then
 fi
 
 # Run the REPL with all arguments passed through
-exec python -m ii_agent.cli.main repl "$@"
+exec python -m ii_agent.cli.main --repl "$@"
 EOF
 
 # Make it executable
@@ -54,6 +77,9 @@ echo "  export PATH=\"\$HOME/.local/bin:\$PATH\""
 echo ""
 echo "Then run:"
 echo "  ii-repl"
+
+echo "If ii-agent repo is not in ~/work/ii-agent, run the installer as follows (example):"
+echo "  II_AGENT_DIR=\"/Users/jim/work/ii-agent\" bash install-repl.sh"
 echo ""
 echo "REPL commands:"
 echo "  /help     - Show available commands"
