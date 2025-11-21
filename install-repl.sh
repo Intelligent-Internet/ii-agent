@@ -21,6 +21,13 @@ cat > ~/.local/bin/ii-repl << 'EOF'
 # Get the directory where ii-agent is installed
 II_AGENT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && cd ../.. && pwd)/work/ii-agent"
 
+# Set PYTHONPATH to include ii-agent source
+export PYTHONPATH="$II_AGENT_DIR/src:$PYTHONPATH"
+
+# Skip PostgreSQL migrations in REPL mode (uses DuckDB instead)
+export IIAGENT_SKIP_MIGRATIONS="1"
+export IIAGENT_SKIP_SERVER_APP_IMPORT="1"
+
 # Activate virtual environment if it exists
 if [ -f "$II_AGENT_DIR/.venv/bin/activate" ]; then
     source "$II_AGENT_DIR/.venv/bin/activate"
