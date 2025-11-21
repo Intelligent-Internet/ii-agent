@@ -140,6 +140,21 @@ class TileGenerator:
             todo_content, microkernel.get("important_breadcrumbs", [])
         )
 
+        # Optimize breadcrumb placement using ContextBandOptimizer
+        try:
+            from ii_agent.llm.context_band_optimizer import ContextBandOptimizer
+            cbo = ContextBandOptimizer()
+            # Create priority scores (heuristic: shorter filename = higher priority)
+            priority_scores = [max(0.1, 1.0 - (len(b) / 200.0)) for b in relevant_breadcrumbs]
+            placements = cbo.optimize_breadcrumb_placement(self.checkpoint_system.memvid.video_dir if hasattr(self.checkpoint_system, 'memvid') else 'default', relevant_breadcrumbs, priority_scores)
+            # Mark which breadcrumbs are in golden bands
+            breadcrumb_placement = {
+                b: {'position': pos, 'in_golden_band': in_golden}
+                for b, pos, in_golden in placements
+            }
+        except Exception:
+            breadcrumb_placement = {b: {'position': 0.5, 'in_golden_band': False} for b in relevant_breadcrumbs}
+
         # Create compressed tile
         tile = {
             "tile_id": tile_id,
@@ -149,6 +164,7 @@ class TileGenerator:
             "parent_slab_id": parent_slab_id,
             "compressed_context": {
                 "breadcrumbs": relevant_breadcrumbs,
+                "breadcrumb_placement": breadcrumb_placement,
                 "related_activity": todo_context["activity"],
                 "dependencies": todo_context["dependencies"],
                 "estimated_scope": todo_context["scope"],

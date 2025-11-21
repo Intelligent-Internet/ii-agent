@@ -2,82 +2,70 @@
 
 ## Installation Modes
 
-### Full Installation (Default)
+### Cloud Server (Default)
 
 ```bash
 pip install -e .
 ```
 
-**Includes everything:**
+**Full cloud/server build:**
 - Core LLM providers: Anthropic, OpenAI, LiteLLM, NVIDIA
-- REPL mode + Server mode
-- File processing tools
-- MCP support
-- Search/Web tools
-- **GCP:** Vertex AI, Cloud Storage, Google APIs
 - **Server mode:** FastAPI, WebSocket, Redis, Postgres, SQLite
-- **Sandboxing:** E2B, Playwright
+- **GCP:** Vertex AI, Cloud Storage, Google APIs, Gemini
 - **Auth:** OAuth, JWT, Stripe
-- **Extras:** APScheduler, transformers, pytest
+- **Sandboxing:** E2B, Playwright
+- **Extras:** APScheduler, transformers, pytest, ii-researcher
+- File processing, MCP support, Search/Web tools
 
 **Size:** ~2GB | **Install time:** 3-5 minutes (GCP dependency resolution)
 
-### Lite Installation (REPL only, no GCP)
+### Local REPL (Additive, no cloud)
 
 ```bash
-pip install -r requirements-lite.txt
+pip install -r requirements-repl.txt
 pip install -e . --no-deps
 ```
 
-**Includes:**
-- Core LLM providers: Anthropic, OpenAI, LiteLLM
-- REPL mode only
-- File processing tools
-- MCP support
-- Search/Web tools
-- **No GCP, no server, no databases**
+**Local development REPL:**
+- Core LLM providers: Anthropic, OpenAI, LiteLLM, NVIDIA
+- **REPL interface:** prompt-toolkit, rich
+- **DuckDB** for local analytics and context management
+- File processing, MCP support, Search/Web tools
+- **No GCP, no server, no external databases, no Gemini**
 
 **Size:** ~200MB | **Install time:** 30 seconds
 
+Use this for local development without cloud dependencies.
+
 ## Quick Start
 
-### REPL Mode (Lite)
+### Local REPL Mode
 ```bash
-# Install lite
-pip install -r requirements-lite.txt
+# Install REPL-only
+pip install -r requirements-repl.txt
 pip install -e . --no-deps
 
-# Set API key
+# Set API key (Anthropic, OpenAI, or NVIDIA - no Gemini in REPL mode)
 export NVIDIA_API_KEY=nvapi-...
 
 # Run REPL
 ii-agent --repl
 ```
 
-### REPL Mode (Full)
+### Cloud Server Mode
 ```bash
-# Install full
+# Install full cloud build
 pip install -e .
 
-# Set API key
-export NVIDIA_API_KEY=nvapi-...
-
-# Run REPL
-ii-agent --repl
-```
-
-### Server Mode
-```bash
-# Install full
-pip install -e .
-
-# Set up database
-# Configure .env
-
+# Set up database and configure .env
 # Run server
 ii-agent
 # OR
 ii-agent --port 8080
+
+# Server also supports REPL with all providers including Gemini
+export GOOGLE_API_KEY=...
+ii-agent --repl
 ```
 
 ## Python 3.14 Compatibility
@@ -91,7 +79,7 @@ pip install -e .
 
 ## Dependencies
 
-### Lite Install (requirements-lite.txt)
+### REPL Install (requirements-repl.txt)
 ```
 Core: anthropic, litellm, openai, pydantic
 MCP/Tools: fastmcp, libtmux
@@ -102,14 +90,18 @@ Utils: python-dotenv, tenacity, ast-grep-cli
 ```
 **Total:** ~45 packages, ~200MB
 
-### Full Install (pip install -e .) - Adds:
+**Excludes:** GCP, Gemini, server, databases, auth, sandboxing
+
+### Cloud Server Install (pip install -e .) - Includes everything:
 ```
+Core: Same as REPL
+
 Server: alembic, aiosqlite, asyncpg, psycopg2-binary, redis
         fastapi, fastapi-sso, python-socketio, starlette, uvicorn
 
 GCP: anthropic[vertex], gcloud-aio-storage
      google-api-python-client, google-auth-oauthlib
-     google-cloud-aiplatform, google-genai
+     google-cloud-aiplatform, google-genai (Gemini support)
 
 Sandboxing: e2b-code-interpreter, playwright
 

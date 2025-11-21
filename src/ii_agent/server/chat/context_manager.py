@@ -1,7 +1,7 @@
 """Context window management for chat sessions."""
 
 import logging
-from typing import List, Optional
+from typing import List, Optional, Dict
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ii_agent.server.chat.models import Message, TextContent, MessageRole
@@ -9,34 +9,10 @@ from ii_agent.server.chat.message_service import MessageService
 from ii_agent.db.models import Session
 from ii_agent.storage.slab_checkpoint import SlabCheckpoint
 from ii_agent.llm.base import GeneralContentBlock
+from ii_agent.llm.model_constants import CONTEXT_WINDOWS, PERFORMANCE_CLIFFS
+from ii_agent.server.chat.harmonic_miss_tracker import HarmonicMissTracker
 
 logger = logging.getLogger(__name__)
-
-
-# Model context window limits (in tokens)
-CONTEXT_WINDOWS = {
-    # Anthropic
-    "claude-3-5-sonnet-20241022": 200_000,
-    "claude-3-5-haiku-20241022": 200_000,
-    "claude-3-opus-20240229": 200_000,
-    "claude-3-sonnet-20240229": 200_000,
-    "claude-3-haiku-20240307": 200_000,
-
-    # OpenAI
-    "gpt-4-turbo": 128_000,
-    "gpt-4": 8_192,
-    "gpt-3.5-turbo": 16_385,
-    "gpt-4o": 128_000,
-    "gpt-4o-mini": 128_000,
-
-    # Google
-    "gemini-1.5-pro": 1_000_000,
-    "gemini-1.5-flash": 1_000_000,
-    "gemini-pro": 32_768,
-
-    # Default
-    "default": 128_000,
-}
 
 
 def calculate_checkpoint_threshold(context_window: int) -> float:
@@ -83,6 +59,117 @@ def calculate_checkpoint_threshold(context_window: int) -> float:
     return threshold
 
 
+def get_performance_cliff_threshold(model_id: str) -> dict[str, int]:
+    """
+    Get performance cliff thresholds for a specific model.
+
+    Handles litellm and HF model slug formats:
+    - Anthropic: claude-3-5-sonnet-20241022
+    - OpenAI: gpt-4o-2024-05-13
+    - Google: gemini/gemini-1.5-pro
+    - Llama: meta-llama/Llama-3.1-405B-Instruct
+    - DeepSeek: deepseek-ai/DeepSeek-V3
+
+    Args:
+        model_id: Model identifier
+
+    Returns:
+        Dictionary with early_degradation, moderate_cliff, severe_cliff, effective_limit
+    """
+    # Normalize model ID for matching
+    model_lower = model_id.lower().replace("-", "_").replace("/", "_")
+
+    # Claude models
+    if "claude" in model_lower:
+        if "3_5" in model_lower and "sonnet" in model_lower:
+            return PERFORMANCE_CLIFFS["Claude 3.5 Sonnet"]
+        if "3_5" in model_lower and "haiku" in model_lower:
+            return PERFORMANCE_CLIFFS["Claude 3.5 Sonnet"]  # Same cliff data
+        if "3_7" in model_lower and "sonnet" in model_lower:
+            return PERFORMANCE_CLIFFS["Claude 3.7 Sonnet"]
+        if "opus" in model_lower:
+            return PERFORMANCE_CLIFFS["Claude 3.5 Sonnet"]  # Similar behavior
+
+    # GPT/OpenAI models
+    if "gpt_4o" in model_lower and "mini" not in model_lower:
+        return PERFORMANCE_CLIFFS["GPT-4o"]
+    if "gpt_4o_mini" in model_lower:
+        return PERFORMANCE_CLIFFS["GPT-4o"]  # Similar cliff, smaller capacity
+    if "gpt_4_1" in model_lower:
+        return PERFORMANCE_CLIFFS["GPT-4.1"]
+    if "gpt_4_turbo" in model_lower:
+        return PERFORMANCE_CLIFFS["GPT-4o"]  # Similar to GPT-4o
+    if "gpt_4" in model_lower and "turbo" not in model_lower and "o" not in model_lower:
+        return PERFORMANCE_CLIFFS["GPT-4o"]  # Base GPT-4
+
+    # Gemini models
+    if "gemini" in model_lower:
+        if "1_5" in model_lower:
+            return PERFORMANCE_CLIFFS["Gemini 1.5 Pro/Flash"]
+        if "2_5" in model_lower or "2_5_pro" in model_lower:
+            return PERFORMANCE_CLIFFS["Gemini 2.5 Pro"]
+        if "2_0" in model_lower or "2_0_flash" in model_lower:
+            return PERFORMANCE_CLIFFS["Gemini 1.5 Pro/Flash"]  # Assume similar
+        if "pro" in model_lower:
+            return PERFORMANCE_CLIFFS["Gemini 1.5 Pro/Flash"]
+
+    # Llama models
+    if "llama" in model_lower:
+        if "3_1" in model_lower:
+            return PERFORMANCE_CLIFFS["Llama 3.1"]
+        if "4" in model_lower:
+            if "scout" in model_lower:
+                return PERFORMANCE_CLIFFS["Llama 4 Scout"]
+            if "maverick" in model_lower:
+                return PERFORMANCE_CLIFFS["Llama 4 Maverick"]
+
+    # DeepSeek models
+    if "deepseek" in model_lower:
+        return PERFORMANCE_CLIFFS["DeepSeek V3.1"]
+
+    # Default fallback
+    return {
+        "early_degradation": 30_000,
+        "moderate_cliff": 64_000,
+        "severe_cliff": 120_000,
+        "effective_limit": 50_000,
+    }
+
+
+def calculate_model_specific_threshold(model_id: str) -> float:
+    """
+    Calculate dynamic checkpoint threshold based on model-specific performance cliffs.
+
+    Uses performance cliff data to set aggressive checkpointing before degradation.
+    Targets the "early_degradation" threshold with 80% safety margin.
+
+    Args:
+        model_id: Model identifier
+
+    Returns:
+        Checkpoint threshold as percentage (0.0 to 1.0)
+    """
+    # Get performance cliff data for this model
+    cliffs = get_performance_cliff_threshold(model_id)
+    context_window = CONTEXT_WINDOWS.get(model_id, CONTEXT_WINDOWS["default"])
+
+    # Target early degradation point with safety margin
+    early_degradation = cliffs["early_degradation"]
+
+    # Never set threshold above 90% (minimum safety)
+    # Never set below 10% (too aggressive, wastes context)
+    threshold = min(0.90, (early_degradation / context_window) * 0.8)
+    threshold = max(0.10, threshold)
+
+    logger.debug(
+        f"Model {model_id}: early_degradation={early_degradation}, "
+        f"context_window={context_window}, threshold={threshold:.2%}"
+    )
+
+    return threshold
+
+
+
 class ContextWindowManager:
     """Manages context window and auto-summarization."""
 
@@ -91,7 +178,9 @@ class ContextWindowManager:
 
     _checkpoint_system: Optional[SlabCheckpoint] = None
     _tile_generator: Optional['TileGenerator'] = None
-    _harmonic_miss_tracker: dict[str, list[dict]] = {}  # Track edit slips per model
+    _harmonic_miss_tracker: Optional[HarmonicMissTracker] = None  # Persistent tracker for edit slips per model
+    _cliff_benchmark: Optional['ContextCliffBenchmark'] = None
+    _benchmark_usage_threshold: int = 10  # Run tests after N uses
 
     @classmethod
     def get_checkpoint_system(cls) -> SlabCheckpoint:
@@ -99,6 +188,14 @@ class ContextWindowManager:
         if cls._checkpoint_system is None:
             cls._checkpoint_system = SlabCheckpoint()
         return cls._checkpoint_system
+
+    @classmethod
+    def get_cliff_benchmark(cls):
+        """Get or create cliff benchmark singleton."""
+        if cls._cliff_benchmark is None:
+            from ii_agent.llm.context_cliff_benchmark import ContextCliffBenchmark
+            cls._cliff_benchmark = ContextCliffBenchmark()
+        return cls._cliff_benchmark
 
     @classmethod
     def get_tile_generator(cls):
@@ -112,13 +209,59 @@ class ContextWindowManager:
         return cls._tile_generator
 
     @classmethod
+    def get_harmonic_miss_tracker(cls) -> HarmonicMissTracker:
+        """Get or create the HarmonicMissTracker singleton (persistent).
+
+        Returns:
+            HarmonicMissTracker: tracker object
+        """
+        if cls._harmonic_miss_tracker is None:
+            cls._harmonic_miss_tracker = HarmonicMissTracker()
+        return cls._harmonic_miss_tracker
+
+    @classmethod
     def get_checkpoint_threshold_for_model(cls, model_id: str) -> float:
-        """Get dynamic checkpoint threshold based on model's context window."""
+        """
+        Get dynamic checkpoint threshold based on model-specific performance cliffs.
+
+        Uses performance cliff data when available, falling back to context-window-based
+        calculation for unknown models.
+
+        Args:
+            model_id: Model identifier (e.g., "claude-3-5-sonnet-20241022")
+
+        Returns:
+            Checkpoint threshold as percentage (0.0 to 1.0)
+        """
+        # Try model-specific cliff-based calculation first
+        try:
+            threshold = calculate_model_specific_threshold(model_id)
+        except Exception as e:
+            logger.debug(f"Failed to calculate model-specific threshold for {model_id}: {e}")
+            threshold = None
+
+        # If harmonic miss tracker suggests a different threshold, prefer a safer (lower) threshold
+        try:
+            tracker = cls.get_harmonic_miss_tracker()
+            recommended = tracker.recommend_threshold(model_id)
+            if recommended is not None:
+                # recommended is a percentage (0..1); prefer min to remain conservative
+                if threshold is None:
+                    threshold = recommended
+                else:
+                    threshold = min(threshold, recommended)
+        except Exception:
+            pass
+
+        if threshold is not None:
+            return threshold
+
+        # Fallback to context-window-based calculation
         context_window = CONTEXT_WINDOWS.get(model_id, CONTEXT_WINDOWS["default"])
         return calculate_checkpoint_threshold(context_window)
 
     @classmethod
-    def track_harmonic_miss(cls, model_id: str, error_type: str, context_tokens: int):
+    def track_harmonic_miss(cls, model_id: str, error_type: str, context_tokens: int, metadata: Optional[dict] = None):
         """
         Track 'harmonic miss' - errors caused by context pressure.
 
@@ -127,7 +270,39 @@ class ContextWindowManager:
             error_type: Type of error (e.g., "edit_slip", "hallucination", "inconsistency")
             context_tokens: Token count when error occurred
         """
-        if model_id not in cls._harmonic_miss_tracker:
+        # Delegate to persistent HarmonicMissTracker
+        try:
+            tracker = cls.get_harmonic_miss_tracker()
+            tracker.track(
+                model_id,
+                error_type,
+                context_tokens,
+                CONTEXT_WINDOWS.get(model_id, CONTEXT_WINDOWS["default"]),
+                metadata=metadata,
+            )
+        except Exception:
+            # Best-effort tracking - fall back to in-memory dict if tracker fails
+            if not isinstance(cls._harmonic_miss_tracker, dict):
+                cls._harmonic_miss_tracker = {}
+            if model_id not in cls._harmonic_miss_tracker:
+                cls._harmonic_miss_tracker[model_id] = []
+            from datetime import datetime
+            cls._harmonic_miss_tracker[model_id].append({
+                "timestamp": datetime.now().isoformat(),
+                "error_type": error_type,
+                "context_tokens": context_tokens,
+                "context_window": CONTEXT_WINDOWS.get(model_id, CONTEXT_WINDOWS["default"]),
+                "pressure_ratio": context_tokens / CONTEXT_WINDOWS.get(model_id, CONTEXT_WINDOWS["default"]),
+            })
+
+            # Keep last 100 errors per model
+            if len(cls._harmonic_miss_tracker[model_id]) > 100:
+                cls._harmonic_miss_tracker[model_id] = cls._harmonic_miss_tracker[model_id][-100:]
+
+            logger.warning(
+                f"Harmonic miss tracked for {model_id}: {error_type} at {context_tokens} tokens "
+                f"({cls._harmonic_miss_tracker[model_id][-1]['pressure_ratio']:.1%} context pressure)"
+            )
             cls._harmonic_miss_tracker[model_id] = []
 
         from datetime import datetime
@@ -150,6 +325,34 @@ class ContextWindowManager:
 
     @classmethod
     def get_harmonic_miss_stats(cls, model_id: str) -> dict:
+        """Get harmonic miss statistics for a model."""
+        try:
+            tracker = cls.get_harmonic_miss_tracker()
+            stats = tracker.get_stats(model_id)
+            # Normalize keys to earlier API
+            return {
+                "model_id": model_id,
+                "total_errors": stats.get("total_events", 0),
+                "error_types": stats.get("error_types", {}),
+                "avg_context_pressure": stats.get("avg_pressure", 0.0),
+                "recent_errors": stats.get("recent_events", []),
+            }
+        except Exception:
+            errors = cls._harmonic_miss_tracker.get(model_id, []) if isinstance(cls._harmonic_miss_tracker, dict) else []
+            if not errors:
+                return {"model_id": model_id, "total_errors": 0}
+            error_types = {}
+            for error in errors:
+                error_type = error["error_type"]
+                error_types[error_type] = error_types.get(error_type, 0) + 1
+            avg_pressure = sum(e["pressure_ratio"] for e in errors) / len(errors)
+            return {
+                "model_id": model_id,
+                "total_errors": len(errors),
+                "error_types": error_types,
+                "avg_context_pressure": avg_pressure,
+                "recent_errors": errors[-10:],
+            }
         """Get harmonic miss statistics for a model."""
         errors = cls._harmonic_miss_tracker.get(model_id, [])
         if not errors:
@@ -420,7 +623,7 @@ class ContextWindowManager:
         return slab_id
 
     @classmethod
-    def reduce_message_tokens(cls, messages: List[Message]) -> List[Message]:
+    def reduce_message_tokens(cls, messages: List[Message], model_id: Optional[str] = None) -> List[Message]:
         """
         Reduce message list if total tokens >= 90% of 128k context window.
         Removes oldest messages until reaching a user message with remaining tokens < threshold.
@@ -431,8 +634,9 @@ class ContextWindowManager:
         Returns:
             Reduced list of messages starting from a user message (or original if under threshold)
         """
-        MAX_CONTEXT = 128_000
-        REDUCTION_THRESHOLD = int(MAX_CONTEXT * 0.9)  # 115,200 tokens
+        # Determine model-specific context window (fallback to 128k)
+        context_window = CONTEXT_WINDOWS.get(model_id or "default", CONTEXT_WINDOWS["default"])
+        REDUCTION_THRESHOLD = int(context_window * 0.9)
 
         # Calculate total tokens
         total_tokens = sum(msg.tokens or 0 for msg in messages)
@@ -445,7 +649,7 @@ class ContextWindowManager:
             return messages
 
         logger.info(
-            f"Reducing messages: {total_tokens} tokens >= {REDUCTION_THRESHOLD} threshold"
+            f"Reducing messages: {total_tokens} tokens >= {REDUCTION_THRESHOLD} threshold ({context_window} window)"
         )
 
         # Remove messages from beginning until we hit a user message and are under threshold
@@ -474,3 +678,36 @@ class ContextWindowManager:
         )
 
         return reduced_messages
+
+    @classmethod
+    def reduce_history_tokens(cls, history: List[dict], model_id: Optional[str] = None) -> List[dict]:
+        """
+        Reduce a lightweight in-memory history (list of dicts with 'tokens' and 'role') based on model-specific context thresholds.
+
+        This is intended for LocalSession histories which are dicts rather than Message ORM objects.
+        """
+        context_window = CONTEXT_WINDOWS.get(model_id or "default", CONTEXT_WINDOWS["default"])
+        reduction_threshold = int(context_window * 0.9)
+
+        total_tokens = sum(item.get('tokens', 0) for item in history)
+        if total_tokens < reduction_threshold:
+            return history
+
+        current_tokens = total_tokens
+        start_index = 0
+
+        for i, entry in enumerate(history):
+            current_tokens -= entry.get('tokens', 0)
+            if entry.get('role') == 'user' and current_tokens < reduction_threshold:
+                start_index = i
+                break
+
+        if start_index >= len(history):
+            return history
+
+        reduced_history = history[start_index:]
+        final_tokens = sum(item.get('tokens', 0) for item in reduced_history)
+        logger.info(
+            f"Reduced local history from {len(history)} -> {len(reduced_history)} messages ({total_tokens} -> {final_tokens} tokens)"
+        )
+        return reduced_history

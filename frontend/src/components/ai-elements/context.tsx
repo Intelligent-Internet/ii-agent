@@ -25,6 +25,7 @@ type ContextSchema = {
   maxTokens: number;
   usage?: LanguageModelUsage;
   modelId?: ModelId;
+  harmonicMissStats?: Record<string, unknown>;
 };
 
 const ContextContext = createContext<ContextSchema | null>(null);
@@ -46,6 +47,7 @@ export const Context = ({
   maxTokens,
   usage,
   modelId,
+  harmonicMissStats,
   ...props
 }: ContextProps) => (
   <ContextContext.Provider
@@ -54,6 +56,7 @@ export const Context = ({
       maxTokens,
       usage,
       modelId,
+      harmonicMissStats,
     }}
   >
     <HoverCard closeDelay={0} openDelay={0} {...props} />
@@ -185,6 +188,20 @@ export const ContextContentBody = ({
 }: ContextContentBodyProps) => (
   <div className={cn("w-full p-3", className)} {...props}>
     {children}
+    <div className="mt-2 text-xs text-muted-foreground">
+      {/* Harmonic miss stats */}
+      {(() => {
+        const ctx = useContextValue()
+        const stats = (ctx && (ctx as any).harmonicMissStats) as Record<string, unknown> | undefined
+        if (!stats) return null
+        return (
+          <div>
+            <div className="mb-1 font-medium">Harmonic Miss Stats</div>
+            <pre className="text-xs max-w-full overflow-auto">{JSON.stringify(stats, null, 2)}</pre>
+          </div>
+        )
+      })()}
+    </div>
   </div>
 );
 

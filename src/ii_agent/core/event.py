@@ -37,6 +37,11 @@ class EventType(str, enum.Enum):
     SUB_AGENT_COMPLETE = "sub_agent_complete"
     METRICS_UPDATE = "metrics_update"
     MODEL_COMPACT = "model_compact"
+    CHECKPOINT_CREATED = "checkpoint_created"
+    TILE_GENERATED = "tile_generated"
+    SUMMARY_CREATED = "summary_created"
+    PERFORMANCE_WARNING = "performance_warning"
+    MONITORING = "monitoring"
 
     @staticmethod
     def is_allowed_when_aborted(event_type: "EventType") -> bool:

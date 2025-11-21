@@ -138,6 +138,48 @@ class IIAgentConfig(BaseSettings):
         ge=0.0,
     )
 
+    # Context Cliff Benchmark configuration
+    # Opt-in ONLY - user permission required for cost
+    cliff_benchmark_enabled: bool = Field(
+        default=False,
+        description="Enable context cliff benchmarking (opt-in, makes API calls)",
+    )
+    cliff_benchmark_mock_mode: bool = Field(
+        default=True,
+        description="Run cliff benchmarks in mock mode (zero cost, no API calls)",
+    )
+    cliff_benchmark_usage_threshold: int = Field(
+        default=10,
+        description="Run benchmarks after N model uses (cost-averse default)",
+    )
+    cliff_benchmark_interval_minutes: int = Field(
+        default=60,
+        description="Wait N minutes between benchmark runs",
+    )
+    cliff_benchmark_max_concurrent: int = Field(
+        default=1,
+        description="Maximum concurrent benchmarks (cost control)",
+    )
+
+    # Golden Band Context Optimization
+    # Disabled by default - requires analysis first
+    golden_band_optimization_enabled: bool = Field(
+        default=False,
+        description="Enable golden band breadcrumb optimization (requires band analysis)",
+    )
+    golden_band_learning_enabled: bool = Field(
+        default=True,
+        description="Learn golden bands from needle-in-haystack tests", flag=True,
+    )
+    golden_band_auto_optimize: bool = Field(
+        default=False,
+        description="Auto-place breadcrumbs in golden bands (opt-in for safety)",
+    )
+    golden_band_reduce_search_priority: bool = Field(
+        default=True,
+        description="Lower search priority for golden-band breadcrumbs (they're easier to find)",
+    )
+
     # Per session config
     # TODO: move to a separate class
     session_id: Optional[str] = None
@@ -169,12 +211,12 @@ class IIAgentConfig(BaseSettings):
     @model_validator(mode="after")
     def set_database_url(self) -> "IIAgentConfig":
         if self.database_url is None:
-            # Default to SQLite - no external dependencies, file-based
-            # Set DATABASE_URL environment variable to opt-in to PostgreSQL or other databases
-            db_path = os.path.expanduser("~/.ii_agent/ii_agent.sqlite")
+            # Default to DuckDB - better performance for local analytics
+            # Set DATABASE_URL environment variable to opt-in to other databases
+            db_path = os.path.expanduser("~/.ii_agent/ii_agent.duckdb")
             self.database_url = os.getenv(
                 "DATABASE_URL",
-                f"sqlite+aiosqlite:///{db_path}",
+                f"duckdb:///{db_path}",
             )
 
         return self
@@ -186,6 +228,9 @@ class IIAgentConfig(BaseSettings):
         # Convert async PostgreSQL URL to sync
         if "+asyncpg" in self.database_url:
             return self.database_url.replace("+asyncpg", "")
+        # Handle DuckDB (already synchronous)
+        elif "duckdb://" in self.database_url:
+            return self.database_url
         # Keep backward compatibility for SQLite
         elif "+aiosqlite" in self.database_url:
             return self.database_url.replace("+aiosqlite", "")

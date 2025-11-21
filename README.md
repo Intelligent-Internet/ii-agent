@@ -24,6 +24,11 @@ II-Agent Chat also feature within II-Agent that lets you work across multiple mo
 ### Try now on our web application version at [II-Agent](https://agent.ii.inc/)
 
 ## Introduction
+### REPL Context & Token Usage
+
+- The REPL supports a `/context` command to display the current conversation token usage, model-specific context window, and thresholds.
+- The REPL now uses a TokenCounter for more accurate token estimation and will warn when the session approaches a model's context limits.
+
 
 <https://github.com/user-attachments/assets/2707b106-f37d-41a8-beff-8802b1c9b186>
 

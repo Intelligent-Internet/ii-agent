@@ -6,56 +6,16 @@ readme = "README.md"
 authors = [{ name = "Intelligent Internet", email = "info@ii.inc" }]
 requires-python = ">=3.10"
 dependencies = [
-  # Core agent
+  # Core agent - LLM clients only
   "anthropic>=0.72.0",
   "litellm>=1.63.14",
   "openai>=1.68.2",
   "pydantic>=2.11.7",
-
-  # MCP/Tools
-  "fastmcp==2.10.6",
-  "libtmux==0.46.2",
-
-  # REPL
-  "prompt-toolkit>=3.0.51",
-  "rich==14.1.0",
-
-  # File processing
-  "dataclasses-json>=0.6.7",
-  "jsonschema>=4.23.0",
-  "langchain-text-splitters>=1.0.0",
-  "mammoth>=1.9.0",
-  "markdownify>=1.1.0",
-  "pandas>=2.2.3",
-  "pathvalidate>=3.2.3",
-  "pdfminer-six>=20250506",
-  "pillow>=11.2.1",
-  "puremagic>=1.29",
-  "pymupdf>=1.25.5",
-  "pypdf>=6.1.1",
-  "python-magic>=0.4.27",
-  "python-pptx>=1.0.2",
-  "weasyprint>=66.0",
-
-  # Search/Web
-  "ddgs>=9.9.1",
-  "duckduckgo-search>=8.0.1",
-  "tavily-python>=0.7.2",
-  "youtube-transcript-api>=1.0.3",
-
-  # Utils
-  "pexpect>=4.9.0",
-  "pip>=25.1.1",
   "python-dotenv>=1.1.0",
   "tenacity>=9.1.2",
-  "termcolor>=3.0.1",
 
-  # AST/Code tools
-  "ast-grep-cli>=0.39.5",
-
-  # Server mode
+  # Server mode (default cloud build)
   "alembic>=1.16.1",
-  "aiosqlite>=0.21.0",
   "asyncpg>=0.30.0",
   "psycopg2-binary>=2.9.10",
   "redis>=5.0.0",
@@ -92,9 +52,96 @@ dependencies = [
   "python-crontab>=2.7.1",
   "speechrecognition>=3.14.2",
   "transformers>=4.44.0",
+
+  # MCP/Tools
+  "fastmcp==2.10.6",
+  "libtmux==0.46.2",
+
+  # File processing
+  "dataclasses-json>=0.6.7",
+  "jsonschema>=4.23.0",
+  "langchain-text-splitters>=1.0.0",
+  "mammoth>=1.9.0",
+  "markdownify>=1.1.0",
+  "pandas>=2.2.3",
+  "pathvalidate>=3.2.3",
+  "pdfminer-six>=20250506",
+  "pillow>=11.2.1",
+  "puremagic>=1.29",
+  "pymupdf>=1.25.5",
+  "pypdf>=6.1.1",
+  "python-magic>=0.4.27",
+  "python-pptx>=1.0.2",
+  "weasyprint>=66.0",
+
+  # Search/Web
+  "ddgs>=9.9.1",
+  "duckduckgo-search>=8.0.1",
+  "tavily-python>=0.7.2",
+  "youtube-transcript-api>=1.0.3",
+
+  # Utils
+  "pexpect>=4.9.0",
+  "pip>=25.1.1",
+  "termcolor>=3.0.1",
+
+  # AST/Code tools
+  "ast-grep-cli>=0.39.5",
 ]
 
 [project.optional-dependencies]
+repl = [
+  # Core agent - LLM clients
+  "anthropic>=0.72.0",
+  "litellm>=1.63.14",
+  "openai>=1.68.2",
+  "pydantic>=2.11.7",
+  "python-dotenv>=1.1.0",
+  "tenacity>=9.1.2",
+
+  # REPL interface
+  "prompt-toolkit>=3.0.51",
+  "rich==14.1.0",
+
+  # DuckDB for local analytics (REPL default)
+  "duckdb>=1.1.0",
+
+  # MCP/Tools
+  "fastmcp==2.10.6",
+  "libtmux==0.46.2",
+
+  # File processing
+  "dataclasses-json>=0.6.7",
+  "jsonschema>=4.23.0",
+  "langchain-text-splitters>=1.0.0",
+  "mammoth>=1.9.0",
+  "markdownify>=1.1.0",
+  "pandas>=2.2.3",
+  "pathvalidate>=3.2.3",
+  "pdfminer-six>=20250506",
+  "pillow>=11.2.1",
+  "puremagic>=1.29",
+  "pymupdf>=1.25.5",
+  "pypdf>=6.1.1",
+  "python-magic>=0.4.27",
+  "python-pptx>=1.0.2",
+  "weasyprint>=66.0",
+
+  # Search/Web
+  "ddgs>=9.9.1",
+  "duckduckgo-search>=8.0.1",
+  "tavily-python>=0.7.2",
+  "youtube-transcript-api>=1.0.3",
+
+  # Utils
+  "pexpect>=4.9.0",
+  "pip>=25.1.1",
+  "termcolor>=3.0.1",
+
+  # AST/Code tools
+  "ast-grep-cli>=0.39.5",
+]
+
 gaia = [
   "datasets>=3.6.0",
   "huggingface-hub>=0.31.1",

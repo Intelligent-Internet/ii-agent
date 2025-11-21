@@ -3,9 +3,16 @@ import argparse
 import asyncio
 import logging
 import os
-import uvicorn
 
 logger = logging.getLogger(__name__)
+
+# Check if server dependencies are available
+try:
+    import fastapi
+    import uvicorn
+    SERVER_AVAILABLE = True
+except ImportError:
+    SERVER_AVAILABLE = False
 
 
 def main():
@@ -66,14 +73,22 @@ Examples:
 
     args = parser.parse_args()
 
-    # Run in REPL mode
-    if args.repl:
+    # Determine mode: explicit REPL request or auto-switch if server unavailable
+    repl_mode = args.repl or not SERVER_AVAILABLE
+
+    if repl_mode:
+        # Show message if auto-switching due to missing server dependencies
+        if not args.repl and not SERVER_AVAILABLE:
+            print("Server dependencies not installed. Starting in REPL mode...")
+            print("To install server dependencies: pip install -e .[server]")
+            print()
+
         from ii_agent.cli.repl import main_repl
         workspace = args.workspace or os.getcwd()
         logger.info(f"Starting REPL mode in workspace: {workspace}")
         asyncio.run(main_repl(workspace))
 
-    # Run in server mode (default)
+    # Run in server mode (only if explicitly requested and available)
     else:
         logger.info(f"Starting WebSocket server on {args.host}:{args.port}")
         uvicorn.run(

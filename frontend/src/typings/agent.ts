@@ -55,6 +55,11 @@ export enum AgentEvent {
     AGENT_RESPONSE_INTERRUPTED = 'agent_response_interrupted',
     STATUS_UPDATE = 'status_update',
     SANDBOX_STATUS = 'sandbox_status',
+    CHECKPOINT_CREATED = 'checkpoint_created',
+    TILE_GENERATED = 'tile_generated',
+    SUMMARY_CREATED = 'summary_created',
+    PERFORMANCE_WARNING = 'performance_warning',
+    MONITORING = 'monitoring',
     SUB_AGENT_COMPLETE = 'sub_agent_complete',
     TOOL_PROGRESS = 'tool_progress',
     MODEL_COMPACT = 'model_compact'

@@ -17,6 +17,10 @@ import {
     sessionApi
 } from '@/state'
 import {
+    setHarmonicMissStats,
+    setContextUsage
+} from '@/state/slice/context'
+import {
     setResultUrl,
     setStopped,
     setSandboxIframeAwake,
@@ -203,6 +207,60 @@ export function useAppEvents() {
                     const vscode_url = data.content.vscode_url as string
                     if (vscode_url) {
                         dispatch(setVscodeUrl(vscode_url))
+                    }
+                    break
+                }
+                case AgentEvent.CHECKPOINT_CREATED: {
+                    // Inform the user a checkpoint was created
+                    const slabId = data.content?.slab_id as string | undefined
+                    if (slabId) {
+                        toast.success(`Checkpoint created: ${slabId}`)
+                    }
+                    break
+                }
+                case AgentEvent.TILE_GENERATED: {
+                    // Notify when tiles are generated
+                    toast.success('Context tiles generated')
+                    break
+                }
+                case AgentEvent.SUMMARY_CREATED: {
+                    // Attach summary to messages (best effort placeholder)
+                    const summaryId = data.content?.summary_message_id as string | undefined
+                    if (summaryId) {
+                        safeDispatch(
+                            setMessages([
+                                ...(messagesRef.current ?? []),
+                                {
+                                    id: summaryId,
+                                    role: 'assistant',
+                                    content: data.content?.summary_preview as string ?? '[Summary created]',
+                                    createdAt: Date.now(),
+                                    model: '',
+                                    parts: [],
+                                    files: undefined,
+                                    finish_reason: 'summary'
+                                }
+                            ])
+                        )
+                        toast.success('Summary created and injected into the thread')
+                    }
+                    break
+                }
+                case AgentEvent.PERFORMANCE_WARNING: {
+                    const message = data.content?.message as string | undefined
+                    const model = data.content?.model as string | undefined
+                    toast.error(`Performance warning for ${model ?? 'model'}: ${message ?? 'approaching performance cliff'}`)
+                    break
+                }
+                case AgentEvent.MONITORING: {
+                    // Update harmonic miss stats and monitoring info
+                    try {
+                        const harmonicStats = data.content?.harmonic_miss_stats as Record<string, unknown> | undefined
+                        if (harmonicStats) {
+                            dispatch(setHarmonicMissStats(harmonicStats))
+                        }
+                    } catch (e) {
+                        // ignore
                     }
                     break
                 }

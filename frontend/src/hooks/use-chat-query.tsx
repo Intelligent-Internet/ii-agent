@@ -112,6 +112,35 @@ function useChatProviderValue(): ChatContextValue {
         stateRef.current = state
     }, [state])
 
+    useEffect(() => {
+        // Update maxTokens based on selected model heuristics
+        const mapModelToWindow = (model?: string) => {
+            if (!model) return 128000
+            model = model.toLowerCase()
+            if (model.includes('gpt-4.1')) return 1000000
+            if (model.includes('gpt-4-turbo')) return 128000
+            if (model.includes('claude')) return 200000
+            if (model.includes('gemini')) return 1000000
+            if (model.includes('llama')) return 128000
+            return 128000
+        }
+        dispatch(
+            setContextUsage({
+                usedTokens: stateRef.current?.messages?.reduce(
+                    (acc, m) =>
+                        acc +
+                        (m?.parts?.reduce(
+                            (subAcc, p) => subAcc + ((p as any).text?.length || 0),
+                            0
+                        ) || 0),
+                    0
+                ),
+                modelId: selectedModelId,
+                maxTokens: mapModelToWindow(selectedModelId)
+            })
+        )
+    }, [selectedModelId, dispatch])
+
     const resetConversationState = useCallback(() => {
         streamingMessageIdRef.current = null
         setChatState((prev) => ({
@@ -679,6 +708,15 @@ function useChatProviderValue(): ChatContextValue {
                             output_tokens,
                             total_tokens
                         }) => {
+                            // Dispatch usage into global state for UI
+                            dispatch(
+                                setContextUsage({
+                                    usedTokens: total_tokens,
+                                    usage: { inputTokens: input_tokens, outputTokens: output_tokens, totalTokens: total_tokens },
+                                    modelId: selectedModelId,
+                                    maxTokens: 128000 // Default, will be updated by model change hook
+                                })
+                            )
                             console.log('Token usage:', {
                                 input_tokens,
                                 output_tokens,

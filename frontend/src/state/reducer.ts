@@ -1,5 +1,6 @@
 import { combineReducers } from 'redux'
 import { messagesReducer } from './slice/messages'
+import { contextReducer } from './slice/context'
 import { uiReducer } from './slice/ui'
 import { editorReducer } from './slice/editor'
 import { agentReducer } from './slice/agent'
@@ -19,6 +20,7 @@ export default combineReducers({
     agent: agentReducer,
     files: filesReducer,
     workspace: workspaceReducer,
+    context: contextReducer,
     settings: settingsReducer,
     sessions: sessionsReducer,
     user: userReducer,

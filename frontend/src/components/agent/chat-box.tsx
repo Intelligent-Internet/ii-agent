@@ -3,6 +3,9 @@ import clsx from 'clsx'
 import { toast } from 'sonner'
 
 import { Button } from '../ui/button'
+import { Context, ContextTrigger } from '@/components/ai-elements/context'
+import { selectContext } from '@/state/slice/context'
+import { useAppSelector } from '@/state/store'
 import { Icon } from '../ui/icon'
 import ChatMessage from './chat-message'
 import { useWebSocketContext } from '@/contexts/websocket-context'
@@ -205,7 +208,7 @@ const ChatBox = ({
                     </div>
                 </div>
             )}
-            <div className="hidden md:flex gap-x-2 items-center p-4">
+                <div className="hidden md:flex gap-x-2 items-center p-4">
                 <Button
                     className={clsx(
                         'h-7 text-xs font-semibold px-4 rounded-full border border-sky-blue',
@@ -220,6 +223,18 @@ const ChatBox = ({
                 >
                     Chat
                 </Button>
+                {/* Context usage indicator */}
+                <div className="ml-auto">
+                    {(() => {
+                        const ctx = useAppSelector(selectContext)
+                        if (!ctx) return null
+                        return (
+                            <Context usedTokens={ctx.usedTokens} maxTokens={ctx.maxTokens} usage={ctx.usage} modelId={ctx.modelId}>
+                                <ContextTrigger />
+                            </Context>
+                        )
+                    })()}
+                </div>
                 <Button
                     className={clsx(
                         'h-7 text-xs font-semibold px-4 rounded-full border border-sky-blue hidden',

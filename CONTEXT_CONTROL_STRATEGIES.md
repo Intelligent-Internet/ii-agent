@@ -51,8 +51,8 @@ def reduce_message_tokens(messages: List[Message]) -> List[Message]:
 
 ### Usage
 ```python
-# Called on every ReAct loop iteration (Web UI)
-messages = ContextWindowManager.reduce_message_tokens(messages)
+# Called on every ReAct loop iteration (Web UI) - model-aware reduction
+messages = ContextWindowManager.reduce_message_tokens(messages, model_id=model_id)
 run_response = await provider.stream(messages=messages, tools=tools)
 ```
 

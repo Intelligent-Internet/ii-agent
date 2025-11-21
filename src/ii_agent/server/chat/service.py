@@ -322,6 +322,13 @@ class ChatService:
         }
         model_id = chat_request.model_id
 
+        # Record model usage and trigger cliff benchmark if threshold met
+        # This runs in background and doesn't block the chat
+        from ii_agent.server.chat.context_manager import ContextWindowManager
+        benchmark = ContextWindowManager.get_cliff_benchmark()
+        benchmark.record_usage(model_id)
+        asyncio.create_task(benchmark.run_background_tests(model_id, self._llm_call_simple))
+
         # Get session for context window check
         result = await db_session.execute(
             select(Session).where(Session.id == session_id, Session.user_id == user_id)
@@ -491,8 +498,8 @@ class ChatService:
                 # [PRESENTATION] Cancellation check (web-specific)
                 await cancel.raise_if_cancelled(run_id)
 
-                # [BUSINESS LOGIC] Token management
-                messages = ContextWindowManager.reduce_message_tokens(messages)
+                # [BUSINESS LOGIC] Token management (model-aware reduction)
+                messages = ContextWindowManager.reduce_message_tokens(messages, model_id=model_id)
 
                 # [FSM STATE] WAITING_FOR_LLM
                 run_response: RunResponseOutput = None
@@ -996,3 +1003,40 @@ class ChatService:
                     value=f"Unexpected error executing tool: {str(e)}",
                 ),
             )
+
+    @staticmethod
+    async def _llm_call_simple(prompt: str) -> str:
+        """
+        Simple LLM call interface for cliff benchmarking.
+
+        Uses LiteLLM for model-agnostic calls. This is intentionally simple
+        for benchmark purposes - no streaming, no tool use, just completion.
+
+        Args:
+            prompt: The prompt text
+
+        Returns:
+            Model response text
+
+        Raises:
+            Exception: If LLM call fails
+        """
+        try:
+            import litellm
+
+            # Use a fast model for benchmarking
+            # TODO: Make this configurable based on available API keys
+            model = "gpt-4o-mini"  # Fast and cheap for benchmarking
+
+            response = await litellm.acompletion(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=500,
+                timeout=60.0,
+            )
+
+            return response.choices[0].message.content or ""
+
+        except Exception as e:
+            logger.error(f"Simple LLM call failed: {e}")
+            raise

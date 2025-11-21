@@ -2,7 +2,7 @@
 
 import json
 from datetime import datetime
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, TYPE_CHECKING
 from pathlib import Path
 
 from ii_agent.llm.base import (
@@ -25,12 +25,27 @@ class SlabCheckpoint:
         self,
         memvid: Optional[MemvidStorage] = None,
         hashtable: Optional[LRUHashtable] = None,
+        # Use string annotation or TYPE_CHECKING to avoid NameError at import time
+        dictionary: Optional['DictionaryStorage'] = None,
         checkpoint_dir: Optional[str] = None,
     ):
-        self.memvid = memvid or MemvidStorage(
-            video_dir=checkpoint_dir or str(Path.home() / ".ii_agent" / "checkpoints")
-        )
-        self.hashtable = hashtable or LRUHashtable(max_size=10000)
+        # If a dictionary storage is supplied, use its backing memvid/cache
+        if dictionary is not None:
+            # Use dictionary internals directly
+            self.memvid = dictionary.memvid
+            self.hashtable = dictionary.cache
+        else:
+            # If neither memvid nor hashtable provided, default to a fused DictionaryStorage
+            if memvid is None and hashtable is None:
+                from ii_agent.storage.dictionary import DictionaryStorage as _Dictionary
+                _dict = _Dictionary()
+                self.memvid = _dict.memvid
+                self.hashtable = _dict.cache
+            else:
+                self.memvid = memvid or MemvidStorage(
+                video_dir=checkpoint_dir or str(Path.home() / ".ii_agent" / "checkpoints")
+            )
+                self.hashtable = hashtable or LRUHashtable(max_size=10000)
 
         self.checkpoint_metadata: Dict[str, Dict] = {}
         self._load_metadata()

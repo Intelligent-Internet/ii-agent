@@ -31,6 +31,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 
 def run_migrations():
+    # Allow skipping migrations in test/dev environments to avoid running incompatible DDL for test DBs
+    if os.getenv("IIAGENT_SKIP_MIGRATIONS", "0") in ("1", "true", "True"):
+        logger.info("Skipping migrations due to IIAGENT_SKIP_MIGRATIONS environment variable")
+        return
+
     try:
         from alembic import command
         from alembic.config import Config
@@ -268,17 +273,27 @@ if "+asyncpg" in database_url:
                 ssl_context.verify_mode = ssl.CERT_NONE
                 connect_args["ssl"] = ssl_context
 
-engine = create_async_engine(
-    database_url,
-    echo=False,
-    future=True,
-    connect_args=connect_args,
-    pool_size=20,
-    max_overflow=0,
-    pool_pre_ping=True,
-    pool_recycle=3600,
-    pool_timeout=30,
-)
+if "+asyncpg" in database_url or database_url.startswith("postgresql://"):
+    # Postgres-specific pooling options
+    engine = create_async_engine(
+        database_url,
+        echo=False,
+        future=True,
+        connect_args=connect_args,
+        pool_size=20,
+        max_overflow=0,
+        pool_pre_ping=True,
+        pool_recycle=3600,
+        pool_timeout=30,
+    )
+else:
+    # Simpler engine for SQLite/DuckDB/others which don't support pooling options
+    engine = create_async_engine(
+        database_url,
+        echo=False,
+        future=True,
+        connect_args=connect_args,
+    )
 SessionLocal = async_sessionmaker(
     bind=engine, expire_on_commit=False, autocommit=False, autoflush=False
 )
