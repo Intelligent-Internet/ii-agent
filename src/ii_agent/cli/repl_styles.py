@@ -82,11 +82,11 @@ def format_error(text: str) -> str:
 
 def format_warning(text: str) -> str:
     """Format warning message."""
-    return f"{Color.HIGH_CONTRAST['reverse_warning']}{Symbol.WARNING}{Color.RESET} {text}"
+    return f"{Color.WHITE}{Symbol.WARNING}{Color.RESET} {text}"
 
 def format_info(text: str) -> str:
     """Format info message."""
-    return f"{Color.HIGH_CONTRAST['reverse_info']}{Symbol.INFO}{Color.RESET} {text}"
+    return f"{Color.WHITE}{Symbol.INFO}{Color.RESET} {text}"
 
 def format_provider(name: str, available: bool) -> str:
     """Format provider with symbol."""
@@ -115,11 +115,11 @@ def format_model_status(provider: str, model: str, available: bool) -> str:
 
 def format_env_var(var_name: str) -> str:
     """Format environment variable hint."""
-    return f"{Color.HIGH_CONTRAST['reverse_accent']}{var_name}{Color.RESET}"
+    return f"{Color.WHITE}{var_name}{Color.RESET}"
 
 def format_command(cmd: str) -> str:
     """Format command with subtle highlighting."""
-    return f"{Color.HIGH_CONTRAST['reverse_command']}{cmd}{Color.RESET}"
+    return f"{Color.WHITE}{cmd}{Color.RESET}"
 
 def format_file(filepath: str) -> str:
     """Format file path."""
@@ -168,7 +168,7 @@ class ANSIConsole:
     def print_header(self, title: str, workspace: str, model: str):
         """Print REPL header with ANSI colors."""
         lines = [
-            create_header_line("ii-agent Interactive REPL", "v0.1.0", Color.CYAN),
+            create_header_line("ii-agent Interactive REPL", "v0.1.0", Color.BLUE),
             "",
             create_status_line("Workspace", format_workspace(workspace), Color.BLUE),
             create_status_line("Model", format_model_status(model.split('/')[0], '/'.join(model.split('/')[1:]), True), Color.GREEN),
