@@ -107,13 +107,13 @@ def _calculate_model_specific_threshold(model_id: str):
 
 
 class FileCompleter(Completer):
-    """File path completer for /add and /drop commands."""
+    """File path completer for /add and /drop commands - bash-like."""
 
     def __init__(self, workspace: str):
         self.workspace = Path(workspace).resolve()
 
     def get_completions(self, document: Document, complete_event):
-        """Generate file path completions."""
+        """Generate file path completions exactly like bash."""
         text = document.text_before_cursor
 
         if not text.startswith(("/add", "/drop")):
@@ -123,26 +123,34 @@ class FileCompleter(Completer):
         if len(parts) < 2:
             # Just the command, suggest files from workspace
             partial = ""
+            base_dir = self.workspace
+            prefix = ""
         else:
             partial = parts[1]
 
-        # Expand ~ and resolve path
-        if partial.startswith("~"):
-            partial = str(Path(partial).expanduser())
+            # Expand ~ and resolve path
+            if partial.startswith("~"):
+                partial_expanded = str(Path(partial).expanduser())
+            else:
+                partial_expanded = partial
 
-        # Determine the directory to search
-        if "/" in partial:
-            base_dir = Path(partial).parent
-            prefix = Path(partial).name
-        else:
-            base_dir = self.workspace
-            prefix = partial
+            # Determine the directory to search
+            if "/" in partial_expanded:
+                # Split path into directory and filename parts
+                last_slash = partial_expanded.rfind("/")
+                dir_part = partial_expanded[:last_slash] if last_slash > 0 else "/"
+                prefix = partial_expanded[last_slash + 1:]
 
-        # Make base_dir absolute
-        if not base_dir.is_absolute():
-            base_dir = self.workspace / base_dir
+                # Make path absolute relative to workspace
+                if partial_expanded.startswith("/"):
+                    base_dir = Path(dir_part)
+                else:
+                    base_dir = self.workspace / dir_part
+            else:
+                base_dir = self.workspace
+                prefix = partial_expanded
 
-        # List matching files and directories
+        # List matching files and directories (bash-like: only current level)
         try:
             if base_dir.exists() and base_dir.is_dir():
                 for item in sorted(base_dir.iterdir()):
@@ -150,23 +158,24 @@ class FileCompleter(Completer):
                     if item.name.startswith(".") and not prefix.startswith("."):
                         continue
 
-                    # Get relative path from workspace
-                    try:
-                        rel_path = item.relative_to(self.workspace)
-                        display_path = str(rel_path)
-                    except ValueError:
-                        # Outside workspace
-                        display_path = str(item)
-
                     # Check if it matches the prefix
                     if item.name.startswith(prefix):
+                        # Compute what to show (just the name, like bash)
+                        if "/" in partial and not partial.startswith("/"):
+                            # Preserve the path prefix user typed
+                            dir_prefix = partial.rsplit("/", 1)[0] + "/"
+                            completion_text = dir_prefix + item.name
+                        else:
+                            completion_text = item.name
+
                         # Add trailing slash for directories
-                        completion_text = display_path + ("/" if item.is_dir() else "")
+                        if item.is_dir():
+                            completion_text += "/"
 
                         yield Completion(
                             completion_text,
-                            start_position=-len(partial),
-                            display=display_path + ("/" if item.is_dir() else ""),
+                            start_position=-len(partial) if partial else 0,
+                            display=item.name + ("/" if item.is_dir() else ""),
                         )
         except (PermissionError, OSError):
             pass
@@ -184,6 +193,35 @@ class CompositeCompleter(Completer):
             yield from completer.get_completions(document, complete_event)
 
 
+class CommandCompleter(Completer):
+    """Completer for slash commands."""
+
+    def __init__(self, commands: Dict[str, Any]):
+        self.commands = commands
+
+    def get_completions(self, document: Document, complete_event):
+        """Generate command completions."""
+        text = document.text_before_cursor
+
+        # Only complete if we're typing a command (starts with /)
+        if not text.startswith("/"):
+            return
+
+        # Get the command part (before any space)
+        parts = text.split(maxsplit=1)
+        if len(parts) == 1:
+            # Still typing the command name
+            cmd_part = parts[0]
+
+            for cmd in sorted(self.commands.keys()):
+                if cmd.startswith(cmd_part):
+                    yield Completion(
+                        cmd,
+                        start_position=-len(cmd_part),
+                        display=cmd,
+                    )
+
+
 class ModelCompleter(Completer):
     """Custom completer for /model command with provider and model suggestions."""
 
@@ -198,8 +236,8 @@ class ModelCompleter(Completer):
         text = document.text_before_cursor
         words = text.split()
 
-        # If we're at a command, offer commands
-        if not text or text == "/":
+        # Only complete for /model command
+        if not text.startswith("/model"):
             return
 
         # If text starts with /model
@@ -647,8 +685,9 @@ class AgentREPL:
         }
 
     def _get_completer(self) -> Completer:
-        """Get custom completer with model and file completion support."""
+        """Get custom completer with command, model, and file completion support."""
         return CompositeCompleter([
+            CommandCompleter(self.commands),
             FileCompleter(self.workspace),
             ModelCompleter(self.available_providers),
         ])
