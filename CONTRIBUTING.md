@@ -37,3 +37,24 @@ If you are adding provider-specific integration tests that require credentials, 
 3. Add instructions in this file for any required secrets and which GitHub Actions secrets to set.
 
 Thanks for keeping the repo tidy — small, focused installs make the project easier for everyone to contribute to.
+
+## Repository secrets
+
+If you want the guarded provider integration tests to run in CI, add the following repository secrets (recommended names) in GitHub:
+
+- `GOOGLE_SERVICE_ACCOUNT_JSON` — the full multi-line service account JSON value. The CI job will write this into a file at runtime and set `GOOGLE_APPLICATION_CREDENTIALS` to point at it.
+- `ANTHROPIC_API_KEY` — your Anthropic API key used by the Anthropic integration tests.
+- `E2B_API_KEY` — your e2b/related provider API key used by e2b tests.
+
+How to add secrets (GitHub UI):
+
+1. Go to your repository on GitHub → `Settings` → `Secrets and variables` → `Actions`.
+2. Click `New repository secret`.
+3. Enter the **Name** (one of the names above) and paste the secret value (for `GOOGLE_SERVICE_ACCOUNT_JSON` paste the full JSON content).
+4. Click `Add secret`.
+
+Notes and safety:
+- Never commit credentials or service account files into the repository.
+- Only enable provider integration runs in CI on protected branches or from trusted PRs, since these tests require secrets and network access.
+- The CI `integration` job will only run provider tests if the secrets are present and `RUN_PROVIDERS_INTEGRATION=1` is set in the job environment.
+
