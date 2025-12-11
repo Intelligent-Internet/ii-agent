@@ -19,11 +19,12 @@ class OptimizedSBBLBlockchain(SBBLBlockchain):
     """Optimized version with performance improvements"""
     
     def __init__(self, cache_size: int = 100):
-        super().__init__()
+        # Initialize caches early because parent constructor calls methods that may use them
         self.block_cache = {}  # Cache for frequently accessed blocks
         self.cache_size = cache_size
         self.metrics_cache = {}  # Cache for calculated metrics
         self.hash_cache = {}  # Cache for content hashes
+        super().__init__()
         
     def _calculate_block_hash(self, data: Dict, previous_hash: str, nonce: int = 0) -> str:
         """Optimized hash calculation with caching"""

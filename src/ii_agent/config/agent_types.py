@@ -47,6 +47,7 @@ from ii_tool.tools.web.image_search_tool import ImageSearchTool
 from ii_tool.tools.web.web_batch_search_tool import WebBatchSearchTool
 from ii_tool.tools.file_system.str_replace_editor import StrReplaceEditorTool
 # from ii_tool.tools.codex import CodexExecuteTool  # Now using MCP stdio versions
+from ii_tool.tools.sbll_knowledge_tool import SBLLKnowledgeTool
 
 
 class AgentType(str, Enum):
@@ -75,6 +76,7 @@ class AgentTypeConfig:
             ShellRunCommand.name,
             ShellView.name,
             MessageUserTool.name,
+            SBLLKnowledgeTool.name,
             # ShellStopCommand.name,
             ShellList.name,
             # File system tools
@@ -192,6 +194,7 @@ class AgentTypeConfig:
             MessageUserTool.name,
             WebBatchSearchTool.name,
             WebVisitCompressTool.name,
+            SBLLKnowledgeTool.name,
         ],
         AgentType.DESIGN_DOCUMENT: [
             # File system tools for creating design docs
