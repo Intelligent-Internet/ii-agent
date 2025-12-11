@@ -64,3 +64,25 @@ jobs:
       - name: Provider smoke check
         run: |
           python -c "import sys, pkgutil; print('Providers installed:', [m.name for m in pkgutil.iter_modules() if m.name.startswith(('anthropic','google','e2b'))])"
+
+      - name: Write Google service account file (from secret)
+        if: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON != '' }}
+        env:
+          SA_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          # write the multi-line JSON from the secret into a file
+          printf '%s' "$SA_JSON" > $GITHUB_WORKSPACE/gcloud_sa.json
+          chmod 600 $GITHUB_WORKSPACE/gcloud_sa.json
+        shell: bash
+
+      - name: Run provider integration tests (guarded)
+        env:
+          # enable guarded integration tests in pytest
+          RUN_PROVIDERS_INTEGRATION: '1'
+          # point Google auth to the written service account file (if present)
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/gcloud_sa.json
+          # provider API keys (set these in repository secrets if needed)
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
+        run: |
+          python -m pytest tests/integration -q
