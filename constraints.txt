@@ -1,0 +1,14 @@
+﻿## Constraints to limit pip resolver backtracking for heavy deps
+# Pin commonly large, interdependent packages to known-compatible versions
+# Adjust versions if CI or local environments require different pins.
+google-api-python-client==2.186.0
+google-api-core==2.28.1
+google-auth==2.42.1
+google-auth-httplib2==0.2.0
+google-auth-oauthlib==1.2.3
+googleapis-common-protos==1.72.0
+proto-plus==1.26.1
+protobuf==4.25.8
+uritemplate==4.2.0
+e2b-code-interpreter==1.2.0b5
+e2b==1.2.0b5

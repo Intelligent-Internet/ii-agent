@@ -47,10 +47,9 @@ dependencies = [
   "cryptography>=42.0.0",
   "fastapi-sso>=0.16.0",
   "aiosqlite>=0.21.0",
-  "pydantic==2.11.7",
-  "e2b-code-interpreter==1.2.0b5",
+  "pydantic>=2.11.7,<3.0.0",
+  # moved heavy provider deps into optional `providers` extra
   "python-socketio>=5.13.0",
-  "gcloud-aio-storage==9.5.0",
   "transformers>=4.44.0",
   "weasyprint>=66.0",
   "python-magic>=0.4.27",
@@ -64,10 +63,7 @@ dependencies = [
   "pypdf>=6.1.1",
   "apscheduler>=3.11.0",
   "litellm>=1.63.14",
-  "anthropic[vertex]>=0.72.0",
   "langchain-text-splitters>=1.0.0",
-  "google-auth-oauthlib>=1.2.3",
-  "google-api-python-client>=2.150.0",
   "ddgs>=9.9.1",
 ]
 
@@ -80,6 +76,23 @@ gaia = [
   "tenacity>=9.1.2",
   "termcolor>=3.0.1",
   "uvicorn[standard]>=0.29.0",
+]
+
+# Development / test extras installed by CI with `pip install -e '.[dev]'`
+dev = [
+  "pytest>=8.3.5",
+  "pytest-asyncio>=1.0.0",
+]
+
+providers = [
+  # Heavy / optional provider and API integrations
+  "anthropic[vertex]>=0.72.0",
+  "e2b-code-interpreter==1.2.0b5",
+  "google-api-python-client>=2.150.0",
+  "google-auth-oauthlib>=1.2.3",
+  "google-cloud-aiplatform>=1.90.0",
+  "google-genai>=1.14.0",
+  "gcloud-aio-storage==9.5.0",
 ]
 
 [project.scripts]

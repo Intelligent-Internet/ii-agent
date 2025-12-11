@@ -61,6 +61,7 @@ from ii_tool.tools.browser import (
     BrowserEnterMultipleTextsTool,
 )
 from ii_tool.browser.browser import Browser
+from ii_tool.tools.sbll_knowledge_tool import SBLLKnowledgeTool
 
 
 def get_common_tools(
@@ -70,6 +71,7 @@ def get_common_tools(
         # Sandbox tools
         RegisterPort(sandbox=sandbox),
         MessageUserTool(),
+        SBLLKnowledgeTool(),
     ]
 
     return tools
