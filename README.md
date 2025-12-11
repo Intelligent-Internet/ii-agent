@@ -43,3 +43,22 @@ II-Agent Chat also feature within II-Agent that lets you work across multiple mo
 For the latest installation and deployment instructions, please refer to our [official guide](https://intelligent-internet.github.io/ii-agent-prod/)
 
 [![Installation Guide](https://img.youtube.com/vi/wPpeJMbdGi4/maxresdefault.jpg)](https://www.youtube.com/watch?v=wPpeJMbdGi4)
+
+## Optional provider integrations
+
+Some integrations (Google APIs, Anthropic, e2b code interpreter, etc.) are heavy and have many transitive dependencies. To keep development and CI installs fast and deterministic, these are provided as an optional extra named `providers`.
+
+To install the providers extra locally (recommended when you need provider integrations), use the `constraints.txt` included in the repository to avoid pip resolver backtracking:
+
+```powershell
+python -m pip install -e "[.providers]" -c constraints.txt
+```
+
+Or install both dev and providers when you need tests and provider integrations:
+
+```powershell
+python -m pip install -e ".[dev]" -c constraints.txt
+python -m pip install -e ".[providers]" -c constraints.txt
+```
+
+If you prefer not to install providers, the project will still work for most development tasks without them.
