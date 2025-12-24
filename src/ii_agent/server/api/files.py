@@ -1,11 +1,15 @@
 """File storage API endpoints."""
 
+import io
+import time
 import uuid
+import logging
 from typing import AsyncIterator
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import select, and_
+from urllib.parse import unquote
 from ii_agent.db.models import User, FileUpload, Session
 from ii_agent.storage import BaseStorage, GCS
 from ii_agent.core.config.ii_agent_config import config
@@ -13,6 +17,7 @@ from ii_agent.server.api.deps import DBSession, CurrentUser
 from ii_agent.server.shared import storage as shared_storage
 import anyio
 
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["files"])
 
@@ -26,8 +31,11 @@ async def get_file_upload_storage() -> BaseStorage:
             config.file_upload_bucket_name,
             config.custom_domain,
         )
+    elif config.storage_provider == "local":
+        # Use the shared storage instance for local provider
+        return shared_storage
 
-    raise HTTPException(status_code=500, detail="Storage provider not supported")
+    raise HTTPException(status_code=500, detail=f"Storage provider '{config.storage_provider}' not supported")
 
 
 async def get_avatar_storage() -> BaseStorage:
@@ -90,10 +98,16 @@ async def generate_upload_url(
         )
 
     file_id = str(uuid.uuid4())
-    blob_name = _get_blob_name(user_id, file_id, file_name)
+    # Decode URL-encoded chars in file_name for storage path
+    # This ensures consistency with upload-complete which also decodes
+    decoded_file_name = unquote(file_name)
+    blob_name = _get_blob_name(user_id, file_id, decoded_file_name)
 
     # generate the signed URL
     signed_url = storage.get_upload_signed_url(blob_name, content_type)
+
+    # Debug logging
+    logger.info(f"Generated upload URL for user {user_id}: {signed_url}")
 
     return GenerateUploadUrlResponse(
         id=file_id,
@@ -115,17 +129,20 @@ async def upload_complete(
     file_size = upload_complete_request.file_size
     content_type = upload_complete_request.content_type
 
-    blob_name = _get_blob_name(user_id, file_id, file_name)
+    # Decode URL-encoded chars in file_name to match what was stored
+    decoded_file_name = unquote(file_name)
+    blob_name = _get_blob_name(user_id, file_id, decoded_file_name)
 
     # Check if the file exists in storage
     if not storage.is_exists(blob_name):
         raise HTTPException(status_code=404, detail="File not found in storage")
 
     # create the file upload record
+    # Store the decoded file_name so sandbox gets consistent naming
     file_upload_record = FileUpload(
         id=file_id,
         user_id=user_id,
-        file_name=file_name,
+        file_name=decoded_file_name,
         file_size=file_size,
         storage_path=blob_name,
         content_type=content_type,
@@ -141,6 +158,120 @@ async def upload_complete(
         file_url=signed_url,
     )
 
+
+@router.put("/files/upload/{path:path}")
+async def upload_file_local(
+    path: str,
+    request: "Request",
+    token: str = None,
+    expires: str = None,
+    content_type: str = None,
+):
+    """Upload endpoint for local storage. Validates token and stores the file.
+
+    Accepts raw file body (not multipart/form-data) as sent by XMLHttpRequest.send(file).
+    """
+    logger.info(f"Received upload request for path: {path}, token: {token[:8] if token else None}...")
+    # Validate token and expiration
+    if not token or not expires:
+        raise HTTPException(status_code=401, detail="Missing authentication parameters")
+
+    try:
+        expiry_time = int(expires)
+        if time.time() > expiry_time:
+            raise HTTPException(status_code=401, detail="Upload URL has expired")
+    except ValueError:
+        raise HTTPException(status_code=401, detail="Invalid expiration time")
+
+    # Validate token - the path from FastAPI is already URL-decoded
+    import hashlib
+    expected_token = hashlib.sha256(f"{path}:{expires}:local-secret".encode()).hexdigest()[:16]
+    logger.info(f"Token validation: received={token}, expected={expected_token}, path_for_hash={path}")
+    if token != expected_token:
+        raise HTTPException(status_code=401, detail="Invalid upload token")
+
+    # Store the file using shared_storage
+    from ii_agent.server.shared import storage as shared_storage
+
+    # Read raw file content from request body
+    content = await request.body()
+
+    # Write to storage - signature is write(content, path, content_type)
+    await anyio.to_thread.run_sync(
+        shared_storage.write,
+        io.BytesIO(content),
+        path,
+        content_type
+    )
+
+    logger.info(f"Successfully uploaded file to path: {path}, size: {len(content)} bytes")
+    return JSONResponse({"status": "success", "path": path})
+
+
+@router.get("/files/{path:path}")
+async def serve_file(
+    path: str,
+    token: str = None,
+    expires: str = None,
+):
+    """Serve a file from local storage with token validation.
+
+    This endpoint serves files that were uploaded via the upload endpoint.
+    Used by sandbox-server to download files for processing.
+    """
+    logger.info(f"Received download request for path: {path}, token: {token[:8] if token else None}...")
+
+    # Validate token and expiration
+    if not token or not expires:
+        raise HTTPException(status_code=401, detail="Missing authentication parameters")
+
+    try:
+        expiry_time = int(expires)
+        if time.time() > expiry_time:
+            raise HTTPException(status_code=401, detail="Download URL has expired")
+    except ValueError:
+        raise HTTPException(status_code=401, detail="Invalid expiration time")
+
+    # Validate token - the path from FastAPI is already URL-decoded
+    import hashlib
+    expected_token = hashlib.sha256(f"{path}:{expires}:local-secret".encode()).hexdigest()[:16]
+    logger.info(f"Download token validation: received={token}, expected={expected_token}, path_for_hash={path}")
+    if token != expected_token:
+        raise HTTPException(status_code=401, detail="Invalid download token")
+
+    # Check if file exists
+    if not shared_storage.is_exists(path):
+        raise HTTPException(status_code=404, detail="File not found")
+
+    # Get content type from metadata if available
+    content_type = "application/octet-stream"
+    full_path = shared_storage._get_full_path(path)
+    meta_path = full_path + ".meta"
+    import os
+    if os.path.exists(meta_path):
+        with open(meta_path, "r") as f:
+            content_type = f.read().strip()
+
+    # Stream file content
+    async def file_stream() -> AsyncIterator[bytes]:
+        file_obj = await anyio.to_thread.run_sync(shared_storage.read, path)
+        try:
+            chunk_size = 64 * 1024  # 64KB chunks
+            while True:
+                chunk = await anyio.to_thread.run_sync(file_obj.read, chunk_size)
+                if not chunk:
+                    break
+                yield chunk
+        finally:
+            await anyio.to_thread.run_sync(file_obj.close)
+
+    return StreamingResponse(
+        file_stream(),
+        media_type=content_type,
+        headers={
+            "Content-Disposition": f"inline; filename=\"{path.split('/')[-1]}\"",
+        }
+    )
 
 
 @router.get("/chat/{session_id}/files/{file_id}")

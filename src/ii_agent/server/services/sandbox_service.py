@@ -95,20 +95,24 @@ class SandboxService:
 
 
     async def _initialize_sandbox(
-        self, 
-        sandbox: IISandbox, 
+        self,
+        sandbox: IISandbox,
         session_uuid: uuid.UUID,
         user_id: str
     ) -> None:
         """Initialize sandbox with template and MCP servers."""
         await sandbox.create(self.sandbox_template_id)
-        
+
         user_api_key = await APIKeys.get_active_api_key_for_user(user_id)
+        # For local dev mode without API keys, use a placeholder
+        if not user_api_key:
+            user_api_key = "dev-mode-api-key"
+
         credentials = {
             "session_id": str(session_uuid),
             "user_api_key": user_api_key,
         }
-        
+
         await self.pre_configure_mcp_server(sandbox, credentials)
         await self._register_user_mcp_servers(user_id, sandbox)
 
@@ -121,9 +125,9 @@ class SandboxService:
         sandbox = IISandbox(
             str(session.sandbox_id), self.sandbox_server_url, str(session.user_id)
         )
-        
+
         return sandbox
-    
+
     async def get_sandbox_status_by_session(self, session_id: uuid.UUID) -> str:
         """Get sandbox status by session ID."""
         session = await Sessions.get_session_by_id(session_id)
@@ -134,7 +138,7 @@ class SandboxService:
             str(session.sandbox_id), self.sandbox_server_url, str(session.user_id)
         )
         return await sandbox.status
-    
+
     async def wake_up_sandbox_by_session(self, session_id: uuid.UUID):
         """Wake up a paused sandbox by session ID."""
         session = await Sessions.get_session_by_id(session_id)
@@ -175,7 +179,7 @@ class SandboxService:
         """Run a shell command inside the session's sandbox."""
         sandbox = await self.get_sandbox_by_session(session_uuid)
         return await sandbox.run_cmd(command, background=background)
-    
+
     async def reset_tool_server(self, sandbox: IISandbox):
         mcp_port = self.config.mcp_port
         try:
@@ -252,8 +256,9 @@ class SandboxService:
 
             # Only register if we have servers to register
             if config_dict.get("mcpServers"):
+                server_names = list(config_dict["mcpServers"].keys())
                 logger.info(
-                    f"No MCP servers found in active settings for user {user_id}"
+                    f"Registering {len(server_names)} MCP server(s) for user {user_id}: {server_names}"
                 )
                 await client.register_custom_mcp(config_dict)
 

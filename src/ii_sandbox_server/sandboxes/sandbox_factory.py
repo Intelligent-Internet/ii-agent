@@ -4,13 +4,24 @@ import os
 from typing import Dict, Optional, Type
 from .base import BaseSandbox
 from .e2b import E2BSandbox
+from .docker import DockerSandbox
 
 
 class SandboxFactory:
-    """Factory class for creating sandbox providers."""
+    """Factory class for creating sandbox providers.
+
+    Supported providers:
+    - 'e2b': E2B cloud sandbox (requires E2B_API_KEY)
+    - 'docker': Local Docker sandbox (requires Docker daemon)
+
+    Set SANDBOX_PROVIDER environment variable to choose the provider,
+    or pass provider_type to get_provider().
+    """
 
     _providers: Dict[str, Type[BaseSandbox]] = {
         "e2b": E2BSandbox,
+        "docker": DockerSandbox,
+        "local": DockerSandbox,  # Alias for docker provider
     }
 
     @classmethod

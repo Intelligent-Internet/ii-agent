@@ -50,7 +50,7 @@ class ModelSettingInfo(BaseModel):
     max_retries: int
     max_message_chars: int
     temperature: float
-    thinking_tokens: int
+    thinking_tokens: int = 16000
     is_active: bool
     has_api_key: bool
     created_at: str

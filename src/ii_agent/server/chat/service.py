@@ -323,9 +323,16 @@ class ChatService:
         )
         session = result.scalar_one()
 
+        # Get LLM config for dynamic context window
+        llm_config = await cls.get_llm_config(
+            model_id=model_id,
+            user_id=user_id,
+            db_session=db_session,
+        )
+
         # Check if summarization is needed
         await ContextWindowManager.check_and_summarize(
-            db_session=db_session, session=session, model_id=model_id
+            db_session=db_session, session=session, model_id=model_id, llm_config=llm_config
         )
 
         # Get conversation history with summary filtering
@@ -388,10 +395,7 @@ class ChatService:
         # Add to messages list
         messages.append(user_message)
 
-        # Get LLM config and create provider
-        llm_config = await cls.get_llm_config(
-            db_session=db_session, model_id=model_id, user_id=user_id
-        )
+        # Create provider from llm_config (already fetched above)
         provider = LLMProviderFactory.create_provider(llm_config)
 
         # Get code interpreter flag from tools
@@ -460,7 +464,10 @@ class ChatService:
                 # Check for cancellation before starting new turn
                 await cancel.raise_if_cancelled(run_id)
 
-                messages = ContextWindowManager.reduce_message_tokens(messages)
+                # Reduce messages using dynamic context window from llm_config
+                messages = ContextWindowManager.reduce_message_tokens(
+                    messages, max_context=llm_config.get_max_context_tokens()
+                )
                 # Accumulate parts for this assistant turn
                 run_response: RunResponseOutput = None
                 file_parts = []

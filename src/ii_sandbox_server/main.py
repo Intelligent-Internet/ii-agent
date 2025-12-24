@@ -10,6 +10,7 @@ from fastapi.responses import StreamingResponse, Response
 
 from ii_sandbox_server.config import SandboxConfig, SandboxServerConfig
 from ii_sandbox_server.lifecycle.sandbox_controller import SandboxController
+from ii_sandbox_server.sandboxes.port_manager import PortPoolManager
 from ii_sandbox_server.models import (
     CreateSandboxRequest,
     CreateSandboxResponse,
@@ -112,6 +113,42 @@ app = FastAPI(
 async def health_check():
     """Health check endpoint."""
     return {"status": "healthy"}
+
+
+@app.get("/ports/stats")
+async def get_port_stats():
+    """Get port pool statistics.
+    
+    Returns information about allocated and available ports in the sandbox port pool.
+    """
+    port_manager = PortPoolManager.get_instance()
+    return port_manager.get_stats()
+
+
+@app.get("/ports/allocations")
+async def list_port_allocations():
+    """List all current port allocations.
+    
+    Returns details of which ports are allocated to which sandboxes.
+    """
+    port_manager = PortPoolManager.get_instance()
+    return {"allocations": port_manager.list_allocations()}
+
+
+@app.post("/ports/cleanup")
+async def cleanup_orphaned_ports():
+    """Clean up port allocations for containers that no longer exist.
+    
+    This removes port reservations for crashed or manually removed containers.
+    """
+    import docker
+    port_manager = PortPoolManager.get_instance()
+    try:
+        client = docker.from_env()
+        cleaned = port_manager.cleanup_orphaned_allocations(client)
+        return {"cleaned": cleaned, "message": f"Cleaned up {cleaned} orphaned allocations"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/sandboxes/create", response_model=CreateSandboxResponse)

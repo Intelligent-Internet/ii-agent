@@ -58,7 +58,8 @@ async def lifespan(app: FastAPI):
 
     yield
     
-    await shared.redis_client.aclose()
+    # Redis cleanup is handled by AsyncRedisManager (session_manager)
+    # await shared.redis_client.aclose()  # This attribute doesn't exist
     shutdown_scheduler()
 
 def create_app():

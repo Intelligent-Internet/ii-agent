@@ -19,7 +19,7 @@ class BaseStorage(ABC):
         pass
 
     @abstractmethod
-    def get_download_signed_url(self, path: str, expiration_seconds: int = 3600) -> str | None:
+    def get_download_signed_url(self, path: str, expiration_seconds: int = 3600, **kwargs) -> str | None:
         pass
 
     @abstractmethod

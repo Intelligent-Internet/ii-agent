@@ -55,7 +55,7 @@ class IIAgentConfig(BaseSettings):
     mcp_timeout: int = Field(default=1800)
     # Storage configuration
     # File upload storage
-    storage_provider: str = Field(default="gcs")
+    storage_provider: str = Field(default="local")  # "local" or "gcs"
     file_upload_project_id: str | None = None
     file_upload_bucket_name: str | None = None
     file_upload_size_limit: int = Field(default=100 * 1024 * 1024)  # 100MB default

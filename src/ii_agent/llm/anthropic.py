@@ -120,12 +120,19 @@ class AnthropicDirectClient(LLMClient):
             self.model_name = self._direct_model_name
         self.max_retries = llm_config.max_retries
         self._vertex_fallback_retries = 3
+
+        # Build beta headers
+        beta_headers = []
         if (
             "claude-opus-4" in self.model_name or "claude-sonnet-4" in self.model_name
         ):  # Use Interleaved Thinking for Sonnet 4 and Opus 4
-            self.headers = {"anthropic-beta": "interleaved-thinking-2025-05-14"}
-        else:
-            self.headers = None
+            beta_headers.append("interleaved-thinking-2025-05-14")
+
+        # Enable 1M context window if configured
+        if llm_config.enable_extended_context:
+            beta_headers.append("context-1m-2025-08-07")
+
+        self.headers = {"anthropic-beta": ",".join(beta_headers)} if beta_headers else None
         self.thinking_tokens = llm_config.thinking_tokens
 
     def generate(

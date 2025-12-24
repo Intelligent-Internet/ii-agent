@@ -1,3 +1,22 @@
+# Local-only docker-compose for ii-agent WITHOUT E2B cloud/ngrok
+# This setup uses local Docker containers for sandboxes instead of E2B.
+#
+# Usage:
+#   1. Build the sandbox image first:
+#      docker build -t ii-agent-sandbox:latest -f e2b.Dockerfile .
+#
+#   2. Copy and configure environment:
+#      cp docker/.stack.env.local.example docker/.stack.env.local
+#
+#   3. Start the stack:
+#      docker compose -f docker/docker-compose.local-only.yaml --env-file docker/.stack.env.local up -d
+#
+# This configuration:
+# - Uses Docker provider instead of E2B (all data stays local)
+# - No ngrok tunnel (no public exposure)
+# - Suitable for privileged/NDA-protected data
+# - Works in air-gapped environments
+
 services:
   postgres:
     image: postgres:15
@@ -10,9 +29,9 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-iiagentdev}
       SANDBOX_DB_NAME: ${SANDBOX_DB_NAME:-ii_sandbox}
     env_file:
-      - .stack.env
+      - .stack.env.local
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - postgres-data-local:/var/lib/postgresql/data
       - ./postgres-init/create-databases.sh:/docker-entrypoint-initdb.d/create-databases.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-iiagent} -d ${POSTGRES_DB:-iiagentdev}"]
@@ -27,7 +46,7 @@ services:
       - "${REDIS_PORT:-6379}:6379"
     command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
     volumes:
-      - redis-data:/data
+      - redis-data-local:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -47,16 +66,11 @@ services:
         VITE_DISABLE_CHAT_MODE: ${VITE_DISABLE_CHAT_MODE:-false}
     restart: unless-stopped
     env_file:
-      - .stack.env
+      - .stack.env.local
     environment:
       NODE_ENV: production
-      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
-      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
-      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
     ports:
       - "${FRONTEND_PORT:-1420}:1420"
-    volumes:
-      - ~/.ii_agent/workspace:/.ii_agent/workspace
 
   tool-server:
     build:
@@ -67,10 +81,9 @@ services:
       postgres:
         condition: service_healthy
     env_file:
-      - .stack.env
+      - .stack.env.local
     environment:
       DATABASE_URL: ${DATABASE_URL}
-      GOOGLE_APPLICATION_CREDENTIALS: /app/google-application-credentials.json
     entrypoint: ["/bin/sh", "-c"]
     command:
       - >-
@@ -80,8 +93,7 @@ services:
     ports:
       - "${TOOL_SERVER_PORT:-1236}:1236"
     volumes:
-      - ${GOOGLE_APPLICATION_CREDENTIALS:-./docker/.dummy-credentials.json}:/app/google-application-credentials.json:ro
-      - ii-agent-filestore:/.ii_agent
+      - ii-agent-filestore-local:/.ii_agent
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:1236/health || exit 1"]
       interval: 15s
@@ -93,25 +105,34 @@ services:
       context: ..
       dockerfile: docker/backend/Dockerfile
     restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
     env_file:
-      - .stack.env
+      - .stack.env.local
     environment:
       SANDBOX_DATABASE_URL: ${SANDBOX_DATABASE_URL}
       SERVER_HOST: 0.0.0.0
       SERVER_PORT: ${SANDBOX_SERVER_PORT:-8100}
       REDIS_URL: redis://redis:6379/0
       MCP_PORT: ${MCP_PORT:-6060}
+      # Use Docker provider instead of E2B
+      PROVIDER: docker
+      PROVIDER_TYPE: docker
+      SANDBOX_DOCKER_IMAGE: ${SANDBOX_DOCKER_IMAGE:-ii-agent-sandbox:latest}
+      # Network for sandbox containers to enable service discovery
       DOCKER_NETWORK: docker_default
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
     entrypoint: ["/bin/bash", "/app/start_sandbox_server.sh"]
     ports:
       - "${SANDBOX_SERVER_PORT:-8100}:8100"
+    # Mount Docker socket so sandbox-server can create containers
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - sandbox-workspaces:/tmp/ii-agent-sandboxes
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:8100/health || exit 1"]
       interval: 15s
@@ -124,6 +145,8 @@ services:
       dockerfile: docker/backend/Dockerfile
     init: true
     restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       postgres:
         condition: service_healthy
@@ -134,44 +157,32 @@ services:
       tool-server:
         condition: service_started
     env_file:
-      - .stack.env
+      - .stack.env.local
     environment:
-      GOOGLE_APPLICATION_CREDENTIALS: /app/google-application-credentials.json
       DATABASE_URL: ${DATABASE_URL}
       SANDBOX_SERVER_URL: http://sandbox-server:${SANDBOX_SERVER_PORT:-8100}
-      # Internal URL for sandbox containers to reach tool-server (container-to-container)
-      TOOL_SERVER_URL: http://tool-server:${TOOL_SERVER_PORT:-1236}
+      # Tool server URL for backend-to-tool-server (Docker network)
+      TOOL_SERVER_URL: http://tool-server:1236
+      # Tool server URL for sandbox-to-tool-server (via host)
+      SANDBOX_TOOL_SERVER_URL: ${SANDBOX_TOOL_SERVER_URL:-http://host.docker.internal:1236}
       REDIS_SESSION_URL: redis://redis:6379/1
+      # Use local filesystem storage instead of GCS
+      STORAGE_PROVIDER: local
+      LOCAL_STORAGE_PATH: /.ii_agent/storage
+      # Enable dev authentication (bypasses OAuth)
+      DEV_AUTH_ENABLED: "true"
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     volumes:
-      - ${GOOGLE_APPLICATION_CREDENTIALS:-./docker/.dummy-credentials.json}:/app/google-application-credentials.json:ro
-      - ii-agent-filestore:/.ii_agent
+      - ii-agent-filestore-local:/.ii_agent
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:8000/health || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 5
 
-  ngrok:
-    image: ngrok/ngrok:3
-    restart: unless-stopped
-    depends_on:
-      tool-server:
-        condition: service_started
-    env_file:
-      - .stack.env
-    entrypoint: ["/bin/sh", "-c"]
-    command:
-      - >-
-        exec ngrok http --log=stdout --log-level=info
-        --region ${NGROK_REGION:-us}
-        ${NGROK_AGENT_EXTRA_ARGS:-}
-        tool-server:1236
-    ports:
-      - "${NGROK_METRICS_PORT:-4040}:4040"
-
 volumes:
-  postgres-data:
-  redis-data:
-  ii-agent-filestore:
+  postgres-data-local:
+  redis-data-local:
+  ii-agent-filestore-local:
+  sandbox-workspaces:
