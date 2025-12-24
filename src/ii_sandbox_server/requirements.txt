@@ -8,3 +8,5 @@ aiosqlite
 redis[hiredis]
 httpx
 e2b-code-interpreter
+# Docker SDK for DockerSandbox provider (local sandbox mode)
+docker>=7.0.0

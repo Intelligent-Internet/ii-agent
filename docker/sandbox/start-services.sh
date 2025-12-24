@@ -1,8 +1,10 @@
 #!/bin/bash
 
-# If running as root, use gosu to re-execute as pn user
+# If running as root, fix workspace permissions and switch to pn user
 if [ "$(id -u)" = "0" ]; then
-    echo "Running as root, switching to pn user with gosu..."
+    echo "Running as root, fixing workspace permissions and switching to pn user..."
+    # Ensure /workspace is owned by pn user before switching
+    chown -R pn:pn /workspace 2>/dev/null || true
     exec gosu pn bash "$0" "$@"
 fi
 
@@ -52,5 +54,6 @@ echo "Services started. Container ready."
 echo "Sandbox server available"
 echo "Code-server available on port 9000"
 
-# Keep the container running by waiting for all background processes
-wait
+# Keep the container running by tailing the tmux sessions
+# This prevents the container from exiting while services run in tmux
+exec tail -f /dev/null

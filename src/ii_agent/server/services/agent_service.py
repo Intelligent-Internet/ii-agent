@@ -268,7 +268,10 @@ class AgentService:
 
         # First, get core sandbox tools to see what's already available
         all_sandbox_tools = await load_tools_from_mcp(
-            mcp_sandbox_url, timeout=self.config.mcp_timeout
+            mcp_sandbox_url,
+            timeout=self.config.mcp_timeout,
+            sandbox_client=sandbox.client,
+            sandbox_id=sandbox.sandbox_id,
         )
         # ==============================================================
         ### Sub Agents Tool Registration

@@ -30,7 +30,7 @@ RUN fc-cache -fv
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=uv.lock,target=uv.lock \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
-    uv sync --locked --no-install-project --no-dev
+    uv sync --locked --prerelease=allow --no-install-project --no-dev
 
 # Install Playwright in a single layer
 RUN uv run playwright install --with-deps chromium
@@ -39,7 +39,7 @@ RUN uv run playwright install --with-deps chromium
 # Installing separately from its dependencies allows optimal layer caching
 COPY . /app
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --no-dev
+    uv sync --locked --prerelease=allow --no-dev
 
 RUN chmod +x /app/start.sh
 RUN chmod +x /app/scripts/run_sandbox_timeout_extension.sh
