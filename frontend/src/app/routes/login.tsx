@@ -12,8 +12,10 @@ import { Form, FormControl, FormField, FormItem } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { ACCESS_TOKEN } from '@/constants/auth'
 import { authService } from '@/services/auth.service'
+import { settingsService } from '@/services/settings.service'
 import { useAppDispatch } from '@/state/store'
 import { setUser } from '@/state/slice/user'
+import { setAvailableModels, setSelectedModel } from '@/state'
 import { fetchWishlist } from '@/state/slice/favorites'
 import { toast } from 'sonner'
 
@@ -103,6 +105,18 @@ export function LoginPage() {
 
                 const userRes = await authService.getCurrentUser()
                 dispatch(setUser(userRes))
+
+                // Fetch available LLM models after login
+                try {
+                    const modelsData = await settingsService.getAvailableModels()
+                    dispatch(setAvailableModels(modelsData?.models || []))
+                    if (modelsData?.models?.length) {
+                        dispatch(setSelectedModel(modelsData.models[0].id))
+                    }
+                } catch (modelError) {
+                    console.error('Failed to fetch LLM models:', modelError)
+                }
+
                 dispatch(fetchWishlist())
 
                 navigate('/')

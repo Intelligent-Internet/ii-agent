@@ -1,5 +1,6 @@
 """OpenAI vector store implementation."""
 
+import hashlib
 import logging
 import mimetypes
 from datetime import datetime, timezone, timedelta
@@ -157,6 +158,7 @@ class OpenAIVectorStore(VectorStore):
     ) -> list[VectorStoreFileObject]:
         """
         Add multiple files to the user's vector store in a batch.
+        Skips files that already exist in the vector store (based on content hash).
 
         Args:
             user_id: The user's ID
@@ -184,9 +186,22 @@ class OpenAIVectorStore(VectorStore):
                 logger.error("No files found in database")
                 return []
 
+            # Get existing files in vector store to check for duplicates
+            existing_files = await self.client.vector_stores.files.list(
+                vector_store_id=vector_store.vector_store_id, limit=100, order="desc"
+            )
+
+            # Build set of existing content hashes for deduplication
+            existing_hashes = set()
+            for f in existing_files.data:
+                if f.attributes and f.attributes.get("content_hash"):
+                    existing_hashes.add(f.attributes["content_hash"])
+
             # Upload files to OpenAI Files API first and track metadata
             uploaded_files = []
             openai_file_ids = []
+            skipped_count = 0
+
             for file_upload in file_uploads:
                 # Guess MIME type from file name
                 guessed_mime_type = mimetypes.guess_type(file_upload.file_name)[0]
@@ -199,13 +214,28 @@ class OpenAIVectorStore(VectorStore):
                     continue
 
                 # Read file from storage (blocking operation, run in thread)
-                file_content = await anyio.to_thread.run_sync(
+                # storage.read returns a BinaryIO file-like object, we need to read the bytes
+                file_io = await anyio.to_thread.run_sync(
                     storage.read, file_upload.storage_path
                 )
-                if not file_content:
+                if not file_io:
                     logger.warning(
                         f"Failed to read file {file_upload.id} from storage, skipping"
                     )
+                    continue
+
+                # Read bytes from the file-like object
+                file_content = file_io.read()
+
+                # Compute content hash for deduplication
+                content_hash = hashlib.sha256(file_content).hexdigest()[:16]
+
+                # Check if file with same content already exists
+                if content_hash in existing_hashes:
+                    logger.info(
+                        f"Skipping duplicate file {file_upload.file_name} (hash: {content_hash})"
+                    )
+                    skipped_count += 1
                     continue
 
                 # Upload to OpenAI Files API
@@ -215,20 +245,29 @@ class OpenAIVectorStore(VectorStore):
                 )
                 openai_file_ids.append(openai_file.id)
 
-                # Track uploaded file metadata
+                # Track uploaded file metadata (include content_hash for future dedup)
                 uploaded_files.append(
                     {
                         "openai_file_id": openai_file.id,
                         "file_name": file_upload.file_name,
                         "content_type": guessed_mime_type,
                         "bytes": file_upload.file_size,
+                        "content_hash": content_hash,
                     }
                 )
-    
+
+                # Add to existing hashes to handle duplicates within same batch
+                existing_hashes.add(content_hash)
+
+            if skipped_count > 0:
+                logger.info(f"Skipped {skipped_count} duplicate file(s)")
+
             if not openai_file_ids:
-                logger.debug("No files were successfully uploaded to OpenAI")
+                logger.debug("No new files to upload to OpenAI (all duplicates or errors)")
                 return []
-            # Create batch with file IDs and attributes, then poll for completion
+
+            logger.info(f"Creating batch for {len(openai_file_ids)} files in vector store {vector_store.vector_store_id}")
+            # Create batch with file IDs and attributes
             batch = await self.client.vector_stores.file_batches.create(
                 vector_store_id=vector_store.vector_store_id,
                 files=[
@@ -239,6 +278,7 @@ class OpenAIVectorStore(VectorStore):
                             "session_id": session_id,
                             "file_name": f["file_name"],
                             "content_type": f["content_type"],
+                            "content_hash": f["content_hash"],
                             "date": datetime.now(timezone.utc).timestamp(),
                         },
                     }
@@ -246,11 +286,11 @@ class OpenAIVectorStore(VectorStore):
                 ],
             )
 
-            batch = await self.client.vector_stores.file_batches.poll(
-                batch_id=batch.id,
-                vector_store_id=vector_store.vector_store_id,
-                poll_interval_ms=100,
-            )
+            logger.info(f"Batch created: {batch.id}, status: {batch.status}")
+
+            # Don't poll for completion - files will be searchable once processed by OpenAI
+            # Polling can take a long time (30+ seconds) for large PDFs and blocks the chat
+            # The file_search tool will still work once OpenAI finishes processing in the background
 
             logger.info(
                  f"Added {len(openai_file_ids)} files to vector store for user {user_id} (batch: {batch.id})"

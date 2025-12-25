@@ -121,6 +121,29 @@ class SandboxConfig(BaseSettings):
         default=True, description="Whether network access is enabled by default"
     )
 
+    # Local mode settings
+    local_mode: bool = Field(
+        default=False,
+        description="Enable local mode features like orphan sandbox cleanup. "
+                   "Set to True when running docker-compose.local-only.yaml"
+    )
+
+    orphan_cleanup_enabled: bool = Field(
+        default=True,
+        description="Enable automatic cleanup of orphan sandboxes (only applies when local_mode=True)"
+    )
+
+    orphan_cleanup_interval_seconds: int = Field(
+        default=300,  # 5 minutes
+        ge=60, le=3600,
+        description="Interval between orphan sandbox cleanup checks (seconds)"
+    )
+
+    backend_url: str = Field(
+        default="http://backend:8000",
+        description="URL of the ii-agent backend server for session verification"
+    )
+
     @model_validator(mode="after")
     def validate_queue_settings(self) -> "SandboxConfig":
         """Validate queue-related settings based on provider type."""

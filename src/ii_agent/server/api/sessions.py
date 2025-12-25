@@ -16,6 +16,33 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/sessions", tags=["Sessions"])
 
+# Internal router for sandbox-server communication (no auth required)
+internal_router = APIRouter(prefix="/internal/sandboxes", tags=["Internal"])
+
+
+@internal_router.get("/{sandbox_id}/has-active-session")
+async def check_sandbox_has_active_session(sandbox_id: str) -> dict:
+    """Check if a sandbox is attached to an active (non-deleted) session.
+
+    This is an internal endpoint for sandbox-server to verify before cleanup.
+    No authentication required as this is internal service-to-service communication.
+
+    Args:
+        sandbox_id: The sandbox ID to check
+
+    Returns:
+        {"has_active_session": bool} indicating if sandbox is still in use
+    """
+    try:
+        has_active = await Sessions.has_active_session_for_sandbox(sandbox_id)
+        return {"has_active_session": has_active, "sandbox_id": sandbox_id}
+    except Exception as e:
+        logger.error(f"Error checking sandbox session status: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error checking sandbox session status: {str(e)}"
+        )
+
 
 @router.get("/{session_id}", response_model=SessionInfo)
 async def get_session(

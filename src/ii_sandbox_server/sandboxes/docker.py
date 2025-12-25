@@ -73,7 +73,7 @@ DANGEROUS_PATTERNS = re.compile(
 
 class DockerSandbox(BaseSandbox):
     """Local Docker-based sandbox provider.
-    
+
     This sandbox runs in a local Docker container, providing the same
     capabilities as E2B but without cloud connectivity. Ideal for:
     - Development and testing
@@ -97,7 +97,7 @@ class DockerSandbox(BaseSandbox):
         self._queue = queue
         self._port_mappings = port_mappings  # container_port -> host_port
         self._timeout_task: Optional[asyncio.Task] = None
-        
+
         # For backward compatibility, expose common ports as properties
         self._host_port_mcp = port_mappings.get(MCP_SERVER_PORT, 0)
         self._host_port_code_server = port_mappings.get(CODE_SERVER_PORT, 0)
@@ -112,23 +112,23 @@ class DockerSandbox(BaseSandbox):
     @staticmethod
     def _validate_path(path: str, allow_absolute: bool = True) -> str:
         """Validate and sanitize file paths to prevent traversal attacks.
-        
+
         Args:
             path: The path to validate
             allow_absolute: Whether to allow absolute paths
-            
+
         Returns:
             Sanitized path
-            
+
         Raises:
             ValueError: If path is invalid or attempts traversal
         """
         if not path:
             raise ValueError("Path cannot be empty")
-        
+
         # Normalize the path
         normalized = PurePosixPath(path)
-        
+
         # Check for path traversal attempts
         try:
             # Resolve .. and . components
@@ -137,7 +137,7 @@ class DockerSandbox(BaseSandbox):
                 raise ValueError(f"Path traversal detected: {path}")
         except Exception as e:
             raise ValueError(f"Invalid path: {path}") from e
-        
+
         # For absolute paths, ensure they're in allowed directories
         if normalized.is_absolute():
             if not allow_absolute:
@@ -146,31 +146,31 @@ class DockerSandbox(BaseSandbox):
                 raise ValueError(
                     f"Path must be within allowed directories {ALLOWED_WORKSPACE_BASES}: {path}"
                 )
-        
+
         return resolved
 
     @staticmethod
     def _sanitize_command(command: str, strict: bool = False) -> str:
         """Sanitize command input to prevent injection attacks.
-        
+
         Args:
             command: The command to sanitize
             strict: If True, reject commands with shell metacharacters
-            
+
         Returns:
             Sanitized command
-            
+
         Raises:
             ValueError: If command contains dangerous patterns in strict mode
         """
         if not command:
             raise ValueError("Command cannot be empty")
-        
+
         if strict and DANGEROUS_PATTERNS.search(command):
             raise ValueError(
                 f"Command contains dangerous characters or patterns: {command[:50]}..."
             )
-        
+
         return command
 
     def _ensure_container(self):
@@ -198,14 +198,14 @@ class DockerSandbox(BaseSandbox):
     @classmethod
     def _get_sandbox_image(cls, config: SandboxConfig) -> str:
         """Get the Docker image to use for sandboxes.
-        
+
         Priority:
         1. config.docker_image if set
         2. SANDBOX_DOCKER_IMAGE env var
         3. Default to ii-agent sandbox image
         """
         return (
-            getattr(config, 'docker_image', None) 
+            getattr(config, 'docker_image', None)
             or os.getenv("SANDBOX_DOCKER_IMAGE", "ii-agent-sandbox:latest")
         )
 
@@ -229,11 +229,11 @@ class DockerSandbox(BaseSandbox):
         container_id: str,
     ) -> None:
         """Register existing port mappings with the port pool manager.
-        
+
         This is called when reconnecting to existing containers to ensure
         the port manager knows about ports that are already in use.
         This prevents the port manager from allocating these ports to new sandboxes.
-        
+
         Args:
             port_manager: The PortPoolManager instance
             sandbox_id: The sandbox identifier
@@ -245,25 +245,25 @@ class DockerSandbox(BaseSandbox):
         if existing:
             logger.debug(f"Sandbox {sandbox_id[:12]} already has ports registered")
             return
-        
+
         # Register the ports by directly adding to internal structures
         # This is a reconnection scenario, so we need to mark these ports as used
         with port_manager._port_lock:
             from ii_sandbox_server.sandboxes.port_manager import SandboxPortSet, PortAllocation
-            
+
             port_set = SandboxPortSet(sandbox_id=sandbox_id, container_id=container_id)
-            
+
             for container_port, host_port in port_mappings.items():
                 # Mark host port as allocated
                 port_manager._allocated_ports.add(host_port)
-                
+
                 # Create allocation record
                 service_name = None
                 if container_port == MCP_SERVER_PORT:
                     service_name = "mcp_server"
                 elif container_port == CODE_SERVER_PORT:
                     service_name = "code_server"
-                
+
                 allocation = PortAllocation(
                     sandbox_id=sandbox_id,
                     container_port=container_port,
@@ -271,9 +271,9 @@ class DockerSandbox(BaseSandbox):
                     service_name=service_name,
                 )
                 port_set.allocations[container_port] = allocation
-            
+
             port_manager._sandbox_ports[sandbox_id] = port_set
-            
+
             logger.info(
                 f"Registered {len(port_mappings)} existing ports for reconnected "
                 f"sandbox {sandbox_id[:12]}: {port_mappings}"
@@ -282,17 +282,17 @@ class DockerSandbox(BaseSandbox):
     @classmethod
     def _cleanup_sandbox_volume(cls, client: docker.DockerClient, sandbox_id: Optional[str]) -> bool:
         """Clean up the named workspace volume for a sandbox.
-        
+
         Args:
             client: Docker client instance
             sandbox_id: The sandbox identifier (used to construct volume name)
-            
+
         Returns:
             True if volume was removed, False if not found or error
         """
         if not sandbox_id:
             return False
-        
+
         volume_name = f"ii-sandbox-workspace-{sandbox_id}"
         try:
             volume = client.volumes.get(volume_name)
@@ -316,23 +316,23 @@ class DockerSandbox(BaseSandbox):
         sandbox_template_id: Optional[str] = None,
     ) -> "DockerSandbox":
         """Create a new Docker container sandbox.
-        
+
         Args:
             config: Sandbox configuration
             queue: Optional queue scheduler for timeout management
             sandbox_id: Unique identifier for this sandbox
             metadata: Optional metadata to attach to the container
             sandbox_template_id: Optional image override (uses config default if not set)
-        
+
         Returns:
             DockerSandbox instance
         """
         client = cls._get_docker_client()
         port_manager = PortPoolManager.get_instance()
-        
+
         # Determine which image to use
         image = sandbox_template_id or cls._get_sandbox_image(config)
-        
+
         # Allocate ports from the pool for all default exposed ports
         service_names = {
             MCP_SERVER_PORT: "mcp_server",
@@ -346,14 +346,14 @@ class DockerSandbox(BaseSandbox):
             container_ports=DEFAULT_EXPOSED_PORTS,
             service_names=service_names,
         )
-        
+
         # Build Docker port mapping dict
         docker_ports = port_set.to_docker_ports()
         port_mappings = {
             alloc.container_port: alloc.host_port
             for alloc in port_set.allocations.values()
         }
-        
+
         # Prepare container labels for metadata
         labels = {
             "ii-agent.sandbox": "true",
@@ -369,6 +369,10 @@ class DockerSandbox(BaseSandbox):
         volume_name = f"ii-sandbox-workspace-{sandbox_id}"
 
         try:
+            # Get memory limit from config (in MB) and convert to docker format
+            mem_limit_mb = config.default_memory_limit if config else 3072
+            mem_limit = f"{mem_limit_mb}m"
+
             # Run container
             container = client.containers.run(
                 image,
@@ -383,8 +387,8 @@ class DockerSandbox(BaseSandbox):
                     "SANDBOX_ID": sandbox_id,
                     "WORKSPACE_DIR": "/workspace",
                 },
-                # Resource limits (configurable via config in future)
-                mem_limit="2g",
+                # Resource limits
+                mem_limit=mem_limit,
                 cpu_period=100000,
                 cpu_quota=200000,  # 2 CPUs
                 pids_limit=512,  # Prevent fork bombs
@@ -401,15 +405,15 @@ class DockerSandbox(BaseSandbox):
                 # Allow sandboxes to reach host services (e.g., MCP servers running on host)
                 extra_hosts={"host.docker.internal": "host-gateway"},
             )
-            
+
             # Associate container ID with port allocations for cleanup tracking
             port_manager.set_container_id(sandbox_id, container.id)
-            
+
             logger.info(
                 f"Created Docker sandbox {sandbox_id} with container {container.id[:12]}, "
                 f"ports: {port_mappings}"
             )
-            
+
         except docker.errors.ImageNotFound:
             port_manager.release_ports(sandbox_id)
             raise SandboxGeneralException(
@@ -439,14 +443,14 @@ class DockerSandbox(BaseSandbox):
     async def _wait_for_ready(self, timeout: int = 60):
         """Wait for the container's MCP server to be ready."""
         import httpx
-        
+
         start_time = asyncio.get_event_loop().time()
-        
+
         # Get the container's IP address on the shared network
         self._container.reload()
         network_name = os.getenv("DOCKER_NETWORK", "bridge")
         networks = self._container.attrs.get("NetworkSettings", {}).get("Networks", {})
-        
+
         # Try to get IP from the configured network, fallback to first available
         container_ip = None
         if network_name in networks:
@@ -457,7 +461,7 @@ class DockerSandbox(BaseSandbox):
                 if net_info.get("IPAddress"):
                     container_ip = net_info["IPAddress"]
                     break
-        
+
         if container_ip:
             # Use container IP directly (preferred when on same network)
             url = f"http://{container_ip}:{MCP_SERVER_PORT}/health"
@@ -467,16 +471,16 @@ class DockerSandbox(BaseSandbox):
             docker_host = os.getenv("DOCKER_HOST_INTERNAL", "host.docker.internal")
             url = f"http://{docker_host}:{self._host_port_mcp}/health"
             logger.debug(f"Waiting for sandbox {self._sandbox_id} via host at {url}")
-        
+
         async with httpx.AsyncClient() as client:
             while True:
                 elapsed = asyncio.get_event_loop().time() - start_time
                 if elapsed > timeout:
                     raise SandboxTimeoutException(
-                        self._sandbox_id, 
+                        self._sandbox_id,
                         f"Container did not become ready within {timeout}s"
                     )
-                
+
                 try:
                     response = await client.get(url, timeout=2)
                     if response.status_code == 200:
@@ -484,14 +488,14 @@ class DockerSandbox(BaseSandbox):
                         return
                 except Exception:
                     pass
-                
+
                 await asyncio.sleep(1)
 
     async def _set_timeout(self, timeout_seconds: int):
         """Set a timeout after which the container will be stopped."""
         if self._timeout_task:
             self._timeout_task.cancel()
-        
+
         async def timeout_handler():
             await asyncio.sleep(timeout_seconds)
             logger.info(f"Timeout reached for sandbox {self._sandbox_id}, stopping...")
@@ -499,7 +503,7 @@ class DockerSandbox(BaseSandbox):
                 await self.stop()
             except Exception as e:
                 logger.error(f"Error stopping sandbox on timeout: {e}")
-        
+
         self._timeout_task = asyncio.create_task(timeout_handler())
 
     @classmethod
@@ -513,16 +517,16 @@ class DockerSandbox(BaseSandbox):
         """Connect to an existing Docker container sandbox."""
         client = cls._get_docker_client()
         port_manager = PortPoolManager.get_instance()
-        
+
         try:
             container = client.containers.get(provider_sandbox_id)
         except NotFound:
             raise SandboxNotFoundException(provider_sandbox_id)
-        
+
         # Extract all port mappings from running container
         container.reload()
         ports = container.attrs.get("NetworkSettings", {}).get("Ports", {})
-        
+
         # Build port_mappings dict from container's actual port bindings
         port_mappings: Dict[int, int] = {}
         for container_port_proto, bindings in ports.items():
@@ -531,16 +535,16 @@ class DockerSandbox(BaseSandbox):
                 host_port = int(bindings[0].get("HostPort", 0))
                 if host_port:
                     port_mappings[container_port] = host_port
-        
+
         # Get sandbox_id from labels if not provided
         if not sandbox_id:
             labels = container.labels
             sandbox_id = labels.get("ii-agent.sandbox-id", provider_sandbox_id[:12])
-        
+
         # Register discovered ports with PortPoolManager to prevent conflicts
         # This handles reconnecting to containers that were created before server restart
         cls._register_existing_ports(port_manager, sandbox_id, port_mappings, container.id)
-        
+
         return cls(
             container=container,
             sandbox_id=sandbox_id,
@@ -558,15 +562,15 @@ class DockerSandbox(BaseSandbox):
     ) -> "DockerSandbox":
         """Resume a stopped Docker container sandbox."""
         client = cls._get_docker_client()
-        
+
         try:
             container = client.containers.get(provider_sandbox_id)
         except NotFound:
             raise SandboxNotFoundException(provider_sandbox_id)
-        
+
         if container.status != "running":
             container.start()
-        
+
         return await cls.connect(provider_sandbox_id, config, queue, sandbox_id)
 
     @classmethod
@@ -580,29 +584,29 @@ class DockerSandbox(BaseSandbox):
         """Delete a Docker container sandbox and its associated resources."""
         client = cls._get_docker_client()
         port_manager = PortPoolManager.get_instance()
-        
+
         try:
             container = client.containers.get(provider_sandbox_id)
-            
+
             # Get sandbox_id from labels if not provided (for port and volume cleanup)
             if not sandbox_id:
                 sandbox_id = container.labels.get("ii-agent.sandbox-id")
-            
+
             container.remove(force=True)
-            
+
             # Release ports back to the pool
             released_ports = 0
             if sandbox_id:
                 released_ports = port_manager.release_ports(sandbox_id)
-            
+
             # Clean up the named workspace volume
             volume_cleaned = cls._cleanup_sandbox_volume(client, sandbox_id)
-            
+
             logger.info(
                 f"Deleted Docker sandbox container {provider_sandbox_id}, "
                 f"released {released_ports} ports, volume cleaned: {volume_cleaned}"
             )
-            
+
             return True
         except NotFound:
             # Container not found - still try to clean up ports and volume
@@ -625,7 +629,7 @@ class DockerSandbox(BaseSandbox):
     ) -> bool:
         """Stop a Docker container sandbox."""
         client = cls._get_docker_client()
-        
+
         try:
             container = client.containers.get(provider_sandbox_id)
             container.stop(timeout=10)
@@ -647,7 +651,7 @@ class DockerSandbox(BaseSandbox):
         timeout_seconds: int = 0,
     ):
         """Schedule a timeout for the sandbox.
-        
+
         For Docker sandboxes, if timeout is 0 or very small, we delete immediately.
         Otherwise, we schedule deletion via the queue if available.
         """
@@ -667,7 +671,7 @@ class DockerSandbox(BaseSandbox):
     async def is_paused(cls, config: SandboxConfig, sandbox_id: str) -> bool:
         """Check if a sandbox is paused (stopped but not removed)."""
         client = cls._get_docker_client()
-        
+
         try:
             # Find container by sandbox_id label
             containers = client.containers.list(
@@ -684,30 +688,46 @@ class DockerSandbox(BaseSandbox):
 
     async def expose_port(self, port: int) -> str:
         """Expose a port from the sandbox.
-        
-        For Docker sandboxes, we return the host-mapped port URL so users can
-        access services from their browser on the host machine.
-        
-        If the port is one of our pre-mapped ports, we return the host URL.
-        For unmapped ports, this will raise an exception since Docker doesn't
-        support dynamic port mapping on running containers.
+
+        For Docker sandboxes running on the same network as other containers,
+        we return the container's internal IP and the original port so other
+        containers can access services directly.
+
+        This is necessary because 'localhost' from inside another container
+        refers to that container, not the host.
         """
         self._ensure_container()
         self._container.reload()
-        
+
+        # Get the container's internal IP address on the Docker network
+        networks = self._container.attrs.get("NetworkSettings", {}).get("Networks", {})
+        container_ip = None
+
+        # Find the container's IP on any network (prefer the first one)
+        for network_name, network_config in networks.items():
+            ip = network_config.get("IPAddress")
+            if ip:
+                container_ip = ip
+                break
+
+        if container_ip:
+            # Return the internal Docker network URL
+            return f"http://{container_ip}:{port}"
+
+        # Fallback to host-mapped ports if no internal IP found (shouldn't happen)
         # Check if this port is in our mappings (pre-allocated or dynamic)
         if port in self._port_mappings:
             host_port = self._port_mappings[port]
             return f"http://localhost:{host_port}"
-        
+
         # Check container's actual port bindings (for reconnected containers)
         ports = self._container.attrs.get("NetworkSettings", {}).get("Ports", {})
         port_info = ports.get(f"{port}/tcp", [{}])[0]
         host_port = port_info.get("HostPort")
-        
+
         if host_port:
             return f"http://localhost:{host_port}"
-        
+
         # Port is not mapped to host - inform user which ports ARE available
         available_ports = list(self._port_mappings.keys()) if self._port_mappings else []
         if not available_ports:
@@ -715,7 +735,7 @@ class DockerSandbox(BaseSandbox):
             for container_port_proto, bindings in ports.items():
                 if bindings and "/tcp" in container_port_proto:
                     available_ports.append(int(container_port_proto.split("/")[0]))
-        
+
         raise SandboxGeneralException(
             f"Port {port} is not exposed to the host. "
             f"Available host-accessible ports are: {available_ports}. "
@@ -724,17 +744,17 @@ class DockerSandbox(BaseSandbox):
 
     async def upload_file(self, file_content: str | bytes | IO, remote_file_path: str):
         """Upload a file to the sandbox.
-        
+
         Security: Path is validated to prevent traversal attacks.
         """
         self._ensure_container()
-        
+
         # Security: validate path
         validated_path = self._validate_path(remote_file_path)
-        
+
         import tarfile
         import io
-        
+
         # Prepare content
         if isinstance(file_content, str):
             content = file_content.encode('utf-8')
@@ -744,7 +764,7 @@ class DockerSandbox(BaseSandbox):
                 content = content.encode('utf-8')
         else:
             content = file_content
-        
+
         # Create tar archive
         tar_stream = io.BytesIO()
         with tarfile.open(fileobj=tar_stream, mode='w') as tar:
@@ -752,9 +772,9 @@ class DockerSandbox(BaseSandbox):
             tarinfo = tarfile.TarInfo(name=os.path.basename(validated_path))
             tarinfo.size = len(content)
             tar.addfile(tarinfo, file_data)
-        
+
         tar_stream.seek(0)
-        
+
         # Extract to container
         dir_path = os.path.dirname(validated_path)
         self._container.put_archive(dir_path or "/workspace", tar_stream)
@@ -763,28 +783,28 @@ class DockerSandbox(BaseSandbox):
         self, remote_file_path: str, format: Literal["text", "bytes"] = "text"
     ) -> Optional[str | bytes]:
         """Download a file from the sandbox.
-        
+
         Security: Path is validated to prevent traversal attacks.
         """
         self._ensure_container()
-        
+
         # Security: validate path
         validated_path = self._validate_path(remote_file_path)
-        
+
         import tarfile
         import io
-        
+
         try:
             bits, stat = self._container.get_archive(validated_path)
         except NotFound:
             return None
-        
+
         # Extract from tar
         tar_stream = io.BytesIO()
         for chunk in bits:
             tar_stream.write(chunk)
         tar_stream.seek(0)
-        
+
         with tarfile.open(fileobj=tar_stream, mode='r') as tar:
             member = tar.getmembers()[0]
             file_obj = tar.extractfile(member)
@@ -798,7 +818,7 @@ class DockerSandbox(BaseSandbox):
     async def download_file_stream(self, remote_file_path: str) -> AsyncIterator[bytes]:
         """Download a file from the sandbox as a stream."""
         self._ensure_container()
-        
+
         try:
             bits, stat = self._container.get_archive(remote_file_path)
             for chunk in bits:
@@ -808,14 +828,14 @@ class DockerSandbox(BaseSandbox):
 
     async def delete_file(self, file_path: str) -> bool:
         """Delete a file from the sandbox.
-        
+
         Security: Path is validated to prevent traversal attacks.
         """
         self._ensure_container()
-        
+
         # Security: validate path
         validated_path = self._validate_path(file_path)
-        
+
         exit_code, output = self._container.exec_run(
             ["/bin/rm", "-f", validated_path]  # Use list form to prevent injection
         )
@@ -839,19 +859,19 @@ class DockerSandbox(BaseSandbox):
 
     async def run_cmd(self, command: str, background: bool = False) -> str:
         """Run a command in the sandbox.
-        
+
         Security Note: Commands are executed via shell. For untrusted input,
         consider using strict=True in _sanitize_command or using exec_run
         with a command list instead of shell string.
         """
         self._ensure_container()
-        
+
         # Basic sanitization - log potentially dangerous commands
         # Note: Full sanitization would break legitimate use cases
         # The sandbox container itself provides isolation
         if DANGEROUS_PATTERNS.search(command):
             logger.warning(f"Executing command with shell metacharacters: {command[:100]}...")
-        
+
         if background:
             # Run in background using nohup
             # Use shell array form for slightly better safety
@@ -860,34 +880,34 @@ class DockerSandbox(BaseSandbox):
                 detach=True
             )
             return ""
-        
+
         # Execute command - relies on container isolation for security
         exit_code, output = self._container.exec_run(
             ["/bin/sh", "-c", command],
             workdir="/workspace"
         )
         result = output.decode('utf-8') if output else ""
-        
+
         if exit_code != 0:
             logger.warning(f"Command exited with code {exit_code}: {command[:100]}")
-        
+
         return result
 
     async def create_directory(self, directory_path: str, exist_ok: bool = False) -> bool:
         """Create a directory in the sandbox.
-        
+
         Security: Path is validated to prevent traversal attacks.
         """
         self._ensure_container()
-        
+
         # Security: validate path
         validated_path = self._validate_path(directory_path)
-        
+
         cmd = ["/bin/mkdir"]
         if exist_ok:
             cmd.append("-p")
         cmd.append(validated_path)
-        
+
         exit_code, output = self._container.exec_run(cmd)
         return exit_code == 0
 
@@ -910,12 +930,12 @@ class DockerSandbox(BaseSandbox):
     def list_sandboxes(cls) -> list[dict]:
         """List all Docker sandboxes."""
         client = cls._get_docker_client()
-        
+
         containers = client.containers.list(
             all=True,
             filters={"label": "ii-agent.sandbox=true"}
         )
-        
+
         result = []
         for container in containers:
             labels = container.labels
@@ -926,5 +946,5 @@ class DockerSandbox(BaseSandbox):
                 "created_at": labels.get("ii-agent.created-at"),
                 "name": container.name,
             })
-        
+
         return result
