@@ -5,7 +5,7 @@ including allocation, release, and cleanup operations.
 """
 
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, PropertyMock
 
 from ii_sandbox_server.sandboxes.port_manager import (
     PortPoolManager,
@@ -389,3 +389,236 @@ class TestCommonDevPorts:
         assert 8080 in COMMON_DEV_PORTS  # General
         assert 4200 in COMMON_DEV_PORTS  # Angular
         assert 8000 in COMMON_DEV_PORTS  # Django/FastAPI
+
+
+class TestScanExistingContainers:
+    """Tests for scan_existing_containers method.
+
+    This tests the startup scan that discovers existing sandbox containers
+    and registers their port allocations to prevent conflicts after restart.
+    """
+
+    def setup_method(self):
+        """Reset singleton before each test."""
+        PortPoolManager.reset_instance()
+
+    def teardown_method(self):
+        """Clean up singleton after each test."""
+        PortPoolManager.reset_instance()
+
+    def _create_mock_container(
+        self,
+        name: str,
+        status: str,
+        port_mappings: dict,
+        container_id: str = "abc123"
+    ) -> MagicMock:
+        """Helper to create a mock container with port mappings."""
+        container = MagicMock()
+        container.name = name
+        container.status = status
+        container.id = container_id
+
+        # Build Ports structure like Docker returns
+        ports = {}
+        for container_port, host_port in port_mappings.items():
+            ports[f"{container_port}/tcp"] = [{"HostPort": str(host_port)}]
+
+        container.attrs = {
+            "NetworkSettings": {"Ports": ports},
+            "HostConfig": {"PortBindings": ports}
+        }
+        return container
+
+    def test_scan_discovers_running_container(self):
+        """Test that scan discovers a running sandbox container."""
+        manager = PortPoolManager.get_instance()
+
+        mock_container = self._create_mock_container(
+            name="ii-sandbox-abc123def456",
+            status="running",
+            port_mappings={3000: 30000, 6060: 30001, 9000: 30002},
+            container_id="container123"
+        )
+
+        mock_client = MagicMock()
+        mock_client.containers.list.return_value = [mock_container]
+
+        discovered = manager.scan_existing_containers(mock_client)
+
+        assert discovered == 1
+        stats = manager.get_stats()
+        assert stats["allocated"] == 3
+        assert 30000 in manager._allocated_ports
+        assert 30001 in manager._allocated_ports
+        assert 30002 in manager._allocated_ports
+
+    def test_scan_skips_non_sandbox_containers(self):
+        """Test that scan ignores containers not named ii-sandbox-*."""
+        manager = PortPoolManager.get_instance()
+
+        mock_container = self._create_mock_container(
+            name="postgres",
+            status="running",
+            port_mappings={5432: 5432}
+        )
+
+        mock_client = MagicMock()
+        mock_client.containers.list.return_value = [mock_container]
+
+        discovered = manager.scan_existing_containers(mock_client)
+
+        assert discovered == 0
+        assert manager.get_stats()["allocated"] == 0
+
+    def test_scan_skips_exited_containers(self):
+        """Test that scan ignores exited containers (they don't hold ports)."""
+        manager = PortPoolManager.get_instance()
+
+        mock_container = self._create_mock_container(
+            name="ii-sandbox-abc123",
+            status="exited",
+            port_mappings={3000: 30000}
+        )
+
+        mock_client = MagicMock()
+        mock_client.containers.list.return_value = [mock_container]
+
+        discovered = manager.scan_existing_containers(mock_client)
+
+        assert discovered == 0
+
+    def test_scan_handles_multiple_containers(self):
+        """Test that scan handles multiple sandbox containers."""
+        manager = PortPoolManager.get_instance()
+
+        container1 = self._create_mock_container(
+            name="ii-sandbox-sandbox1",
+            status="running",
+            port_mappings={3000: 30000, 6060: 30001},
+            container_id="container1"
+        )
+        container2 = self._create_mock_container(
+            name="ii-sandbox-sandbox2",
+            status="running",
+            port_mappings={3000: 30005, 6060: 30006},
+            container_id="container2"
+        )
+
+        mock_client = MagicMock()
+        mock_client.containers.list.return_value = [container1, container2]
+
+        discovered = manager.scan_existing_containers(mock_client)
+
+        assert discovered == 2
+        assert manager.get_stats()["allocated"] == 4
+
+    def test_scan_only_runs_once(self):
+        """Test that scan only initializes once (idempotent)."""
+        manager = PortPoolManager.get_instance()
+
+        mock_container = self._create_mock_container(
+            name="ii-sandbox-abc123",
+            status="running",
+            port_mappings={3000: 30000}
+        )
+
+        mock_client = MagicMock()
+        mock_client.containers.list.return_value = [mock_container]
+
+        # First scan
+        discovered1 = manager.scan_existing_containers(mock_client)
+        assert discovered1 == 1
+
+        # Second scan should be skipped
+        discovered2 = manager.scan_existing_containers(mock_client)
+        assert discovered2 == 0
+
+        # Should still only have 1 port allocated
+        assert manager.get_stats()["allocated"] == 1
+
+    def test_scan_ignores_ports_outside_range(self):
+        """Test that scan ignores ports outside the managed range."""
+        manager = PortPoolManager.get_instance()
+
+        mock_container = self._create_mock_container(
+            name="ii-sandbox-abc123",
+            status="running",
+            port_mappings={
+                3000: 30000,  # In range
+                5432: 5432,   # Out of range (below)
+                50000: 50000  # Out of range (above)
+            }
+        )
+
+        mock_client = MagicMock()
+        mock_client.containers.list.return_value = [mock_container]
+
+        discovered = manager.scan_existing_containers(mock_client)
+
+        assert discovered == 1
+        # Only the port in range should be allocated
+        assert manager.get_stats()["allocated"] == 1
+        assert 30000 in manager._allocated_ports
+        assert 5432 not in manager._allocated_ports
+
+    def test_scan_handles_docker_error(self):
+        """Test that scan handles Docker API errors gracefully."""
+        manager = PortPoolManager.get_instance()
+
+        mock_client = MagicMock()
+        mock_client.containers.list.side_effect = Exception("Docker daemon not running")
+
+        # Should not raise, just log and return 0
+        discovered = manager.scan_existing_containers(mock_client)
+
+        assert discovered == 0
+        # Manager should be marked as initialized to prevent repeated failures
+        assert manager._initialized is True
+
+    def test_scan_prevents_port_conflicts(self):
+        """Test that scanned ports are unavailable for new allocations."""
+        manager = PortPoolManager.get_instance()
+
+        # Simulate existing container using port 30000
+        mock_container = self._create_mock_container(
+            name="ii-sandbox-existing",
+            status="running",
+            port_mappings={3000: 30000}
+        )
+
+        mock_client = MagicMock()
+        mock_client.containers.list.return_value = [mock_container]
+
+        manager.scan_existing_containers(mock_client)
+
+        # Now allocate ports for a new sandbox
+        port_set = manager.allocate_ports(
+            sandbox_id="new-sandbox",
+            container_ports=[3000]
+        )
+
+        # Should get a different port, not 30000
+        assert port_set.allocations[3000].host_port != 30000
+        assert port_set.allocations[3000].host_port >= DEFAULT_PORT_RANGE_START
+
+    def test_scan_handles_container_with_no_ports(self):
+        """Test that scan handles containers with no port mappings."""
+        manager = PortPoolManager.get_instance()
+
+        mock_container = MagicMock()
+        mock_container.name = "ii-sandbox-abc123"
+        mock_container.status = "running"
+        mock_container.id = "container123"
+        mock_container.attrs = {
+            "NetworkSettings": {"Ports": None},
+            "HostConfig": {"PortBindings": {}}
+        }
+
+        mock_client = MagicMock()
+        mock_client.containers.list.return_value = [mock_container]
+
+        discovered = manager.scan_existing_containers(mock_client)
+
+        # Container found but no ports to register
+        assert discovered == 0

@@ -273,6 +273,7 @@ async def send_chat_message(
         import time
 
         start_time = time.time()
+        logger.info(f"event_generator started for session {session_id}")
 
         try:
             # Send session created event only if this is a new session

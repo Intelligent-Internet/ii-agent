@@ -92,6 +92,36 @@ async def seed_admin_llm_settings():
             else:
                 logger.info(f"Admin user already exists with ID: {admin_user.id}")
 
+            # Ensure admin user has an API key for tool server access
+            # Check by specific ID first (for idempotent upsert behavior)
+            admin_api_key_id = "admin-api-key"
+            existing_api_key = (
+                await db_session.execute(
+                    select(APIKey).where(APIKey.id == admin_api_key_id)
+                )
+            ).scalar_one_or_none()
+
+            if not existing_api_key:
+                # Create API key for admin user
+                admin_api_key = APIKey(
+                    id=admin_api_key_id,
+                    user_id=admin_user.id,
+                    api_key=f"dev-local-api-key-{admin_user.id}",
+                    is_active=True,
+                    created_at=datetime.now(timezone.utc),
+                    updated_at=datetime.now(timezone.utc),
+                )
+                db_session.add(admin_api_key)
+                await db_session.flush()
+                logger.info("Created API key for admin user")
+            elif not existing_api_key.is_active:
+                # Reactivate if it was deactivated
+                existing_api_key.is_active = True
+                existing_api_key.updated_at = datetime.now(timezone.utc)
+                logger.info("Reactivated API key for admin user")
+            else:
+                logger.info("Admin user already has an active API key")
+
             # Get existing admin LLM settings to check what already exists
             existing_settings_result = await db_session.execute(
                 select(LLMSetting).where(LLMSetting.user_id == admin_user.id)
@@ -401,6 +431,25 @@ class SessionsTable:
             )
             session = result.scalar_one_or_none()
             return session is not None and session.sandbox_id is not None
+
+    async def has_active_session_for_sandbox(self, sandbox_id: str) -> bool:
+        """Check if there is an active (non-deleted) session for a sandbox.
+
+        Args:
+            sandbox_id: The sandbox ID to check
+
+        Returns:
+            True if an active session exists for this sandbox, False otherwise
+        """
+        async with get_db_session_local() as db:
+            result = await db.execute(
+                select(Session).where(
+                    Session.sandbox_id == sandbox_id,
+                    Session.deleted_at.is_(None)  # Only non-deleted sessions
+                )
+            )
+            session = result.scalar_one_or_none()
+            return session is not None
 
     async def find_session_by_id(
         self, *, db: AsyncSession, session_id: uuid.UUID

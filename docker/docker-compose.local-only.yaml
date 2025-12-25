@@ -126,6 +126,12 @@ services:
       SANDBOX_DOCKER_IMAGE: ${SANDBOX_DOCKER_IMAGE:-ii-agent-sandbox:latest}
       # Network for sandbox containers to enable service discovery
       DOCKER_NETWORK: docker_default
+      # Enable local mode features (orphan cleanup, etc.)
+      LOCAL_MODE: "true"
+      ORPHAN_CLEANUP_ENABLED: "true"
+      ORPHAN_CLEANUP_INTERVAL_SECONDS: "300"
+      # Backend URL for session verification during orphan cleanup
+      BACKEND_URL: "http://backend:8000"
     entrypoint: ["/bin/bash", "/app/start_sandbox_server.sh"]
     ports:
       - "${SANDBOX_SERVER_PORT:-8100}:8100"

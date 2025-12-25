@@ -3,6 +3,7 @@ REST API endpoints.
 """
 
 from .sessions import router as sessions_router
+from .sessions import internal_router as internal_sandbox_router
 from ii_agent.server.llm_settings.views import router as llm_settings_router
 from ii_agent.server.mcp_settings.views import router as mcp_settings_router
 from .auth import router as auth_router
@@ -15,6 +16,7 @@ from .connectors import router as connectors_router
 
 __all__ = [
     "sessions_router",
+    "internal_sandbox_router",
     "llm_settings_router",
     "mcp_settings_router",
     "auth_router",

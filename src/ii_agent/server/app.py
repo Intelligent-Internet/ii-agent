@@ -11,6 +11,7 @@ from ii_agent.core.middleware import exception_logging_middleware, not_found_exc
 
 from .api import (
     sessions_router,
+    internal_sandbox_router,
     llm_settings_router,
     auth_router,
     files_router,
@@ -40,10 +41,10 @@ async def health_check():
 
 def setup_socketio_server(sio: socketio.AsyncServer):
     """Setup Socket.IO event handlers."""
-    
+
     sio_manager = SocketIOManager(sio)
     sio_manager.init()
-        
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manage application lifespan events."""
@@ -57,7 +58,7 @@ async def lifespan(app: FastAPI):
         logger.error(f"Failed to initialize admin LLM settings during startup: {e}")
 
     yield
-    
+
     # Redis cleanup is handled by AsyncRedisManager (session_manager)
     # await shared.redis_client.aclose()  # This attribute doesn't exist
     shutdown_scheduler()
@@ -108,6 +109,7 @@ def create_app():
     # Include API routers (organized by domain)
     app.include_router(auth_router)  # /auth/*
     app.include_router(sessions_router)  # /sessions/*
+    app.include_router(internal_sandbox_router)  # /internal/sandboxes/* (no auth - internal use)
     app.include_router(credits_router)  # /credits/*
     app.include_router(llm_settings_router)  # /user-settings/llm/*
     app.include_router(mcp_settings_router)  # /user-settings/mcp/*

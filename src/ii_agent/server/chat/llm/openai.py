@@ -4,7 +4,7 @@ import asyncio
 import logging
 from datetime import datetime, timezone, timedelta
 from string import Template
-from typing import AsyncIterator, List, Literal, Optional, Dict, Any, Tuple, Union
+from typing import AsyncIterator, ClassVar, List, Literal, Optional, Dict, Any, Set, Tuple, Union
 from pydantic import BaseModel, Field
 
 import anyio
@@ -103,12 +103,33 @@ class OpenAIResponseParams(BaseModel):
         None, description="Previous response ID"
     )
 
+    # Models that support the 'reasoning' parameter (OpenAI reasoning models)
+    REASONING_MODELS: ClassVar[Set[str]] = {"o1", "o1-mini", "o1-preview", "o3", "o3-mini", "o4-mini"}
+
     class Config:
         extra = "allow"  # Allow additional fields
 
+    def _is_reasoning_model(self) -> bool:
+        """Check if the model supports reasoning parameters."""
+        model_lower = self.model.lower()
+        # Check for exact matches and prefix matches (e.g., "o1-2024-12-17")
+        for reasoning_model in self.REASONING_MODELS:
+            if model_lower == reasoning_model or model_lower.startswith(f"{reasoning_model}-"):
+                return True
+        return False
+
     def to_dict(self, exclude_none: bool = True) -> Dict[str, Any]:
-        """Convert to dictionary for API request, excluding None values by default."""
-        return self.model_dump(exclude_none=exclude_none)
+        """Convert to dictionary for API request, excluding None values by default.
+
+        Also excludes the 'reasoning' parameter for models that don't support it.
+        """
+        data = self.model_dump(exclude_none=exclude_none)
+
+        # Remove reasoning parameter for non-reasoning models
+        if "reasoning" in data and not self._is_reasoning_model():
+            del data["reasoning"]
+
+        return data
 
 
 class FileResponseObject(BaseModel):

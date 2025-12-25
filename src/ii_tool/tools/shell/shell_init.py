@@ -11,6 +11,9 @@ DISPLAY_NAME = "Initialize bash session"
 DESCRIPTION =f"""Initialize a persistent bash shell session for command execution.
 """
 
+# Maximum number of concurrent shell sessions to prevent resource exhaustion
+MAX_SHELL_SESSIONS = 10
+
 # Input schema
 INPUT_SCHEMA = {
     "type": "object",
@@ -33,7 +36,7 @@ class ShellInit(BaseTool):
     description = DESCRIPTION
     input_schema = INPUT_SCHEMA
     read_only = False
-    
+
     def __init__(self, shell_manager: BaseShellManager, workspace_manager: WorkspaceManager) -> None:
         self.shell_manager = shell_manager
         self.workspace_manager = workspace_manager
@@ -45,11 +48,22 @@ class ShellInit(BaseTool):
         """Initialize a bash session with the specified name and directory."""
         session_name = tool_input.get("session_name")
         start_directory = tool_input.get("start_directory")
-        
+
         try:
-            if session_name in self.shell_manager.get_all_sessions():
+            existing_sessions = self.shell_manager.get_all_sessions()
+
+            if session_name in existing_sessions:
                 return ToolResult(
                     llm_content=f"Session '{session_name}' already exists",
+                    is_error=True
+                )
+
+            # Check session limit to prevent resource exhaustion
+            if len(existing_sessions) >= MAX_SHELL_SESSIONS:
+                return ToolResult(
+                    llm_content=f"Maximum number of shell sessions ({MAX_SHELL_SESSIONS}) reached. "
+                               f"Please close existing sessions before creating new ones. "
+                               f"Active sessions: {', '.join(existing_sessions)}",
                     is_error=True
                 )
 
@@ -57,7 +71,7 @@ class ShellInit(BaseTool):
                 start_directory = str(self.workspace_manager.get_workspace_path())
 
             self.workspace_manager.validate_existing_directory_path(start_directory)
-            
+
             self.shell_manager.create_session(session_name, start_directory)
             return ToolResult(
                 llm_content=f"Session '{session_name}' initialized successfully at start directory `{start_directory}`",

@@ -1,7 +1,5 @@
 import json
 import logging
-import uuid
-from datetime import datetime, timezone
 from typing import List
 
 from openai import AsyncOpenAI
@@ -47,6 +45,8 @@ class FileSearchTool(BaseTool):
                 "Search through uploaded documents and files to find relevant information, "
                 "extract specific details, or answer questions based on file contents. "
                 "Uses semantic search to understand context and meaning.\n\n"
+                "Returns the top 3 most relevant results. If the initial results don't contain "
+                "the information you need, call this tool again with a more specific or refined query.\n\n"
                 "Supported file formats:\n"
                 "- Documents: .pdf, .docx, .txt, .md, .rtf\n"
                 "- Other: .tex, .pptx\n\n"
@@ -94,42 +94,38 @@ class FileSearchTool(BaseTool):
             required=["query"],
         )
 
-    def _build_filters(self, file_names: List[str] | None = None) -> CompoundFilter:
-        """Build compound filters for the file search request."""
-        time_cutoff = (
-            datetime.now(timezone.utc).timestamp() - 24 * 60 * 60
-        )  # last 24 hours
+    def _build_filters(self, file_names: List[str] | None = None) -> ComparisonFilter | CompoundFilter:
+        """Build filters for the file search request.
 
-        logger.debug(
-            f"Building filters with time_cutoff: {time_cutoff} (24h ago from {datetime.now(timezone.utc).timestamp()})"
-        )
-
-        filters: list[ComparisonFilter] = [
-            {
-                "type": "eq",
-                "key": "session_id",
-                "value": self.session_id,
-            },
-            {
-                "type": "eq",
-                "key": "user_id",
-                "value": self.user_id,
-            },
-        ]
-        # if file_names:
-        #     filters.append(
-        #         {
-        #             "type": "in",
-        #             "key": "file_name",
-        #             "value": file_names,
-        #         }
-        #     )
-
-        logger.debug(f"Filters built: {filters}")
-        return {
-            "type": "and",
-            "filters": filters,
+        Note: Vector stores are user-scoped (shared across sessions for deduplication),
+        so we only filter by user_id, not session_id. Files may have been uploaded
+        in a different session but should still be searchable.
+        """
+        # Only filter by user_id since vector store is user-scoped
+        # Files uploaded in previous sessions should still be searchable
+        user_filter: ComparisonFilter = {
+            "type": "eq",
+            "key": "user_id",
+            "value": self.user_id,
         }
+
+        if file_names:
+            # If file names specified, use compound filter
+            filters: list[ComparisonFilter] = [user_filter]
+            for file_name in file_names:
+                filters.append({
+                    "type": "eq",
+                    "key": "file_name",
+                    "value": file_name,
+                })
+            logger.debug(f"Filters built with file_names: {filters}")
+            return {
+                "type": "and",
+                "filters": filters,
+            }
+
+        logger.debug(f"Filter built: user_id={self.user_id}")
+        return user_filter
 
     async def run(self, tool_call: ToolCallInput) -> ToolResponse:
         """Execute code using OpenAI Responses API with code interpreter."""
@@ -149,14 +145,14 @@ class FileSearchTool(BaseTool):
                 vector_store_id=self.vector_store_id,
                 query=query,
                 filters=filters,
-                max_num_results=10,
+                max_num_results=3,  # Limit to 3 results to prevent context overflow; LLM can refine query if needed
                 ranking_options={"ranker": "auto"},
             )
             search_results = response.data
             if isinstance(search_results, list):
                 results = [m.model_dump() for m in search_results]
             else:
-                results = search_results.model_dump()
+                results = [search_results.model_dump()]
 
             return ToolResponse(output=JsonResultContent(value=results))
 

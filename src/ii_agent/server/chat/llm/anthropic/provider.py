@@ -188,6 +188,34 @@ class AnthropicProvider(LLMClient):
         if not user_message.file_ids:
             return []
 
+        # Token budget for direct file upload to Anthropic context
+        # Files exceeding this should use file_search tool with vector store instead
+        MAX_DIRECT_UPLOAD_TOKENS = 50000  # Conservative budget for inline content
+
+        # Token estimation ratios (characters per token)
+        # Text-based files: ~4 chars/token
+        # Binary formats (PDF, DOCX): estimate ~10-20% extractable text, then 4 chars/token
+        TOKEN_RATIO_TEXT = 4.0  # chars per token for plain text
+        TOKEN_RATIO_BINARY = 20.0  # chars per token for binary (conservative: assumes ~20% text extraction)
+
+        # File types that are binary/document formats
+        BINARY_CONTENT_TYPES = {
+            "application/pdf",
+            "application/msword",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "application/vnd.ms-powerpoint",
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        }
+
+        def estimate_tokens(file_size: int, content_type: str) -> int:
+            """Estimate token count from file size and content type."""
+            if content_type in BINARY_CONTENT_TYPES:
+                # Binary documents: assume ~20% text extraction efficiency
+                return int(file_size / TOKEN_RATIO_BINARY)
+            else:
+                # Text-based files: direct character to token conversion
+                return int(file_size / TOKEN_RATIO_TEXT)
+
         async with get_db_session_local() as db_session:
             # Check for existing provider files to avoid re-upload
             existing_result = await db_session.execute(
@@ -208,10 +236,23 @@ class AnthropicProvider(LLMClient):
             )
             file_uploads = result.scalars().all()
 
-            # Filter files that need uploading
-            files_to_upload = [
-                f for f in file_uploads if f.id not in existing_provider_files
-            ]
+            # Filter files that need uploading (not already uploaded and under token limit)
+            files_to_upload = []
+            for f in file_uploads:
+                if f.id in existing_provider_files:
+                    continue
+
+                # Estimate tokens for this file
+                estimated_tokens = estimate_tokens(f.file_size or 0, f.content_type or "")
+
+                if estimated_tokens > MAX_DIRECT_UPLOAD_TOKENS:
+                    logger.info(
+                        f"Skipping file {f.file_name} for Anthropic direct upload: "
+                        f"estimated {estimated_tokens:,} tokens exceeds {MAX_DIRECT_UPLOAD_TOKENS:,} token limit. "
+                        f"File indexed in vector store for file_search tool."
+                    )
+                    continue
+                files_to_upload.append(f)
 
             # Upload new files concurrently
             upload_results = []
@@ -611,10 +652,14 @@ class AnthropicProvider(LLMClient):
             messages, tools, anthropic_options, provider_files
         )
 
+        logger.info(f"Preparing Anthropic API call with model: {params.get('model')}, betas: {betas}")
+        logger.info(f"Message count: {len(params.get('messages', []))}, tools: {len(params.get('tools', []))}")
+
         accumulated_tool_calls = {}
         content_started = False
         current_tool_call_id = None  # Track the current tool call being processed
 
+        logger.info("Starting Anthropic stream...")
         async with self.client.beta.messages.stream(**params, betas=betas) as stream:
             async for event in stream:
                 # Content block start
