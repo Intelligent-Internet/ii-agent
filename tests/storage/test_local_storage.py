@@ -216,17 +216,37 @@ class TestLocalStorageUrls:
 
             assert url == "/files/path/to/file.txt"
 
-    def test_get_permanent_url_same_as_public(self):
-        """Test that get_permanent_url returns same as public URL."""
+    def test_get_permanent_url_returns_signed_url_for_existing_file(self):
+        """Test that get_permanent_url returns signed URL for existing files."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            storage = LocalStorage(
+                base_path=tmpdir,
+                serve_url_base="http://localhost/files",
+            )
+            # Create a file first
+            test_path = os.path.join(tmpdir, "file.txt")
+            with open(test_path, "wb") as f:
+                f.write(b"content")
+
+            url = storage.get_permanent_url("file.txt")
+
+            # Should return signed URL with token and expires
+            assert url.startswith("http://localhost/files/file.txt")
+            assert "token=" in url
+            assert "expires=" in url
+
+    def test_get_permanent_url_falls_back_to_public_for_missing_file(self):
+        """Test that get_permanent_url falls back to public URL for missing files."""
         with tempfile.TemporaryDirectory() as tmpdir:
             storage = LocalStorage(
                 base_path=tmpdir,
                 serve_url_base="http://localhost/files",
             )
 
-            url = storage.get_permanent_url("file.txt")
+            url = storage.get_permanent_url("nonexistent.txt")
 
-            assert url == "http://localhost/files/file.txt"
+            # Should fall back to public URL (no token/expires)
+            assert url == "http://localhost/files/nonexistent.txt"
 
     def test_get_download_signed_url_returns_none_for_missing(self):
         """Test that get_download_signed_url returns None for missing files."""
@@ -310,8 +330,8 @@ class TestLocalStorageUploadAndGet:
                 content, "uploaded.txt", content_type="text/plain"
             )
 
-            # Check URL
-            assert url == "/files/uploaded.txt"
+            # Check URL starts with base path (may include token/expiry for signed URLs)
+            assert url.startswith("/files/uploaded.txt")
 
             # Check file was created
             full_path = os.path.join(tmpdir, "uploaded.txt")

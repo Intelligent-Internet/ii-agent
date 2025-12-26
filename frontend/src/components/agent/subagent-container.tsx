@@ -7,11 +7,13 @@ import {
     CheckCircle2,
     XCircle,
     Loader2,
-    Clock
+    Clock,
+    StopCircle
 } from 'lucide-react'
 import { useState, useMemo } from 'react'
 import { AgentContext, Message } from '@/typings/agent'
 import { formatDuration } from '@/lib/utils'
+import { useAppSelector, selectIsStopped } from '@/state'
 
 interface SubagentContainerProps {
     agentContext: AgentContext
@@ -22,7 +24,8 @@ interface SubagentContainerProps {
 enum SubAgentStatus {
     RUNNING = 'running',
     COMPLETED = 'completed',
-    FAILED = 'failed'
+    FAILED = 'failed',
+    STOPPED = 'stopped'
 }
 
 const SubagentContainer = ({
@@ -31,6 +34,7 @@ const SubagentContainer = ({
     children
 }: SubagentContainerProps) => {
     const [isExpanded, setIsExpanded] = useState(true)
+    const isStopped = useAppSelector(selectIsStopped)
 
     // Calculate execution time
     const executionTime = useMemo(() => {
@@ -49,17 +53,23 @@ const SubagentContainer = ({
     }, [messages])
 
     // Determine actual status - use completed if endTime exists, even if status is not set properly
+    // Also check global isStopped state - if agent is stopped, any running subagent should show as stopped
     const actualStatus = useMemo(() => {
         if (agentContext.endTime) {
             return SubAgentStatus.COMPLETED
         }
-        const finalStatus = agentContext.status || SubAgentStatus.RUNNING
-        return finalStatus
+        const contextStatus = agentContext.status || SubAgentStatus.RUNNING
+        // If global agent is stopped and this subagent was still running, show as stopped
+        if (isStopped && contextStatus === SubAgentStatus.RUNNING) {
+            return SubAgentStatus.STOPPED
+        }
+        return contextStatus
     }, [
         agentContext.status,
         agentContext.endTime,
         agentContext.agentId,
-        agentContext.agentName
+        agentContext.agentName,
+        isStopped
     ])
 
     // Get status icon
@@ -69,6 +79,8 @@ const SubagentContainer = ({
                 return <CheckCircle2 className="size-4 text-green-500" />
             case SubAgentStatus.FAILED:
                 return <XCircle className="size-4 text-red-500" />
+            case SubAgentStatus.STOPPED:
+                return <StopCircle className="size-4 text-yellow-500" />
             case SubAgentStatus.RUNNING:
                 return <Loader2 className="size-4 text-white animate-spin" />
             default:
@@ -139,6 +151,7 @@ const SubagentContainer = ({
                             ${actualStatus === SubAgentStatus.COMPLETED ? 'bg-green-500/20 text-green-400' : ''}
                             ${actualStatus === SubAgentStatus.RUNNING ? 'bg-blue-500/20 text-blue-400' : ''}
                             ${actualStatus === SubAgentStatus.FAILED ? 'bg-red-500/20 text-red-400' : ''}
+                            ${actualStatus === SubAgentStatus.STOPPED ? 'bg-yellow-500/20 text-yellow-400' : ''}
                         `}
                         >
                             {actualStatus}

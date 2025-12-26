@@ -32,7 +32,7 @@ class SandboxStatusHandler(CommandHandler):
         vscode_url = None
         if sandbox:
             status = await sandbox.status
-            vscode_url = await sandbox.expose_port(config.vscode_port)
+            vscode_url = await sandbox.expose_port(config.vscode_port, external=True)
             del sandbox
         await self.send_event(
             RealtimeEvent(

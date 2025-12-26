@@ -56,6 +56,9 @@ class CodeActAgent(Agent):
                 top_p=self.config.top_p,
             )
         else:
+            # When prefix=True, we use text-based thinking simulation (e.g., <THINK> tags)
+            # rather than Anthropic's native extended thinking. Disable native thinking
+            # to avoid conflicts with the message parser's text-based approach.
             model_responses, raw_metrics = await self.llm.agenerate(
                 messages=message,
                 max_tokens=self.config.max_tokens_per_turn,
@@ -64,6 +67,7 @@ class CodeActAgent(Agent):
                 temperature=self.config.temperature,
                 stop_sequence=self.config.stop_sequence,
                 prefix=True,
+                thinking_tokens=0,  # Disable native thinking when using prefix mode
             )
         model_response = self.parser.post_llm_parse(model_responses)
         model_name = self.llm.application_model_name

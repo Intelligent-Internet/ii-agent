@@ -438,6 +438,10 @@ class AnthropicProvider(LLMClient):
             betas.append("skills-2025-10-02")
             betas.append("files-api-2025-04-14")
 
+        # Enable 1M context window if configured
+        if self.llm_config.enable_extended_context:
+            betas.append("context-1m-2025-08-07")
+
         return params, betas
 
     def _extract_content_part_from_message(

@@ -24,6 +24,11 @@ from anthropic.types import (
     RedactedThinkingBlock as AnthropicRedactedThinkingBlock,
     ImageBlockParam as AnthropicImageBlockParam,
 )
+from anthropic.types.beta import (
+    BetaThinkingBlock as AnthropicBetaThinkingBlock,
+    BetaTextBlock as AnthropicBetaTextBlock,
+    BetaToolUseBlock as AnthropicBetaToolUseBlock,
+)
 from anthropic.types import ToolParam as AnthropicToolParam
 from anthropic.types import (
     ToolResultBlockParam as AnthropicToolResultBlockParam,
@@ -121,18 +126,22 @@ class AnthropicDirectClient(LLMClient):
         self.max_retries = llm_config.max_retries
         self._vertex_fallback_retries = 3
 
-        # Build beta headers
-        beta_headers = []
-        if (
-            "claude-opus-4" in self.model_name or "claude-sonnet-4" in self.model_name
-        ):  # Use Interleaved Thinking for Sonnet 4 and Opus 4
-            beta_headers.append("interleaved-thinking-2025-05-14")
+        # Build beta features list for client.beta.messages.create()
+        # Only add beta headers when specific beta features are enabled
+        self.betas = []
 
-        # Enable 1M context window if configured
+        # Interleaved thinking is needed for extended thinking with tools (Claude 4 models)
+        # Only enable if thinking_tokens is configured
+        if llm_config.thinking_tokens and llm_config.thinking_tokens >= 1024:
+            if "claude-opus-4" in self.model_name or "claude-sonnet-4" in self.model_name:
+                self.betas.append("interleaved-thinking-2025-05-14")
+
+        # Enable 1M context window only if explicitly configured
         if llm_config.enable_extended_context:
-            beta_headers.append("context-1m-2025-08-07")
+            self.betas.append("context-1m-2025-08-07")
 
-        self.headers = {"anthropic-beta": ",".join(beta_headers)} if beta_headers else None
+        # Keep headers for backward compatibility with non-beta endpoints
+        self.headers = {"anthropic-beta": ",".join(self.betas)} if self.betas else None
         self.thinking_tokens = llm_config.thinking_tokens
 
     def generate(
@@ -144,6 +153,7 @@ class AnthropicDirectClient(LLMClient):
         tools: list[ToolParam] = [],
         tool_choice: dict[str, str] | None = None,
         thinking_tokens: int | None = None,
+        stop_sequence: list[str] | None = None,
     ) -> Tuple[list[AssistantContentBlock], dict[str, Any]]:
         """Generate responses.
 
@@ -293,17 +303,38 @@ class AnthropicDirectClient(LLMClient):
                 else self._direct_model_name
             )
             try:
-                response = client_to_use.messages.create(  # type: ignore
-                    max_tokens=max_tokens,
-                    messages=anthropic_messages,
-                    model=model_to_use,
-                    temperature=temperature,
-                    system=system_prompt or Anthropic_NOT_GIVEN,
-                    tool_choice=tool_choice_param,  # type: ignore
-                    tools=tool_params,
-                    extra_headers=self.headers,
-                    extra_body=extra_body,
-                )
+                # Use beta endpoint for extended context and interleaved thinking
+                if self.betas:
+                    # Use native thinking parameter for beta endpoint
+                    thinking_param = None
+                    if thinking_tokens and thinking_tokens > 0:
+                        thinking_param = {"type": "enabled", "budget_tokens": thinking_tokens}
+
+                    response = client_to_use.beta.messages.create(  # type: ignore
+                        max_tokens=max_tokens,
+                        messages=anthropic_messages,
+                        model=model_to_use,
+                        temperature=temperature,
+                        system=system_prompt or Anthropic_NOT_GIVEN,
+                        tool_choice=tool_choice_param,  # type: ignore
+                        tools=tool_params,
+                        betas=self.betas,
+                        thinking=thinking_param if thinking_param else Anthropic_NOT_GIVEN,
+                        stop_sequences=stop_sequence if stop_sequence else Anthropic_NOT_GIVEN,
+                    )
+                else:
+                    response = client_to_use.messages.create(  # type: ignore
+                        max_tokens=max_tokens,
+                        messages=anthropic_messages,
+                        model=model_to_use,
+                        temperature=temperature,
+                        system=system_prompt or Anthropic_NOT_GIVEN,
+                        tool_choice=tool_choice_param,  # type: ignore
+                        tools=tool_params,
+                        extra_headers=self.headers,
+                        extra_body=extra_body,
+                        stop_sequences=stop_sequence if stop_sequence else Anthropic_NOT_GIVEN,
+                    )
                 break
             except Exception as e:
                 attempt += 1
@@ -347,6 +378,10 @@ class AnthropicDirectClient(LLMClient):
             if str(type(message)) == str(AnthropicTextBlock):
                 message = cast(AnthropicTextBlock, message)
                 internal_messages.append(TextResult(text=message.text))
+            elif str(type(message)) == str(AnthropicBetaTextBlock):
+                # Convert Beta Anthropic text block (from beta endpoint)
+                message = cast(AnthropicBetaTextBlock, message)
+                internal_messages.append(TextResult(text=message.text))
             elif str(type(message)) == str(AnthropicRedactedThinkingBlock):
                 # Convert Anthropic response back to internal format
                 message = cast(AnthropicRedactedThinkingBlock, message)
@@ -359,8 +394,26 @@ class AnthropicDirectClient(LLMClient):
                         thinking=message.thinking, signature=message.signature
                     )
                 )
+            elif str(type(message)) == str(AnthropicBetaThinkingBlock):
+                # Convert Beta Anthropic response back to internal format (from beta endpoint)
+                message = cast(AnthropicBetaThinkingBlock, message)
+                internal_messages.append(
+                    ThinkingBlock(
+                        thinking=message.thinking, signature=message.signature
+                    )
+                )
             elif str(type(message)) == str(AnthropicToolUseBlock):
                 message = cast(AnthropicToolUseBlock, message)
+                internal_messages.append(
+                    ToolCall(
+                        tool_call_id=message.id,
+                        tool_name=message.name,
+                        tool_input=recursively_remove_invoke_tag(message.input),
+                    )
+                )
+            elif str(type(message)) == str(AnthropicBetaToolUseBlock):
+                # Convert Beta Anthropic tool use block (from beta endpoint)
+                message = cast(AnthropicBetaToolUseBlock, message)
                 internal_messages.append(
                     ToolCall(
                         tool_call_id=message.id,
@@ -401,6 +454,8 @@ class AnthropicDirectClient(LLMClient):
         tools: list[ToolParam] = [],
         tool_choice: dict[str, str] | None = None,
         thinking_tokens: int | None = None,
+        stop_sequence: list[str] | None = None,
+        prefix: bool = False,
     ) -> Tuple[list[AssistantContentBlock], dict[str, Any]]:
         """Generate responses.
 
@@ -497,6 +552,26 @@ class AnthropicDirectClient(LLMClient):
                 }
             )
 
+        # When prefix=True, Anthropic requires that final assistant content not end with trailing whitespace
+        if prefix and anthropic_messages and anthropic_messages[-1]["role"] == "assistant":
+            content_list = anthropic_messages[-1]["content"]
+            if content_list:
+                last_content = content_list[-1]
+                # Handle both dict and object formats for text blocks
+                if isinstance(last_content, dict) and last_content.get("type") == "text":
+                    if last_content.get("text", "").rstrip() != last_content.get("text", ""):
+                        last_content["text"] = last_content["text"].rstrip()
+                elif hasattr(last_content, "type") and last_content.type == "text":
+                    if hasattr(last_content, "text") and last_content.text.rstrip() != last_content.text:
+                        # Create a new text block with stripped content
+                        content_list[-1] = AnthropicTextBlock(
+                            type="text",
+                            text=last_content.text.rstrip(),
+                        )
+                        # Preserve cache_control if it was set
+                        if hasattr(last_content, "cache_control") and last_content.cache_control:
+                            content_list[-1].cache_control = last_content.cache_control
+
         # Turn tool_choice into Anthropic tool_choice format
         if tool_choice is None:
             tool_choice_param = Anthropic_NOT_GIVEN
@@ -552,17 +627,41 @@ class AnthropicDirectClient(LLMClient):
                 else self._direct_model_name
             )
             try:
-                response = await client_to_use.messages.create(  # type: ignore[attr-defined]
-                    max_tokens=max_tokens,
-                    messages=anthropic_messages,
-                    model=model_to_use,
-                    temperature=temperature,
-                    system=system_prompt or Anthropic_NOT_GIVEN,
-                    tool_choice=tool_choice_param,  # type: ignore[arg-type]
-                    tools=tool_params,
-                    extra_headers=self.headers,
-                    extra_body=extra_body,
-                )
+                # Use beta endpoint for extended context and interleaved thinking
+                if self.betas:
+                    # Use native thinking parameter for beta endpoint
+                    thinking_param = None
+                    temp_to_use = temperature
+                    if thinking_tokens and thinking_tokens > 0:
+                        thinking_param = {"type": "enabled", "budget_tokens": thinking_tokens}
+                        # Extended thinking is not compatible with temperature modifications
+                        temp_to_use = Anthropic_NOT_GIVEN
+
+                    response = await client_to_use.beta.messages.create(  # type: ignore[attr-defined]
+                        max_tokens=max_tokens,
+                        messages=anthropic_messages,
+                        model=model_to_use,
+                        temperature=temp_to_use,
+                        system=system_prompt or Anthropic_NOT_GIVEN,
+                        tool_choice=tool_choice_param,  # type: ignore[arg-type]
+                        tools=tool_params,
+                        betas=self.betas,
+                        thinking=thinking_param if thinking_param else Anthropic_NOT_GIVEN,
+                        stop_sequences=stop_sequence if stop_sequence else Anthropic_NOT_GIVEN,
+                    )
+                else:
+                    response = await client_to_use.messages.create(  # type: ignore[attr-defined]
+                        max_tokens=max_tokens,
+                        messages=anthropic_messages,
+                        model=model_to_use,
+                        temperature=temperature,
+                        system=system_prompt or Anthropic_NOT_GIVEN,
+                        tool_choice=tool_choice_param,  # type: ignore[arg-type]
+                        tools=tool_params,
+                        extra_headers=self.headers,
+                        extra_body=extra_body,
+                        stop_sequences=stop_sequence if stop_sequence else Anthropic_NOT_GIVEN,
+                    )
                 break
             except Exception as e:
                 attempt += 1
@@ -589,7 +688,7 @@ class AnthropicDirectClient(LLMClient):
                 if attempt >= max_attempts:
                     print(f"Failed Anthropic request after {attempt} retries")
                     raise
-                print(f"Retrying LLM request: {attempt}/{max_attempts}")
+                print(f"Retrying LLM request: {attempt}/{max_attempts} - Error: {e}")
                 # Sleep 12-18 seconds with jitter to avoid thundering herd.
                 await asyncio.sleep(15 * random.uniform(0.8, 1.2))
 
@@ -606,6 +705,10 @@ class AnthropicDirectClient(LLMClient):
             if str(type(message)) == str(AnthropicTextBlock):
                 message = cast(AnthropicTextBlock, message)
                 internal_messages.append(TextResult(text=message.text))
+            elif str(type(message)) == str(AnthropicBetaTextBlock):
+                # Convert Beta Anthropic text block (from beta endpoint)
+                message = cast(AnthropicBetaTextBlock, message)
+                internal_messages.append(TextResult(text=message.text))
             elif str(type(message)) == str(AnthropicRedactedThinkingBlock):
                 # Convert Anthropic response back to internal format
                 message = cast(AnthropicRedactedThinkingBlock, message)
@@ -618,8 +721,26 @@ class AnthropicDirectClient(LLMClient):
                         thinking=message.thinking, signature=message.signature
                     )
                 )
+            elif str(type(message)) == str(AnthropicBetaThinkingBlock):
+                # Convert Beta Anthropic response back to internal format (from beta endpoint)
+                message = cast(AnthropicBetaThinkingBlock, message)
+                internal_messages.append(
+                    ThinkingBlock(
+                        thinking=message.thinking, signature=message.signature
+                    )
+                )
             elif str(type(message)) == str(AnthropicToolUseBlock):
                 message = cast(AnthropicToolUseBlock, message)
+                internal_messages.append(
+                    ToolCall(
+                        tool_call_id=message.id,
+                        tool_name=message.name,
+                        tool_input=recursively_remove_invoke_tag(message.input),
+                    )
+                )
+            elif str(type(message)) == str(AnthropicBetaToolUseBlock):
+                # Convert Beta Anthropic tool use block (from beta endpoint)
+                message = cast(AnthropicBetaToolUseBlock, message)
                 internal_messages.append(
                     ToolCall(
                         tool_call_id=message.id,

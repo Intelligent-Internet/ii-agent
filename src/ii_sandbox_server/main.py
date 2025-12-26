@@ -342,7 +342,7 @@ async def expose_port(request: ExposePortRequest):
         )
 
     try:
-        url = await sandbox_controller.expose_port(request.sandbox_id, request.port)
+        url = await sandbox_controller.expose_port(request.sandbox_id, request.port, request.external)
 
         return ExposePortResponse(
             success=True, url=url, message=f"Port {request.port} exposed successfully"

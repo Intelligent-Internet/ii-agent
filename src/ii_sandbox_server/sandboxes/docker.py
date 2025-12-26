@@ -686,20 +686,44 @@ class DockerSandbox(BaseSandbox):
 
     # === File Operations ===
 
-    async def expose_port(self, port: int) -> str:
+    async def expose_port(self, port: int, external: bool = False) -> str:
         """Expose a port from the sandbox.
+
+        Args:
+            port: Port number to expose
+            external: If True, return host-accessible URL (for browser access).
+                     If False, return internal Docker network URL (for container-to-container).
 
         For Docker sandboxes running on the same network as other containers,
         we return the container's internal IP and the original port so other
         containers can access services directly.
 
-        This is necessary because 'localhost' from inside another container
-        refers to that container, not the host.
+        For browser/external access (like VS Code), we return the host-mapped port.
         """
         self._ensure_container()
         self._container.reload()
 
-        # Get the container's internal IP address on the Docker network
+        # If external access is requested (e.g., for browser/VS Code), return host-mapped port
+        if external:
+            # Check if this port is in our mappings (pre-allocated or dynamic)
+            if port in self._port_mappings:
+                host_port = self._port_mappings[port]
+                return f"http://localhost:{host_port}"
+
+            # Check container's actual port bindings (for reconnected containers)
+            ports = self._container.attrs.get("NetworkSettings", {}).get("Ports", {})
+            port_info = ports.get(f"{port}/tcp", [{}])[0]
+            host_port = port_info.get("HostPort")
+
+            if host_port:
+                return f"http://localhost:{host_port}"
+
+            # Port not mapped to host
+            raise SandboxGeneralException(
+                f"Port {port} is not exposed to the host for external access."
+            )
+
+        # For internal container-to-container access, return internal Docker IP
         networks = self._container.attrs.get("NetworkSettings", {}).get("Networks", {})
         container_ip = None
 
