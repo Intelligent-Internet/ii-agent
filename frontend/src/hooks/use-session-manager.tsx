@@ -90,7 +90,6 @@ export function useSessionManager({
                             AgentEvent.AGENT_INITIALIZED,
                             AgentEvent.WORKSPACE_INFO,
                             AgentEvent.CONNECTION_ESTABLISHED,
-                            AgentEvent.STATUS_UPDATE,
                             AgentEvent.SANDBOX_STATUS
                         ].includes(event.type)
                         const isDelay =
@@ -109,6 +108,8 @@ export function useSessionManager({
                         const isAgentStateEvent = [
                             AgentEvent.SUB_AGENT_COMPLETE,
                             AgentEvent.AGENT_RESPONSE,
+                            AgentEvent.AGENT_RESPONSE_INTERRUPTED,
+                            AgentEvent.STATUS_UPDATE,
                             AgentEvent.TOOL_CALL,
                             AgentEvent.TOOL_RESULT
                         ].includes(event.type)

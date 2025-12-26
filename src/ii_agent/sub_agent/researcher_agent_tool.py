@@ -328,7 +328,7 @@ class ResearcherAgent(BaseAgentTool):
                 content={"text": "Sub agent completed"},
             )
         )
-        self.controller.clear()
+        await self.controller.clear()
 
         return tool_result
 

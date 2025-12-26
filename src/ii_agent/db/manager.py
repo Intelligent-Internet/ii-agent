@@ -173,6 +173,7 @@ async def seed_admin_llm_settings():
                         "azure_endpoint": config_data.get("azure_endpoint"),
                         "azure_api_version": config_data.get("azure_api_version"),
                         "cot_model": config_data.get("cot_model", False),
+                        "enable_extended_context": config_data.get("enable_extended_context", False),
                         "source_config_id": model_id,  # Track which config this came from
                     }
                     updated_count += 1
@@ -201,6 +202,7 @@ async def seed_admin_llm_settings():
                             "azure_endpoint": config_data.get("azure_endpoint"),
                             "azure_api_version": config_data.get("azure_api_version"),
                             "cot_model": config_data.get("cot_model", False),
+                            "enable_extended_context": config_data.get("enable_extended_context", False),
                             "source_config_id": model_id,  # Track which config this came from
                         },
                     )

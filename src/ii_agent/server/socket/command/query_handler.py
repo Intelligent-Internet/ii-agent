@@ -353,7 +353,7 @@ class UserQueryHandler(CommandHandler):
             metadata=init_content.metadata,
         )
 
-        vscode_url = await sandbox.expose_port(config.vscode_port)
+        vscode_url = await sandbox.expose_port(config.vscode_port, external=True)
 
         # Create ChatSessionContext with file upload data
         chat_session = ChatSessionContext(

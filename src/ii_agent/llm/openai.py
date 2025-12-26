@@ -735,6 +735,14 @@ class OpenAIDirectClient(BaseOpenAIClient):
         Returns:
             A generated response.
         """
+        # Cap max_tokens to model's maximum output tokens
+        model_max_output = self.config.get_max_output_tokens()
+        if max_tokens > model_max_output:
+            logger.warning(
+                f"Requested max_tokens ({max_tokens}) exceeds model's limit ({model_max_output}). "
+                f"Capping to {model_max_output} for model {self.model_name}"
+            )
+            max_tokens = model_max_output
 
         openai_messages = []
 
@@ -743,7 +751,7 @@ class OpenAIDirectClient(BaseOpenAIClient):
 
         for idx, message_list in enumerate(messages):
             turn_message = None
-            # We have three part: 
+            # We have three part:
             # Thinking content, response content and tool-call contents for one-turn
             # {"role", ..., "conent": str, "reasoning_content": str, tool_calls: list}
             for internal_message in message_list:
@@ -775,7 +783,7 @@ class OpenAIDirectClient(BaseOpenAIClient):
                             else:
                                 space = "\n"
                             turn_message['content'] = turn_message['content'] + space + processed_message['content']
-                            
+
             openai_messages.append(turn_message)
 
         tool_choice_param = self._process_tool_choice(tool_choice)
@@ -1137,6 +1145,14 @@ class OpenAIDirectClient(BaseOpenAIClient):
         Returns:
             A generated response.
         """
+        # Cap max_tokens to model's maximum output tokens
+        model_max_output = self.config.get_max_output_tokens()
+        if max_tokens > model_max_output:
+            logger.warning(
+                f"Requested max_tokens ({max_tokens}) exceeds model's limit ({model_max_output}). "
+                f"Capping to {model_max_output} for model {self.model_name}"
+            )
+            max_tokens = model_max_output
 
         # Initialize tokenizer
 
@@ -1147,7 +1163,7 @@ class OpenAIDirectClient(BaseOpenAIClient):
 
         for idx, message_list in enumerate(messages):
             turn_message = None
-            # We have three part: 
+            # We have three part:
             # Thinking content, response content and tool-call contents for one-turn
             # {"role", ..., "conent": str, "reasoning_content": str, tool_calls: list}
             for internal_message in message_list:
@@ -1179,7 +1195,7 @@ class OpenAIDirectClient(BaseOpenAIClient):
                             else:
                                 space = "\n"
                             turn_message['content'] = turn_message['content'] + space + processed_message['content']
-                            
+
             openai_messages.append(turn_message)
 
         # Create completion with tokenized messages

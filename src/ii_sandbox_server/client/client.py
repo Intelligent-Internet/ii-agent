@@ -50,8 +50,8 @@ RETRYABLE_EXCEPTIONS = (
 
 # Create retry decorator with exponential backoff
 retry_decorator = retry(
-    stop=stop_after_attempt(5),  
-    wait=wait_exponential(multiplier=1, min=2, max=30), 
+    stop=stop_after_attempt(5),
+    wait=wait_exponential(multiplier=1, min=2, max=30),
     retry=retry_if_exception_type(RETRYABLE_EXCEPTIONS),
     before=before_log(logger, logging.DEBUG),
     after=after_log(logger, logging.DEBUG),
@@ -98,7 +98,7 @@ class SandboxClient:
 
     def __init__(self, base_url: str = "http://localhost:8100", timeout: float = 120.0):
         """Initialize the sandbox client.
-        
+
         Args:
             base_url: The base URL of the sandbox server
             timeout: Default timeout in seconds (extended from 60 to 120)
@@ -107,10 +107,10 @@ class SandboxClient:
         self.timeout = timeout
         # Configure httpx client with extended timeouts
         timeout_config = httpx.Timeout(
-            connect=30.0,  
-            read=timeout,   
-            write=30.0,     
-            pool=30.0      
+            connect=30.0,
+            read=timeout,
+            write=30.0,
+            pool=30.0
         )
         self.client = httpx.AsyncClient(timeout=timeout_config)
 
@@ -125,7 +125,7 @@ class SandboxClient:
         await self.close()
 
     @retry(
-        stop=stop_after_attempt(3),  
+        stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=1, max=10),
         retry=retry_if_exception_type(RETRYABLE_EXCEPTIONS),
     )
@@ -231,9 +231,15 @@ class SandboxClient:
         return result
 
     @handle_http_error
-    async def expose_port(self, sandbox_id: str, port: int) -> str:
-        """Expose a port from a sandbox."""
-        request = {"sandbox_id": sandbox_id, "port": port}
+    async def expose_port(self, sandbox_id: str, port: int, external: bool = False) -> str:
+        """Expose a port from a sandbox.
+
+        Args:
+            sandbox_id: Sandbox identifier
+            port: Port to expose
+            external: If True, return host-accessible URL (for browser access)
+        """
+        request = {"sandbox_id": sandbox_id, "port": port, "external": external}
 
         response = await self.client.post(
             f"{self.base_url}/sandboxes/expose-port", json=request
@@ -263,7 +269,7 @@ class SandboxClient:
             files = {
                 "file": ("file", file_content, "application/octet-stream")
             }
-            
+
             response = await self.client.post(
                 f"{self.base_url}/sandboxes/upload-file",
                 data=form_data,
@@ -276,7 +282,7 @@ class SandboxClient:
                 "file_path": file_path,
                 "content": file_content,
             }
-            
+
             response = await self.client.post(
                 f"{self.base_url}/sandboxes/write-file", json=request
             )
@@ -354,13 +360,13 @@ class SandboxClient:
     ) -> FileOperationResponse:
         """Upload a file to a sandbox by downloading it from a URL."""
         from ii_sandbox_server.models.payload import UploadFileFromUrlRequest
-        
+
         request_data = UploadFileFromUrlRequest(
             sandbox_id=sandbox_id,
             file_path=file_path,
             url=url
         )
-        
+
         response = await self.client.post(
             f"{self.base_url}/sandboxes/upload-file-from-url",
             json=request_data.model_dump(),
@@ -376,14 +382,14 @@ class SandboxClient:
     ) -> FileOperationResponse:
         """Download a file from sandbox to a presigned URL."""
         from ii_sandbox_server.models.payload import DownloadToPresignedUrlRequest
-        
+
         request_data = DownloadToPresignedUrlRequest(
             sandbox_id=sandbox_id,
             sandbox_path=sandbox_path,
             format=format,
             presigned_url=presigned_url
         )
-        
+
         response = await self.client.post(
             f"{self.base_url}/sandboxes/download-to-presigned-url",
             json=request_data.model_dump(),
@@ -398,19 +404,19 @@ class SandboxClient:
         self, sandbox_id: str, command: str, background: bool = False
     ) -> str:
         """Run a command in a sandbox."""
-        
+
         request = RunCommandRequest(
             sandbox_id=sandbox_id,
             command=command,
             background=background
         )
-        
+
         response = await self.client.post(
             f"{self.base_url}/sandboxes/run-cmd",
             json=request.model_dump()
         )
         response.raise_for_status()
-        
+
         result = RunCommandResponse(**response.json())
         return result.output
 

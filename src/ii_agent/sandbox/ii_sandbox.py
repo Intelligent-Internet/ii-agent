@@ -27,7 +27,7 @@ class IISandbox:
         """Get the status of the sandbox."""
         response = await self.client.get_sandbox_status(self.sandbox_id)
         return response.status
-    
+
     async def create(self, sandbox_template_id: str | None = None):
         """Create a new sandbox."""
         self._sandbox_id = await self.client.create_sandbox(self._user_id, sandbox_template_id)
@@ -36,9 +36,14 @@ class IISandbox:
         """Connect to a sandbox. If the sandbox is paused, it will be resumed."""
         await self.client.connect_sandbox(self.sandbox_id)
 
-    async def expose_port(self, port: int) -> str:
-        """Expose a port in the sandbox."""
-        url = await self.client.expose_port(self.sandbox_id, port)
+    async def expose_port(self, port: int, external: bool = False) -> str:
+        """Expose a port in the sandbox.
+
+        Args:
+            port: Port to expose
+            external: If True, return host-accessible URL (for browser access)
+        """
+        url = await self.client.expose_port(self.sandbox_id, port, external)
         return url
 
     async def schedule_timeout(self, timeout_seconds: int):

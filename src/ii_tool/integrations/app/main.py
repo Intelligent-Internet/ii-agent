@@ -1,17 +1,22 @@
 import json
 import uvicorn
 import argparse
+import os
+from pathlib import Path
 from fastapi import FastAPI, HTTPException, Header, Depends
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import Field, BaseModel
 from typing import Literal, List, Dict, Any
 from sqlalchemy.orm.exc import StaleDataError
 
 from ii_tool.integrations.web_visit.base import WebVisitError
+from ii_tool.integrations.video_generation.base import VideoGenerationError
 from ii_tool.integrations.logger import get_logger
 
 from .config import config
 from .services import image_search_service, web_visit_service, video_generation_service
+from ii_tool.integrations.storage import LocalStorage
 from .db import User, get_user_by_api_key, apply_tool_usage
 from .utils import convert_dollars_to_credits
 from ii_tool.integrations.image_generation import create_image_generation_client
@@ -37,6 +42,70 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Get storage instance for serving files
+_storage_instance = None
+
+def get_storage_instance():
+    """Get the storage instance (lazy loaded)."""
+    global _storage_instance
+    if _storage_instance is None:
+        from .services import storage
+        _storage_instance = storage
+    return _storage_instance
+
+
+@app.get("/storage/{file_path:path}")
+async def serve_local_storage_file(file_path: str):
+    """Serve files from local storage.
+
+    This endpoint allows the frontend to access images and other files
+    stored in local storage during development/local deployment.
+    """
+    storage = get_storage_instance()
+
+    # Only serve files if using LocalStorage
+    if not isinstance(storage, LocalStorage):
+        raise HTTPException(
+            status_code=404,
+            detail="File serving only available in local storage mode"
+        )
+
+    try:
+        # Get the full filesystem path
+        full_path = storage.get_local_path(file_path)
+
+        # Check if file exists
+        if not os.path.exists(full_path):
+            raise HTTPException(status_code=404, detail="File not found")
+
+        # Check if it's a file (not directory)
+        if not os.path.isfile(full_path):
+            raise HTTPException(status_code=400, detail="Path is not a file")
+
+        # Try to read content type from .meta file
+        meta_path = full_path + ".meta"
+        media_type = None
+        if os.path.exists(meta_path):
+            try:
+                with open(meta_path, 'r') as f:
+                    media_type = f.read().strip()
+            except Exception as e:
+                logger.warning(f"Could not read media type from {meta_path}: {e}")
+
+        # Return the file
+        return FileResponse(
+            path=full_path,
+            media_type=media_type,
+            filename=os.path.basename(full_path)
+        )
+
+    except ValueError as e:
+        # Path traversal or other security issue
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error serving file {file_path}: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 async def get_current_user(
@@ -157,13 +226,37 @@ async def video_generation(
 ):
     """Generate video from text prompt or/and image."""
 
-    video_result = await video_generation_service.generate_video(
-        prompt=request.prompt,
-        aspect_ratio=request.aspect_ratio,
-        duration_seconds=request.duration_seconds,
-        image_base64=request.image_base64,
-        image_mime_type=request.image_mime_type,
-    )
+    try:
+        video_result = await video_generation_service.generate_video(
+            prompt=request.prompt,
+            aspect_ratio=request.aspect_ratio,
+            duration_seconds=request.duration_seconds,
+            image_base64=request.image_base64,
+            image_mime_type=request.image_mime_type,
+        )
+    except VideoGenerationError as e:
+        error_message = str(e)
+        # Provide user-friendly messages for common errors
+        if "403" in error_message or "PermissionDenied" in error_message:
+            if "verified" in error_message.lower():
+                user_message = "Video generation requires OpenAI organization verification. Please verify your organization at https://platform.openai.com/settings/organization/general"
+            else:
+                user_message = "Access denied to video generation API. Please check your API key permissions."
+        elif "401" in error_message or "Unauthorized" in error_message:
+            user_message = "Invalid API key for video generation. Please check your configuration."
+        elif "429" in error_message or "rate" in error_message.lower():
+            user_message = "Video generation rate limit exceeded. Please try again later."
+        elif "timeout" in error_message.lower():
+            user_message = "Video generation timed out. Please try again with a shorter duration."
+        else:
+            user_message = f"Video generation failed: {error_message}"
+
+        logger.error(f"Video generation error: {error_message}")
+        return VideoGenerationResponse(
+            success=False,
+            error=user_message,
+        )
+
     response = VideoGenerationResponse(
         success=True,
         url=video_result.url,

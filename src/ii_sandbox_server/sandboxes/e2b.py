@@ -250,7 +250,8 @@ class E2BSandbox(BaseSandbox):
         self._ensure_sandbox()
         return f"{self.provider_sandbox_id}.{self._sandbox.connection_config.domain}"
 
-    async def expose_port(self, port: int) -> str:
+    async def expose_port(self, port: int, external: bool = False) -> str:
+        """E2B sandboxes always expose ports externally via HTTPS."""
         self._ensure_sandbox()
         return f"https://{self._sandbox.get_host(port)}"
 
@@ -351,7 +352,7 @@ class E2BSandbox(BaseSandbox):
         """
         self._ensure_sandbox()
         result = await self._sandbox.commands.run(command, background=background)
-        if not isinstance(result, CommandResult):   
+        if not isinstance(result, CommandResult):
             raise Exception(f"Command {command} failed: {result.error}")
         if result.exit_code != 0:
             raise Exception(f"Command {command} failed: {result.error}")

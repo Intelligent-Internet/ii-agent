@@ -516,3 +516,127 @@ class TestDockerSandboxVolumeCleanup:
         mock_client.volumes.get.assert_called_once_with(
             "ii-sandbox-workspace-my-special-sandbox-456"
         )
+
+
+class TestDockerSandboxExposePort:
+    """Tests for expose_port method with external flag."""
+
+    @pytest.mark.asyncio
+    async def test_expose_port_external_from_port_mappings(self):
+        """Test that external=True returns host-mapped port from port_mappings."""
+        mock_container = MagicMock()
+        mock_container.status = "running"
+        mock_container.attrs = {
+            "NetworkSettings": {
+                "Networks": {"bridge": {"IPAddress": "172.17.0.5"}},
+                "Ports": {},
+            }
+        }
+
+        sandbox = DockerSandbox(
+            container=mock_container,
+            sandbox_id="test-123",
+            queue=None,
+            port_mappings={6060: 8080, 9000: 9001, 3000: 3001},
+        )
+
+        url = await sandbox.expose_port(6060, external=True)
+
+        assert url == "http://localhost:8080"
+
+    @pytest.mark.asyncio
+    async def test_expose_port_external_from_container_bindings(self):
+        """Test that external=True falls back to container port bindings."""
+        mock_container = MagicMock()
+        mock_container.status = "running"
+        mock_container.attrs = {
+            "NetworkSettings": {
+                "Networks": {"bridge": {"IPAddress": "172.17.0.5"}},
+                "Ports": {"5000/tcp": [{"HostPort": "32000"}]},
+            }
+        }
+
+        sandbox = DockerSandbox(
+            container=mock_container,
+            sandbox_id="test-123",
+            queue=None,
+            port_mappings={},  # Empty mappings
+        )
+
+        url = await sandbox.expose_port(5000, external=True)
+
+        assert url == "http://localhost:32000"
+
+    @pytest.mark.asyncio
+    async def test_expose_port_external_raises_for_unmapped(self):
+        """Test that external=True raises error for unmapped ports."""
+        from ii_sandbox_server.models.exceptions import SandboxGeneralException
+
+        mock_container = MagicMock()
+        mock_container.status = "running"
+        mock_container.attrs = {
+            "NetworkSettings": {
+                "Networks": {"bridge": {"IPAddress": "172.17.0.5"}},
+                "Ports": {},
+            }
+        }
+
+        sandbox = DockerSandbox(
+            container=mock_container,
+            sandbox_id="test-123",
+            queue=None,
+            port_mappings={},
+        )
+
+        with pytest.raises(SandboxGeneralException, match="not exposed to the host"):
+            await sandbox.expose_port(9999, external=True)
+
+    @pytest.mark.asyncio
+    async def test_expose_port_internal_returns_docker_ip(self):
+        """Test that external=False returns internal Docker IP."""
+        mock_container = MagicMock()
+        mock_container.status = "running"
+        mock_container.attrs = {
+            "NetworkSettings": {
+                "Networks": {"bridge": {"IPAddress": "172.17.0.5"}},
+                "Ports": {"5000/tcp": [{"HostPort": "32000"}]},
+            }
+        }
+
+        sandbox = DockerSandbox(
+            container=mock_container,
+            sandbox_id="test-123",
+            queue=None,
+            port_mappings={5000: 32000},
+        )
+
+        # Default (external=False) should return internal IP
+        url = await sandbox.expose_port(5000)
+
+        assert url == "http://172.17.0.5:5000"
+
+    @pytest.mark.asyncio
+    async def test_expose_port_internal_default(self):
+        """Test that expose_port defaults to internal (external=False)."""
+        mock_container = MagicMock()
+        mock_container.status = "running"
+        mock_container.attrs = {
+            "NetworkSettings": {
+                "Networks": {"mynetwork": {"IPAddress": "192.168.1.100"}},
+                "Ports": {},
+            }
+        }
+
+        sandbox = DockerSandbox(
+            container=mock_container,
+            sandbox_id="test-123",
+            queue=None,
+            port_mappings={8080: 30000},
+        )
+
+        # Call without external parameter (should default to False)
+        url = await sandbox.expose_port(8080)
+
+        # Should return internal IP, not localhost
+        assert url == "http://192.168.1.100:8080"
+        assert "localhost" not in url

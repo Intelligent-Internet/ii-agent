@@ -15,6 +15,13 @@ class IISandboxToSandboxInterfaceAdapter(SandboxInterface):
         """
         self._sandbox = sandbox
 
-    async def expose_port(self, port: int) -> str:
-        """Expose a port in the sandbox and return the public URL."""
-        return await self._sandbox.expose_port(port)
+    async def expose_port(self, port: int, external: bool = True) -> str:
+        """Expose a port in the sandbox and return the public URL.
+
+        Args:
+            port: The port to expose
+            external: If True, returns host-mapped URL for browser access.
+                     If False, returns internal Docker IP for container-to-container.
+                     Defaults to True for backwards compatibility.
+        """
+        return await self._sandbox.expose_port(port, external=external)

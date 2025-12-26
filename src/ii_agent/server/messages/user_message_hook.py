@@ -14,6 +14,7 @@ from uuid import uuid4
 
 from ii_agent.core.event import EventType, RealtimeEvent
 from ii_agent.core.event_hooks import EventHook
+from ii_agent.db.manager import Files
 from ii_agent.sandbox import IISandbox
 from ii_agent.storage import BaseStorage
 
@@ -158,7 +159,8 @@ class UserMessageHook(EventHook):
         buffer = BytesIO(data)
 
         filename = Path(attachment).name or "attachment"
-        storage_path = self._generate_storage_path(filename, session_id, run_id)
+        file_id = uuid4().hex
+        storage_path = self._generate_storage_path_with_id(filename, session_id, file_id)
         content_type = (
             mimetypes.guess_type(filename)[0] or "application/octet-stream"
         )
@@ -166,13 +168,36 @@ class UserMessageHook(EventHook):
         try:
             permanent_url = await anyio.to_thread.run_sync(
                 self.storage.upload_and_get_permanent_url,
-                buffer, 
+                buffer,
                 storage_path,
                 content_type
             )
             logger.info(
                 "Uploaded attachment %s to %s", attachment, storage_path
             )
+
+            # Register file in database so it appears in "All files" tab
+            if session_id:
+                try:
+                    await Files.create_file(
+                        file_id=file_id,
+                        file_name=filename,
+                        file_size=len(data),
+                        storage_path=storage_path,
+                        content_type=content_type,
+                        session_id=str(session_id),
+                    )
+                    logger.info(
+                        "Registered attachment %s in database with id %s",
+                        filename, file_id
+                    )
+                except Exception as db_exc:
+                    # Log but don't fail - file is still accessible via URL
+                    logger.warning(
+                        "Failed to register attachment %s in database: %s",
+                        filename, db_exc
+                    )
+
             return {
                 "name": filename,
                 "file_type": self._determine_file_type(filename),
@@ -185,6 +210,15 @@ class UserMessageHook(EventHook):
                 exc,
             )
             return None
+
+    def _generate_storage_path_with_id(self, filename: str, session_id, file_id: str) -> str:
+        """Generate storage path using provided file_id for consistency with database."""
+        safe_name = filename or "attachment"
+        session_part = str(session_id) if session_id else "unknown-session"
+        return (
+            f"sessions/{session_part}/attachments/"
+            f"{file_id}-{safe_name}"
+        )
 
     def _generate_storage_path(self, filename: str, session_id, run_id) -> str:
         safe_name = filename or "attachment"

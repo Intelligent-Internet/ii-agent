@@ -147,11 +147,17 @@ class SandboxController:
         sandbox = await self.connect(sandbox_id)
         return await sandbox.download_file_stream(file_path)
 
-    async def expose_port(self, sandbox_id: str, port: int) -> str:
-        """Expose a port on a sandbox."""
+    async def expose_port(self, sandbox_id: str, port: int, external: bool = False) -> str:
+        """Expose a port on a sandbox.
+
+        Args:
+            sandbox_id: Sandbox identifier
+            port: Port to expose
+            external: If True, return host-accessible URL (for browser access)
+        """
         await self._ensure_consumer_started()
         sandbox = await self.connect(sandbox_id)
-        return await sandbox.expose_port(port)
+        return await sandbox.expose_port(port, external=external)
 
     async def connect(self, sandbox_id: str) -> BaseSandbox:
         """Connect to or resume a sandbox."""

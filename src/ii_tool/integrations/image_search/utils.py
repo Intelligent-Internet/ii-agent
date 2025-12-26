@@ -20,8 +20,17 @@ def is_image_url_available(url: str) -> bool:
         True if the URL points to an accessible image, False otherwise.
     """
     try:
+        # Add browser-like headers to avoid bot detection
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Referer": "https://www.google.com/",
+        }
+
         # Use a HEAD request to get headers without downloading the full content
-        response = requests.head(url, allow_redirects=True, timeout=5)
+        response = requests.head(url, headers=headers, allow_redirects=True, timeout=5)
 
         # Check for a successful status code (2xx)
         if not response.ok:
@@ -33,10 +42,10 @@ def is_image_url_available(url: str) -> bool:
         if not content_type.startswith('image/'):
             print(f"Error: Content-Type is not an image ({content_type})")
             return False, content_type
-        
+
         # Extract mime type from content-type header (e.g., "image/jpeg; charset=utf-8" -> "image/jpeg")
         content_type = content_type.split(";")[0].strip().lower()
-        
+
         if content_type not in MIMETYPE_TO_EXTENSION:
             print(f"Error: Content-Type is not supported ({content_type})")
             return False, content_type
@@ -45,7 +54,7 @@ def is_image_url_available(url: str) -> bool:
         # A 'Content-Disposition' header with 'attachment' suggests a download prompt
         if 'attachment' in response.headers.get('Content-Disposition', ''):
             print("Warning: Content-Disposition suggests attachment, might not be embeddable.")
-        
+
         # 'X-Frame-Options' can prevent embedding in iframes
         if response.headers.get('X-Frame-Options') in ('DENY', 'SAMEORIGIN'):
              print("Warning: X-Frame-Options header might prevent embedding.")

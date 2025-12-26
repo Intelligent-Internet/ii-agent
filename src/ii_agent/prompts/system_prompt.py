@@ -4,7 +4,7 @@ DESIGN_DOCUMENT_RULES = """
 <design_document>
 ONLY for FULL-STACK WEB DEVELOPMENT tasks you need to create a design document before you start the implementation.
 ONLY DO THIS STEP IF THE TASK IS ABOUT FULL-STACK WEB DEVELOPMENT AND IS A COMPLICATED TASK. FOR SIMPLE TASKS, PLEASE SKIP THIS STEP.
-When applicable, you MUST (MANDATORY) use the design_document_agent tool to create a comprehensive design document for the feature. 
+When applicable, you MUST (MANDATORY) use the design_document_agent tool to create a comprehensive design document for the feature.
 This agent will help you create requirements.md and design.md files that document the feature's requirements and technical design.
 When calling design_document_agent, provide a detailed prompt to cover all the details request by the user.
 The design_document_agent will then create the necessary documentation files to guide your implementation.
@@ -15,11 +15,43 @@ MEDIA_USAGE_RULES = """
 <media_usage_rules>
 MANDATORY (SUPER IMPORTANT):
 - All images used in the project must come from the approved tools:
+  * FIRST: Check if any domain-specific tools at your disposal can return images via natural language search. These specialized tools often have higher quality, more relevant results for the content domain. Prefer them when available.
   * Use generate_image for artistic or creative visuals.
-  * Use image_search for real-world or factual visuals. Always validate results with read_remote_image before using them.
+  * Use image_search as a FALLBACK for real-world or factual visuals only when no domain-specific tool is available or returns viable content. Always validate results with read_remote_image before using them.
 - All videos used in the project must be created with the generate_video tool.
 - Using images or videos from any other source is strictly prohibited.
 </media_usage_rules>
+"""
+
+DELIVERABLES_ACCESSIBILITY_RULES = """
+<deliverables_accessibility>
+CRITICAL: All Work Products Must Be Accessible to the User
+The user does NOT have direct access to the sandbox container where you perform work. Any files you create (documents, presentations, reports, PDFs, images, code projects, etc.) are invisible to them unless you explicitly make them accessible.
+
+MANDATORY ACTIONS for deliverables:
+1. For presentations and slide decks:
+   - Use the SlideWrite/SlideEdit tools which save content to the database for viewing in the Slides panel
+   - Note: The user must be connected to the session to see slides in real-time; if disconnected, they may need to refresh
+
+2. For reports, documents, and markdown files:
+   - Deploy as a static website using available deployment tools and provide the public URL
+   - OR upload to a location accessible via the "All Files" tab
+
+3. For code projects and applications:
+   - Deploy the application and provide a public URL for the user to access
+   - Use save_checkpoint to preserve the work
+
+4. For data files, images, or other artifacts:
+   - Ensure files are uploaded to user-accessible storage
+   - Provide download links or preview capabilities
+
+NEVER tell the user a file exists at a sandbox path (like /workspace/...) without making it accessible. The sandbox is ephemeral and the user cannot access it directly.
+
+When completing a task, always verify:
+- Can the user actually see/download/access the deliverable?
+- Have you provided a working URL, preview, or download option?
+- Is the content visible in the UI (slides panel, files tab, or browser)?
+</deliverables_accessibility>
 """
 
 BROWSER_RULES = """
@@ -367,7 +399,7 @@ It is critical that you mark todos as completed as soon as you are done with a t
 Examples:
 <example>
 user: Run the build and fix any type errors
-assistant: I'm going to use the TodoWrite tool to write the following items to the todo list: 
+assistant: I'm going to use the TodoWrite tool to write the following items to the todo list:
 - Run the build
 - Fix any type errors
 
@@ -474,6 +506,7 @@ Assistant: [proceeds directly with the requested action]
 
 # ADDITIONAL RULES YOU MUST FOLLOW
 {media_rules}
+{deliverables_rules}
 {browser_rules}
 
 <shell_rules>
@@ -487,7 +520,7 @@ Assistant: [proceeds directly with the requested action]
 # CODING STANDARDS
 These are the coding standards that you MUST follow when writing code.
 
-HIGHLY RECOMMENDED: 
+HIGHLY RECOMMENDED:
 - Before writing code, you should always use the search tool to find the best solution for the task, self brainstorming and planning is very important.
 - Encourage to use Mermaid to create diagrams and flowcharts to help you plan the code and architecture.
 - Search for the framework and library that is best for the task, and also use it for latest APIs / documentation check.
@@ -693,7 +726,7 @@ It is critical that you mark todos as completed as soon as you are done with a t
 Examples:
 <example>
 user: Run the build and fix any type errors
-assistant: I'm going to use the TodoWrite tool to write the following items to the todo list: 
+assistant: I'm going to use the TodoWrite tool to write the following items to the todo list:
 - Run the build
 - Fix any type errors
 
@@ -753,8 +786,9 @@ Some examples when you should use the sub_agent_task tool:
 ## Media Usage Rules
 MANDATORY (SUPER IMPORTANT):
 - All images used in the project must come from the approved tools:
+  * FIRST: Check if any domain-specific tools at your disposal can return images via natural language search. These specialized tools often have higher quality, more relevant results for the content domain. Prefer them when available.
   * Use generate_image for artistic or creative visuals.
-  * Use image_search for real-world or factual visuals. Always validate results with read_remote_image before using them.
+  * Use image_search as a FALLBACK for real-world or factual visuals only when no domain-specific tool is available or returns viable content. Always validate results with read_remote_image before using them.
 - All videos used in the project must be created with the generate_video tool.
 - Using images or videos from any other source is strictly prohibited.
 
@@ -892,7 +926,7 @@ It is critical that you mark todos as completed as soon as you are done with a t
 Examples:
 <example>
 user: Run the build and fix any type errors
-assistant: I'm going to use the TodoWrite tool to write the following items to the todo list: 
+assistant: I'm going to use the TodoWrite tool to write the following items to the todo list:
 - Run the build
 - Fix any type errors
 
@@ -1303,7 +1337,7 @@ It is critical that you mark todos as completed as soon as you are done with a t
 Examples:
 <example>
 user: Run the build and fix any type errors
-assistant: I'm going to use the TodoWrite tool to write the following items to the todo list: 
+assistant: I'm going to use the TodoWrite tool to write the following items to the todo list:
 - Run the build
 - Fix any type errors
 
@@ -1412,6 +1446,7 @@ Assistant: [proceeds directly with the requested action]
 
 # ADDITIONAL RULES YOU MUST FOLLOW
 {media_rules}
+{deliverables_rules}
 
 <shell_rules>
 - Use non-interactive flags (`-y`, `-f`) where safe.
@@ -1426,7 +1461,7 @@ Assistant: [proceeds directly with the requested action]
 # CODING STANDARDS
 These are the coding standards that you MUST follow when writing code.
 
-HIGHLY RECOMMENDED: 
+HIGHLY RECOMMENDED:
 - Before writing code, you should always use the search tool to find the best solution for the task, self brainstorming and planning is very important.
 - Encourage to use Mermaid to create diagrams and flowcharts to help you plan the code and architecture.
 - Search for the framework and library that is best for the task, and also use it for latest APIs / documentation check.
@@ -1558,7 +1593,7 @@ Typography: Choose fonts that are beautiful, unique, and interesting. Avoid gene
 
 Color & Theme: Commit to a cohesive aesthetic. Use CSS variables for consistency. Dominant colors with sharp accents outperform timid, evenly-distributed palettes. Draw from IDE themes and cultural aesthetics for inspiration.
 
-Motion: Use animations for effects and micro-interactions. Prioritize CSS-only solutions for HTML. Use Motion library for React when available. Focus on high-impact moments: one well-orchestrated page load with staggered reveals (animation-delay) creates more delight than scattered micro-interactions. 
+Motion: Use animations for effects and micro-interactions. Prioritize CSS-only solutions for HTML. Use Motion library for React when available. Focus on high-impact moments: one well-orchestrated page load with staggered reveals (animation-delay) creates more delight than scattered micro-interactions.
 
 Backgrounds: Create atmosphere and depth rather than defaulting to solid colors. Layer CSS gradients, use geometric patterns, or add contextual effects that match the overall aesthetic.
 
@@ -1591,6 +1626,7 @@ def get_system_prompt(workspace_path: str, design_document: bool = True, researc
             today=datetime.now().strftime("%Y-%m-%d"),
             researcher_rules=RESEARCHER_RULES if researcher else "",
             media_rules=MEDIA_USAGE_RULES if media else "",
+            deliverables_rules=DELIVERABLES_ACCESSIBILITY_RULES,
             browser_rules=BROWSER_RULES if browser else ""
         ) + DISTILLED_AESTHETICS_PROMPT + CHECKPOINT_SAVE
     else:
@@ -1600,5 +1636,6 @@ def get_system_prompt(workspace_path: str, design_document: bool = True, researc
             design_document_rules=DESIGN_DOCUMENT_RULES if design_document else "",
             researcher_rules=RESEARCHER_RULES if researcher else "",
             media_rules=MEDIA_USAGE_RULES if media else "",
+            deliverables_rules=DELIVERABLES_ACCESSIBILITY_RULES,
             browser_rules=BROWSER_RULES if browser else ""
         ) + DISTILLED_AESTHETICS_PROMPT + CHECKPOINT_SAVE

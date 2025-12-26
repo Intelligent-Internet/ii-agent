@@ -130,11 +130,11 @@ class TestBrowserTabLimit:
 
     def test_max_tabs_constant_value(self):
         """Test that MAX_TABS is set to expected value."""
-        # Read the source to verify the constant
+        # Read the source to verify the constant (defined as class constant)
         import inspect
         from ii_tool.browser import browser
 
-        source = inspect.getsource(browser.Browser.create_new_tab)
+        source = inspect.getsource(browser.Browser)
 
         assert "MAX_TABS = 20" in source
 
@@ -284,15 +284,15 @@ class TestResourceLimitIntegration:
         # Shell sessions: should be reasonable (not too many, not too few)
         assert 5 <= MAX_SHELL_SESSIONS <= 50, "Shell session limit should be between 5 and 50"
 
-        # Browser tabs: read from source since it's a local constant
+        # Browser tabs: read from source since it's a class constant
         import inspect
         from ii_tool.browser import browser
 
-        source = inspect.getsource(browser.Browser.create_new_tab)
-        # Extract MAX_TABS value
+        source = inspect.getsource(browser.Browser)
+        # Extract MAX_TABS value (defined as class constant)
         import re
         match = re.search(r'MAX_TABS\s*=\s*(\d+)', source)
-        assert match, "MAX_TABS should be defined in create_new_tab"
+        assert match, "MAX_TABS should be defined in Browser class"
 
         max_tabs = int(match.group(1))
         assert 10 <= max_tabs <= 100, "Browser tab limit should be between 10 and 100"

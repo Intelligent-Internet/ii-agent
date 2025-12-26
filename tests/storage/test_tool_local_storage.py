@@ -139,12 +139,15 @@ class TestToolLocalStorageWriteFromLocalPath:
 class TestToolLocalStoragePublicUrl:
     """Tests for get_public_url."""
 
-    def test_get_public_url_returns_file_url(self):
-        """Test that get_public_url returns file:// URL."""
+    def test_get_public_url_returns_http_url(self):
+        """Test that get_public_url returns HTTP URL for tool server."""
         with tempfile.TemporaryDirectory() as tmpdir:
             storage = LocalStorage(base_path=tmpdir)
 
             url = storage.get_public_url("path/to/file.txt")
 
-            assert url.startswith("file://")
-            assert "path/to/file.txt" in url
+            # Should return HTTP URL that will be served by tool server
+            assert url.startswith("http://")
+            assert "/storage/path/to/file.txt" in url
+            # Default tool server URL (TOOL_SERVER_URL defaults to localhost:1236)
+            assert "localhost:1236" in url
