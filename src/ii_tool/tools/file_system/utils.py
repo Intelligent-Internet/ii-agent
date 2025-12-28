@@ -37,7 +37,7 @@ def find_similar_file(file_path: str) -> str | None:
         
         # Look for files with same base name but different extensions
         pattern = os.path.join(parent_dir, f"{base_name}.*")
-        similar_files = glob.glob(pattern)
+        similar_files = glob(pattern)
         
         if similar_files:
             # Return the first match that's not the original file
