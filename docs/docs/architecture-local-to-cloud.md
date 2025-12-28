@@ -68,6 +68,9 @@ ii-agent supports multiple deployment models through a pluggable sandbox provide
 - ✅ Command execution in isolated containers
 - ✅ Resource limits (memory, CPU, PIDs)
 - ✅ Basic capability dropping
+- ✅ **Orphan cleanup** - Automatic removal of sandboxes when sessions are deleted
+- ✅ **Local storage** - Files stored locally instead of cloud storage (GCS)
+- ✅ **Port pool management** - Dynamic port allocation (30000-30999) for sandbox services
 
 ### Known Limitations
 

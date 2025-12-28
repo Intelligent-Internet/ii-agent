@@ -137,6 +137,8 @@ docker compose -f docker/docker-compose.local-only.yaml \
 
 ### Environment Variables
 
+#### Sandbox Configuration
+
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `SANDBOX_PROVIDER` | `e2b` | Set to `docker` for local sandboxes |
@@ -145,6 +147,39 @@ docker compose -f docker/docker-compose.local-only.yaml \
 | `SANDBOX_PORT_RANGE_START` | `30000` | Start of host port range for sandbox port mappings |
 | `SANDBOX_PORT_RANGE_END` | `30999` | End of host port range for sandbox port mappings |
 | `POSTGRES_PORT` | `5432` | PostgreSQL port (use 5433 if 5432 is taken) |
+
+#### Orphan Cleanup Configuration
+
+When running in local mode, the sandbox server automatically cleans up containers whose associated chat sessions have been deleted.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `LOCAL_MODE` | `false` | Set to `true` to enable orphan cleanup |
+| `ORPHAN_CLEANUP_ENABLED` | `true` | Can disable cleanup for debugging |
+| `ORPHAN_CLEANUP_INTERVAL_SECONDS` | `60` | How often to check for orphaned sandboxes |
+| `BACKEND_URL` | `http://backend:8000` | Backend API URL for session verification |
+
+**How It Works:**
+1. Every 60 seconds (configurable), the sandbox server queries all active sandboxes
+2. For each sandbox older than 5 minutes, it calls the backend to verify the session exists
+3. If the session was deleted, the sandbox container is automatically removed
+4. The 5-minute grace period prevents cleanup during session initialization
+
+#### Storage Configuration
+
+Local deployments use local filesystem storage instead of cloud storage (GCS):
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `STORAGE_PROVIDER` | `local` | Use `local` for filesystem, `gcs` for Google Cloud |
+| `LOCAL_STORAGE_PATH` | `/.ii_agent/storage` | Base directory for file storage |
+| `PUBLIC_TOOL_SERVER_URL` | (auto) | Public URL for the tool server (for file URLs) |
+
+When using local storage:
+- Files are stored on the local filesystem
+- Content-types are preserved in `.meta` sidecar files
+- Files are served via the tool server's `/storage/{path}` endpoint
+- Path traversal attacks are prevented by path validation
 
 ### Port Management
 
@@ -234,13 +269,24 @@ POSTGRES_PORT=5433
 
 ### Sandbox containers not cleaning up
 
-Manual cleanup:
+**Automatic Cleanup (Recommended):**
+
+If `LOCAL_MODE=true` is set, orphan cleanup runs automatically. Check if it's working:
+```bash
+# Check sandbox-server logs for cleanup activity
+docker logs ii-agent-sandbox-server-1 2>&1 | grep -i orphan
+```
+
+**Manual cleanup:**
 ```bash
 # List sandbox containers
 docker ps -a | grep ii-sandbox
 
 # Remove all stopped sandbox containers
 docker container prune -f --filter "label=ii-agent-sandbox=true"
+
+# Force cleanup via API
+curl -X POST http://localhost:8100/ports/cleanup
 ```
 
 ## Security Considerations
