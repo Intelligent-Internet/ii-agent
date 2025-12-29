@@ -176,8 +176,10 @@ services:
       # Use local filesystem storage instead of GCS
       STORAGE_PROVIDER: local
       LOCAL_STORAGE_PATH: /.ii_agent/storage
-      # Enable dev authentication (bypasses OAuth)
-      DEV_AUTH_ENABLED: "true"
+      # Enable dev authentication (bypasses OAuth) - OPT-IN ONLY
+      # Set DEV_AUTH_ENABLED=true in .stack.env.local to enable
+      # WARNING: Never enable this in production or shared environments
+      DEV_AUTH_ENABLED: ${DEV_AUTH_ENABLED:-false}
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     volumes:

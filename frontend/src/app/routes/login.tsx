@@ -56,12 +56,12 @@ export function LoginPage() {
     })
 
     // Check if Google auth is enabled (same logic as provider.tsx)
-    const googleEnabled =
-        !!import.meta.env.VITE_GOOGLE_CLIENT_ID &&
-        import.meta.env.VITE_DEV_AUTH_AUTOLOGIN !== 'true'
+    const DEV_AUTH_AUTOLOGIN = import.meta.env.VITE_DEV_AUTH_AUTOLOGIN === 'true'
+    const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID?.trim()
+    const googleEnabled = !DEV_AUTH_AUTOLOGIN && !!googleClientId
 
     // Check if dev auto-login is enabled
-    const devAutoLoginEnabled = import.meta.env.VITE_DEV_AUTH_AUTOLOGIN === 'true'
+    const devAutoLoginEnabled = DEV_AUTH_AUTOLOGIN
 
     const apiBaseUrl = useMemo(
         () => import.meta.env.VITE_API_URL || 'http://localhost:8000',
@@ -181,25 +181,46 @@ export function LoginPage() {
             return
         }
 
+        const DEV_LOGIN_TIMEOUT_MS = 10000 // 10 second timeout for dev login
+
         const attemptDevLogin = async () => {
+            const abortController = new AbortController()
+            const timeoutId = setTimeout(() => abortController.abort(), DEV_LOGIN_TIMEOUT_MS)
+
             setIsAutoLoggingIn(true)
             setAutoLoginError(null)
+
             try {
                 console.info('[auth] Attempting dev auto-login...')
-                const res = await fetch(`${apiBaseUrl}/auth/dev/login`)
+
+                // Use AbortController.signal to tie timeout to fetch
+                const res = await fetch(`${apiBaseUrl}/auth/dev/login`, {
+                    signal: abortController.signal
+                })
+
+                clearTimeout(timeoutId)
+
                 if (!res.ok) {
                     const errorText = await res.text().catch(() => 'Unknown error')
-                    console.warn('[auth] Dev login endpoint not available:', errorText)
-                    setAutoLoginError('Dev login endpoint not available. Please use another login method.')
+                    console.warn('[auth] Dev login endpoint returned error:', errorText)
+                    setAutoLoginError('Dev login failed. Please use another login method.')
                     setIsAutoLoggingIn(false)
                     return
                 }
+
                 const data = await res.json()
                 await handleAuthSuccess(data)
                 console.info('[auth] Dev auto-login successful')
             } catch (error) {
-                console.error('[auth] Dev auto-login failed:', error)
-                setAutoLoginError('Auto-login failed. Please try another login method.')
+                clearTimeout(timeoutId)
+
+                if ((error as Error).name === 'AbortError') {
+                    console.error('[auth] Dev auto-login timed out after', DEV_LOGIN_TIMEOUT_MS, 'ms')
+                    setAutoLoginError('Dev auto-login timed out. Please try another login method.')
+                } else {
+                    console.error('[auth] Dev auto-login failed:', error)
+                    setAutoLoginError('Auto-login failed. Please try another login method.')
+                }
                 setIsAutoLoggingIn(false)
             }
         }

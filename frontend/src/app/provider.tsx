@@ -9,18 +9,19 @@ import { AuthProvider } from '@/contexts/auth-context'
 
 // Check if dev auth auto-login is enabled (skip Google auth in this case)
 const DEV_AUTH_AUTOLOGIN = import.meta.env.VITE_DEV_AUTH_AUTOLOGIN === 'true'
-// Google client ID from env (may be empty/undefined)
-const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID
+// Google client ID from env (may be empty/undefined/whitespace)
+// Trim whitespace to avoid treating whitespace-only values as valid
+const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID?.trim()
 
 // Only initialize Google auth if:
 // 1. Dev auto-login is NOT enabled, AND
-// 2. A valid Google client ID is provided
+// 2. A valid (non-empty, non-whitespace) Google client ID is provided
 const shouldEnableGoogleAuth = !DEV_AUTH_AUTOLOGIN && googleClientId
 
 if (DEV_AUTH_AUTOLOGIN) {
     console.info('[auth] Google auth disabled: VITE_DEV_AUTH_AUTOLOGIN is enabled')
 } else if (!googleClientId) {
-    console.info('[auth] Google auth disabled: missing VITE_GOOGLE_CLIENT_ID')
+    console.info('[auth] Google auth disabled: missing or empty VITE_GOOGLE_CLIENT_ID')
 } else {
     console.info('[auth] Google auth enabled with client_id:', googleClientId.slice(0, 10) + '...')
 }
