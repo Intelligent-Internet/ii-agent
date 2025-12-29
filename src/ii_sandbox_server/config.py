@@ -32,7 +32,8 @@ class SandboxConfig(BaseSettings):
     # Sandbox provider settings
     provider_type: str = Field(
         default="e2b",
-        description="Type of sandbox provider to use (e.g., 'e2b', 'docker')",
+        validation_alias="SANDBOX_PROVIDER",
+        description="Type of sandbox provider to use (e.g., 'e2b', 'docker', 'local')",
     )
 
     # Timeout settings
@@ -92,6 +93,17 @@ class SandboxConfig(BaseSettings):
         default="default", description="Default E2B template to use for sandboxes"
     )
 
+    # Docker specific settings (if using Docker provider)
+    docker_image: Optional[str] = Field(
+        default="ii-agent-sandbox:latest",
+        description="Docker image to use for local sandboxes"
+    )
+
+    docker_network: Optional[str] = Field(
+        default="bridge",
+        description="Docker network mode for sandboxes"
+    )
+
     # Resource limits defaults
     default_cpu_limit: int = Field(
         default=1000, ge=100, le=8000, description="Default CPU limit in millicores"
@@ -109,15 +121,40 @@ class SandboxConfig(BaseSettings):
         default=True, description="Whether network access is enabled by default"
     )
 
+    # Local mode settings
+    local_mode: bool = Field(
+        default=False,
+        description="Enable local mode features like orphan sandbox cleanup. "
+                   "Set to True when running docker-compose.local-only.yaml"
+    )
+
+    orphan_cleanup_enabled: bool = Field(
+        default=True,
+        description="Enable automatic cleanup of orphan sandboxes (only applies when local_mode=True)"
+    )
+
+    orphan_cleanup_interval_seconds: int = Field(
+        default=300,  # 5 minutes
+        ge=60, le=3600,
+        description="Interval between orphan sandbox cleanup checks (seconds)"
+    )
+
+    backend_url: str = Field(
+        default="http://backend:8000",
+        description="URL of the ii-agent backend server for session verification"
+    )
+
     @model_validator(mode="after")
     def validate_queue_settings(self) -> "SandboxConfig":
         """Validate queue-related settings based on provider type."""
         if self.queue_provider == "redis" and not self.redis_url:
             raise ValueError("redis_url is required when queue_provider is 'redis'")
 
+        # Only require E2B API key when using E2B provider
         if self.provider_type == "e2b" and not self.e2b_api_key:
             raise ValueError(
-                "E2B API key is required. Set E2B_API_KEY environment variable"
+                "E2B API key is required when using E2B provider. "
+                "Set E2B_API_KEY environment variable or use SANDBOX_PROVIDER=docker for local sandboxes."
             )
 
         return self
@@ -138,6 +175,11 @@ class SandboxConfig(BaseSettings):
             return {
                 "api_key": self.e2b_api_key,
                 "template": self.e2b_template_id,
+            }
+        if self.provider_type in ("docker", "local"):
+            return {
+                "image": self.docker_image,
+                "network": self.docker_network,
             }
         # Add other provider configs as needed
         return {}

@@ -47,6 +47,7 @@ from ii_agent.server.llm_settings.service import (
     get_all_available_models,
 )
 from ii_agent.server.vectordb import openai_vector_store
+from ii_agent.server.vectordb.base import VectorStoreMetadata
 from ii_agent.server.chat import cancel
 
 if TYPE_CHECKING:
@@ -74,6 +75,44 @@ class ChatService:
         if len(query) > max_length:
             truncated += "..."
         return truncated
+
+    @staticmethod
+    def _extract_file_names_from_vector_store(
+        vector_store: Optional[VectorStoreMetadata],
+    ) -> List[str]:
+        """
+        Extract file names from vector store metadata.
+
+        The vector store files dict has structure from OpenAI's API:
+        {
+            "data": [
+                {"id": "file-xxx", "attributes": {"file_name": "doc.pdf", ...}},
+                ...
+            ],
+            ...
+        }
+
+        Args:
+            vector_store: Vector store metadata or None
+
+        Returns:
+            List of file names in the vector store
+        """
+        if not vector_store or not vector_store.files:
+            return []
+
+        file_names = []
+        files_data = vector_store.files.get("data", [])
+
+        for file_obj in files_data:
+            # Try to get file_name from attributes
+            attrs = file_obj.get("attributes", {})
+            if attrs and isinstance(attrs, dict):
+                file_name = attrs.get("file_name")
+                if file_name:
+                    file_names.append(file_name)
+
+        return file_names
 
     @classmethod
     async def create_chat_session(
@@ -323,9 +362,16 @@ class ChatService:
         )
         session = result.scalar_one()
 
+        # Get LLM config for dynamic context window
+        llm_config = await cls.get_llm_config(
+            model_id=model_id,
+            user_id=user_id,
+            db_session=db_session,
+        )
+
         # Check if summarization is needed
         await ContextWindowManager.check_and_summarize(
-            db_session=db_session, session=session, model_id=model_id
+            db_session=db_session, session=session, model_id=model_id, llm_config=llm_config
         )
 
         # Get conversation history with summary filtering
@@ -362,25 +408,74 @@ class ChatService:
 
         logger.info(f"Started chat run {run_id} for session {session_id}")
 
+        logger.info(f"Retrieving vector store for user {user_id}, session {session_id}")
         vector_store = await openai_vector_store.retrieve(
             user_id=user_id, session_id=session_id
         )
+        logger.info(f"Vector store retrieved: {vector_store}")
+        logger.info(f"user_message.file_ids: {user_message.file_ids}")
+
+        # Track newly uploaded files in this message
+        newly_uploaded_files: list = []
         if user_message.file_ids:
+            logger.info(f"Adding {len(user_message.file_ids)} files to vector store...")
             vs_files = await openai_vector_store.add_files_batch(
                 user_id=user_id,
                 session_id=session_id,
                 file_ids=user_message.file_ids,
             )
             logger.info(f"Added files: {len(vs_files)} to vector stores")
+            newly_uploaded_files = vs_files
 
-            # Append file upload information to user message
-            if vs_files:
-                file_info_lines = ["Files uploaded:"]
-                for file_obj in vs_files:
-                    file_info_lines.append(
-                        f"- Name: {file_obj.file_name}, content type: {file_obj.content_type}, bytes: {file_obj.bytes}"
-                    )
+            # Re-fetch vector store to get updated file list
+            vector_store = await openai_vector_store.retrieve(
+                user_id=user_id, session_id=session_id
+            )
 
+        # Build file corpus info for AI discovery
+        # This tells the AI what files are available for file_search
+        file_info_lines = []
+
+        if newly_uploaded_files:
+            # Files just uploaded in this message
+            file_info_lines.append("[System: New files have been uploaded and indexed for search]")
+            file_info_lines.append("")
+            file_info_lines.append("Newly uploaded files:")
+            for file_obj in newly_uploaded_files:
+                file_info_lines.append(
+                    f"- {file_obj.file_name} ({file_obj.content_type}, {file_obj.bytes:,} bytes)"
+                )
+
+        # Check for existing files in the vector store (from previous uploads)
+        existing_file_names = cls._extract_file_names_from_vector_store(vector_store)
+        if existing_file_names:
+            if file_info_lines:
+                file_info_lines.append("")
+            else:
+                file_info_lines.append("[System: You have access to the user's document corpus via file_search]")
+                file_info_lines.append("")
+
+            file_info_lines.append(f"Document corpus available for search ({len(existing_file_names)} files):")
+            # Show up to 20 files, summarize if more
+            display_files = existing_file_names[:20]
+            for fname in display_files:
+                file_info_lines.append(f"- {fname}")
+            if len(existing_file_names) > 20:
+                file_info_lines.append(f"- ... and {len(existing_file_names) - 20} more files")
+
+        # Add tool usage guidance if we have any files
+        if file_info_lines:
+            file_info_lines.extend([
+                "",
+                "IMPORTANT: When the user asks about content that might be in these documents:",
+                "- Use the `file_search` tool FIRST before attempting web searches",
+                "- file_search performs semantic search across all indexed documents",
+                "- If initial results are insufficient, refine your query with different keywords",
+                "- Only use web_search if the information is clearly NOT in the user's documents",
+            ])
+
+            # Only modify message if first part is text (guard against image-only messages)
+            if user_message.parts and hasattr(user_message.parts[0], 'text'):
                 user_text = user_message.parts[0].text
                 file_info_text = user_text + "\n\n" + "\n".join(file_info_lines)
                 user_message.parts = [TextContent(text=file_info_text)]
@@ -388,11 +483,10 @@ class ChatService:
         # Add to messages list
         messages.append(user_message)
 
-        # Get LLM config and create provider
-        llm_config = await cls.get_llm_config(
-            db_session=db_session, model_id=model_id, user_id=user_id
-        )
+        # Create provider from llm_config (already fetched above)
+        logger.info(f"Creating LLM provider for model: {llm_config.model}, api_type: {llm_config.api_type}")
         provider = LLMProviderFactory.create_provider(llm_config)
+        logger.info(f"LLM provider created: {type(provider).__name__}")
 
         # Get code interpreter flag from tools
         is_code_interpreter_enabled = bool(tools and tools.get("code_interpreter"))
@@ -460,7 +554,12 @@ class ChatService:
                 # Check for cancellation before starting new turn
                 await cancel.raise_if_cancelled(run_id)
 
-                messages = ContextWindowManager.reduce_message_tokens(messages)
+                logger.info(f"Starting LLM turn for session {session_id}, messages: {len(messages)}, tools: {len(tools_to_pass)}")
+                # Reduce messages using dynamic context window from llm_config
+                messages = ContextWindowManager.reduce_message_tokens(
+                    messages, max_context=llm_config.get_max_context_tokens()
+                )
+                logger.info(f"After context reduction: {len(messages)} messages")
                 # Accumulate parts for this assistant turn
                 run_response: RunResponseOutput = None
                 file_parts = []

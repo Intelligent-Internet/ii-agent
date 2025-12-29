@@ -109,11 +109,13 @@ class BaseSandbox(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    async def expose_port(self, port: int) -> str:
+    async def expose_port(self, port: int, external: bool = False) -> str:
         """Expose a port in a sandbox.
 
         Args:
             port: Port to expose
+            external: If True, return host-accessible URL (for browser access).
+                     If False, return internal URL (for container-to-container).
 
         Returns:
             URL to access the port
@@ -189,7 +191,7 @@ class BaseSandbox(ABC):
             File content as string
         """
         pass
-    
+
     @abstractmethod
     async def run_cmd(self, command: str, background: bool = False) -> str:
         """Run a command in the sandbox.

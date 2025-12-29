@@ -32,7 +32,8 @@ class FileService:
         
         signed_url = None
         if file.storage_path:
-            signed_url = self.storage.get_download_signed_url(file.storage_path)
+            # Use internal=True for URLs that will be used by sandbox-server (container-to-container)
+            signed_url = self.storage.get_download_signed_url(file.storage_path, internal=True)
     
         return FileData(
             id=file.id,

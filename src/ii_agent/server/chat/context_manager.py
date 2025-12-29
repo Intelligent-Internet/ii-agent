@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ii_agent.server.chat.models import Message, TextContent, MessageRole
 from ii_agent.server.chat.message_service import MessageService
 from ii_agent.db.models import Session
+from ii_agent.core.config.llm_config import LLMConfig
 
 logger = logging.getLogger(__name__)
 
@@ -20,11 +21,12 @@ CONTEXT_WINDOWS = {
 class ContextWindowManager:
     """Manages context window and auto-summarization."""
 
-    SUMMARIZATION_THRESHOLD = 0.95  # 95% of context window
+    SUMMARIZATION_THRESHOLD = 0.80  # 80% of context window - triggers before message reduction
+    REDUCTION_THRESHOLD = 0.90  # 90% of context window - last resort before hitting limit
 
     @classmethod
     async def check_and_summarize(
-        cls, *, db_session: AsyncSession, session: Session, model_id: str
+        cls, *, db_session: AsyncSession, session: Session, model_id: str, llm_config: Optional[LLMConfig] = None
     ) -> Optional[str]:
         """
         Check if summarization is needed and create summary if so.
@@ -33,12 +35,16 @@ class ContextWindowManager:
             db_session: Database session
             session: Session object
             model_id: Model ID for context window lookup
+            llm_config: Optional LLM config for dynamic context window (if None, uses fallback)
 
         Returns:
             Summary message ID if created, None otherwise
         """
-        # Get context window for model
-        context_window = CONTEXT_WINDOWS.get(model_id, 128_000)
+        # Get context window for model - use llm_config if available for dynamic limit
+        if llm_config:
+            context_window = llm_config.get_max_context_tokens()
+        else:
+            context_window = CONTEXT_WINDOWS.get(model_id, 128_000)
         threshold = int(context_window * cls.SUMMARIZATION_THRESHOLD)
 
         # Check if we're at threshold
@@ -148,32 +154,32 @@ class ContextWindowManager:
 
 
     @classmethod
-    def reduce_message_tokens(cls, messages: List[Message]) -> List[Message]:
+    def reduce_message_tokens(cls, messages: List[Message], max_context: int = 128_000) -> List[Message]:
         """
-        Reduce message list if total tokens >= 90% of 128k context window.
+        Reduce message list if total tokens >= 90% of context window.
         Removes oldest messages until reaching a user message with remaining tokens < threshold.
 
         Args:
             messages: List of messages to potentially reduce (must be in chronological order)
+            max_context: Maximum context window size in tokens (default: 128k)
 
         Returns:
             Reduced list of messages starting from a user message (or original if under threshold)
         """
-        MAX_CONTEXT = 128_000
-        REDUCTION_THRESHOLD = int(MAX_CONTEXT * 0.9)  # 115,200 tokens
+        reduction_threshold = int(max_context * cls.REDUCTION_THRESHOLD)
 
         # Calculate total tokens
         total_tokens = sum(msg.tokens or 0 for msg in messages)
 
         # If under threshold, return original list
-        if total_tokens < REDUCTION_THRESHOLD:
+        if total_tokens < reduction_threshold:
             logger.debug(
-                f"Messages under threshold: {total_tokens}/{REDUCTION_THRESHOLD} tokens"
+                f"Messages under threshold: {total_tokens}/{reduction_threshold} tokens"
             )
             return messages
 
         logger.info(
-            f"Reducing messages: {total_tokens} tokens >= {REDUCTION_THRESHOLD} threshold"
+            f"Reducing messages: {total_tokens} tokens >= {reduction_threshold} threshold"
         )
 
         # Remove messages from beginning until we hit a user message and are under threshold
@@ -185,7 +191,7 @@ class ContextWindowManager:
             current_tokens -= msg.tokens or 0
 
             # Check if this is a user message AND we're now under threshold
-            if msg.role == MessageRole.USER and current_tokens < REDUCTION_THRESHOLD:
+            if msg.role == MessageRole.USER and current_tokens < reduction_threshold:
                 start_index = i
                 break
 

@@ -53,9 +53,60 @@ class LLMConfig(BaseModel):
     azure_endpoint: str | None = Field(default=None)
     azure_api_version: str | None = Field(default=None)
     cot_model: bool = Field(default=False)
+    enable_extended_context: bool = Field(
+        default=False,
+        description="Enable 1M token context window for Anthropic models (may increase costs)"
+    )
     config_type: Literal["system", "user"] | None = Field(
         default="system", description="system or user"
     )
+
+    def get_max_context_tokens(self) -> int:
+        """Get the maximum context window size for this model configuration.
+
+        Returns:
+            Maximum context tokens (1M if extended context enabled and Anthropic, otherwise 200K for Anthropic, 128K default)
+        """
+        if self.api_type == APITypes.ANTHROPIC:
+            if self.enable_extended_context:
+                return 1_000_000  # 1M context window with beta header
+            return 200_000  # Standard Anthropic context window
+        # Default for other models
+        return 128_000
+
+    def get_max_output_tokens(self) -> int:
+        """Get the maximum output/completion tokens for this model.
+
+        Returns:
+            Maximum output tokens based on model and API type
+        """
+        if self.api_type == APITypes.ANTHROPIC:
+            # All current Claude 4.x models support 64K output tokens
+            # Claude 3.x models supported 4K output tokens
+            model_lower = self.model.lower()
+            if "claude-3" in model_lower:
+                return 4096  # Legacy Claude 3 models
+            return 65536  # Claude 4.x models (64K tokens)
+        elif self.api_type == APITypes.OPENAI:
+            model_lower = self.model.lower()
+            # o1 series models have 32K or 100K output limits
+            if model_lower.startswith("o1-") or model_lower == "o1":
+                if "preview" in model_lower:
+                    return 32768  # o1-preview
+                return 100000  # o1, o1-mini, o1-2024-12-17
+            # o3/o4 mini models
+            if model_lower.startswith("o3-mini") or model_lower.startswith("o4-mini"):
+                return 16384  # 16K for o3-mini, o4-mini
+            # GPT-4o and GPT-4.1 series
+            if "gpt-4" in model_lower or "gpt-5" in model_lower:
+                return 16384  # GPT-4o, GPT-4.1, GPT-5 have 16K output limit
+            # Default for other OpenAI models
+            return 4096
+        elif self.api_type == APITypes.GEMINI:
+            # Gemini models typically support 8192 output tokens
+            return 8192
+        # Conservative default for unknown models
+        return 4096
 
     @field_serializer("api_key")
     def api_key_serializer(self, api_key: SecretStr | None, info: SerializationInfo):

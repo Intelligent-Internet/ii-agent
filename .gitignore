@@ -200,3 +200,5 @@ output/
 
 # local only scripts
 start_tool_server.sh
+docker/.stack.env.local
+scripts/local/

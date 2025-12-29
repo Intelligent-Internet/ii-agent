@@ -1,5 +1,5 @@
 import { useGoogleLogin } from '@react-oauth/google'
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
@@ -12,8 +12,10 @@ import { Form, FormControl, FormField, FormItem } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { ACCESS_TOKEN } from '@/constants/auth'
 import { authService } from '@/services/auth.service'
+import { settingsService } from '@/services/settings.service'
 import { useAppDispatch } from '@/state/store'
 import { setUser } from '@/state/slice/user'
+import { setAvailableModels, setSelectedModel } from '@/state'
 import { fetchWishlist } from '@/state/slice/favorites'
 import { toast } from 'sonner'
 
@@ -103,6 +105,18 @@ export function LoginPage() {
 
                 const userRes = await authService.getCurrentUser()
                 dispatch(setUser(userRes))
+
+                // Fetch available LLM models after login
+                try {
+                    const modelsData = await settingsService.getAvailableModels()
+                    dispatch(setAvailableModels(modelsData?.models || []))
+                    if (modelsData?.models?.length) {
+                        dispatch(setSelectedModel(modelsData.models[0].id))
+                    }
+                } catch (modelError) {
+                    console.error('Failed to fetch LLM models:', modelError)
+                }
+
                 dispatch(fetchWishlist())
 
                 navigate('/')
@@ -322,8 +336,63 @@ export function LoginPage() {
                     />
                     Continue with II Account
                 </Button>
+                <DevLoginButton
+                    apiBaseUrl={apiBaseUrl}
+                    onSuccess={handleAuthSuccess}
+                />
             </div>
         </div>
+    )
+}
+
+/**
+ * Dev login button - only shows if DEV_AUTH_ENABLED is set on backend
+ */
+function DevLoginButton({
+    apiBaseUrl,
+    onSuccess
+}: {
+    apiBaseUrl: string
+    onSuccess: (payload: IiAuthPayload | null | undefined) => Promise<void>
+}) {
+    const [isAvailable, setIsAvailable] = React.useState<boolean | null>(null)
+
+    React.useEffect(() => {
+        // Check if dev login is available
+        fetch(`${apiBaseUrl}/auth/dev/login`)
+            .then((res) => {
+                // 403 means endpoint exists but not enabled
+                // 200 means it's available
+                setIsAvailable(res.ok)
+            })
+            .catch(() => setIsAvailable(false))
+    }, [apiBaseUrl])
+
+    const handleDevLogin = async () => {
+        try {
+            const res = await fetch(`${apiBaseUrl}/auth/dev/login`)
+            if (!res.ok) {
+                throw new Error('Dev login failed')
+            }
+            const data = await res.json()
+            await onSuccess(data)
+        } catch (error) {
+            console.error('Dev login failed:', error)
+        }
+    }
+
+    if (isAvailable !== true) {
+        return null
+    }
+
+    return (
+        <Button
+            size="xl"
+            onClick={handleDevLogin}
+            className="w-full mt-4 bg-amber-500 hover:bg-amber-600 text-black font-semibold shadow-btn"
+        >
+            🔧 Dev Login (Local Mode)
+        </Button>
     )
 }
 

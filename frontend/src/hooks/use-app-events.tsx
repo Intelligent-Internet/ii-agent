@@ -170,6 +170,17 @@ export function useAppEvents() {
                     dispatch(setLoading(false))
                     dispatch(setStopped(true))
 
+                    // Mark all running subagents as stopped/completed (create new objects to avoid mutation)
+                    for (const [agentId, context] of activeAgentsRef.current.entries()) {
+                        if (context.status === 'running') {
+                            activeAgentsRef.current.set(agentId, {
+                                ...context,
+                                status: 'completed',
+                                endTime: Date.now()
+                            })
+                        }
+                    }
+
                     break
                 }
 
@@ -177,6 +188,20 @@ export function useAppEvents() {
                     const status = data.content.status as string | undefined
                     if (typeof status === 'string') {
                         dispatch(setLoading(status === 'running'))
+                        // Handle cancelled status to properly set stopped state
+                        if (status === 'cancelled') {
+                            dispatch(setStopped(true))
+                            // Mark all running subagents as stopped/completed (create new objects to avoid mutation)
+                            for (const [agentId, context] of activeAgentsRef.current.entries()) {
+                                if (context.status === 'running') {
+                                    activeAgentsRef.current.set(agentId, {
+                                        ...context,
+                                        status: 'completed',
+                                        endTime: Date.now()
+                                    })
+                                }
+                            }
+                        }
                     }
                     const statusMessage = data.content.message as string | undefined
                     if (statusMessage) {

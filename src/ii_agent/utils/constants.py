@@ -2,7 +2,11 @@ UPLOAD_FOLDER_NAME = "uploaded_files"
 COMPLETE_MESSAGE = "Completed the task."
 DEFAULT_MODEL = "claude-sonnet-4@20250514"
 
-TOKEN_BUDGET = 120_000
+# Fallback token budgets for context management
+# NOTE: Runtime code calculates dynamic budgets based on model's max context (70% of max_context_tokens)
+# These serve as default parameters only when no explicit budget is provided
+TOKEN_BUDGET = 120_000  # Fallback for standard models (approximates 70% of 200K context)
+TOKEN_BUDGET_EXTENDED = 800_000  # Fallback for extended context models (80% of 1M to leave headroom)
 SUMMARY_MAX_TOKENS = 8192
 VISIT_WEB_PAGE_MAX_OUTPUT_LENGTH = 40_000
 COMPRESSION_TOKEN_THRESHOLD = 0.7

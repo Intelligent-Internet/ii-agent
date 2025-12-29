@@ -10,6 +10,7 @@ from fastapi.responses import StreamingResponse, Response
 
 from ii_sandbox_server.config import SandboxConfig, SandboxServerConfig
 from ii_sandbox_server.lifecycle.sandbox_controller import SandboxController
+from ii_sandbox_server.sandboxes.port_manager import PortPoolManager
 from ii_sandbox_server.models import (
     CreateSandboxRequest,
     CreateSandboxResponse,
@@ -87,6 +88,19 @@ async def lifespan(app: FastAPI):
     config = SandboxServerConfig()
     sandbox_config = SandboxConfig()
 
+    # Scan for existing containers BEFORE starting the controller
+    # This prevents port conflicts when sandbox-server restarts
+    if sandbox_config.provider_type in ("docker", "local"):
+        try:
+            import docker
+            docker_client = docker.from_env()
+            port_manager = PortPoolManager.get_instance()
+            discovered = port_manager.scan_existing_containers(docker_client)
+            if discovered > 0:
+                logger.info(f"Registered {discovered} existing sandbox containers on startup")
+        except Exception as e:
+            logger.warning(f"Failed to scan existing containers on startup: {e}")
+
     sandbox_controller = SandboxController(sandbox_config)
     await sandbox_controller.start()
     logger.info(f"Sandbox server started on {config.host}:{config.port}")
@@ -112,6 +126,42 @@ app = FastAPI(
 async def health_check():
     """Health check endpoint."""
     return {"status": "healthy"}
+
+
+@app.get("/ports/stats")
+async def get_port_stats():
+    """Get port pool statistics.
+
+    Returns information about allocated and available ports in the sandbox port pool.
+    """
+    port_manager = PortPoolManager.get_instance()
+    return port_manager.get_stats()
+
+
+@app.get("/ports/allocations")
+async def list_port_allocations():
+    """List all current port allocations.
+
+    Returns details of which ports are allocated to which sandboxes.
+    """
+    port_manager = PortPoolManager.get_instance()
+    return {"allocations": port_manager.list_allocations()}
+
+
+@app.post("/ports/cleanup")
+async def cleanup_orphaned_ports():
+    """Clean up port allocations for containers that no longer exist.
+
+    This removes port reservations for crashed or manually removed containers.
+    """
+    import docker
+    port_manager = PortPoolManager.get_instance()
+    try:
+        client = docker.from_env()
+        cleaned = port_manager.cleanup_orphaned_allocations(client)
+        return {"cleaned": cleaned, "message": f"Cleaned up {cleaned} orphaned allocations"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/sandboxes/create", response_model=CreateSandboxResponse)
@@ -292,7 +342,7 @@ async def expose_port(request: ExposePortRequest):
         )
 
     try:
-        url = await sandbox_controller.expose_port(request.sandbox_id, request.port)
+        url = await sandbox_controller.expose_port(request.sandbox_id, request.port, request.external)
 
         return ExposePortResponse(
             success=True, url=url, message=f"Port {request.port} exposed successfully"
@@ -348,7 +398,7 @@ async def upload_file(
     try:
         # Read file content
         content = await file.read()
-        
+
         success = await sandbox_controller.write_file(
             sandbox_id, file_path, content
         )
@@ -377,7 +427,7 @@ async def upload_file_from_url(request: UploadFileFromUrlRequest):
             response = await client.get(request.url)
             response.raise_for_status()
             content = response.content
-        
+
         # Write file to sandbox
         success = await sandbox_controller.write_file(
             request.sandbox_id, request.file_path, content
@@ -405,14 +455,14 @@ async def download_to_presigned_url(request: DownloadToPresignedUrlRequest):
         content = await sandbox_controller.download_file(
             request.sandbox_id, request.sandbox_path, request.format
         )
-        
+
         # Determine content type based on format and file extension
         content_type = "application/octet-stream"  # default
         if request.format == "text":
             content_type = "text/plain"  # default for text files
         elif request.format == "bytes":
             content_type = "application/octet-stream"  # default for binary files
-        
+
         async with httpx.AsyncClient() as client:
             response = await client.put(
                 request.presigned_url,
@@ -470,7 +520,7 @@ async def download_file(request: FileOperationRequest):
         content = await sandbox_controller.download_file(
             request.sandbox_id, request.file_path, request.format
         )
-        
+
         if request.format == "bytes":
             # Return raw bytes as response
             if isinstance(content, bytes):

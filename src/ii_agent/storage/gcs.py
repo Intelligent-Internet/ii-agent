@@ -59,7 +59,7 @@ class GCS(BaseStorage):
         return file_obj
 
     def get_download_signed_url(
-        self, path: str, expiration_seconds: int = 3600
+        self, path: str, expiration_seconds: int = 3600, **kwargs
     ) -> str | None:
         blob = self.bucket.blob(path)
 

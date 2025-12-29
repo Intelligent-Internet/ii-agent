@@ -2,7 +2,8 @@ import asyncio
 from dataclasses import dataclass
 import time
 import base64
-import requests  # type: ignore
+
+import httpx
 
 from typing import Any, Optional, cast
 from uuid import UUID
@@ -106,19 +107,20 @@ class AgentController:
 
         # Then process images for image data
         if images_data:
-            for image_data in images_data:
-                response = requests.get(image_data["url"])
-                response.raise_for_status()
-                base64_image = base64.b64encode(response.content).decode("utf-8")
-                image_blocks.append(
-                    {
-                        "source": {
-                            "type": "base64",
-                            "media_type": image_data["content_type"],
-                            "data": base64_image,
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                for image_data in images_data:
+                    response = await client.get(image_data["url"])
+                    response.raise_for_status()
+                    base64_image = base64.b64encode(response.content).decode("utf-8")
+                    image_blocks.append(
+                        {
+                            "source": {
+                                "type": "base64",
+                                "media_type": image_data["content_type"],
+                                "data": base64_image,
+                            }
                         }
-                    }
-                )
+                    )
 
         self.history.add_user_prompt(instruction or "", image_blocks)
 

@@ -253,6 +253,23 @@ class SandboxTable:
                 return True
             return False
 
+    async def get_all_sandboxes(self, exclude_deleted: bool = True) -> List[Sandbox]:
+        """Get all sandboxes from the database.
+
+        Args:
+            exclude_deleted: If True, exclude sandboxes with 'deleted' status
+
+        Returns:
+            List of all sandboxes
+        """
+        async with get_db() as db:
+            query = select(Sandbox)
+            if exclude_deleted:
+                query = query.where(Sandbox.status != "deleted")
+            query = query.order_by(Sandbox.created_at.desc())
+            result = await db.execute(query)
+            return result.scalars().all()
+
     async def get_sandbox_with_user(self, sandbox_id: str) -> Optional[Sandbox]:
         """Get a sandbox with its user relationship loaded.
 

@@ -1,0 +1,194 @@
+# Local-only docker-compose for ii-agent WITHOUT E2B cloud/ngrok
+# This setup uses local Docker containers for sandboxes instead of E2B.
+#
+# Usage:
+#   1. Build the sandbox image first:
+#      docker build -t ii-agent-sandbox:latest -f e2b.Dockerfile .
+#
+#   2. Copy and configure environment:
+#      cp docker/.stack.env.local.example docker/.stack.env.local
+#
+#   3. Start the stack:
+#      docker compose -f docker/docker-compose.local-only.yaml --env-file docker/.stack.env.local up -d
+#
+# This configuration:
+# - Uses Docker provider instead of E2B (all data stays local)
+# - No ngrok tunnel (no public exposure)
+# - Suitable for privileged/NDA-protected data
+# - Works in air-gapped environments
+
+services:
+  postgres:
+    image: postgres:15
+    restart: unless-stopped
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-iiagent}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-iiagent}
+      POSTGRES_DB: ${POSTGRES_DB:-iiagentdev}
+      SANDBOX_DB_NAME: ${SANDBOX_DB_NAME:-ii_sandbox}
+    env_file:
+      - .stack.env.local
+    volumes:
+      - postgres-data-local:/var/lib/postgresql/data
+      - ./postgres-init/create-databases.sh:/docker-entrypoint-initdb.d/create-databases.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-iiagent} -d ${POSTGRES_DB:-iiagentdev}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
+    volumes:
+      - redis-data-local:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  frontend:
+    build:
+      context: ..
+      dockerfile: docker/frontend/Dockerfile
+      args:
+        BUILD_MODE: ${FRONTEND_BUILD_MODE:-production}
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
+        VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:-}
+        VITE_STRIPE_PUBLISHABLE_KEY: ${VITE_STRIPE_PUBLISHABLE_KEY:-}
+        VITE_SENTRY_DSN: ${VITE_SENTRY_DSN:-}
+        VITE_DISABLE_CHAT_MODE: ${VITE_DISABLE_CHAT_MODE:-false}
+    restart: unless-stopped
+    env_file:
+      - .stack.env.local
+    environment:
+      NODE_ENV: production
+    ports:
+      - "${FRONTEND_PORT:-1420}:1420"
+
+  tool-server:
+    build:
+      context: ..
+      dockerfile: docker/backend/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .stack.env.local
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        exec uvicorn ii_tool.integrations.app.main:app
+        --host 0.0.0.0
+        --port 1236
+    ports:
+      - "${TOOL_SERVER_PORT:-1236}:1236"
+    volumes:
+      - ii-agent-filestore-local:/.ii_agent
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:1236/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  sandbox-server:
+    build:
+      context: ..
+      dockerfile: docker/backend/Dockerfile
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - .stack.env.local
+    environment:
+      SANDBOX_DATABASE_URL: ${SANDBOX_DATABASE_URL}
+      SERVER_HOST: 0.0.0.0
+      SERVER_PORT: ${SANDBOX_SERVER_PORT:-8100}
+      REDIS_URL: redis://redis:6379/0
+      MCP_PORT: ${MCP_PORT:-6060}
+      # Use Docker provider instead of E2B
+      PROVIDER: docker
+      PROVIDER_TYPE: docker
+      SANDBOX_DOCKER_IMAGE: ${SANDBOX_DOCKER_IMAGE:-ii-agent-sandbox:latest}
+      # Network for sandbox containers to enable service discovery
+      DOCKER_NETWORK: docker_default
+      # Enable local mode features (orphan cleanup, etc.)
+      LOCAL_MODE: "true"
+      ORPHAN_CLEANUP_ENABLED: "true"
+      ORPHAN_CLEANUP_INTERVAL_SECONDS: "300"
+      # Backend URL for session verification during orphan cleanup
+      BACKEND_URL: "http://backend:8000"
+    entrypoint: ["/bin/bash", "/app/start_sandbox_server.sh"]
+    ports:
+      - "${SANDBOX_SERVER_PORT:-8100}:8100"
+    # Mount Docker socket so sandbox-server can create containers
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - sandbox-workspaces:/tmp/ii-agent-sandboxes
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8100/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ..
+      dockerfile: docker/backend/Dockerfile
+    init: true
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      sandbox-server:
+        condition: service_started
+      tool-server:
+        condition: service_started
+    env_file:
+      - .stack.env.local
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      SANDBOX_SERVER_URL: http://sandbox-server:${SANDBOX_SERVER_PORT:-8100}
+      # Tool server URL for backend-to-tool-server (Docker network)
+      TOOL_SERVER_URL: http://tool-server:1236
+      # Tool server URL for sandbox-to-tool-server (via host)
+      SANDBOX_TOOL_SERVER_URL: ${SANDBOX_TOOL_SERVER_URL:-http://host.docker.internal:1236}
+      REDIS_SESSION_URL: redis://redis:6379/1
+      # Use local filesystem storage instead of GCS
+      STORAGE_PROVIDER: local
+      LOCAL_STORAGE_PATH: /.ii_agent/storage
+      # Enable dev authentication (bypasses OAuth)
+      DEV_AUTH_ENABLED: "true"
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    volumes:
+      - ii-agent-filestore-local:/.ii_agent
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres-data-local:
+  redis-data-local:
+  ii-agent-filestore-local:
+  sandbox-workspaces:

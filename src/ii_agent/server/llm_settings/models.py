@@ -50,7 +50,7 @@ class ModelSettingInfo(BaseModel):
     max_retries: int
     max_message_chars: int
     temperature: float
-    thinking_tokens: int
+    thinking_tokens: int = 16000
     is_active: bool
     has_api_key: bool
     created_at: str
@@ -90,6 +90,7 @@ class ModelSettingInfoWithKey(ModelSettingInfo):
                 self.metadata.get("vertex_project_id") if self.metadata else None
             ),
             cot_model=self.metadata.get("cot_model", False) if self.metadata else False,
+            enable_extended_context=self.metadata.get("enable_extended_context", False) if self.metadata else False,
             config_type="user",
         )
 

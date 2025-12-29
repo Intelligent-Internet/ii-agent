@@ -1069,6 +1069,20 @@ wheels = [
 ]
 
 [[package]]
+name = "docker"
+version = "7.1.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pywin32", marker = "sys_platform == 'win32'" },
+    { name = "requests" },
+    { name = "urllib3" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/91/9b/4a2ea29aeba62471211598dac5d96825bb49348fa07e906ea930394a83ce/docker-7.1.0.tar.gz", hash = "sha256:ad8c70e6e3f8926cb8a92619b832b4ea5299e2831c14284663184e200546fa6c", size = 117834, upload-time = "2024-05-23T11:13:57.216Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e3/26/57c6fb270950d476074c087527a558ccb6f4436657314bfb6cdf484114c4/docker-7.1.0-py3-none-any.whl", hash = "sha256:c96b93b7f0a746f9e77d325bcfb87422a3d8bd4f03136ae8a85b37f1898d5fc0", size = 147774, upload-time = "2024-05-23T11:13:55.01Z" },
+]
+
+[[package]]
 name = "docstring-parser"
 version = "0.17.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2134,6 +2148,7 @@ dependencies = [
     { name = "cryptography" },
     { name = "dataclasses-json" },
     { name = "ddgs" },
+    { name = "docker" },
     { name = "duckduckgo-search" },
     { name = "e2b-code-interpreter" },
     { name = "email-validator" },
@@ -2218,6 +2233,7 @@ requires-dist = [
     { name = "dataclasses-json", specifier = ">=0.6.7" },
     { name = "datasets", marker = "extra == 'gaia'", specifier = ">=3.6.0" },
     { name = "ddgs", specifier = ">=9.9.1" },
+    { name = "docker", specifier = ">=7.0.0" },
     { name = "duckduckgo-search", specifier = ">=8.0.1" },
     { name = "e2b-code-interpreter", specifier = "==1.2.0b5" },
     { name = "email-validator", specifier = ">=2.0.0" },
@@ -2260,7 +2276,7 @@ requires-dist = [
     { name = "python-pptx", specifier = ">=1.0.2" },
     { name = "python-socketio", specifier = ">=5.13.0" },
     { name = "redis", specifier = ">=5.0.0" },
-    { name = "rich", specifier = "==14.1.0" },
+    { name = "rich", specifier = ">=13.9.4" },
     { name = "speechrecognition", specifier = ">=3.14.2" },
     { name = "sqlalchemy", marker = "extra == 'gaia'", specifier = ">=2.0.0" },
     { name = "starlette", extras = ["full"], specifier = ">=0.46.2" },

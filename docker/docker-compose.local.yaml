@@ -1,0 +1,10 @@
+# Override file to disable ngrok for local-only development
+# Usage: docker compose -f docker-compose.stack.yaml -f docker-compose.local.yaml up -d
+
+services:
+  ngrok:
+    # Disable ngrok by setting an invalid entrypoint that exits immediately
+    entrypoint: ["/bin/sh", "-c", "echo 'ngrok disabled for local development' && exit 0"]
+    restart: "no"
+    profiles:
+      - disabled

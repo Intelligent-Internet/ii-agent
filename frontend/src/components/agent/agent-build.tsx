@@ -764,7 +764,7 @@ const AgentBuild = ({ className }: AgentBuildProps) => {
                     <AgentController />
                 </div>
                 <p className="text-xs dark:text-white font-semibold text-center mt-4">
-                    Once finished, your app screen will placed here
+                    Once finished, your app screen will be placed here
                 </p>
             </div>
             {/* <div className="flex flex-col items-center justify-center p-6 bg-firefly/10 dark:bg-sky-blue/10 rounded-xl dark:text-white w-full max-w-[580px]">

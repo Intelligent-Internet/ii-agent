@@ -56,7 +56,7 @@ class RegisterPort(BaseTool):
         tool_input: dict[str, Any],
     ) -> ToolResult:
         port = tool_input["port"]
-        out = await self.sandbox.expose_port(port)   
+        out = await self.sandbox.expose_port(port, external=True)
 
         return ToolResult(
             llm_content=f"Successfully registered port {port}. Tool output: {out}",

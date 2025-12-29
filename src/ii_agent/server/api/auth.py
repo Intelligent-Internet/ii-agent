@@ -541,3 +541,55 @@ async def google_callback(
 @router.get("/me", response_model=UserPublic)
 async def reader_user_me(current_user: CurrentUser) -> Any:
     return current_user
+
+
+@router.get("/dev/login")
+async def dev_login(db: DBSession) -> TokenResponse:
+    """Development-only login endpoint.
+
+    Creates a token for the admin user without external OAuth.
+    Only available when DEV_AUTH_ENABLED=true environment variable is set.
+    """
+    import os
+
+    if os.getenv("DEV_AUTH_ENABLED", "").lower() != "true":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Dev login is not enabled. Set DEV_AUTH_ENABLED=true to enable.",
+        )
+
+    # Get or create admin user
+    admin_user = (
+        await db.execute(select(User).filter(User.email == "admin@ii.inc"))
+    ).scalar_one_or_none()
+
+    if not admin_user:
+        admin_user = User(
+            id="admin",
+            email="admin@ii.inc",
+            first_name="Admin",
+            last_name="User",
+            role="admin",
+            is_active=True,
+            email_verified=True,
+            credits=1000.0,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+        db.add(admin_user)
+        await db.commit()
+        await db.refresh(admin_user)
+
+    # Create tokens
+    access_token = jwt_handler.create_access_token(
+        user_id=admin_user.id,
+        email=admin_user.email,
+        role=admin_user.role or "admin",
+    )
+    refresh_token = jwt_handler.create_refresh_token(user_id=admin_user.id)
+
+    return TokenResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        expires_in=jwt_handler.access_token_expire_minutes * 60,
+    )

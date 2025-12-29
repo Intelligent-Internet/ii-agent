@@ -106,6 +106,9 @@ services:
       SERVER_PORT: ${SANDBOX_SERVER_PORT:-8100}
       REDIS_URL: redis://redis:6379/0
       MCP_PORT: ${MCP_PORT:-6060}
+      DOCKER_NETWORK: docker_default
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
     entrypoint: ["/bin/bash", "/app/start_sandbox_server.sh"]
     ports:
       - "${SANDBOX_SERVER_PORT:-8100}:8100"
@@ -136,7 +139,8 @@ services:
       GOOGLE_APPLICATION_CREDENTIALS: /app/google-application-credentials.json
       DATABASE_URL: ${DATABASE_URL}
       SANDBOX_SERVER_URL: http://sandbox-server:${SANDBOX_SERVER_PORT:-8100}
-      TOOL_SERVER_URL: ${PUBLIC_TOOL_SERVER_URL}
+      # Internal URL for sandbox containers to reach tool-server (container-to-container)
+      TOOL_SERVER_URL: http://tool-server:${TOOL_SERVER_PORT:-1236}
       REDIS_SESSION_URL: redis://redis:6379/1
     ports:
       - "${BACKEND_PORT:-8000}:8000"

@@ -1,9 +1,17 @@
-from typing import Dict
+from typing import Dict, TYPE_CHECKING
 from fastmcp import Client, FastMCP
 from ii_tool.tools.mcp_tool import MCPTool
 
+if TYPE_CHECKING:
+    from ii_sandbox_server.client.client import SandboxClient
 
-async def load_tools_from_mcp(transport: FastMCP | str | Dict, timeout: int = 60) -> list[MCPTool]:
+
+async def load_tools_from_mcp(
+    transport: FastMCP | str | Dict,
+    timeout: int = 60,
+    sandbox_client: "SandboxClient | None" = None,
+    sandbox_id: str | None = None,
+) -> list[MCPTool]:
     """Load tools from an MCP (Model Context Protocol) server.
 
     This function establishes a connection to an MCP server, retrieves all available tools,
@@ -60,6 +68,8 @@ async def load_tools_from_mcp(transport: FastMCP | str | Dict, timeout: int = 60
                     description=tool.description,
                     input_schema=tool.inputSchema,
                     read_only=read_only,
+                    sandbox_client=sandbox_client,
+                    sandbox_id=sandbox_id,
                 )
             )
     return tools

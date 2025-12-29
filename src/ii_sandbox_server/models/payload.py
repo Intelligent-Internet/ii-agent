@@ -95,6 +95,7 @@ class ExposePortRequest(BaseModel):
 
     sandbox_id: str
     port: int
+    external: bool = False
 
 
 class ExposePortResponse(BaseModel):

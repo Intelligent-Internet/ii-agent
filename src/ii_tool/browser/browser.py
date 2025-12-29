@@ -87,6 +87,9 @@ class Browser:
     Unified Browser responsible for interacting with the browser via Playwright.
     """
 
+    MAX_TABS = 20  # Prevent resource exhaustion
+    TAB_OPERATION_TIMEOUT = 10000  # 10 seconds timeout for tab operations
+
     def __init__(
         self, config: BrowserConfig = BrowserConfig(), close_context: bool = True
     ):
@@ -204,6 +207,8 @@ class Browser:
             if len(self.context.pages) > 0:
                 self.current_page = self.context.pages[-1]
             else:
+                # Enforce MAX_TABS limit before creating new page
+                await self._enforce_tab_limit()
                 self.current_page = await self.context.new_page()
 
         return self
@@ -318,7 +323,7 @@ class Browser:
     async def goto(self, url: str):
         """Navigate to a URL"""
         page = await self.get_current_page()
-        await page.goto(url, wait_until="domcontentloaded")
+        await page.goto(url, wait_until="domcontentloaded", timeout=30000)
         await asyncio.sleep(2)
 
     async def get_tabs_info(self) -> list[TabInfo]:
@@ -344,20 +349,87 @@ class Browser:
         self.current_page = page
 
         await page.bring_to_front()
-        await page.wait_for_load_state()
+        try:
+            await page.wait_for_load_state(timeout=10000)
+        except Exception as e:
+            logger.warning(f"wait_for_load_state timeout on switch_to_tab: {e}")
+
+    async def _force_close_page(self, page: Page) -> bool:
+        """Force close a page with escalating methods.
+
+        Returns True if page was closed, False if all methods failed.
+        """
+        # Method 1: Normal close with beforeunload skipped (2s timeout)
+        try:
+            await asyncio.wait_for(page.close(run_before_unload=False), timeout=2.0)
+            return True
+        except asyncio.TimeoutError:
+            logger.warning(f"Normal close timed out for: {page.url}")
+        except Exception as e:
+            logger.warning(f"Normal close failed: {e}")
+
+        # Method 2: Try to navigate away first, then close (can break stuck JS)
+        try:
+            await asyncio.wait_for(page.goto("about:blank", wait_until="commit"), timeout=2.0)
+            await asyncio.wait_for(page.close(run_before_unload=False), timeout=2.0)
+            return True
+        except asyncio.TimeoutError:
+            logger.warning(f"Navigate+close timed out for: {page.url}")
+        except Exception as e:
+            logger.warning(f"Navigate+close failed: {e}")
+
+        # Method 3: Page is truly stuck - it will be orphaned but we continue
+        logger.error(f"Could not force close page: {page.url} - page may be orphaned")
+        return False
+
+    async def _enforce_tab_limit(self):
+        """Enforce MAX_TABS limit by closing oldest tabs."""
+        if self.context is None:
+            return
+
+        cleanup_attempts = 0
+        max_cleanup_attempts = 3  # Prevent infinite loop if closes keep failing
+
+        while len(self.context.pages) >= self.MAX_TABS and cleanup_attempts < max_cleanup_attempts:
+            cleanup_attempts += 1
+            oldest_page = self.context.pages[0]
+
+            if oldest_page != self.current_page:
+                logger.info(f"Closing oldest tab to stay under {self.MAX_TABS} tab limit: {oldest_page.url}")
+                closed = await self._force_close_page(oldest_page)
+                if not closed:
+                    # Skip this stuck page, try next oldest
+                    if len(self.context.pages) > 1:
+                        oldest_page = self.context.pages[1]
+                        await self._force_close_page(oldest_page)
+                    break
+            else:
+                # Current page is oldest, close second oldest
+                if len(self.context.pages) > 1:
+                    await self._force_close_page(self.context.pages[1])
+                break
 
     async def create_new_tab(self, url: str | None = None) -> None:
-        """Create a new tab and optionally navigate to a URL"""
+        """Create a new tab and optionally navigate to a URL.
+
+        Automatically closes oldest tabs if MAX_TABS limit is reached.
+        """
         if self.context is None:
             await self._init_browser()
+
+        # Auto-cleanup: close oldest tabs if at limit
+        await self._enforce_tab_limit()
 
         new_page = await self.context.new_page()
         self.current_page = new_page
 
-        await new_page.wait_for_load_state()
+        try:
+            await new_page.wait_for_load_state(timeout=self.TAB_OPERATION_TIMEOUT)
+        except Exception as e:
+            logger.warning(f"wait_for_load_state timeout on new tab: {e}")
 
         if url:
-            await new_page.goto(url, wait_until="domcontentloaded")
+            await new_page.goto(url, wait_until="domcontentloaded", timeout=30000)
 
     async def close_current_tab(self):
         """Close the current tab"""

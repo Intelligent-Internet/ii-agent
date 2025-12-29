@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import uuid
+from datetime import datetime, timezone, timedelta
 from typing import Any, IO, AsyncIterator, Literal, Optional
 
 from ii_sandbox_server.db.manager import Sandboxes
@@ -47,9 +48,18 @@ class SandboxController:
         self._consumer_task = None
         self._consumer_lock = asyncio.Lock()
 
+        # Orphan cleanup task (local mode only)
+        self._orphan_cleanup_task: Optional[asyncio.Task] = None
+
     async def start(self):
         """Start the sandbox manager."""
         await self._ensure_consumer_started()
+
+        # Start orphan cleanup task if local mode is enabled
+        if self.sandbox_config.local_mode and self.sandbox_config.orphan_cleanup_enabled:
+            self._orphan_cleanup_task = asyncio.create_task(self._orphan_cleanup_loop())
+            logger.info("Orphan cleanup task started (local mode)")
+
         logger.info("Sandbox manager started")
 
     async def shutdown(self):
@@ -58,6 +68,13 @@ class SandboxController:
             self._consumer_task.cancel()
             try:
                 await self._consumer_task
+            except asyncio.CancelledError:
+                pass
+
+        if self._orphan_cleanup_task:
+            self._orphan_cleanup_task.cancel()
+            try:
+                await self._orphan_cleanup_task
             except asyncio.CancelledError:
                 pass
 
@@ -130,11 +147,17 @@ class SandboxController:
         sandbox = await self.connect(sandbox_id)
         return await sandbox.download_file_stream(file_path)
 
-    async def expose_port(self, sandbox_id: str, port: int) -> str:
-        """Expose a port on a sandbox."""
+    async def expose_port(self, sandbox_id: str, port: int, external: bool = False) -> str:
+        """Expose a port on a sandbox.
+
+        Args:
+            sandbox_id: Sandbox identifier
+            port: Port to expose
+            external: If True, return host-accessible URL (for browser access)
+        """
         await self._ensure_consumer_started()
         sandbox = await self.connect(sandbox_id)
-        return await sandbox.expose_port(port)
+        return await sandbox.expose_port(port, external=external)
 
     async def connect(self, sandbox_id: str) -> BaseSandbox:
         """Connect to or resume a sandbox."""
@@ -331,3 +354,125 @@ class SandboxController:
                 logger.error(f"Error handling lifecycle message for sandbox {sandbox_id}: {e}")
             except Exception:
                 pass
+
+    async def _check_sandbox_has_active_session(self, sandbox_id: str) -> bool:
+        """Check if a sandbox is still attached to an active session via backend API.
+
+        Args:
+            sandbox_id: The sandbox ID to check
+
+        Returns:
+            True if sandbox has an active session, False otherwise
+        """
+        import httpx
+
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                url = f"{self.sandbox_config.backend_url}/internal/sandboxes/{sandbox_id}/has-active-session"
+                response = await client.get(url)
+
+                if response.status_code == 200:
+                    data = response.json()
+                    return data.get("has_active_session", True)  # Default to True (keep sandbox) on unknown
+                else:
+                    logger.warning(
+                        f"Failed to check session status for sandbox {sandbox_id}: "
+                        f"HTTP {response.status_code}"
+                    )
+                    return True  # Assume active if we can't verify
+
+        except Exception as e:
+            logger.warning(f"Error checking session status for sandbox {sandbox_id}: {e}")
+            return True  # Assume active if we can't connect
+
+    async def _orphan_cleanup_loop(self):
+        """Background task to clean up orphan sandboxes in local mode.
+
+        This task periodically checks for sandboxes that:
+        1. Are NOT attached to an active (non-deleted) chat session
+        2. Were created more than 5 minutes ago (grace period for initialization)
+
+        A sandbox is only cleaned up when its associated session has been
+        explicitly deleted by the user.
+
+        Only runs when local_mode=True and orphan_cleanup_enabled=True.
+        """
+        # Grace period to allow sandbox initialization to complete
+        # This prevents deleting sandboxes that are still being linked to sessions
+        grace_period = timedelta(minutes=5)
+
+        while True:
+            try:
+                await asyncio.sleep(self.sandbox_config.orphan_cleanup_interval_seconds)
+
+                # Get all sandboxes from database
+                all_sandboxes = await Sandboxes.get_all_sandboxes()
+
+                if not all_sandboxes:
+                    continue
+
+                now = datetime.now(timezone.utc)
+                cleaned_count = 0
+
+                for sandbox_data in all_sandboxes:
+                    try:
+                        # Skip already deleted sandboxes
+                        if sandbox_data.status == "deleted":
+                            continue
+
+                        # Skip recently created sandboxes (grace period for initialization)
+                        created_at = sandbox_data.created_at
+                        if created_at and (now - created_at) < grace_period:
+                            logger.debug(
+                                f"Skipping sandbox {sandbox_data.id} - within grace period "
+                                f"(created {(now - created_at).total_seconds():.0f}s ago)"
+                            )
+                            continue
+
+                        # Check if sandbox still has an active session in the backend
+                        has_active_session = await self._check_sandbox_has_active_session(
+                            str(sandbox_data.id)
+                        )
+
+                        if has_active_session:
+                            # Sandbox is still attached to an active session, skip
+                            continue
+
+                        logger.info(
+                            f"Cleaning up orphan sandbox {sandbox_data.id} "
+                            f"(session has been deleted)"
+                        )
+
+                        # Delete the sandbox container
+                        try:
+                            await self.sandbox_provider.delete(
+                                provider_sandbox_id=str(sandbox_data.provider_sandbox_id),
+                                config=self.sandbox_config,
+                                queue=self.queue_scheduler,
+                                sandbox_id=str(sandbox_data.id),
+                            )
+                        except Exception as delete_error:
+                            logger.warning(
+                                f"Failed to delete sandbox container {sandbox_data.id}: {delete_error}"
+                            )
+
+                        # Remove from database
+                        await Sandboxes.delete_sandbox(str(sandbox_data.id))
+                        cleaned_count += 1
+
+                    except Exception as sandbox_error:
+                        logger.warning(
+                            f"Error checking sandbox {sandbox_data.id}: {sandbox_error}"
+                        )
+                        continue
+
+                if cleaned_count > 0:
+                    logger.info(f"Orphan cleanup completed: removed {cleaned_count} orphan sandboxes")
+
+            except asyncio.CancelledError:
+                logger.info("Orphan cleanup task cancelled")
+                break
+            except Exception as e:
+                logger.error(f"Error in orphan cleanup loop: {e}")
+                # Continue the loop even on errors
+                await asyncio.sleep(60)  # Brief pause before retrying
