@@ -87,7 +87,7 @@ class Browser:
     Unified Browser responsible for interacting with the browser via Playwright.
     """
 
-    MAX_TABS = 20  # Prevent resource exhaustion
+    MAX_TABS = 50  # Prevent resource exhaustion
     TAB_OPERATION_TIMEOUT = 10000  # 10 seconds timeout for tab operations
 
     def __init__(
@@ -214,8 +214,12 @@ class Browser:
         return self
 
     async def _on_page_change(self, page: Page):
-        """Handle page change events"""
+        """Handle page change events (including popups and target=_blank links)"""
         logger.info(f"Current page changed to {page.url}")
+
+        # Enforce tab limit when pages are created externally (JS popups, target=_blank)
+        # This prevents resource exhaustion from runaway tab creation
+        await self._enforce_tab_limit()
 
         self._cdp_session = await self.context.new_cdp_session(page)
 

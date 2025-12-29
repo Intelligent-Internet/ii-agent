@@ -240,8 +240,8 @@ class TestShellInitExecute:
         assert "already exists" in result.llm_content
 
     @pytest.mark.asyncio
-    async def test_max_sessions_limit(self, mock_shell_manager, mock_workspace_manager):
-        """Test error when max sessions reached."""
+    async def test_max_sessions_auto_closes_oldest(self, mock_shell_manager, mock_workspace_manager):
+        """Test that when max sessions reached, oldest is auto-closed."""
         # Create max sessions
         for i in range(MAX_SHELL_SESSIONS):
             mock_shell_manager.create_session(f"session_{i}", "/workspace")
@@ -253,8 +253,14 @@ class TestShellInitExecute:
             "start_directory": "/workspace"
         })
         
-        assert result.is_error is True
-        assert "Maximum" in result.llm_content or "maximum" in result.llm_content.lower()
+        # Should succeed by auto-closing the oldest session
+        assert result.is_error is False
+        assert "initialized successfully" in result.llm_content.lower()
+        assert "auto-closed" in result.llm_content.lower()
+        assert "session_0" in result.llm_content  # Oldest session name
+        # Verify oldest session was deleted and new one created
+        assert "session_0" not in mock_shell_manager.get_all_sessions()
+        assert "one_more" in mock_shell_manager.get_all_sessions()
 
     @pytest.mark.asyncio
     async def test_invalid_directory(self, mock_shell_manager, mock_workspace_manager):

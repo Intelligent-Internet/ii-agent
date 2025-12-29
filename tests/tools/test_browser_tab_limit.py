@@ -9,7 +9,7 @@ async def test_max_tabs_constant_exists():
     """Test that MAX_TABS and TAB_OPERATION_TIMEOUT constants are defined."""
     browser = Browser(BrowserConfig())
     assert hasattr(browser, 'MAX_TABS')
-    assert browser.MAX_TABS == 20
+    assert browser.MAX_TABS == 50
     assert hasattr(browser, 'TAB_OPERATION_TIMEOUT')
     assert browser.TAB_OPERATION_TIMEOUT == 10000
 
@@ -24,12 +24,14 @@ async def test_create_new_tab_enforces_limit():
     mock_context.new_page = AsyncMock()
     browser.context = mock_context
 
-    # Create mock pages (simulate 20 existing tabs)
+    # Create mock pages (simulate 50 existing tabs - at limit)
     mock_pages = []
-    for i in range(20):
+    for i in range(50):
         mock_page = MagicMock()
         mock_page.url = f"https://example.com/page{i}"
         mock_pages.append(mock_page)
+
+    mock_context.pages = mock_pages
 
     mock_context.pages = mock_pages
 
@@ -72,13 +74,13 @@ async def test_enforce_tab_limit_method():
 
     # Create mock pages exceeding limit
     mock_pages = []
-    for i in range(25):  # Exceeds MAX_TABS of 20
+    for i in range(55):  # Exceeds MAX_TABS of 50
         mock_page = MagicMock()
         mock_page.url = f"https://example.com/page{i}"
         mock_pages.append(mock_page)
 
     mock_context.pages = mock_pages
-    browser.current_page = mock_pages[10]  # Not the oldest
+    browser.current_page = mock_pages[25]  # Not the oldest
 
     # Mock _force_close_page
     close_calls = []
@@ -96,7 +98,7 @@ async def test_enforce_tab_limit_method():
     # With max_cleanup_attempts=3, it will do at most 3 cleanup iterations
     # Each iteration closes one tab if pages >= MAX_TABS
     assert len(close_calls) == 3  # Should close exactly 3 tabs (limited by max_cleanup_attempts)
-    # Should have closed oldest tabs first (skipping current page at index 10)
+    # Should have closed oldest tabs first (skipping current page at index 25)
     assert close_calls[0].url == "https://example.com/page0"
 
 
@@ -119,9 +121,9 @@ async def test_init_browser_respects_limit():
         mock_browser.new_context.return_value = mock_context
         mock_browser.contexts = []
 
-        # Simulate 20 existing pages (at limit)
+        # Simulate 50 existing pages (at limit)
         mock_pages = []
-        for i in range(20):
+        for i in range(50):
             mock_page = MagicMock()
             mock_page.url = f"https://example.com/page{i}"
             mock_pages.append(mock_page)
@@ -171,15 +173,15 @@ async def test_close_stuck_tab_handling():
     mock_context = AsyncMock()
     browser.context = mock_context
 
-    # Create 21 mock pages (over limit)
+    # Create 51 mock pages (over limit of 50)
     mock_pages = []
-    for i in range(21):
+    for i in range(51):
         mock_page = MagicMock()
         mock_page.url = f"https://example.com/page{i}"
         mock_pages.append(mock_page)
 
     mock_context.pages = mock_pages
-    browser.current_page = mock_pages[10]  # Not the oldest
+    browser.current_page = mock_pages[25]  # Not the oldest
 
     # Mock _force_close_page - first call fails, second succeeds
     close_attempts = []
@@ -213,9 +215,9 @@ async def test_max_cleanup_attempts_limit():
     mock_context = AsyncMock()
     browser.context = mock_context
 
-    # Create 25 mock pages (well over limit)
+    # Create 55 mock pages (well over limit of 50)
     mock_pages = []
-    for i in range(25):
+    for i in range(55):
         mock_page = MagicMock()
         mock_page.url = f"https://example.com/page{i}"
         mock_pages.append(mock_page)
@@ -237,3 +239,83 @@ async def test_max_cleanup_attempts_limit():
 
     # Should stop after max_cleanup_attempts (3), not close all 5 excess tabs
     assert len(close_calls) == 3
+
+@pytest.mark.asyncio
+async def test_on_page_change_enforces_tab_limit():
+    """Test that _on_page_change enforces tab limit when external pages are created.
+    
+    This tests that pages created externally (JS popups, target=_blank links)
+    trigger tab limit enforcement to prevent resource exhaustion.
+    """
+    browser = Browser(BrowserConfig())
+
+    # Mock the context and pages
+    mock_context = AsyncMock()
+    browser.context = mock_context
+
+    # Create mock pages exceeding limit (simulating many popups)
+    mock_pages = []
+    for i in range(55):  # Exceeds MAX_TABS of 50
+        mock_page = MagicMock()
+        mock_page.url = f"https://popup.com/page{i}"
+        mock_pages.append(mock_page)
+
+    mock_context.pages = mock_pages
+    browser.current_page = mock_pages[25]  # Current page in the middle
+
+    # Track _enforce_tab_limit calls
+    enforce_calls = []
+    original_enforce = browser._enforce_tab_limit
+    
+    async def mock_enforce():
+        enforce_calls.append(True)
+        # Simulate closing tabs
+        while len(mock_context.pages) > browser.MAX_TABS:
+            # Find oldest that isn't current
+            for page in mock_context.pages:
+                if page != browser.current_page:
+                    mock_context.pages.remove(page)
+                    break
+
+    browser._enforce_tab_limit = mock_enforce
+
+    # Mock CDP session creation
+    mock_cdp_session = AsyncMock()
+    mock_context.new_cdp_session = AsyncMock(return_value=mock_cdp_session)
+
+    # Simulate a new page being created externally (popup/target=_blank)
+    new_popup_page = MagicMock()
+    new_popup_page.url = "https://popup.com/new"
+
+    # Call _on_page_change as if Playwright fired the "page" event
+    await browser._on_page_change(new_popup_page)
+
+    # Verify _enforce_tab_limit was called
+    assert len(enforce_calls) == 1, "_enforce_tab_limit should be called when handling page change"
+
+
+@pytest.mark.asyncio
+async def test_on_page_change_updates_current_page():
+    """Test that _on_page_change still updates current_page after enforcing limit."""
+    browser = Browser(BrowserConfig())
+
+    # Mock the context (under limit, so no tabs need closing)
+    mock_context = AsyncMock()
+    browser.context = mock_context
+    mock_context.pages = [MagicMock() for _ in range(5)]  # Well under limit
+
+    # Mock CDP session
+    mock_cdp_session = AsyncMock()
+    mock_context.new_cdp_session = AsyncMock(return_value=mock_cdp_session)
+
+    # Mock _enforce_tab_limit to just pass (no tabs to close)
+    browser._enforce_tab_limit = AsyncMock()
+
+    # New page from popup
+    new_page = MagicMock()
+    new_page.url = "https://example.com/new"
+
+    await browser._on_page_change(new_page)
+
+    # Verify current_page is updated
+    assert browser.current_page == new_page

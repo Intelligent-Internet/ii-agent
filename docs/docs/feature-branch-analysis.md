@@ -25,7 +25,7 @@ This feature branch implements a **complete local-only deployment mode** for ii-
 | Constant | Value | Purpose |
 |----------|-------|---------|
 | `TOKEN_BUDGET_NORMAL` | 200,000 | Standard context window |
-| `TOKEN_BUDGET_EXTENDED` | 800,000 | **NEW** - Extended context models (Claude 3.5) |
+| `TOKEN_BUDGET_EXTENDED` | 800,000 | **NEW** - Extended context models (Claude 4.5) |
 
 ### Agent Configuration
 **File:** [src/ii_agent/core/config/ii_agent_config.py](../src/ii_agent/core/config/ii_agent_config.py)
@@ -349,7 +349,7 @@ sandbox-server:
    STORAGE_PROVIDER=local
    LOCAL_MODE=true
    
-   # Remove (no longer needed)
+   # Not required for local mode
    # E2B_API_KEY
    # GCS_BUCKET_NAME
    # GCS_PROJECT_ID

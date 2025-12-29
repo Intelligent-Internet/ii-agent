@@ -58,14 +58,12 @@ class ShellInit(BaseTool):
                     is_error=True
                 )
 
-            # Check session limit to prevent resource exhaustion
+            # Auto-close oldest session when limit reached to prevent resource exhaustion
+            auto_close_msg = ""
             if len(existing_sessions) >= MAX_SHELL_SESSIONS:
-                return ToolResult(
-                    llm_content=f"Maximum number of shell sessions ({MAX_SHELL_SESSIONS}) reached. "
-                               f"Please close existing sessions before creating new ones. "
-                               f"Active sessions: {', '.join(existing_sessions)}",
-                    is_error=True
-                )
+                oldest_session = existing_sessions[0]  # First session is oldest
+                self.shell_manager.delete_session(oldest_session)
+                auto_close_msg = f" (Auto-closed oldest session '{oldest_session}' to make room)"
 
             if not start_directory:
                 start_directory = str(self.workspace_manager.get_workspace_path())
@@ -74,7 +72,7 @@ class ShellInit(BaseTool):
 
             self.shell_manager.create_session(session_name, start_directory)
             return ToolResult(
-                llm_content=f"Session '{session_name}' initialized successfully at start directory `{start_directory}`",
+                llm_content=f"Session '{session_name}' initialized successfully at start directory `{start_directory}`{auto_close_msg}",
                 is_error=False
             )
         except (
