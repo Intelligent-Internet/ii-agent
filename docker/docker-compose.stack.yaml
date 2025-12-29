@@ -45,6 +45,7 @@ services:
         VITE_STRIPE_PUBLISHABLE_KEY: ${VITE_STRIPE_PUBLISHABLE_KEY:-}
         VITE_SENTRY_DSN: ${VITE_SENTRY_DSN:-}
         VITE_DISABLE_CHAT_MODE: ${VITE_DISABLE_CHAT_MODE:-false}
+        VITE_DEV_AUTH_AUTOLOGIN: ${VITE_DEV_AUTH_AUTOLOGIN:-false}
     restart: unless-stopped
     env_file:
       - .stack.env

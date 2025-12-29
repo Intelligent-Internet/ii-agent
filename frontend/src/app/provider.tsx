@@ -7,13 +7,37 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 import { TerminalProvider } from '@/contexts/terminal-context'
 import { AuthProvider } from '@/contexts/auth-context'
 
-export default function AppProvider({ children }: { children: ReactNode }) {
-    const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || ''
+// Check if dev auth auto-login is enabled (skip Google auth in this case)
+const DEV_AUTH_AUTOLOGIN = import.meta.env.VITE_DEV_AUTH_AUTOLOGIN === 'true'
+// Google client ID from env (may be empty/undefined)
+const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID
 
+// Only initialize Google auth if:
+// 1. Dev auto-login is NOT enabled, AND
+// 2. A valid Google client ID is provided
+const shouldEnableGoogleAuth = !DEV_AUTH_AUTOLOGIN && googleClientId
+
+if (DEV_AUTH_AUTOLOGIN) {
+    console.info('[auth] Google auth disabled: VITE_DEV_AUTH_AUTOLOGIN is enabled')
+} else if (!googleClientId) {
+    console.info('[auth] Google auth disabled: missing VITE_GOOGLE_CLIENT_ID')
+} else {
+    console.info('[auth] Google auth enabled with client_id:', googleClientId.slice(0, 10) + '...')
+}
+
+// Wrapper component that conditionally includes GoogleOAuthProvider
+function AuthWrapper({ children }: { children: ReactNode }) {
+    if (!shouldEnableGoogleAuth) {
+        return <>{children}</>
+    }
+    return <GoogleOAuthProvider clientId={googleClientId}>{children}</GoogleOAuthProvider>
+}
+
+export default function AppProvider({ children }: { children: ReactNode }) {
     return (
         <Suspense fallback={<>Loading...</>}>
             <ErrorBoundary FallbackComponent={AppErrorPage}>
-                <GoogleOAuthProvider clientId={googleClientId}>
+                <AuthWrapper>
                     <AuthProvider>
                         <ThemeProvider
                             attribute="class"
@@ -25,7 +49,7 @@ export default function AppProvider({ children }: { children: ReactNode }) {
                             </TerminalProvider>
                         </ThemeProvider>
                     </AuthProvider>
-                </GoogleOAuthProvider>
+                </AuthWrapper>
             </ErrorBoundary>
         </Suspense>
     )

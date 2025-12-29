@@ -1,5 +1,4 @@
-import { useGoogleLogin } from '@react-oauth/google'
-import React, { useCallback, useEffect, useMemo, useRef } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, lazy, Suspense, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
@@ -18,6 +17,12 @@ import { setUser } from '@/state/slice/user'
 import { setAvailableModels, setSelectedModel } from '@/state'
 import { fetchWishlist } from '@/state/slice/favorites'
 import { toast } from 'sonner'
+
+// Lazy load the Google sign-in button to prevent @react-oauth/google import
+// when Google auth is disabled (VITE_GOOGLE_CLIENT_ID not set or VITE_DEV_AUTH_AUTOLOGIN=true)
+const GoogleSignInButton = lazy(
+    () => import('@/components/google-sign-in-button').then(m => ({ default: m.GoogleSignInButton }))
+)
 
 const FormSchema = z.object({
     email: z.email({ error: 'Invalid email address' }),
@@ -38,6 +43,10 @@ export function LoginPage() {
     const { loginWithAuthCode } = useAuth()
     const dispatch = useAppDispatch()
 
+    // Loading state for dev auto-login
+    const [isAutoLoggingIn, setIsAutoLoggingIn] = useState(false)
+    const [autoLoginError, setAutoLoginError] = useState<string | null>(null)
+
     const form = useForm<z.infer<typeof FormSchema>>({
         resolver: zodResolver(FormSchema),
         defaultValues: {
@@ -46,31 +55,13 @@ export function LoginPage() {
         }
     })
 
-    const googleLogin = useGoogleLogin({
-        flow: 'auth-code',
-        onSuccess: async (codeResponse) => {
-            try {
-                await loginWithAuthCode(codeResponse.code)
-                navigate('/')
-            } catch (error: unknown) {
-                const apiError = error as {
-                    response: { data: { detail: string } }
-                }
-                const errorMessage =
-                    typeof apiError?.response?.data?.detail === 'string'
-                        ? apiError.response.data.detail
-                        : 'Login failed. Please try again.'
-                if (errorMessage?.includes('beta')) {
-                    toast.info(errorMessage)
-                } else {
-                    toast.error(errorMessage)
-                }
-            }
-        },
-        onError: (errorResponse) => {
-            console.log('Login Failed:', errorResponse)
-        }
-    })
+    // Check if Google auth is enabled (same logic as provider.tsx)
+    const googleEnabled =
+        !!import.meta.env.VITE_GOOGLE_CLIENT_ID &&
+        import.meta.env.VITE_DEV_AUTH_AUTOLOGIN !== 'true'
+
+    // Check if dev auto-login is enabled
+    const devAutoLoginEnabled = import.meta.env.VITE_DEV_AUTH_AUTOLOGIN === 'true'
 
     const apiBaseUrl = useMemo(
         () => import.meta.env.VITE_API_URL || 'http://localhost:8000',
@@ -179,6 +170,43 @@ export function LoginPage() {
         }
     }, [handleAuthSuccess])
 
+    // Dev auto-login: automatically log in when VITE_DEV_AUTH_AUTOLOGIN is enabled
+    useEffect(() => {
+        if (!devAutoLoginEnabled) {
+            return
+        }
+
+        // Prevent infinite loop - only attempt once
+        if (authHandledRef.current) {
+            return
+        }
+
+        const attemptDevLogin = async () => {
+            setIsAutoLoggingIn(true)
+            setAutoLoginError(null)
+            try {
+                console.info('[auth] Attempting dev auto-login...')
+                const res = await fetch(`${apiBaseUrl}/auth/dev/login`)
+                if (!res.ok) {
+                    const errorText = await res.text().catch(() => 'Unknown error')
+                    console.warn('[auth] Dev login endpoint not available:', errorText)
+                    setAutoLoginError('Dev login endpoint not available. Please use another login method.')
+                    setIsAutoLoggingIn(false)
+                    return
+                }
+                const data = await res.json()
+                await handleAuthSuccess(data)
+                console.info('[auth] Dev auto-login successful')
+            } catch (error) {
+                console.error('[auth] Dev auto-login failed:', error)
+                setAutoLoginError('Auto-login failed. Please try another login method.')
+                setIsAutoLoggingIn(false)
+            }
+        }
+
+        void attemptDevLogin()
+    }, [devAutoLoginEnabled, apiBaseUrl, handleAuthSuccess])
+
     const loginWithII = useCallback(() => {
         authHandledRef.current = false
 
@@ -214,6 +242,41 @@ export function LoginPage() {
     }
 
     const hideSigninWithPassword = true
+
+    // When dev auto-login is in progress, show loading state
+    if (isAutoLoggingIn) {
+        return (
+            <div className="flex flex-col items-center justify-center w-full h-full">
+                <h1 className="text-[25px] md:text-[32px] font-semibold dark:text-sky-blue mb-4">
+                    Signing you in...
+                </h1>
+                <div className="animate-spin h-8 w-8 border-4 border-sky-blue border-t-transparent rounded-full" />
+            </div>
+        )
+    }
+
+    // If auto-login failed and dev auto-login is enabled, show error with fallback option
+    if (autoLoginError && devAutoLoginEnabled) {
+        return (
+            <div className="flex flex-col items-center justify-center w-full h-full">
+                <h1 className="text-[25px] md:text-[32px] font-semibold dark:text-sky-blue mb-4">
+                    Auto-Login Failed
+                </h1>
+                <p className="text-red-500 mb-8">{autoLoginError}</p>
+                <Button
+                    size="xl"
+                    onClick={() => {
+                        setIsAutoLoggingIn(false)
+                        setAutoLoginError(null)
+                        authHandledRef.current = false
+                    }}
+                    className="bg-sky-blue dark:bg-sky-blue text-black font-semibold"
+                >
+                    Back to Login Options
+                </Button>
+            </div>
+        )
+    }
 
     return (
         <div className="flex flex-col items-center justify-center w-full h-full">
@@ -316,26 +379,46 @@ export function LoginPage() {
                         <p className="flex-1 dark:bg-white/[0.31] h-[1px]"></p>
                     </div>
                 </div>
-                <Button
-                    size="xl"
-                    onClick={() => googleLogin()}
-                    className="w-full bg-white text-black font-semibold shadow-btn"
-                >
-                    <Icon name="google" className="size-[22px]" />
-                    Continue with Google Account
-                </Button>
-                <Button
-                    size="xl"
-                    onClick={loginWithII}
-                    className="w-full mt-4 md:mt-10 bg-white text-black font-semibold shadow-btn"
-                >
-                    <img
-                        src="/images/logo-charcoal.png"
-                        alt="logo"
-                        className="size-[22px]"
-                    />
-                    Continue with II Account
-                </Button>
+                {googleEnabled && (
+                    <Suspense fallback={null}>
+                        <GoogleSignInButton
+                            onLoginSuccess={async (code) => {
+                                try {
+                                    await loginWithAuthCode(code)
+                                    navigate('/')
+                                } catch (error: unknown) {
+                                    const apiError = error as {
+                                        response: { data: { detail: string } }
+                                    }
+                                    const errorMessage =
+                                        typeof apiError?.response?.data?.detail === 'string'
+                                            ? apiError.response.data.detail
+                                            : 'Login failed. Please try again.'
+                                    if (errorMessage?.includes('beta')) {
+                                        toast.info(errorMessage)
+                                    } else {
+                                        toast.error(errorMessage)
+                                    }
+                                }
+                            }}
+                            onLoginError={() => console.log('Login Failed')}
+                        />
+                    </Suspense>
+                )}
+                {!devAutoLoginEnabled && (
+                    <Button
+                        size="xl"
+                        onClick={loginWithII}
+                        className="w-full mt-4 md:mt-10 bg-white text-black font-semibold shadow-btn"
+                    >
+                        <img
+                            src="/images/logo-charcoal.png"
+                            alt="logo"
+                            className="size-[22px]"
+                        />
+                        Continue with II Account
+                    </Button>
+                )}
                 <DevLoginButton
                     apiBaseUrl={apiBaseUrl}
                     onSuccess={handleAuthSuccess}

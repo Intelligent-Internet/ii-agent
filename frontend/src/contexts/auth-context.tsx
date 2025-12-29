@@ -20,11 +20,15 @@ interface AuthContextType {
     user: User | null
     isAuthenticated: boolean
     loginWithAuthCode: (authCode: string) => Promise<void>
+    loginWithDevAuth: () => Promise<void>
     logout: () => void
     isLoading: boolean
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
+
+// Check if dev auth auto-login is enabled
+const DEV_AUTH_AUTOLOGIN = import.meta.env.VITE_DEV_AUTH_AUTOLOGIN === 'true'
 
 export function AuthProvider({ children }: { children: ReactNode }) {
     const dispatch = useAppDispatch()
@@ -85,6 +89,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                             dispatch(setLoading(false))
                         }
                     }
+                } else if (DEV_AUTH_AUTOLOGIN) {
+                    // Auto-login using dev auth endpoint when enabled and no token exists
+                    try {
+                        console.log('Dev auth auto-login enabled, attempting dev login...')
+                        const res = await authService.devLogin()
+                        localStorage.setItem(ACCESS_TOKEN, res.access_token)
+                        window.dispatchEvent(new CustomEvent('auth-token-set'))
+
+                        const userRes = await authService.getCurrentUser()
+                        dispatch(setUser(userRes))
+                        await fetchAvailableModels()
+                        dispatch(fetchWishlist())
+                        console.log('Dev auth auto-login successful')
+                    } catch (devAuthError) {
+                        console.error('Dev auth auto-login failed:', devAuthError)
+                        dispatch(setLoading(false))
+                    }
                 } else {
                     dispatch(setLoading(false))
                 }
@@ -121,6 +142,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
     }
 
+    const loginWithDevAuth = async () => {
+        try {
+            const res = await authService.devLogin()
+            localStorage.setItem(ACCESS_TOKEN, res.access_token)
+            window.dispatchEvent(new CustomEvent('auth-token-set'))
+
+            const userRes = await authService.getCurrentUser()
+            dispatch(setUser(userRes))
+            await fetchAvailableModels()
+            dispatch(fetchWishlist())
+        } catch (error) {
+            console.error('Error handling dev login:', error)
+            throw error
+        }
+    }
+
     const logout = () => {
         localStorage.removeItem(ACCESS_TOKEN)
         dispatch(clearUser())
@@ -134,6 +171,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         isAuthenticated,
         loginWithAuthCode,
+        loginWithDevAuth,
         logout,
         isLoading
     }

@@ -15,7 +15,9 @@
         "tauri": "tauri",
         "prepare": "husky",
         "lint": "eslint . --report-unused-disable-directives --max-warnings 0",
-        "format": "prettier --write ."
+        "format": "prettier --write .",
+        "test": "playwright test",
+        "test:ui": "playwright test --ui"
     },
     "lint-staged": {
         "**/*": "prettier --write --ignore-unknown"
@@ -103,6 +105,7 @@
     },
     "devDependencies": {
         "@eslint/js": "^9.25.1",
+        "@playwright/test": "^1.49.1",
         "@tauri-apps/cli": "^2.5.0",
         "@types/node": "^22.15.3",
         "@types/react": "^19.1.2",

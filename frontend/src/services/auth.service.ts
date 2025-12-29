@@ -3,7 +3,8 @@ import { User } from '@/state/slice/user'
 import {
     GoogleAuthResponse,
     RefreshTokenResponse,
-    GoogleAuthRequest
+    GoogleAuthRequest,
+    DevLoginResponse
 } from '@/typings/auth'
 
 class AuthService {
@@ -13,6 +14,13 @@ class AuthService {
             {
                 params
             }
+        )
+        return response.data
+    }
+
+    async devLogin(): Promise<DevLoginResponse> {
+        const response = await axiosInstance.get<DevLoginResponse>(
+            '/auth/dev/login'
         )
         return response.data
     }

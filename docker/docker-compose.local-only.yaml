@@ -59,11 +59,12 @@ services:
       dockerfile: docker/frontend/Dockerfile
       args:
         BUILD_MODE: ${FRONTEND_BUILD_MODE:-production}
-        VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8002}
         VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:-}
         VITE_STRIPE_PUBLISHABLE_KEY: ${VITE_STRIPE_PUBLISHABLE_KEY:-}
         VITE_SENTRY_DSN: ${VITE_SENTRY_DSN:-}
         VITE_DISABLE_CHAT_MODE: ${VITE_DISABLE_CHAT_MODE:-false}
+        VITE_DEV_AUTH_AUTOLOGIN: ${VITE_DEV_AUTH_AUTOLOGIN:-false}
     restart: unless-stopped
     env_file:
       - .stack.env.local
