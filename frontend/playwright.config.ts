@@ -11,10 +11,14 @@ export default defineConfig({
   retries: 0,
   workers: 1,
   reporter: 'html',
+  // Global setup to authenticate and save storage state
+  globalSetup: './e2e/.auth/setup.ts',
   use: {
     baseURL: 'http://localhost:1420',
-    trace: 'on-first-retry',
+    trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
+    // Use shared storage state to preserve auth between tests
+    storageState: 'e2e/.auth/storage-state.json',
   },
 
   projects: [

@@ -25,7 +25,7 @@ log_info "Testing OpenAI-compatible base URL: $BASE_URL"
 log_info "Test 1: GET /v1/models (model discovery)"
 MODELS_RESPONSE=$(curl -s -w "\n%{http_code}" "$BASE_URL/models" 2>&1)
 MODELS_STATUS=$(echo "$MODELS_RESPONSE" | tail -n 1)
-MODELS_BODY=$(echo "$MODELS_RESPONSE" | head -n -1)
+MODELS_BODY=$(echo "$MODELS_RESPONSE" | head -n $(($(echo "$MODELS_RESPONSE" | wc -l) - 1)))
 
 if [ "$MODELS_STATUS" = "200" ]; then
     log_info "✓ /v1/models returned 200"
@@ -41,7 +41,7 @@ fi
 log_info "Test 2: POST /v1/chat/completions (non-streaming)"
 
 COMPLETION_REQUEST='{
-  "model": "test-model",
+  "model": "gemini-2.5-flash",
   "messages": [{"role": "user", "content": "Hello"}],
   "max_tokens": 10
 }'
@@ -61,7 +61,7 @@ else
 fi
 
 COMPLETION_STATUS=$(echo "$COMPLETION_RESPONSE" | tail -n 1)
-COMPLETION_BODY=$(echo "$COMPLETION_RESPONSE" | head -n -1)
+COMPLETION_BODY=$(echo "$COMPLETION_RESPONSE" | head -n $(($(echo "$COMPLETION_RESPONSE" | wc -l) - 1)))
 
 if [ "$COMPLETION_STATUS" = "200" ] || [ "$COMPLETION_STATUS" = "201" ]; then
     log_info "✓ /v1/chat/completions returned $COMPLETION_STATUS"
@@ -79,7 +79,7 @@ fi
 log_info "Test 3: POST /v1/chat/completions (streaming)"
 
 STREAM_REQUEST='{
-  "model": "test-model",
+  "model": "gemini-2.5-flash",
   "messages": [{"role": "user", "content": "Hi"}],
   "max_tokens": 5,
   "stream": true
@@ -99,7 +99,7 @@ else
 fi
 
 STREAM_STATUS=$(echo "$STREAM_RESPONSE" | tail -n 1)
-STREAM_BODY=$(echo "$STREAM_RESPONSE" | head -n -1)
+STREAM_BODY=$(echo "$STREAM_RESPONSE" | head -n $(($(echo "$STREAM_RESPONSE" | wc -l) - 1)))
 
 if [ "$STREAM_STATUS" = "200" ] || [ "$STREAM_STATUS" = "201" ]; then
     log_info "✓ /v1/chat/completions (stream) returned $STREAM_STATUS"

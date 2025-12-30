@@ -813,14 +813,71 @@ class OpenAIDirectClient(BaseOpenAIClient):
             tool_choice_param=None
 
         async def _create_completion():
-            response = await self.async_client.chat.completions.create(
+            # gemini-cli-openai worker returns SSE by default, causing parse errors
+            # We use stream=True and consume it to build a synthetic response
+            # Using list+join for O(n) performance instead of string concatenation
+            #
+            # NOTE: gemini-cli-openai worker returns complete tool calls in single chunks
+            # (not incremental deltas like standard OpenAI streaming). This means we can
+            # append tool_calls directly without merging by index. If switching to a
+            # provider that uses incremental tool call deltas, the aggregation logic
+            # will need to be updated to merge by tc.index.
+            stream = await self.async_client.chat.completions.create(
                 model=self.model_name,
                 messages=openai_messages,
                 tools=openai_tools if openai_tools else OpenAI_NOT_GIVEN,
                 tool_choice=tool_choice_param,
-                max_completion_tokens=max_tokens,
                 stop=stop_sequence,
+                max_completion_tokens=max_tokens,
+                stream=True,
             )
+
+            content_chunks = []
+            collected_tool_calls = []
+            finish_reason = None
+
+            async for chunk in stream:
+                if chunk.choices:
+                    choice = chunk.choices[0]
+                    if hasattr(choice.delta, 'content') and choice.delta.content:
+                        content_chunks.append(choice.delta.content)
+                    if hasattr(choice.delta, 'tool_calls') and choice.delta.tool_calls:
+                        for tc in choice.delta.tool_calls:
+                            collected_tool_calls.append(tc)
+                    if hasattr(choice, 'finish_reason') and choice.finish_reason:
+                        finish_reason = choice.finish_reason
+
+            collected_content = ''.join(content_chunks)
+
+            # Build synthetic response object compatible with non-streaming interface
+            class SyntheticMessage:
+                def __init__(self, content, tool_calls):
+                    self.content = content
+                    self.role = "assistant"
+                    self.tool_calls = tool_calls
+
+            class SyntheticChoice:
+                def __init__(self, content, tool_calls, finish_reason):
+                    self.message = SyntheticMessage(content, tool_calls)
+                    self.finish_reason = finish_reason
+                    self.index = 0
+
+            class SyntheticUsage:
+                def __init__(self):
+                    self.prompt_tokens = 0
+                    self.completion_tokens = 0
+                    self.total_tokens = 0
+
+            class SyntheticResponse:
+                def __init__(self, content, tool_calls, finish_reason, model):
+                    self.id = "synthetic"
+                    self.object = "chat.completion"
+                    self.created = 0
+                    self.model = model
+                    self.choices = [SyntheticChoice(content, tool_calls, finish_reason)]
+                    self.usage = SyntheticUsage()
+
+            response = SyntheticResponse(collected_content, collected_tool_calls, finish_reason, self.model_name)
             assert response is not None, "OpenAI response is None"
             return response
 
@@ -1110,14 +1167,15 @@ class OpenAIDirectClient(BaseOpenAIClient):
                 presence_penalty=presence_penalty,
                 stream=True,
             )
-            response = ""
+            # Using list+join for O(n) performance instead of string concatenation
+            response_chunks = []
             async for chunk in stream:
                 if chunk.choices and (chunk.choices[0].delta.content):
                     content = chunk.choices[0].delta.content
                     print(content, end="")
-                    response += content
+                    response_chunks.append(content)
 
-            return response
+            return ''.join(response_chunks)
 
         response = await self._ahandle_retries(_create_completion)
 
@@ -1215,12 +1273,14 @@ class OpenAIDirectClient(BaseOpenAIClient):
                 stream=True,
             )
 
-            response = ""
+            # Using list+join for O(n) performance instead of string concatenation
+            response_chunks = []
             async for chunk in stream:
                 if chunk.choices and chunk.choices[0].text:
                     print(chunk.choices[0].text, end="", flush=True)
-                    response += chunk.choices[0].text
+                    response_chunks.append(chunk.choices[0].text)
 
+            response = ''.join(response_chunks)
             assert response is not None, "OpenAI response is None"
             return response
 
