@@ -2,7 +2,7 @@ import asyncio
 from typing import Any, List, Dict
 
 import httpx
-from ddgs import DDGS
+from duckduckgo_search import DDGS
 
 from .base import BaseImageSearchClient, ImageSearchResult, ImageSearchError
 

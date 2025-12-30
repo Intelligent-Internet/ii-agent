@@ -67,7 +67,7 @@ dependencies = [
   "langchain-text-splitters>=1.0.0",
   "google-auth-oauthlib>=1.2.3",
   "google-api-python-client>=2.150.0",
-  "ddgs>=9.9.1",
+  "duckduckgo-search>=8.1.1",
   "docker>=7.0.0",
 ]
 

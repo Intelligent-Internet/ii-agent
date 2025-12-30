@@ -2,7 +2,7 @@ import asyncio
 from typing import List
 
 import httpx
-from ddgs import DDGS
+from duckduckgo_search import DDGS
 
 from .base import BaseWebSearchClient, WebSearchResult
 from .exception import WebSearchProviderError, WebSearchNetworkError
