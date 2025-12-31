@@ -37,7 +37,8 @@ import {
     setIsCreatingSession,
     setIsFromNewQuestion,
     setIsMobileChatVisible,
-    setLoading
+    setLoading,
+    selectIsLoading
 } from '@/state/slice/ui'
 import {
     selectWorkspaceInfo,
@@ -88,6 +89,34 @@ export function useAppEvents() {
     useEffect(() => {
         hasResetForReplay.current = false
     }, [location.pathname])
+
+    // Add timeout safety for loading state (prevents infinite "I'm thinking..." spinner)
+    // If loading is stuck for more than 5 minutes, force clear it and show an error
+    const isLoading = useAppSelector(selectIsLoading)
+    const loadingTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+
+    useEffect(() => {
+        if (isLoading) {
+            // Set a timeout to clear loading if stuck
+            loadingTimeoutRef.current = setTimeout(() => {
+                console.warn('[useAppEvents] Loading timeout - forcing loading state to false')
+                dispatch(setLoading(false))
+                toast.error('Request timed out. Please try again.')
+            }, 300000) // 5 minute timeout for agent mode
+
+            return () => {
+                if (loadingTimeoutRef.current) {
+                    clearTimeout(loadingTimeoutRef.current)
+                }
+            }
+        } else {
+            // Clear any pending timeout when loading ends normally
+            if (loadingTimeoutRef.current) {
+                clearTimeout(loadingTimeoutRef.current)
+                loadingTimeoutRef.current = null
+            }
+        }
+    }, [isLoading, dispatch])
 
     // Create a custom dispatch function that updates messagesRef immediately
     const safeDispatch = useCallback(

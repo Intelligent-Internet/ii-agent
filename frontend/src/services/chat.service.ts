@@ -61,9 +61,20 @@ class ChatService {
         payload: ChatQueryPayload,
         options: ChatStreamOptions
     ): Promise<void> {
-        const { signal, onEvent } = options
+        const { signal, onEvent, timeoutMs = 120000 } = options // Default 2 minute timeout
         const controller = new AbortController()
         const mergedSignal = controller.signal
+
+        // Set up timeout to prevent infinite hanging
+        const timeoutId = setTimeout(() => {
+            if (!controller.signal.aborted) {
+                controller.abort()
+                onEvent({
+                    type: 'error',
+                    message: `Request timeout after ${timeoutMs}ms`
+                })
+            }
+        }, timeoutMs)
 
         if (signal) {
             if (signal.aborted) {
@@ -423,6 +434,7 @@ class ChatService {
                 })
             }
         } finally {
+            clearTimeout(timeoutId) // Clear timeout to prevent memory leak
             try {
                 await reader.cancel()
             } catch {

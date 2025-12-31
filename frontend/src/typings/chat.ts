@@ -82,6 +82,8 @@ export type ChatStreamEvent =
 export interface ChatStreamOptions {
     signal?: AbortSignal
     onEvent: (event: ChatStreamEvent) => void
+    /** Timeout in milliseconds - defaults to 120000 (2 minutes) */
+    timeoutMs?: number
 }
 
 export type ContentPart =

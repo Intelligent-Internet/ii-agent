@@ -258,7 +258,14 @@ export function useChatTransport(options?: UseChatTransportOptions) {
                             }
                             case 'error': {
                                 activeStreamControllerRef.current = null
-                                callbacks?.onError?.(event.message)
+                                const errorMessage = event.message || 'An error occurred'
+                                callbacks?.onError?.(errorMessage)
+                                // Show toast for user-facing errors
+                                if (errorMessage.includes('timeout')) {
+                                    toast.error('Request timed out. The server took too long to respond.')
+                                } else if (errorMessage) {
+                                    toast.error(errorMessage)
+                                }
                                 break
                             }
                             default:
