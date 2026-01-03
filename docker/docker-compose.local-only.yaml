@@ -124,8 +124,8 @@ services:
       PROVIDER: docker
       PROVIDER_TYPE: docker
       SANDBOX_DOCKER_IMAGE: ${SANDBOX_DOCKER_IMAGE:-ii-agent-sandbox:latest}
-      # Network for sandbox containers to enable service discovery
-      DOCKER_NETWORK: docker_default
+      # Network for sandbox containers - must match the compose project network
+      DOCKER_NETWORK: ${COMPOSE_PROJECT_NAME:-ii-agent-local}_default
       # Enable local mode features (orphan cleanup, etc.)
       LOCAL_MODE: "true"
       ORPHAN_CLEANUP_ENABLED: "true"

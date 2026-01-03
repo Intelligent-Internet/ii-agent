@@ -44,7 +44,7 @@ logger = logging.getLogger(__name__)
 
 # Default timeout for container operations
 DEFAULT_TIMEOUT = 3600
-CONTAINER_STARTUP_TIMEOUT = 60
+CONTAINER_STARTUP_TIMEOUT = 120  # Increased from 60s - sandbox startup can be slow
 
 # Well-known container ports for sandbox services
 MCP_SERVER_PORT = 6060
