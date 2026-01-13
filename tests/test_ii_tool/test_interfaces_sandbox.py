@@ -33,6 +33,11 @@ class TestSandboxInterface:
         # Check that expose_port is in __abstractmethods__
         assert "expose_port" in SandboxInterface.__abstractmethods__
 
+    def test_get_available_ports_has_default(self):
+        """get_available_ports has a default implementation returning None."""
+        # get_available_ports is NOT abstract - it has a default implementation
+        assert "get_available_ports" not in SandboxInterface.__abstractmethods__
+
 
 # =============================================================================
 # Concrete Implementation Tests
@@ -50,6 +55,32 @@ class TestConcreteImplementation:
         
         sandbox = ConcreteSandbox()
         assert isinstance(sandbox, SandboxInterface)
+
+    def test_get_available_ports_default_returns_none(self):
+        """Default get_available_ports returns None (any port allowed)."""
+        
+        class ConcreteSandbox(SandboxInterface):
+            async def expose_port(self, port: int) -> str:
+                return f"http://localhost:{port}"
+        
+        sandbox = ConcreteSandbox()
+        # Default implementation returns None (cloud mode - any port)
+        assert sandbox.get_available_ports() is None
+
+    def test_get_available_ports_can_be_overridden(self):
+        """get_available_ports can be overridden to return restricted ports."""
+        
+        class RestrictedPortSandbox(SandboxInterface):
+            async def expose_port(self, port: int) -> str:
+                return f"http://localhost:{port}"
+            
+            def get_available_ports(self):
+                return [3000, 5173, 8080]
+        
+        sandbox = RestrictedPortSandbox()
+        available = sandbox.get_available_ports()
+        assert available == [3000, 5173, 8080]
+        assert 8000 not in available
 
     @pytest.mark.asyncio
     async def test_expose_port_returns_url(self):

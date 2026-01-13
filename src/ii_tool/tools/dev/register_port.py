@@ -1,4 +1,4 @@
-from typing import Any, Callable
+from typing import Any, Callable, Optional, List
 from ii_tool.interfaces.sandbox import SandboxInterface
 from ii_tool.tools.base import BaseTool, ToolResult
 
@@ -7,23 +7,43 @@ from ii_tool.tools.base import BaseTool, ToolResult
 NAME = "register_deployment"
 DISPLAY_NAME = "Register deployment"
 
-# Description
-DESCRIPTION = """Register a port for deployment and get public access URL.
+# Common description parts
+_DESCRIPTION_WORKFLOW = """WORKFLOW:
+1. Start your server on a supported port
+2. Register the port with this tool
+3. Receive accessible URL"""
+
+_DESCRIPTION_RETURNS = """RETURNS:
+- Accessible URL for the deployed service
+- URL remains active while server is running"""
+
+# Description for local/Docker mode (restricted ports, localhost URLs)
+DESCRIPTION_LOCAL = f"""Register a port for deployment and get an accessible URL.
+PURPOSE:
+- Expose sandbox services to the host machine
+- Enable file downloads and web app testing
+- Share running applications with the local browser
+{_DESCRIPTION_WORKFLOW}
+REQUIRED PORTS (you MUST use one of these):
+- 3000: Frontend dev servers (React, Next.js, Express)
+- 5173: Vite development server
+- 8080: General HTTP server (recommended for file serving)
+For serving files to users: python3 -m http.server 8080
+Other ports will NOT work. Always use 3000, 5173, or 8080.
+{_DESCRIPTION_RETURNS}"""
+
+# Description for cloud mode (any port, public URLs)
+DESCRIPTION_CLOUD = f"""Register a port for deployment and get a public access URL.
 PURPOSE:
 - Expose local development servers to public internet
 - Enable sharing of web applications for testing/demo
 - Support multiple concurrent deployments
-WORKFLOW:
-1. Start your server on a local port (e.g., 3000, 8000)
-2. Register the port with this tool
-3. Receive public URL for external access
+{_DESCRIPTION_WORKFLOW}
 COMMON PORTS:
 - 3000-3999: Frontend development servers
 - 8000-8999: Backend API servers
 - 5000-5999: Flask/Python applications
-RETURNS:
-- Public URL accessible from internet
-- URL remains active while server is running"""
+{_DESCRIPTION_RETURNS}"""
 
 # Input schema
 INPUT_SCHEMA = {
@@ -40,7 +60,6 @@ INPUT_SCHEMA = {
 class RegisterPort(BaseTool):
     name = NAME
     display_name = DISPLAY_NAME
-    description = DESCRIPTION
     input_schema = INPUT_SCHEMA
     read_only = False
 
@@ -50,6 +69,14 @@ class RegisterPort(BaseTool):
     ) -> None:
         super().__init__()
         self.sandbox = sandbox
+        # Set description based on available ports
+        available_ports = sandbox.get_available_ports()
+        if available_ports is not None:
+            # Local/Docker mode: restricted ports
+            self.description = DESCRIPTION_LOCAL
+        else:
+            # Cloud mode: any port
+            self.description = DESCRIPTION_CLOUD
 
     async def execute(
         self,

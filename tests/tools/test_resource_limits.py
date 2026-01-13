@@ -136,7 +136,7 @@ class TestBrowserTabLimit:
 
         source = inspect.getsource(browser.Browser)
 
-        assert "MAX_TABS = 20" in source
+        assert "MAX_TABS = 50" in source
 
 
 class TestShellSessionLimit:
@@ -178,10 +178,10 @@ class TestShellSessionLimit:
         mock_shell_manager.create_session.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_rejects_session_at_limit(
+    async def test_auto_closes_oldest_session_at_limit(
         self, mock_shell_manager, mock_workspace_manager
     ):
-        """Test that session creation is rejected at MAX_SHELL_SESSIONS limit."""
+        """Test that oldest session is auto-closed at MAX_SHELL_SESSIONS limit."""
         from ii_tool.tools.shell.shell_init import ShellInit, MAX_SHELL_SESSIONS
 
         # Simulate being at the limit (10 sessions)
@@ -192,16 +192,19 @@ class TestShellSessionLimit:
 
         result = await tool.execute({"session_name": "new_session"})
 
-        assert result.is_error
-        assert f"Maximum number of shell sessions ({MAX_SHELL_SESSIONS})" in result.llm_content
-        assert "Please close existing sessions" in result.llm_content
-        mock_shell_manager.create_session.assert_not_called()
+        # Should succeed by auto-closing oldest session
+        assert not result.is_error
+        assert "initialized successfully" in result.llm_content
+        assert "Auto-closed oldest session" in result.llm_content
+        assert "session0" in result.llm_content  # Oldest session that was closed
+        mock_shell_manager.delete_session.assert_called_once_with("session0")
+        mock_shell_manager.create_session.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_error_message_includes_active_sessions(
+    async def test_auto_close_message_includes_session_name(
         self, mock_shell_manager, mock_workspace_manager
     ):
-        """Test that error message lists active sessions."""
+        """Test that auto-close message includes the closed session name."""
         from ii_tool.tools.shell.shell_init import ShellInit, MAX_SHELL_SESSIONS
 
         existing_sessions = [f"worker{i}" for i in range(MAX_SHELL_SESSIONS)]
@@ -211,9 +214,9 @@ class TestShellSessionLimit:
 
         result = await tool.execute({"session_name": "another_session"})
 
-        assert result.is_error
-        assert "Active sessions:" in result.llm_content
-        assert "worker0" in result.llm_content
+        # Should succeed and mention which session was closed
+        assert not result.is_error
+        assert "Auto-closed oldest session 'worker0'" in result.llm_content
 
     @pytest.mark.asyncio
     async def test_rejects_duplicate_session_name(
