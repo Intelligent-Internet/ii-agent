@@ -120,7 +120,7 @@ class LocalStorage(BaseStorage):
         return f"{url_base}/{path}?token={token}&expires={expiry}"
 
     def get_upload_signed_url(
-        self, path: str, content_type: str, expiration_seconds: int = 3600
+        self, path: str, content_type: str, expiration_seconds: int = 3600, internal: bool = True
     ) -> str:
         """Get a signed upload URL.
 
@@ -128,6 +128,13 @@ class LocalStorage(BaseStorage):
         The path may contain URL-encoded characters (e.g., %3A from timestamps).
         We decode it for token generation since the server will receive
         the decoded version after the browser makes the request.
+
+        Args:
+            path: The storage path for the file
+            content_type: The MIME type of the content
+            expiration_seconds: URL expiration time in seconds
+            internal: If True (default), use internal URL base for server-to-server uploads.
+                     If False, use serve_url_base for browser uploads.
         """
         expiry = int(time.time()) + expiration_seconds
         # Decode any URL-encoded chars in the path for token generation
@@ -138,7 +145,11 @@ class LocalStorage(BaseStorage):
         # Don't re-encode the path - it may already contain encoded chars like %3A
         # Just encode spaces as %20 for URL safety
         url_path = path.replace(' ', '%20')
-        return f"{self.serve_url_base}/upload/{url_path}?token={token}&expires={expiry}&content_type={quote(content_type, safe='')}"
+
+        # Use internal URL for server-to-server communication (default),
+        # or serve URL for browser-based uploads
+        url_base = self.internal_url_base if internal else self.serve_url_base
+        return f"{url_base}/upload/{url_path}?token={token}&expires={expiry}&content_type={quote(content_type, safe='')}"
 
     def is_exists(self, path: str) -> bool:
         """Check if a file exists."""

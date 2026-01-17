@@ -3,7 +3,7 @@
 # run_stack.sh - Control script for ii-agent
 #
 # Usage:
-#   ./scripts/run_stack.sh [command] [options]
+#   ./scripts/run_stack.sh [command] [service] [options]
 #
 # Commands:
 #   start       Start ii-agent services (default if no command given)
@@ -13,6 +13,11 @@
 #   logs        View logs (optionally for a specific service)
 #   build       Build sandbox image (required for local mode)
 #   setup       Initial setup - create env files from templates
+#
+# Services (optional, for start/stop/restart/logs):
+#   frontend    Frontend service only
+#   backend     Backend service only
+#   If no service specified, operates on all services
 #
 # Options:
 #   --local     Use local-only mode (Docker sandboxes, no E2B/ngrok)
@@ -51,6 +56,7 @@ BUILD_FLAG=""
 FOLLOW_LOGS=false
 COMMAND=""
 SERVICE=""
+TARGET_SERVICE=""  # Service to operate on (frontend, backend, or empty for all)
 
 # Active configuration (set by get_compose_vars)
 COMPOSE_FILE=""
@@ -80,7 +86,7 @@ usage() {
 ${BLUE}ii-agent Control Script${NC}
 
 ${YELLOW}Usage:${NC}
-  $0 [command] [options]
+  $0 [command] [service] [options]
 
 ${YELLOW}Commands:${NC}
   ${GREEN}start${NC}       Start ii-agent services (default if no command given)
@@ -90,6 +96,11 @@ ${YELLOW}Commands:${NC}
   ${GREEN}logs${NC}        View logs (optionally specify service name)
   ${GREEN}build${NC}       Build the sandbox Docker image (required for local mode)
   ${GREEN}setup${NC}       Initial setup - create env files from templates
+
+${YELLOW}Services (optional, for start/stop/restart/logs):${NC}
+  ${GREEN}frontend${NC}    Frontend service only
+  ${GREEN}backend${NC}     Backend service only
+  If no service specified, operates on all services
 
 ${YELLOW}Options:${NC}
   ${GREEN}--local${NC}     Use local-only mode (Docker sandboxes, no E2B/ngrok)
@@ -101,6 +112,9 @@ ${YELLOW}Examples:${NC}
   $0 start                    # Start with cloud stack (E2B + ngrok)
   $0 start --local            # Start with local-only mode
   $0 start --local --build    # Start local mode and rebuild images
+  $0 start frontend --local   # Start only frontend (local mode)
+  $0 restart backend          # Restart only backend
+  $0 stop frontend --local    # Stop only frontend (local mode)
   $0 stop                     # Stop cloud stack
   $0 stop --local             # Stop local-only stack
   $0 logs backend -f          # Follow backend logs
@@ -384,6 +398,12 @@ cmd_start() {
 
     ensure_frontend_build_env
 
+    # Handle individual service start
+    if [[ -n "$TARGET_SERVICE" ]]; then
+        cmd_start_service "$TARGET_SERVICE"
+        return
+    fi
+
     if [[ "$USE_LOCAL_MODE" == true ]]; then
         # Check if sandbox image exists for local mode
         if ! docker image inspect ii-agent-sandbox:latest &> /dev/null; then
@@ -462,6 +482,26 @@ SUMMARY
     fi
 }
 
+cmd_start_service() {
+    local service=$1
+    log_info "Starting $service service..."
+    compose_up "$service"
+    log_success "$service started successfully!"
+
+    # Show relevant URL
+    local port
+    case "$service" in
+        frontend)
+            port=$(get_env_value FRONTEND_PORT 1420)
+            log_info "Frontend available at: http://localhost:$port"
+            ;;
+        backend)
+            port=$(get_env_value BACKEND_PORT 8000)
+            log_info "Backend available at: http://localhost:$port"
+            ;;
+    esac
+}
+
 cmd_stop() {
     auto_detect_mode
     get_compose_vars
@@ -472,6 +512,12 @@ cmd_stop() {
         mode_name="local-only"
     else
         mode_name="cloud stack"
+    fi
+
+    # Handle individual service stop
+    if [[ -n "$TARGET_SERVICE" ]]; then
+        cmd_stop_service "$TARGET_SERVICE"
+        return
     fi
 
     log_info "Stopping ii-agent ($mode_name mode)..."
@@ -486,10 +532,48 @@ cmd_stop() {
     fi
 }
 
+cmd_stop_service() {
+    local service=$1
+    log_info "Stopping $service service..."
+    compose stop "$service"
+    log_success "$service stopped successfully!"
+}
+
 cmd_restart() {
+    # Handle individual service restart
+    if [[ -n "$TARGET_SERVICE" ]]; then
+        cmd_restart_service "$TARGET_SERVICE"
+        return
+    fi
+
     cmd_stop
     echo ""
     cmd_start
+}
+
+cmd_restart_service() {
+    local service=$1
+    auto_detect_mode
+    get_compose_vars
+    check_docker
+    check_env_file
+
+    log_info "Restarting $service service..."
+    compose restart "$service"
+    log_success "$service restarted successfully!"
+
+    # Show relevant URL
+    local port
+    case "$service" in
+        frontend)
+            port=$(get_env_value FRONTEND_PORT 1420)
+            log_info "Frontend available at: http://localhost:$port"
+            ;;
+        backend)
+            port=$(get_env_value BACKEND_PORT 8000)
+            log_info "Backend available at: http://localhost:$port"
+            ;;
+    esac
 }
 
 cmd_status() {
@@ -581,10 +665,36 @@ cmd_logs() {
 # Argument parsing
 # ============================================================================
 
+# Valid services that can be individually controlled
+VALID_SERVICES="frontend backend"
+
+is_valid_service() {
+    local service=$1
+    for s in $VALID_SERVICES; do
+        if [[ "$s" == "$service" ]]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
 while [[ $# -gt 0 ]]; do
     case $1 in
         start|stop|restart|status|logs|build|setup)
             COMMAND=$1
+            shift
+            ;;
+        frontend|backend)
+            # Service argument for start/stop/restart/logs
+            if [[ "$COMMAND" == "start" || "$COMMAND" == "stop" || "$COMMAND" == "restart" ]]; then
+                TARGET_SERVICE=$1
+            elif [[ "$COMMAND" == "logs" ]]; then
+                SERVICE=$1
+            else
+                log_error "Service '$1' can only be used with start, stop, restart, or logs commands"
+                usage
+                exit 1
+            fi
             shift
             ;;
         --local)
