@@ -35,6 +35,7 @@ class EventType(str, enum.Enum):
     SANDBOX_STATUS = "sandbox_status"
     COMPLETE = "complete"
     SUB_AGENT_COMPLETE = "sub_agent_complete"
+    SUB_AGENT_INTERRUPTED = "sub_agent_interrupted"
     METRICS_UPDATE = "metrics_update"
     MODEL_COMPACT = "model_compact"
 
@@ -48,6 +49,7 @@ class EventType(str, enum.Enum):
             EventType.STREAM_COMPLETE,
             EventType.CONNECTION_ESTABLISHED,
             EventType.AGENT_RESPONSE_INTERRUPTED,
+            EventType.SUB_AGENT_INTERRUPTED,
             EventType.WORKSPACE_INFO,
             EventType.SANDBOX_STATUS,
         ]

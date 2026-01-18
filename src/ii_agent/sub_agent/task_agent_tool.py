@@ -1,6 +1,5 @@
 from typing import Any, List, Optional
 from uuid import UUID
-from ii_agent.core.event import EventType, RealtimeEvent
 from ii_tool.tools.base import BaseTool, ToolResult
 from ii_agent.core.event_stream import EventStream
 from ii_agent.llm.context_manager.base import ContextManager
@@ -177,19 +176,13 @@ class TaskAgentTool(BaseAgentTool):
                 "files": None,
             }
         )
-        # Agent is completed
-        await self.event_stream.publish(
-            RealtimeEvent(
-                type=EventType.SUB_AGENT_COMPLETE,
-                session_id=self._get_session_id(),
-                run_id=self._get_run_id(),
-                content={"text": "Sub agent completed"},
-            )
-        )
+        # Emit appropriate completion event based on whether agent was interrupted
+        await self.emit_completion_event(is_interrupted=agent_output.is_interrupted)
 
         return ToolResult(
             llm_content=agent_output.llm_content,
             user_display_content=agent_output.user_display_content,
+            is_interrupted=agent_output.is_interrupted,
         )
 
     async def execute_mcp_wrapper(

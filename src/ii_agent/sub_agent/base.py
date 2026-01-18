@@ -3,6 +3,7 @@ from typing import Any, List, Optional
 from uuid import UUID
 from ii_tool.tools.base import BaseTool
 from ii_tool.core import WorkspaceManager
+from ii_agent.core.event import EventType, RealtimeEvent
 from ii_agent.core.event_stream import EventStream
 from ii_agent.llm.context_manager.base import ContextManager
 from ii_agent.controller.agent import Agent
@@ -41,6 +42,22 @@ class BaseAgentTool(BaseTool):
 
     def cancel(self):
         self.controller.cancel()
+
+    async def emit_completion_event(self, is_interrupted: bool = False, message: str = "Sub agent completed"):
+        """Emit the appropriate completion event based on whether the subagent was interrupted."""
+        if is_interrupted:
+            event_type = EventType.SUB_AGENT_INTERRUPTED
+            message = "Sub agent interrupted"
+        else:
+            event_type = EventType.SUB_AGENT_COMPLETE
+        await self.event_stream.publish(
+            RealtimeEvent(
+                type=event_type,
+                session_id=self._get_session_id(),
+                run_id=self._get_run_id(),
+                content={"text": message, "is_interrupted": is_interrupted},
+            )
+        )
 
     def _setup_agent_controller(self):
         tool_manager = AgentToolManager()

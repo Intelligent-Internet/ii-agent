@@ -1,18 +1,25 @@
 """Slide content processor for replacing local file paths with permanent URLs."""
 
+import asyncio
+import io
 import re
 import hashlib
 import mimetypes
-import requests
 from pathlib import Path
 from typing import Optional, Dict
 import logging
 from urllib.parse import unquote
 
+import httpx
+
 from ii_agent.storage.base import BaseStorage
+from ii_agent.storage.local import LocalStorage
 from ii_agent.sandbox import IISandbox
 
 logger = logging.getLogger(__name__)
+
+# Timeout for upload requests (in seconds)
+UPLOAD_TIMEOUT = 60
 
 
 class SlideContentProcessor:
@@ -216,7 +223,10 @@ class SlideContentProcessor:
         self, file_content: bytes, storage_path: str, original_path: str
     ) -> Optional[str]:
         """
-        Upload file content using signed URL workflow.
+        Upload file content using the most efficient method for the storage type.
+
+        For LocalStorage: Direct write to avoid self-request deadlock.
+        For external storage (GCS, S3): Async HTTP PUT with timeout.
 
         Args:
             file_content: File content as bytes
@@ -232,15 +242,61 @@ class SlideContentProcessor:
                 mimetypes.guess_type(original_path)[0] or "application/octet-stream"
             )
 
+            # For LocalStorage, use direct write to avoid self-request deadlock
+            # (The backend can't HTTP request itself while processing an agent request)
+            if isinstance(self.storage, LocalStorage):
+                return await self._upload_direct(file_content, storage_path, content_type)
+
+            # For external storage (GCS, S3), use async HTTP with timeout
+            return await self._upload_via_http(file_content, storage_path, content_type)
+
+        except Exception as e:
+            logger.error(f"Failed to upload via signed URL: {e}")
+            return None
+
+    async def _upload_direct(
+        self, file_content: bytes, storage_path: str, content_type: str
+    ) -> Optional[str]:
+        """
+        Upload directly to storage (for LocalStorage).
+
+        Runs in thread pool to avoid blocking the event loop on I/O.
+        """
+        try:
+            def _do_write():
+                self.storage.write(io.BytesIO(file_content), storage_path, content_type)
+                return self.storage.get_permanent_url(storage_path)
+
+            # Run blocking I/O in thread pool
+            loop = asyncio.get_event_loop()
+            permanent_url = await loop.run_in_executor(None, _do_write)
+            return permanent_url
+
+        except Exception as e:
+            logger.error(f"Failed to upload directly to storage: {e}")
+            return None
+
+    async def _upload_via_http(
+        self, file_content: bytes, storage_path: str, content_type: str
+    ) -> Optional[str]:
+        """
+        Upload via HTTP to signed URL (for external storage like GCS).
+
+        Uses async httpx client with timeout to avoid blocking.
+        """
+        try:
             # Get upload signed URL
             upload_url = self.storage.get_upload_signed_url(
                 storage_path, content_type, expiration_seconds=3600
             )
 
-            # Upload content to signed URL
-            response = requests.put(
-                upload_url, data=file_content, headers={"Content-Type": content_type}
-            )
+            # Use async HTTP client with timeout
+            async with httpx.AsyncClient(timeout=UPLOAD_TIMEOUT) as client:
+                response = await client.put(
+                    upload_url,
+                    content=file_content,
+                    headers={"Content-Type": content_type}
+                )
 
             if response.status_code not in (200, 201):
                 logger.error(
@@ -252,8 +308,11 @@ class SlideContentProcessor:
             permanent_url = self.storage.get_permanent_url(storage_path)
             return permanent_url
 
+        except httpx.TimeoutException:
+            logger.error(f"Upload timed out after {UPLOAD_TIMEOUT}s for {storage_path}")
+            return None
         except Exception as e:
-            logger.error(f"Failed to upload via signed URL: {e}")
+            logger.error(f"Failed to upload via HTTP: {e}")
             return None
 
     def _generate_storage_path(self, local_path: Path) -> str:

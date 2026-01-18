@@ -104,7 +104,8 @@ async def generate_upload_url(
     blob_name = _get_blob_name(user_id, file_id, decoded_file_name)
 
     # generate the signed URL
-    signed_url = storage.get_upload_signed_url(blob_name, content_type)
+    # Use internal=False because this URL is returned to the browser, not used server-to-server
+    signed_url = storage.get_upload_signed_url(blob_name, content_type, internal=False)
 
     # Debug logging
     logger.info(f"Generated upload URL for user {user_id}: {signed_url}")

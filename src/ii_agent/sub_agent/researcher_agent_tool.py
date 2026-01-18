@@ -7,7 +7,6 @@ from ii_agent.agents.codeact import CodeActAgent
 from ii_agent.controller.state import State
 from ii_agent.core.config.agent_config import AgentConfig
 from ii_agent.core.config.ii_agent_config import IIAgentConfig
-from ii_agent.core.event import EventType, RealtimeEvent
 from ii_agent.core.event_stream import EventStream
 from ii_agent.llm import get_client
 from ii_agent.llm.base import LLMClient, TextResult, ToolParam
@@ -319,15 +318,8 @@ class ResearcherAgent(BaseAgentTool):
                 is_error=True,
             )
 
-        # Agent is completed
-        await self.event_stream.publish(
-            RealtimeEvent(
-                type=EventType.SUB_AGENT_COMPLETE,
-                session_id=self._get_session_id(),
-                run_id=self._get_run_id(),
-                content={"text": "Sub agent completed"},
-            )
-        )
+        # Emit appropriate completion event based on whether agent was interrupted
+        await self.emit_completion_event(is_interrupted=tool_result.is_interrupted)
         await self.controller.clear()
 
         return tool_result

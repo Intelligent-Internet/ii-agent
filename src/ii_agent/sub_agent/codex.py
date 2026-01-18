@@ -4,6 +4,7 @@ Codex Agent - Async HTTP SSE Client for Codex Event Streaming
 Connects to the HTTP server and streams Codex lifecycle events
 """
 
+import asyncio
 import json
 from typing import Any, Optional
 import uuid
@@ -76,11 +77,26 @@ class CodexAgent(BaseTool):
                     type=EventType.SUB_AGENT_COMPLETE,
                     session_id=self._get_session_id(),
                     run_id=self._get_run_id(),
-                    content={"text": "Codex agent completed"},
+                    content={"text": "Codex agent completed", "is_interrupted": False},
                 )
             )
 
             return ToolResult(llm_content=result_text, user_display_content=result_text)
+        except asyncio.CancelledError:
+            # Handle cancellation/interruption
+            await self.event_stream.publish(
+                RealtimeEvent(
+                    type=EventType.SUB_AGENT_INTERRUPTED,
+                    session_id=self._get_session_id(),
+                    run_id=self._get_run_id(),
+                    content={"text": "Codex agent interrupted", "is_interrupted": True},
+                )
+            )
+            return ToolResult(
+                llm_content="Codex agent interrupted by user",
+                user_display_content="Codex agent interrupted by user",
+                is_interrupted=True,
+            )
         except Exception as e:
             error_msg = f"Codex agent failed: {str(e)}"
             return ToolResult(
