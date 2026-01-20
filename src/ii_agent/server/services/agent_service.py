@@ -225,12 +225,23 @@ class AgentService:
         """
 
         llm_client: LLMClient = get_client(llm_config)
-        # Create context manager
+        # Create context manager with dynamic token budget based on model's context window
         token_counter = TokenCounter()
+        # Token budget priority:
+        # 1. Dynamic calculation: 70% of model's max context window (leaves headroom for output)
+        # 2. Fallback: self.config.token_budget if dynamic calculation returns 0 or fails
+        # The config value (TOKEN_BUDGET=120K) can be overridden via environment/config
+        dynamic_token_budget = int(llm_config.get_max_context_tokens() * 0.7)
+        effective_token_budget = dynamic_token_budget if dynamic_token_budget > 0 else self.config.token_budget
+        logger.info(
+            f"[AgentService] Token budget: {effective_token_budget:,} tokens "
+            f"(dynamic={dynamic_token_budget:,} from {llm_config.get_max_context_tokens():,} max context, "
+            f"fallback={self.config.token_budget:,})"
+        )
         context_manager = LLMCompact(
             client=llm_client,
             token_counter=token_counter,
-            token_budget=self.config.token_budget,
+            token_budget=effective_token_budget,
         )
         mcp_sandbox_url = await sandbox.expose_port(self.config.mcp_port) + "/mcp/"
 

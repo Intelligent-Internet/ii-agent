@@ -139,9 +139,14 @@ class AnthropicDirectClient(LLMClient):
         # Enable 1M context window only if explicitly configured
         if llm_config.enable_extended_context:
             self.betas.append("context-1m-2025-08-07")
+            logger.info(f"1M context window ENABLED for model {self.model_name}")
+        else:
+            logger.debug(f"1M context window DISABLED for model {self.model_name} (enable_extended_context={llm_config.enable_extended_context})")
 
         # Keep headers for backward compatibility with non-beta endpoints
         self.headers = {"anthropic-beta": ",".join(self.betas)} if self.betas else None
+        if self.betas:
+            logger.info(f"Beta features enabled: {self.betas}")
         self.thinking_tokens = llm_config.thinking_tokens
 
     def generate(

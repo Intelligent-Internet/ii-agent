@@ -46,6 +46,9 @@ class IIAgentConfig(BaseSettings):
     docker_container_id: Optional[str] = None
     max_output_tokens_per_turn: int = MAX_OUTPUT_TOKENS_PER_TURN
     max_turns: int = MAX_TURNS
+    # Fallback token budget for context management. Used only when dynamic calculation
+    # from llm_config.get_max_context_tokens() returns 0. Normally, the budget is
+    # calculated as 70% of the model's max context window (e.g., 700K for 1M context).
     token_budget: int = TOKEN_BUDGET
     database_url: Optional[str] = None
     mcp_config: Optional[Dict[str, Any]] = None

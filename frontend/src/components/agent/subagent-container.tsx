@@ -13,7 +13,7 @@ import {
 import { useState, useMemo } from 'react'
 import { AgentContext, Message } from '@/typings/agent'
 import { formatDuration } from '@/lib/utils'
-import { useAppSelector, selectIsStopped } from '@/state'
+import { useAppSelector, selectIsStopped, selectIsLoading } from '@/state'
 
 interface SubagentContainerProps {
     agentContext: AgentContext
@@ -35,6 +35,7 @@ const SubagentContainer = ({
 }: SubagentContainerProps) => {
     const [isExpanded, setIsExpanded] = useState(true)
     const isStopped = useAppSelector(selectIsStopped)
+    const isLoading = useAppSelector(selectIsLoading)
 
     // Calculate execution time
     const executionTime = useMemo(() => {
@@ -53,7 +54,7 @@ const SubagentContainer = ({
     }, [messages])
 
     // Determine actual status - use completed if endTime exists, even if status is not set properly
-    // Also check global isStopped state - if agent is stopped, any running subagent should show as stopped
+    // Also check global isStopped/isLoading state to determine subagent status
     const actualStatus = useMemo(() => {
         if (agentContext.endTime) {
             return SubAgentStatus.COMPLETED
@@ -63,13 +64,19 @@ const SubagentContainer = ({
         if (isStopped && contextStatus === SubAgentStatus.RUNNING) {
             return SubAgentStatus.STOPPED
         }
+        // If main agent is done (not loading, not stopped) and subagent is still "running",
+        // it means the subagent completed but wasn't marked - show as completed
+        if (!isLoading && !isStopped && contextStatus === SubAgentStatus.RUNNING) {
+            return SubAgentStatus.COMPLETED
+        }
         return contextStatus
     }, [
         agentContext.status,
         agentContext.endTime,
         agentContext.agentId,
         agentContext.agentName,
-        isStopped
+        isStopped,
+        isLoading
     ])
 
     // Get status icon

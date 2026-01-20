@@ -20,6 +20,7 @@
 #   restart [service]   Restart without rebuilding. No service = restart all.
 #   rebuild [service]   Stop, rebuild image, restart. No service = rebuild all buildable.
 #   wake [id]           Wake stopped sandbox containers. id = session or sandbox UUID.
+#   cleanup             Remove orphaned sandbox containers (Created/Exited state).
 #
 # BUILD COMMANDS:
 #   build               Build the sandbox image (ii-agent-sandbox:latest)
@@ -151,6 +152,7 @@ COMMANDS:
   restart [service]   Restart without rebuilding
   rebuild [service]   Rebuild from source and restart
   wake [id]           Wake stopped sandbox (session ID, sandbox ID, or 'all')
+  cleanup             Remove orphaned sandbox containers (Created/Exited)
   status              Show running services and URLs
   logs [service]      View logs (-f to follow)
   build               Build the sandbox Docker image
@@ -188,6 +190,9 @@ EXAMPLES:
   ./scripts/stack_control.sh wake                # List stopped sandboxes
   ./scripts/stack_control.sh wake all            # Wake all stopped sandboxes
   ./scripts/stack_control.sh wake <session-id>   # Wake sandbox for specific session
+
+  # Clean up orphaned sandbox containers:
+  ./scripts/stack_control.sh cleanup             # Remove Created/Exited sandboxes
 
   # For fine-grained stuck task control:
   ./scripts/local/stuck_task_control.sh          # List stuck tasks
@@ -853,6 +858,37 @@ cmd_logs() {
 # Wake Command - Restart stopped sandbox containers
 # ============================================================================
 
+# Helper to resync sandbox-server port allocations after waking containers
+# Only applicable to local/docker mode - no-op for cloud/E2B mode
+_resync_sandbox_ports() {
+    local sandbox_port
+    sandbox_port=$(get_env_value SANDBOX_SERVER_PORT 8100)
+    
+    log_info "Syncing port allocations with sandbox-server..."
+    
+    # Try the rescan endpoint (returns 400 in cloud mode, which is fine)
+    local response
+    response=$(curl -fsS -X POST "http://localhost:${sandbox_port}/ports/rescan" 2>&1) && {
+        log_success "Port allocations synced"
+        return 0
+    }
+    
+    # Check if it's a "not available" error (cloud mode) - that's OK
+    if echo "$response" | grep -q "not available"; then
+        log_info "Port management not needed (cloud mode)"
+        return 0
+    fi
+    
+    # Fallback: restart sandbox-server to trigger startup scan
+    log_warn "Rescan endpoint not available, restarting sandbox-server..."
+    local sandbox_server_container="${PROJECT_NAME}-sandbox-server-1"
+    if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^${sandbox_server_container}$"; then
+        docker restart "$sandbox_server_container" &>/dev/null
+        sleep 3
+        log_success "Sandbox-server restarted - port allocations synced"
+    fi
+}
+
 cmd_wake() {
     auto_detect_mode
     get_compose_vars
@@ -903,6 +939,11 @@ cmd_wake() {
         done
         echo ""
         log_success "Woke $count sandbox(es)"
+        
+        # Tell sandbox-server to rescan port allocations
+        if [[ "$count" -gt 0 ]]; then
+            _resync_sandbox_ports
+        fi
         return 0
     fi
 
@@ -968,12 +1009,84 @@ cmd_wake() {
         if docker ps --filter "name=$container_name" --format "{{.Status}}" | grep -q "Up"; then
             log_success "Sandbox is now running"
             docker ps --filter "name=$container_name" --format "table {{.Names}}\t{{.Status}}"
+            
+            # Tell sandbox-server to rescan port allocations
+            _resync_sandbox_ports
         else
             log_warn "Container started but may not be healthy yet"
         fi
     else
         log_error "Failed to start sandbox container"
         return 1
+    fi
+}
+
+# ============================================================================
+# Cleanup Command - Remove orphaned sandbox containers
+# ============================================================================
+
+cmd_cleanup() {
+    check_docker
+
+    echo ""
+    printf '%s=== Sandbox Cleanup ===%s\n' "$BLUE" "$NC"
+    echo ""
+
+    # Get orphaned containers (Created or Exited state)
+    local orphaned_containers
+    orphaned_containers=$(docker ps -a --filter "name=ii-sandbox-" --format "{{.ID}} {{.Names}} {{.Status}}" 2>/dev/null | grep -E "Created|Exited" || true)
+
+    if [[ -z "$orphaned_containers" ]]; then
+        log_success "No orphaned sandbox containers found"
+        return 0
+    fi
+
+    log_info "Found orphaned sandbox containers:"
+    echo ""
+    docker ps -a --filter "name=ii-sandbox-" --format "table {{.Names}}\t{{.Status}}\t{{.CreatedAt}}" | grep -E "Created|Exited|NAMES"
+    echo ""
+
+    read -p "Remove these containers? (y/N): " confirm
+    if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
+        log_info "Cleanup cancelled."
+        return 0
+    fi
+
+    # Remove orphaned containers
+    local count=0
+    while IFS= read -r line; do
+        local container_id container_name
+        container_id=$(echo "$line" | awk '{print $1}')
+        container_name=$(echo "$line" | awk '{print $2}')
+        
+        if [[ -n "$container_id" ]]; then
+            log_info "Removing $container_name..."
+            if docker rm "$container_id" &>/dev/null; then
+                ((count++)) || true
+                log_success "  Removed $container_name"
+            else
+                log_error "  Failed to remove $container_name"
+            fi
+        fi
+    done <<< "$orphaned_containers"
+
+    echo ""
+    log_success "Removed $count orphaned container(s)"
+    
+    # Tell sandbox-server to clean up its port allocations
+    if [[ "$count" -gt 0 ]]; then
+        auto_detect_mode
+        get_compose_vars
+        
+        local sandbox_port
+        sandbox_port=$(get_env_value SANDBOX_SERVER_PORT 8100)
+        
+        log_info "Syncing port allocations with sandbox-server..."
+        if curl -fsS -X POST "http://localhost:${sandbox_port}/ports/cleanup" &>/dev/null; then
+            log_success "Port allocations cleaned"
+        else
+            log_warn "Could not reach sandbox-server (may need manual restart)"
+        fi
     fi
 }
 
@@ -1113,7 +1226,7 @@ cmd_recover() {
 parse_args() {
     while [[ $# -gt 0 ]]; do
         case $1 in
-            start|stop|restart|rebuild|status|logs|build|setup|recover|wake)
+            start|stop|restart|rebuild|status|logs|build|setup|recover|wake|cleanup)
                 COMMAND=$1
                 shift
                 ;;
@@ -1218,6 +1331,9 @@ main() {
             ;;
         wake)
             cmd_wake
+            ;;
+        cleanup)
+            cmd_cleanup
             ;;
         *)
             log_error "Unknown command: $COMMAND"

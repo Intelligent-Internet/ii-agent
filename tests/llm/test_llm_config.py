@@ -177,3 +177,44 @@ class TestLLMConfigEnableExtendedContext:
         """enable_extended_context can be set to True."""
         config = LLMConfig(model="test-model", enable_extended_context=True)
         assert config.enable_extended_context is True
+
+class TestDynamicTokenBudgetCalculation:
+    """Tests for calculating dynamic token budgets from model context windows."""
+
+    def test_standard_anthropic_budget_is_70_percent_of_200k(self):
+        """Standard Anthropic models should allow ~140K token budget (70% of 200K)."""
+        config = LLMConfig(
+            model="claude-sonnet-4-20250514",
+            api_type=APITypes.ANTHROPIC,
+            enable_extended_context=False,
+        )
+        max_context = config.get_max_context_tokens()
+        expected_budget = int(max_context * 0.7)
+        
+        assert max_context == 200_000
+        assert expected_budget == 140_000
+
+    def test_extended_anthropic_budget_is_70_percent_of_1m(self):
+        """Extended context Anthropic models should allow ~700K token budget."""
+        config = LLMConfig(
+            model="claude-sonnet-4-20250514",
+            api_type=APITypes.ANTHROPIC,
+            enable_extended_context=True,
+        )
+        max_context = config.get_max_context_tokens()
+        expected_budget = int(max_context * 0.7)
+        
+        assert max_context == 1_000_000
+        assert expected_budget == 700_000
+
+    def test_openai_budget_is_70_percent_of_128k(self):
+        """OpenAI models should allow ~89K token budget (70% of 128K)."""
+        config = LLMConfig(
+            model="gpt-4o",
+            api_type=APITypes.OPENAI,
+        )
+        max_context = config.get_max_context_tokens()
+        expected_budget = int(max_context * 0.7)
+        
+        assert max_context == 128_000
+        assert expected_budget == 89_600

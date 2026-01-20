@@ -691,23 +691,32 @@ class OpenAIDirectClient(BaseOpenAIClient):
             raise ValueError(f"Unknown message type: {type(internal_message)}")
 
     def _process_tool_result(self, tool_result: ToolFormattedResult):
-        """Process tool result content for Chat API."""
+        """Process tool result content for Chat API.
+        
+        Note: OpenAI Chat API does not allow image URLs in tool role messages.
+        Images can only be in user role messages. So we strip out image blocks
+        and just return text content.
+        """
         content = tool_result.tool_output
         if isinstance(tool_result.tool_output, list):
             processed_content = []
+            has_images = False
             for block in tool_result.tool_output:
                 if isinstance(block, dict) and block.get("type") == "image":
-                    processed_content.append(
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:{block['source']['media_type']};base64,{block['source']['data']}"
-                            },
-                        }
-                    )
+                    # Skip image blocks - OpenAI doesn't allow images in tool messages
+                    has_images = True
+                    continue
                 else:
                     processed_content.append(block)
-            content = processed_content
+            
+            if has_images:
+                # If there were images, add a note that they were processed
+                if not processed_content:
+                    content = "Tool executed successfully. Image results were processed."
+                else:
+                    content = processed_content
+            else:
+                content = processed_content
         return content
 
     async def agenerate(
@@ -777,12 +786,37 @@ class OpenAIDirectClient(BaseOpenAIClient):
                                 space = "\n"
                             turn_message['reasoning_content'] = turn_message['reasoning_content'] + space + processed_message['content']
                         else:
-                            if 'content' not in turn_message:
-                                turn_message['content'] = ''
-                                space = ""
+                            # Handle merging content - can be str or list (for images)
+                            new_content = processed_message.get('content', '')
+                            existing_content = turn_message.get('content', '')
+                            
+                            # Normalize both to list format for merging
+                            if isinstance(existing_content, str):
+                                if existing_content:
+                                    existing_list = [{"type": "text", "text": existing_content}]
+                                else:
+                                    existing_list = []
                             else:
-                                space = "\n"
-                            turn_message['content'] = turn_message['content'] + space + processed_message['content']
+                                existing_list = existing_content if existing_content else []
+                            
+                            if isinstance(new_content, str):
+                                if new_content:
+                                    new_list = [{"type": "text", "text": new_content}]
+                                else:
+                                    new_list = []
+                            else:
+                                new_list = new_content if new_content else []
+                            
+                            # Merge the content lists
+                            merged = existing_list + new_list
+                            
+                            # If only text blocks and one or fewer, simplify back to string
+                            if len(merged) == 0:
+                                turn_message['content'] = ''
+                            elif len(merged) == 1 and merged[0].get('type') == 'text':
+                                turn_message['content'] = merged[0]['text']
+                            else:
+                                turn_message['content'] = merged
 
             openai_messages.append(turn_message)
 
@@ -819,7 +853,7 @@ class OpenAIDirectClient(BaseOpenAIClient):
                 tools=openai_tools if openai_tools else OpenAI_NOT_GIVEN,
                 tool_choice=tool_choice_param,
                 max_completion_tokens=max_tokens,
-                stop=stop_sequence,
+                stop=stop_sequence if stop_sequence else OpenAI_NOT_GIVEN,
             )
             assert response is not None, "OpenAI response is None"
             return response
@@ -937,7 +971,7 @@ class OpenAIDirectClient(BaseOpenAIClient):
                 tools=openai_tools if openai_tools else OpenAI_NOT_GIVEN,
                 tool_choice=tool_choice_param,
                 max_completion_tokens=max_tokens,
-                stop=stop_sequence,
+                stop=stop_sequence if stop_sequence else OpenAI_NOT_GIVEN,
             )
             assert response is not None, "OpenAI response is None"
             return response
@@ -1106,7 +1140,7 @@ class OpenAIDirectClient(BaseOpenAIClient):
                 model=self.model_name,
                 messages=openai_messages,
                 max_completion_tokens=max_tokens,
-                stop=stop_sequence,
+                stop=stop_sequence if stop_sequence else OpenAI_NOT_GIVEN,
                 presence_penalty=presence_penalty,
                 stream=True,
             )
@@ -1189,12 +1223,37 @@ class OpenAIDirectClient(BaseOpenAIClient):
                                 space = "\n"
                             turn_message['reasoning_content'] = turn_message['reasoning_content'] + space + processed_message['content']
                         else:
-                            if 'content' not in turn_message:
-                                turn_message['content'] = ''
-                                space = ""
+                            # Handle merging content - can be str or list (for images)
+                            new_content = processed_message.get('content', '')
+                            existing_content = turn_message.get('content', '')
+                            
+                            # Normalize both to list format for merging
+                            if isinstance(existing_content, str):
+                                if existing_content:
+                                    existing_list = [{"type": "text", "text": existing_content}]
+                                else:
+                                    existing_list = []
                             else:
-                                space = "\n"
-                            turn_message['content'] = turn_message['content'] + space + processed_message['content']
+                                existing_list = existing_content if existing_content else []
+                            
+                            if isinstance(new_content, str):
+                                if new_content:
+                                    new_list = [{"type": "text", "text": new_content}]
+                                else:
+                                    new_list = []
+                            else:
+                                new_list = new_content if new_content else []
+                            
+                            # Merge the content lists
+                            merged = existing_list + new_list
+                            
+                            # If only text blocks and one or fewer, simplify back to string
+                            if len(merged) == 0:
+                                turn_message['content'] = ''
+                            elif len(merged) == 1 and merged[0].get('type') == 'text':
+                                turn_message['content'] = merged[0]['text']
+                            else:
+                                turn_message['content'] = merged
 
             openai_messages.append(turn_message)
 
@@ -1211,7 +1270,7 @@ class OpenAIDirectClient(BaseOpenAIClient):
                 temperature=temperature,
                 presence_penalty=presence_penalty,
                 top_p=top_p,
-                stop=stop_sequence,
+                stop=stop_sequence if stop_sequence else OpenAI_NOT_GIVEN,
                 stream=True,
             )
 

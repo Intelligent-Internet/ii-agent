@@ -111,7 +111,9 @@ export function useSessionManager({
                             AgentEvent.AGENT_RESPONSE_INTERRUPTED,
                             AgentEvent.STATUS_UPDATE,
                             AgentEvent.TOOL_CALL,
-                            AgentEvent.TOOL_RESULT
+                            AgentEvent.TOOL_RESULT,
+                            AgentEvent.COMPLETE,  // Handle COMPLETE to mark all subagents as completed
+                            AgentEvent.ERROR      // Handle ERROR to mark all subagents as completed
                         ].includes(event.type)
 
                         handleEvent(

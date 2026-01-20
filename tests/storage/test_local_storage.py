@@ -313,6 +313,59 @@ class TestLocalStorageUrls:
             assert "expires=" in url
             assert "content_type=" in url
 
+    def test_get_upload_signed_url_internal_true_uses_internal_base(self):
+        """Test that internal=True uses internal URL base for server-to-server uploads."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            storage = LocalStorage(
+                base_path=tmpdir,
+                serve_url_base="http://localhost:8000/files",
+                internal_url_base="http://backend:8000/files",
+            )
+
+            url = storage.get_upload_signed_url(
+                "upload/path.txt",
+                content_type="text/plain",
+                internal=True,
+            )
+
+            assert url.startswith("http://backend:8000/files/upload/")
+            assert "token=" in url
+
+    def test_get_upload_signed_url_internal_false_uses_serve_base(self):
+        """Test that internal=False uses serve URL base for browser uploads."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            storage = LocalStorage(
+                base_path=tmpdir,
+                serve_url_base="http://localhost:8000/files",
+                internal_url_base="http://backend:8000/files",
+            )
+
+            url = storage.get_upload_signed_url(
+                "upload/path.txt",
+                content_type="text/plain",
+                internal=False,
+            )
+
+            assert url.startswith("http://localhost:8000/files/upload/")
+            assert "token=" in url
+
+    def test_get_upload_signed_url_defaults_to_internal_true(self):
+        """Test that internal parameter defaults to True."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            storage = LocalStorage(
+                base_path=tmpdir,
+                serve_url_base="http://localhost:8000/files",
+                internal_url_base="http://backend:8000/files",
+            )
+
+            # Call without internal parameter - should default to internal=True
+            url = storage.get_upload_signed_url(
+                "upload/path.txt",
+                content_type="text/plain",
+            )
+
+            assert url.startswith("http://backend:8000/files/upload/")
+
 
 class TestLocalStorageUploadAndGet:
     """Tests for combined upload operations."""

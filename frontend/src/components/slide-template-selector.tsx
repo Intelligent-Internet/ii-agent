@@ -30,18 +30,21 @@ export const SlideTemplateSelector = ({
     const fetchTemplates = async () => {
         try {
             setLoading(true)
+            console.log('[SlideTemplateSelector] Fetching templates...')
             const response = await slideService.getSlideTemplates(
                 1,
                 50, // Get more templates for better selection
                 searchQuery || undefined
             )
+            console.log('[SlideTemplateSelector] Response:', response)
+            console.log('[SlideTemplateSelector] Templates:', response.templates)
             setTemplates(response.templates)
             // Auto-select the first template if none is selected
             if (response.templates.length > 0 && !selectedTemplate) {
                 setSelectedTemplate(response.templates[0])
             }
         } catch (error) {
-            console.error('Failed to fetch slide templates:', error)
+            console.error('[SlideTemplateSelector] Failed to fetch slide templates:', error)
             toast.error('Failed to load slide templates')
         } finally {
             setLoading(false)
@@ -182,7 +185,7 @@ export const SlideTemplateSelector = ({
                                                         loading="lazy"
                                                     />
                                                 ) : (
-                                                    <div className="flex flex-col items-center justify-center text-black/40 dark:text-white/40">
+                                                    <div className="flex flex-col items-center justify-center h-full text-black/40 dark:text-white/40">
                                                         <Icon
                                                             name="slide"
                                                             className="h-6 w-6 mb-1"
@@ -192,6 +195,12 @@ export const SlideTemplateSelector = ({
                                                         </span>
                                                     </div>
                                                 )}
+                                            </div>
+                                            {/* Template Name */}
+                                            <div className="p-2 bg-white dark:bg-neutral-900 border-t border-grey">
+                                                <p className="text-sm font-medium text-black dark:text-white truncate">
+                                                    {template.slide_template_name}
+                                                </p>
                                             </div>
                                         </div>
                                     ))}

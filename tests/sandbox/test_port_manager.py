@@ -622,3 +622,216 @@ class TestScanExistingContainers:
 
         # Container found but no ports to register
         assert discovered == 0
+
+
+class TestRescanContainers:
+    """Tests for rescan_containers method.
+
+    This tests the on-demand rescan that can be called at any time to
+    synchronize port manager state with actual running containers.
+    Unlike scan_existing_containers, rescan clears existing state first.
+    """
+
+    def setup_method(self):
+        """Reset singleton before each test."""
+        PortPoolManager.reset_instance()
+
+    def teardown_method(self):
+        """Clean up singleton after each test."""
+        PortPoolManager.reset_instance()
+
+    def _create_mock_container(
+        self,
+        name: str,
+        status: str,
+        port_mappings: dict,
+        container_id: str = "abc123"
+    ) -> MagicMock:
+        """Helper to create a mock container with port mappings."""
+        container = MagicMock()
+        container.name = name
+        container.status = status
+        container.id = container_id
+
+        # Build Ports structure like Docker returns
+        ports = {}
+        for container_port, host_port in port_mappings.items():
+            ports[f"{container_port}/tcp"] = [{"HostPort": str(host_port)}]
+
+        container.attrs = {
+            "NetworkSettings": {"Ports": ports},
+            "HostConfig": {"PortBindings": ports}
+        }
+        return container
+
+    def test_rescan_discovers_running_container(self):
+        """Test that rescan discovers a running sandbox container."""
+        manager = PortPoolManager.get_instance()
+
+        mock_container = self._create_mock_container(
+            name="ii-sandbox-abc123def456",
+            status="running",
+            port_mappings={3000: 30000, 6060: 30001},
+        )
+
+        mock_client = MagicMock()
+        mock_client.containers.list.return_value = [mock_container]
+
+        discovered = manager.rescan_containers(mock_client)
+
+        assert discovered == 1
+        port_set = manager.get_sandbox_ports("abc123def456")
+        assert port_set is not None
+        assert port_set.get_host_port(3000) == 30000
+        assert port_set.get_host_port(6060) == 30001
+
+    def test_rescan_clears_previous_allocations(self):
+        """Test that rescan clears previous state before rebuilding."""
+        manager = PortPoolManager.get_instance()
+
+        # First, manually allocate some ports
+        manager.allocate_ports(
+            sandbox_id="manual-sandbox",
+            container_ports=[3000, 6060],
+        )
+        initial_stats = manager.get_stats()
+        assert initial_stats["allocated"] == 2
+        assert initial_stats["sandboxes"] == 1
+
+        # Now rescan with a different container
+        mock_container = self._create_mock_container(
+            name="ii-sandbox-newcontainer",
+            status="running",
+            port_mappings={8080: 30010},
+        )
+        mock_client = MagicMock()
+        mock_client.containers.list.return_value = [mock_container]
+
+        discovered = manager.rescan_containers(mock_client)
+
+        assert discovered == 1
+        # Old allocation should be gone
+        assert manager.get_sandbox_ports("manual-sandbox") is None
+        # New allocation should exist
+        port_set = manager.get_sandbox_ports("newcontainer")
+        assert port_set is not None
+        assert port_set.get_host_port(8080) == 30010
+
+        final_stats = manager.get_stats()
+        assert final_stats["allocated"] == 1
+        assert final_stats["sandboxes"] == 1
+
+    def test_rescan_is_idempotent(self):
+        """Test that calling rescan multiple times gives same result."""
+        manager = PortPoolManager.get_instance()
+
+        mock_container = self._create_mock_container(
+            name="ii-sandbox-abc123",
+            status="running",
+            port_mappings={3000: 30000},
+        )
+        mock_client = MagicMock()
+        mock_client.containers.list.return_value = [mock_container]
+
+        discovered1 = manager.rescan_containers(mock_client)
+        stats1 = manager.get_stats()
+
+        discovered2 = manager.rescan_containers(mock_client)
+        stats2 = manager.get_stats()
+
+        assert discovered1 == discovered2 == 1
+        assert stats1["allocated"] == stats2["allocated"]
+        assert stats1["sandboxes"] == stats2["sandboxes"]
+
+    def test_rescan_skips_stopped_containers(self):
+        """Test that rescan ignores stopped containers."""
+        manager = PortPoolManager.get_instance()
+
+        mock_running = self._create_mock_container(
+            name="ii-sandbox-running",
+            status="running",
+            port_mappings={3000: 30000},
+        )
+        mock_exited = self._create_mock_container(
+            name="ii-sandbox-exited",
+            status="exited",
+            port_mappings={3000: 30001},
+        )
+
+        mock_client = MagicMock()
+        mock_client.containers.list.return_value = [mock_running, mock_exited]
+
+        discovered = manager.rescan_containers(mock_client)
+
+        assert discovered == 1
+        assert manager.get_sandbox_ports("running") is not None
+        assert manager.get_sandbox_ports("exited") is None
+
+    def test_rescan_handles_exception_gracefully(self):
+        """Test that rescan returns 0 and sets initialized on error."""
+        manager = PortPoolManager.get_instance()
+
+        mock_client = MagicMock()
+        mock_client.containers.list.side_effect = Exception("Docker error")
+
+        discovered = manager.rescan_containers(mock_client)
+
+        assert discovered == 0
+        # Manager should still be marked as initialized
+        assert manager._initialized is True
+
+    def test_rescan_ignores_ports_outside_range(self):
+        """Test that rescan ignores ports outside the configured range."""
+        manager = PortPoolManager.get_instance()
+
+        mock_container = self._create_mock_container(
+            name="ii-sandbox-abc123",
+            status="running",
+            port_mappings={
+                3000: 30000,  # In range
+                8080: 99999,  # Outside default range
+            },
+        )
+
+        mock_client = MagicMock()
+        mock_client.containers.list.return_value = [mock_container]
+
+        discovered = manager.rescan_containers(mock_client)
+
+        assert discovered == 1
+        port_set = manager.get_sandbox_ports("abc123")
+        # Only the in-range port should be registered
+        assert port_set.get_host_port(3000) == 30000
+        assert 8080 not in port_set.allocations
+
+    def test_rescan_can_be_called_after_scan_existing(self):
+        """Test that rescan works after scan_existing_containers was called."""
+        manager = PortPoolManager.get_instance()
+
+        # First do initial scan
+        mock_container1 = self._create_mock_container(
+            name="ii-sandbox-first",
+            status="running",
+            port_mappings={3000: 30000},
+        )
+        mock_client = MagicMock()
+        mock_client.containers.list.return_value = [mock_container1]
+
+        manager.scan_existing_containers(mock_client)
+        assert manager.get_sandbox_ports("first") is not None
+
+        # Now rescan with different container
+        mock_container2 = self._create_mock_container(
+            name="ii-sandbox-second",
+            status="running",
+            port_mappings={6060: 30010},
+        )
+        mock_client.containers.list.return_value = [mock_container2]
+
+        discovered = manager.rescan_containers(mock_client)
+
+        assert discovered == 1
+        # First container's allocation should be gone
+        assert manager.get_sandbox_ports("first") is None
+        # Second container should be registered
+        assert manager.get_sandbox_ports("second") is not None

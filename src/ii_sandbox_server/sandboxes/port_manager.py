@@ -429,6 +429,110 @@ class PortPoolManager:
 
             return len(orphaned)
 
+    def rescan_containers(self, docker_client: docker.DockerClient) -> int:
+        """Rescan all running containers and rebuild port allocations from scratch.
+
+        Unlike scan_existing_containers (which only runs once at startup), this
+        method can be called at any time to synchronize the port manager's state
+        with actual running containers. It clears existing allocations and rebuilds
+        from the Docker state.
+
+        This operation is idempotent - calling it multiple times produces the same
+        result based on the current Docker container state.
+
+        Use this after:
+        - Manually starting stopped sandbox containers (docker start)
+        - Recovering from sandbox-server restart
+        - Suspected state desync
+
+        Args:
+            docker_client: Docker client instance
+
+        Returns:
+            Number of containers discovered and registered
+        """
+        with self._port_lock:
+            # Clear existing state
+            old_count = len(self._sandbox_ports)
+            self._allocated_ports.clear()
+            self._sandbox_ports.clear()
+            self._initialized = False
+
+            if old_count > 0:
+                logger.info(f"Rescan: cleared {old_count} previous sandbox allocations")
+
+            # Do the scan while still holding the lock to prevent race conditions
+            # (We can't call scan_existing_containers here as it would deadlock)
+            discovered = 0
+
+            try:
+                containers = docker_client.containers.list(
+                    all=True,
+                    filters={"name": "ii-sandbox-"}
+                )
+
+                for container in containers:
+                    if container.status not in ("running", "created"):
+                        continue
+
+                    name = container.name
+                    if not name.startswith("ii-sandbox-"):
+                        continue
+
+                    sandbox_id_prefix = name.replace("ii-sandbox-", "")
+
+                    ports = container.attrs.get("NetworkSettings", {}).get("Ports", {})
+                    if not ports:
+                        ports = container.attrs.get("HostConfig", {}).get("PortBindings", {})
+
+                    if not ports:
+                        continue
+
+                    port_set = SandboxPortSet(
+                        sandbox_id=sandbox_id_prefix,
+                        container_id=container.id
+                    )
+
+                    for container_port_proto, bindings in ports.items():
+                        if not bindings:
+                            continue
+
+                        container_port = int(container_port_proto.split("/")[0])
+
+                        for binding in bindings:
+                            host_port = int(binding.get("HostPort", 0))
+                            if host_port and self._port_range_start <= host_port <= self._port_range_end:
+                                self._allocated_ports.add(host_port)
+
+                                allocation = PortAllocation(
+                                    sandbox_id=sandbox_id_prefix,
+                                    container_port=container_port,
+                                    host_port=host_port,
+                                )
+                                port_set.allocations[container_port] = allocation
+
+                    if port_set.allocations:
+                        self._sandbox_ports[sandbox_id_prefix] = port_set
+                        discovered += 1
+                        logger.info(
+                            f"Rescan: discovered container {name} with ports: "
+                            f"{port_set.to_docker_ports()}"
+                        )
+
+                self._initialized = True
+
+                logger.info(
+                    f"Rescan complete: discovered {discovered} containers, "
+                    f"{len(self._allocated_ports)} ports marked as allocated"
+                )
+
+                return discovered
+
+            except Exception as e:
+                logger.error(f"Error during rescan: {e}")
+                self._initialized = True
+                return 0
+
     def get_stats(self) -> Dict:
         """Get statistics about port usage."""
         with self._port_lock:

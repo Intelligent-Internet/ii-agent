@@ -153,13 +153,52 @@ async def cleanup_orphaned_ports():
     """Clean up port allocations for containers that no longer exist.
 
     This removes port reservations for crashed or manually removed containers.
+    Only available when using Docker/local sandbox provider.
     """
+    if sandbox_config.provider_type not in ("docker", "local"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Port management not available for provider: {sandbox_config.provider_type}"
+        )
+    
     import docker
     port_manager = PortPoolManager.get_instance()
     try:
         client = docker.from_env()
         cleaned = port_manager.cleanup_orphaned_allocations(client)
         return {"cleaned": cleaned, "message": f"Cleaned up {cleaned} orphaned allocations"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/ports/rescan")
+async def rescan_container_ports():
+    """Rescan running containers and register their port allocations.
+
+    Use this after manually starting sandbox containers (e.g., after server reboot)
+    to ensure the port manager knows about all allocated ports.
+    
+    This performs a full rescan - it clears existing allocations and rebuilds
+    from the actual running containers. This operation is idempotent.
+    
+    Only available when using Docker/local sandbox provider.
+    """
+    if sandbox_config.provider_type not in ("docker", "local"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Port management not available for provider: {sandbox_config.provider_type}"
+        )
+    
+    import docker
+    port_manager = PortPoolManager.get_instance()
+    try:
+        client = docker.from_env()
+        discovered = port_manager.rescan_containers(client)
+        return {
+            "discovered": discovered,
+            "message": f"Registered {discovered} container(s)",
+            "allocated_ports": len(port_manager._allocated_ports),
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

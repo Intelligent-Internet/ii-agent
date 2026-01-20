@@ -105,22 +105,28 @@ class AgentController:
                 instruction += f" - {file}\n"
                 logger.debug(f"Attached file: {file}")
 
-        # Then process images for image data
+        # Handle images - DO NOT embed images in the request to avoid 413 "request too large" errors
+        # Anthropic API has ~20MB request limit; large images easily exceed this
+        # Instead, tell the agent where images are and let it read them one at a time via FileRead
         if images_data:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                for image_data in images_data:
-                    response = await client.get(image_data["url"])
-                    response.raise_for_status()
-                    base64_image = base64.b64encode(response.content).decode("utf-8")
-                    image_blocks.append(
-                        {
-                            "source": {
-                                "type": "base64",
-                                "media_type": image_data["content_type"],
-                                "data": base64_image,
-                            }
-                        }
-                    )
+            from urllib.parse import unquote
+            # Extract just the file paths - images are already copied to /workspace/uploads/
+            image_paths = []
+            for image_data in images_data:
+                # The filename is the last part of the URL path (URL-decoded for encoded chars like %20)
+                url_path = image_data.get("url", "")
+                filename = image_data.get("filename", unquote(url_path.split("/")[-1].split("?")[0]))
+                image_paths.append(f"/workspace/uploads/{filename}")
+            
+            instruction = f"""{instruction}
+
+IMAGES PROVIDED ({len(images_data)} files):
+The following images have been uploaded and are available at /workspace/uploads/:
+{chr(10).join(f"  - {path}" for path in image_paths)}
+
+IMPORTANT: To view these images, use the FileRead tool to read each image file ONE AT A TIME.
+Do NOT try to process all images at once - this will cause request size errors.
+Read each image individually as you work on the corresponding content."""
 
         self.history.add_user_prompt(instruction or "", image_blocks)
 

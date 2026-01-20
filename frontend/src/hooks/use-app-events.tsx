@@ -217,6 +217,37 @@ export function useAppEvents() {
                     toast.error(errorMessage)
                     dispatch(setLoading(false))
                     dispatch(setPublished(null))
+
+                    // Mark all running subagents as failed/completed on error
+                    const failedAgentIds: string[] = []
+                    for (const [agentId, context] of activeAgentsRef.current.entries()) {
+                        if (context.status === 'running') {
+                            activeAgentsRef.current.set(agentId, {
+                                ...context,
+                                status: 'completed',
+                                endTime: Date.now()
+                            })
+                            failedAgentIds.push(agentId)
+                        }
+                    }
+
+                    // Update messages to reflect completed subagent status
+                    if (failedAgentIds.length > 0) {
+                        const updatedMessages = messagesRef.current.map((msg) => {
+                            if (msg.agentContext && failedAgentIds.includes(msg.agentContext.agentId)) {
+                                const updatedContext = activeAgentsRef.current.get(msg.agentContext.agentId)
+                                if (updatedContext) {
+                                    return {
+                                        ...msg,
+                                        agentContext: { ...updatedContext }
+                                    }
+                                }
+                            }
+                            return msg
+                        })
+                        safeDispatch(setMessages(updatedMessages))
+                    }
+
                     break
                 }
 
@@ -1171,6 +1202,61 @@ export function useAppEvents() {
                     break
                 }
 
+                case AgentEvent.SUB_AGENT_INTERRUPTED: {
+                    // Handle subagent interruption - similar to SUB_AGENT_COMPLETE but marks as stopped
+                    const currentAgentId =
+                        agentStackRef.current[
+                            agentStackRef.current.length - 1
+                        ] || mainAgentId.current
+
+                    // Find the subagent to mark as stopped
+                    let subagentToStop: AgentContext | undefined = undefined
+
+                    // First check current context
+                    const currentContext = activeAgentsRef.current.get(currentAgentId)
+                    if (currentContext?.agentType === 'subagent' && currentContext.status !== 'completed') {
+                        subagentToStop = currentContext
+                    }
+
+                    // If not found, search the stack backwards
+                    if (!subagentToStop) {
+                        for (let i = agentStackRef.current.length - 1; i >= 0; i--) {
+                            const agentId = agentStackRef.current[i]
+                            const context = activeAgentsRef.current.get(agentId)
+                            if (context?.agentType === 'subagent' && context.status === 'running') {
+                                subagentToStop = context
+                                break
+                            }
+                        }
+                    }
+
+                    // Mark the subagent as stopped
+                    if (subagentToStop && subagentToStop.status !== 'completed') {
+                        const stoppedAgentContext = {
+                            ...subagentToStop,
+                            status: 'stopped' as const,
+                            endTime: Date.now()
+                        }
+                        activeAgentsRef.current.set(subagentToStop.agentId, stoppedAgentContext)
+
+                        // Update all messages with this agent context
+                        const updatedMessages = messagesRef.current.map((msg) => {
+                            if (msg.agentContext?.agentId === stoppedAgentContext.agentId) {
+                                return { ...msg, agentContext: { ...stoppedAgentContext } }
+                            }
+                            return msg
+                        })
+                        safeDispatch(setMessages(updatedMessages))
+
+                        // Pop from agent stack
+                        const agentIndex = agentStackRef.current.indexOf(subagentToStop.agentId)
+                        if (agentIndex >= 0) {
+                            agentStackRef.current.splice(agentIndex, 1)
+                        }
+                    }
+                    break
+                }
+
                 case AgentEvent.TOOL_PROGRESS: {
                     // Handle Codex tool progress updates
                     const progressData = data.content
@@ -1199,6 +1285,37 @@ export function useAppEvents() {
                 case AgentEvent.COMPLETE: {
                     dispatch(setCompleted(true))
                     dispatch(setLoading(false))
+
+                    // Mark all running subagents as completed (create new objects to avoid mutation)
+                    const completedAgentIds: string[] = []
+                    for (const [agentId, context] of activeAgentsRef.current.entries()) {
+                        if (context.status === 'running') {
+                            activeAgentsRef.current.set(agentId, {
+                                ...context,
+                                status: 'completed',
+                                endTime: Date.now()
+                            })
+                            completedAgentIds.push(agentId)
+                        }
+                    }
+
+                    // Update messages to reflect completed subagent status
+                    if (completedAgentIds.length > 0) {
+                        const updatedMessages = messagesRef.current.map((msg) => {
+                            if (msg.agentContext && completedAgentIds.includes(msg.agentContext.agentId)) {
+                                const updatedContext = activeAgentsRef.current.get(msg.agentContext.agentId)
+                                if (updatedContext) {
+                                    return {
+                                        ...msg,
+                                        agentContext: { ...updatedContext }
+                                    }
+                                }
+                            }
+                            return msg
+                        })
+                        safeDispatch(setMessages(updatedMessages))
+                    }
+
                     // Invalidate credit cache to refresh balance and usage
                     dispatch(
                         userApi.util.invalidateTags([

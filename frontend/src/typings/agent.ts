@@ -56,6 +56,7 @@ export enum AgentEvent {
     STATUS_UPDATE = 'status_update',
     SANDBOX_STATUS = 'sandbox_status',
     SUB_AGENT_COMPLETE = 'sub_agent_complete',
+    SUB_AGENT_INTERRUPTED = 'sub_agent_interrupted',
     TOOL_PROGRESS = 'tool_progress',
     MODEL_COMPACT = 'model_compact'
 }

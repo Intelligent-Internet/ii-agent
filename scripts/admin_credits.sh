@@ -4,16 +4,52 @@
 
 set -e
 
-# Database connection details
-POSTGRES_CONTAINER="${POSTGRES_CONTAINER:-docker-postgres-1}"
-POSTGRES_USER="${POSTGRES_USER:-iiagent}"
-POSTGRES_DB="${POSTGRES_DB:-iiagentdev}"
-
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
 NC='\033[0m' # No Color
+
+# Auto-detect deployment mode and set container name
+detect_postgres_container() {
+    if [ -n "$POSTGRES_CONTAINER" ]; then
+        echo "$POSTGRES_CONTAINER"
+        return
+    fi
+    
+    # Try local deployment first (ii-agent-local-postgres-1)
+    if docker ps --format '{{.Names}}' | grep -q '^ii-agent-local-postgres-1$'; then
+        echo "ii-agent-local-postgres-1"
+        return
+    fi
+    
+    # Try cloud/stack deployment (docker-postgres-1)
+    if docker ps --format '{{.Names}}' | grep -q '^docker-postgres-1$'; then
+        echo "docker-postgres-1"
+        return
+    fi
+    
+    # Fallback: find any running postgres container
+    local container=$(docker ps --format '{{.Names}}' | grep -i postgres | head -1)
+    if [ -n "$container" ]; then
+        echo "$container"
+        return
+    fi
+    
+    echo ""
+}
+
+POSTGRES_CONTAINER=$(detect_postgres_container)
+POSTGRES_USER="${POSTGRES_USER:-iiagent}"
+POSTGRES_DB="${POSTGRES_DB:-iiagentdev}"
+
+# Validate container was found
+if [ -z "$POSTGRES_CONTAINER" ]; then
+    echo -e "${RED}Error: No PostgreSQL container found running${NC}"
+    echo "Make sure the stack is running with: ./scripts/stack_control.sh up"
+    exit 1
+fi
 
 run_sql() {
     docker exec "$POSTGRES_CONTAINER" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "$1"
@@ -21,6 +57,8 @@ run_sql() {
 
 show_help() {
     echo "Admin Credit Management Tool"
+    echo ""
+    echo -e "Detected container: ${BLUE}$POSTGRES_CONTAINER${NC}"
     echo ""
     echo "Usage: $0 <command> [args]"
     echo ""
@@ -39,7 +77,7 @@ show_help() {
     echo "  $0 bonus admin@ii.inc 2000"
     echo ""
     echo "Environment Variables:"
-    echo "  POSTGRES_CONTAINER  Docker container name (default: docker-postgres-1)"
+    echo "  POSTGRES_CONTAINER  Override auto-detected container (auto: local or cloud)"
     echo "  POSTGRES_USER       Database user (default: iiagent)"
     echo "  POSTGRES_DB         Database name (default: iiagentdev)"
 }

@@ -17,6 +17,12 @@ Workspace: /workspace
 Operating System: {platform}
 Today: {today}
 
+<user_uploads>
+When users attach files to their message, the files are saved to /workspace/uploads/
+If you are asked to work with user-provided files (images, documents, etc.), check /workspace/uploads/ first.
+Example: If user uploads "dark1.png", it will be at /workspace/uploads/dark1.png
+</user_uploads>
+
 You MUST gather enough information from search tools to get enough information to complete the task. Do you direct answer the user's question if you not confident about the answer.
 
 <task_management>
@@ -168,6 +174,15 @@ Use web search for inspiration, trends, and technical specifications. Leverage f
 """,
         AgentType.SLIDE: """
   <slides>
+## CRITICAL: SLIDE OUTPUT REQUIREMENT
+**YOU MUST USE THE SlideWrite TOOL TO CREATE AND SAVE ALL SLIDES.**
+- For creating new slides: Use the `SlideWrite` tool with the slide HTML content
+- For editing existing slides: Use the `SlideEdit` tool
+- DO NOT just write HTML to files in /workspace - slides MUST be saved using SlideWrite/SlideEdit tools
+- The SlideWrite tool saves slides to the database where they can be viewed in the Results tab
+- ALWAYS use SlideWrite after generating each slide's HTML content
+- If you don't use SlideWrite, the user will NOT be able to see your slides!
+
 ## Automatic Format Selection
 The system intelligently selects the optimal output format based on content requirements and user preferences:
 ## HTML Presentation (page Deck)
