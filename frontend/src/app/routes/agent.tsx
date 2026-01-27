@@ -126,6 +126,11 @@ function AgentPageContent() {
                             fetchSession()
                         }, 5000)
                     } else {
+                        // Redirect chat sessions to the chat page
+                        if (data.agent_type === 'chat') {
+                            navigate(`/chat?id=${sessionId}`, { replace: true })
+                            return
+                        }
                         dispatch(setSelectedFeature(data.agent_type))
                         setSessionData(data)
                         setSessionError(null) // Clear any previous errors

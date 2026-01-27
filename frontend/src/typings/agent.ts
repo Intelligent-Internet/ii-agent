@@ -194,7 +194,7 @@ export interface AgentContext {
     nestingLevel: number
     startTime?: number
     endTime?: number
-    status?: 'running' | 'completed' | 'failed'
+    status?: 'running' | 'completed' | 'failed' | 'stopped'
 }
 
 export type ActionStep = {

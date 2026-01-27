@@ -75,7 +75,10 @@ export function ShareAgentContent() {
                             fetchSession()
                         }, 5000)
                     } else {
-                        dispatch(setSelectedFeature(data.agent_type))
+                        // Normalize chat sessions to 'general' to prevent invalid agent_type
+                        // (ShareAgentContent should not receive chat sessions, but be defensive)
+                        const agentType = data.agent_type === 'chat' ? 'general' : data.agent_type
+                        dispatch(setSelectedFeature(agentType))
                         setSessionData(data)
                         setSessionError(null) // Clear any previous errors
                     }
