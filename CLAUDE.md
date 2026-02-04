@@ -61,16 +61,19 @@ Each skill has detailed documentation:
 - `src/ii_skills/market_newsletter/SKILL.md` - Market news setup
 - `src/ii_skills/health_dashboard/SKILL.md` - WHOOP integration
 
-Additional IB documentation:
-- `src/ii_skills/ib_toolkit/QUICK_REFERENCE.md` - **Master reference for all modules (Excel + Slides)**
+**IB Toolkit Documentation (Start Here):**
+- `src/ii_skills/ib_toolkit/CAPABILITIES.md` - **Complete capabilities reference (67 modules)**
+- `src/ii_skills/ib_toolkit/LBO_CASE_GUIDE.md` - **LBO case approach by timeframe (24h/48h/5d/7d+)**
+- `src/ii_skills/ib_toolkit/QUICK_REFERENCE.md` - Module mapping (request → Excel + Slides)
+
+**Additional IB documentation:**
+- `src/ii_skills/ib_toolkit/templates/reference_outputs/MODULE_INDEX.md` - Template index with use cases
 - `docs/skills/ib_toolkit/BEST_PRACTICES.md`
-- `docs/skills/ib_toolkit/ORCHESTRATION_FRAMEWORK.md`
 - `docs/skills/ib_toolkit/ORCHESTRATION_GUIDE.md` - Parallel agent execution
 - `docs/skills/ib_toolkit/PROMPT_LIBRARY.md`
 
-Reference templates:
-- `src/ii_skills/ib_toolkit/templates/reference_outputs/Institutional_LBO_Template.xlsx`
-- `src/ii_skills/ib_toolkit/templates/reference_outputs/Institutional_Deck_Template.pptx`
+**Reference templates (30 files):**
+- `src/ii_skills/ib_toolkit/templates/reference_outputs/` - All module templates (Excel + PPT)
 
 ### IB Toolkit - Modular Slide Generation
 
