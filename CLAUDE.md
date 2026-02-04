@@ -85,6 +85,27 @@ Generate specific analysis slides on demand:
 Template location: `src/ii_skills/ib_toolkit/templates/case_study/`
 Reference guide: `templates/case_study/SLIDE_REFERENCE.md`
 
+### IB Toolkit - Modular Excel Model Generation
+
+Generate specific financial model components based on time available:
+
+| Timeframe | Function | Modules Included |
+|-----------|----------|------------------|
+| 24-hour case | `generate_quick_lbo()` | S&U, Operating, Returns, Sensitivity |
+| 48-hour case | `generate_standard_lbo()` | + Revenue, Expense, Debt, Working Capital |
+| 7+ day case | `generate_comprehensive_lbo()` | + WACC, DCF, Comps, Covenants |
+
+Standalone module generation:
+| Request | Function |
+|---------|----------|
+| "debt schedule" | `generate_debt_schedule()` |
+| "WACC calculation" | `generate_wacc_model()` |
+| "revenue build" | `generate_revenue_build()` |
+| "SG&A breakdown" | `generate_expense_build()` |
+
+Excel templates: `src/ii_skills/ib_toolkit/templates/excel_models/`
+Reference guide: `templates/excel_models/MODEL_REFERENCE.md`
+
 ## Development
 
 ### Install Dependencies
@@ -137,6 +158,13 @@ ii-agent/
 > "Build LBO slides for a $50M EBITDA company at 8x entry"
 > "Generate a full investment deck for Target Company"
 > "Create debt capacity analysis slides"
+
+### Financial Modeling (Time-Based Excel Models)
+> "Build a quick 24-hour LBO model for a $50M EBITDA company"
+> "Create a detailed debt schedule with cash sweep"
+> "Generate WACC calculation with full CAPM breakdown"
+> "Build revenue projections by segment"
+> "Create a 5-day detailed LBO model with all modules"
 
 ### Health Tracking
 > "What was my average HRV this week?"
