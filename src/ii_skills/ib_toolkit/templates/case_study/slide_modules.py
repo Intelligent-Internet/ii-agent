@@ -125,6 +125,42 @@ SLIDE_MODULES = {
         "slides": ["dd_overview", "qoe_summary", "key_findings", "open_items"],
         "function": "add_due_diligence"
     },
+
+    # ============================================================
+    # INSTITUTIONAL MODULES (7+ Day Case)
+    # ============================================================
+
+    # Scenario Analysis
+    "scenario_analysis": {
+        "name": "Scenario Analysis",
+        "description": "Bull/Bear/Base case comparison with probability-weighted returns",
+        "slides": ["scenario_summary", "scenario_drivers", "probability_weighted_returns"],
+        "function": "add_scenario_analysis"
+    },
+
+    # Management vs Buyer Case
+    "management_vs_buyer": {
+        "name": "Management vs Buyer Case",
+        "description": "Side-by-side comparison of management projections vs buyer underwriting",
+        "slides": ["case_comparison", "variance_analysis", "returns_bridge"],
+        "function": "add_management_vs_buyer"
+    },
+
+    # DCF Valuation
+    "dcf_valuation": {
+        "name": "DCF Valuation",
+        "description": "Discounted cash flow analysis with terminal value and sensitivity",
+        "slides": ["dcf_summary", "fcf_bridge", "terminal_value_sensitivity"],
+        "function": "add_dcf_valuation"
+    },
+
+    # Covenant Analysis
+    "covenant_analysis": {
+        "name": "Covenant Analysis",
+        "description": "Debt covenant compliance, leverage ratios, coverage analysis",
+        "slides": ["covenant_overview", "leverage_trajectory", "coverage_analysis"],
+        "function": "add_covenant_analysis"
+    },
 }
 
 
@@ -1124,6 +1160,315 @@ class SlideGenerator:
         return self
 
     # ============================================================
+    # INSTITUTIONAL MODULES (7+ Day Case)
+    # ============================================================
+
+    def add_scenario_analysis(self, data: Dict = None, include_cover: bool = True):
+        """
+        Add scenario analysis slides (Bull/Bear/Base case comparison).
+
+        Args:
+            data: Optional dict with scenario assumptions and returns
+            include_cover: Whether to add a section header
+        """
+        data = data or {}
+
+        if include_cover:
+            self._add_section_header("Scenario Analysis")
+
+        # Scenario Summary
+        self._add_table_slide(
+            "Scenario Comparison Summary",
+            ["Metric", "Bear Case", "Base Case", "Bull Case"],
+            data.get('scenario_summary', [
+                ["Probability", "20%", "60%", "20%"],
+                ["Revenue CAGR", "3%", "6%", "10%"],
+                ["Exit EBITDA Margin", "18%", "22%", "26%"],
+                ["Exit Multiple", "7.0x", "8.0x", "9.0x"],
+                ["Exit Year", "5", "5", "5"],
+                ["MOIC", "1.5x", "2.2x", "3.0x"],
+                ["IRR", "8%", "17%", "25%"],
+            ]),
+            col_widths=[2.5, 2.0, 2.0, 2.0],
+            subtitle="Key assumptions and returns by scenario"
+        )
+
+        # Scenario Drivers
+        self._add_content_slide(
+            "Scenario Key Drivers",
+            [
+                "Bear Case Assumptions (20% probability)",
+                ("Revenue growth limited to GDP + inflation", 1),
+                ("Margin compression from competitive pressure", 1),
+                ("Multiple contraction to historical trough", 1),
+                "",
+                "Base Case Assumptions (60% probability)",
+                ("Revenue growth aligned with industry", 1),
+                ("Margin improvement from operational initiatives", 1),
+                ("Exit multiple at entry (no expansion)", 1),
+                "",
+                "Bull Case Assumptions (20% probability)",
+                ("Market share gains driving above-market growth", 1),
+                ("Full margin potential realized", 1),
+                ("Multiple expansion to premium peer levels", 1),
+            ],
+            subtitle="Key assumptions driving each scenario"
+        )
+
+        # Probability-Weighted Returns
+        self._add_table_slide(
+            "Probability-Weighted Returns",
+            ["Scenario", "Probability", "MOIC", "IRR", "Weighted MOIC", "Weighted IRR"],
+            data.get('weighted_returns', [
+                ["Bear Case", "20%", "1.5x", "8%", "0.30x", "1.6%"],
+                ["Base Case", "60%", "2.2x", "17%", "1.32x", "10.2%"],
+                ["Bull Case", "20%", "3.0x", "25%", "0.60x", "5.0%"],
+                ["Blended", "100%", "—", "—", "2.22x", "16.8%"],
+            ]),
+            col_widths=[1.8, 1.3, 1.3, 1.3, 1.5, 1.5],
+            subtitle="Expected returns under probability-weighted scenarios"
+        )
+
+        # Downside Protection
+        self._add_content_slide(
+            "Downside Protection Analysis",
+            [
+                "Bear Case Return Profile",
+                ("Bear case MOIC: 1.5x", 1),
+                ("Implies return of capital plus modest return", 1),
+                ("Key downside drivers:", 1),
+                ("  - Revenue shortfall: [X]% impact", 2),
+                ("  - Margin compression: [X]% impact", 2),
+                ("  - Multiple contraction: [X]% impact", 2),
+                "",
+                "Mitigants",
+                ("Asset value floor: $[XXX]M (Y.Yx coverage)", 1),
+                ("Debt paydown provides equity accretion", 1),
+                ("Contractual revenue base of [X]%", 1),
+                ("Management incentive alignment", 1),
+            ],
+            subtitle="Downside scenario analysis and protection measures"
+        )
+
+        return self
+
+    def add_management_vs_buyer(self, data: Dict = None, include_cover: bool = True):
+        """
+        Add management vs buyer case comparison slides.
+
+        Args:
+            data: Optional dict with management and buyer projections
+            include_cover: Whether to add a section header
+        """
+        data = data or {}
+
+        if include_cover:
+            self._add_section_header("Management vs Buyer Case")
+
+        # Case Comparison Table
+        self._add_table_slide(
+            "Projection Case Comparison",
+            ["Year", "1", "2", "3", "4", "5", "CAGR"],
+            data.get('case_comparison', [
+                ["Management Revenue", "$XXX", "$XXX", "$XXX", "$XXX", "$XXX", "X%"],
+                ["Buyer Revenue", "$XXX", "$XXX", "$XXX", "$XXX", "$XXX", "X%"],
+                ["  Variance", "($X)", "($X)", "($X)", "($X)", "($X)", "—"],
+                ["", "", "", "", "", "", ""],
+                ["Management EBITDA", "$XX", "$XX", "$XX", "$XX", "$XX", "X%"],
+                ["Buyer EBITDA", "$XX", "$XX", "$XX", "$XX", "$XX", "X%"],
+                ["  Variance", "($X)", "($X)", "($X)", "($X)", "($X)", "—"],
+            ]),
+            col_widths=[2.2, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+            subtitle="Management plan vs buyer underwriting assumptions"
+        )
+
+        # Variance Drivers
+        self._add_content_slide(
+            "Key Variance Drivers",
+            [
+                "Revenue Haircut Rationale",
+                ("New product launch timing: [X]% haircut", 1),
+                ("Market growth assumptions: [X]% haircut", 1),
+                ("Pricing assumptions: [X]% haircut", 1),
+                "",
+                "Margin Haircut Rationale",
+                ("Cost savings timing: [X] bps haircut", 1),
+                ("Synergy realization: [X] bps haircut", 1),
+                ("Investment requirements: [X] bps haircut", 1),
+                "",
+                "Total Impact",
+                ("Year 5 Revenue variance: [X]%", 1),
+                ("Year 5 EBITDA variance: [X]%", 1),
+                ("IRR impact: [X] percentage points", 1),
+            ],
+            subtitle="Justification for buyer case adjustments"
+        )
+
+        # Returns Bridge
+        self._add_table_slide(
+            "Returns Comparison (Year 5 Exit)",
+            ["Metric", "Management Case", "Buyer Case", "Difference"],
+            data.get('returns_comparison', [
+                ["Exit EBITDA", "$XXM", "$XXM", "($XM)"],
+                ["Exit EV", "$XXXM", "$XXXM", "($XXM)"],
+                ["Exit Equity", "$XXXM", "$XXXM", "($XXM)"],
+                ["MOIC", "X.Xx", "X.Xx", "(X.Xx)"],
+                ["IRR", "XX%", "XX%", "(X%)"],
+            ]),
+            col_widths=[2.5, 2.0, 2.0, 2.0],
+            subtitle="Return impact of buyer case haircuts"
+        )
+
+        return self
+
+    def add_dcf_valuation(self, data: Dict = None, include_cover: bool = True):
+        """
+        Add DCF valuation slides.
+
+        Args:
+            data: Optional dict with DCF inputs and outputs
+            include_cover: Whether to add a section header
+        """
+        data = data or {}
+
+        if include_cover:
+            self._add_section_header("DCF Valuation")
+
+        # DCF Summary
+        self._add_table_slide(
+            "DCF Valuation Summary",
+            ["Component", "Value ($M)", "Notes"],
+            data.get('dcf_summary', [
+                ["PV of Projection Period FCF", "$XXX", "Years 1-5"],
+                ["PV of Terminal Value", "$XXX", "Exit multiple / perpetuity"],
+                ["Enterprise Value", "$XXX", "—"],
+                ["Less: Net Debt", "($XX)", "As of close"],
+                ["Equity Value", "$XXX", "—"],
+                ["Implied EV/EBITDA", "X.Xx", "Based on LTM"],
+            ]),
+            col_widths=[3.5, 2.0, 3.0],
+            subtitle="DCF-derived valuation"
+        )
+
+        # FCF Bridge
+        self._add_table_slide(
+            "Free Cash Flow Build",
+            ["Year", "1", "2", "3", "4", "5", "Terminal"],
+            data.get('fcf_build', [
+                ["EBITDA", "$XX", "$XX", "$XX", "$XX", "$XX", "$XX"],
+                ["(-) D&A", "($X)", "($X)", "($X)", "($X)", "($X)", "($X)"],
+                ["EBIT", "$XX", "$XX", "$XX", "$XX", "$XX", "$XX"],
+                ["(-) Taxes", "($X)", "($X)", "($X)", "($X)", "($X)", "($X)"],
+                ["(+) D&A", "$X", "$X", "$X", "$X", "$X", "$X"],
+                ["(-) CapEx", "($X)", "($X)", "($X)", "($X)", "($X)", "($X)"],
+                ["(-) NWC", "($X)", "($X)", "($X)", "($X)", "($X)", "$0"],
+                ["UFCF", "$XX", "$XX", "$XX", "$XX", "$XX", "$XX"],
+            ]),
+            col_widths=[2.2, 1.0, 1.0, 1.0, 1.0, 1.0, 1.3],
+            subtitle="Unlevered free cash flow projection"
+        )
+
+        # Terminal Value Sensitivity
+        self._add_table_slide(
+            "DCF Sensitivity Analysis",
+            ["", "8.0x", "8.5x", "9.0x", "9.5x", "10.0x"],
+            data.get('dcf_sensitivity', [
+                ["WACC 8.0%", "$XXX", "$XXX", "$XXX", "$XXX", "$XXX"],
+                ["WACC 9.0%", "$XXX", "$XXX", "$XXX", "$XXX", "$XXX"],
+                ["WACC 10.0%", "$XXX", "$XXX", "$XXX", "$XXX", "$XXX"],
+                ["WACC 11.0%", "$XXX", "$XXX", "$XXX", "$XXX", "$XXX"],
+                ["WACC 12.0%", "$XXX", "$XXX", "$XXX", "$XXX", "$XXX"],
+            ]),
+            col_widths=[1.8, 1.4, 1.4, 1.4, 1.4, 1.4],
+            subtitle="Enterprise value sensitivity to WACC and exit multiple"
+        )
+
+        return self
+
+    def add_covenant_analysis(self, data: Dict = None, include_cover: bool = True):
+        """
+        Add covenant analysis slides.
+
+        Args:
+            data: Optional dict with covenant projections
+            include_cover: Whether to add a section header
+        """
+        data = data or {}
+
+        if include_cover:
+            self._add_section_header("Covenant Analysis")
+
+        # Covenant Overview
+        self._add_table_slide(
+            "Covenant Package Overview",
+            ["Covenant", "Threshold", "Test Frequency", "Cure Rights"],
+            data.get('covenant_package', [
+                ["Max Leverage Ratio", "X.Xx Total Debt / EBITDA", "Quarterly", "Yes - equity cure"],
+                ["Min Interest Coverage", "X.Xx EBITDA / Interest", "Quarterly", "Yes - equity cure"],
+                ["Min Fixed Charge Coverage", "X.Xx (EBITDA-CapEx) / Debt Service", "Quarterly", "Limited"],
+                ["Max CapEx", "$XXM annually", "Annual", "Carry-forward"],
+                ["Dividend Restrictions", "Available basket + RP growth", "Ongoing", "N/A"],
+            ]),
+            col_widths=[2.5, 2.5, 1.5, 2.0],
+            subtitle="Summary of financial covenant package"
+        )
+
+        # Leverage Trajectory
+        self._add_table_slide(
+            "Leverage Ratio Trajectory",
+            ["Year", "Close", "1", "2", "3", "4", "5"],
+            data.get('leverage_trajectory', [
+                ["Total Debt", "$XXX", "$XXX", "$XXX", "$XXX", "$XXX", "$XXX"],
+                ["EBITDA", "$XX", "$XX", "$XX", "$XX", "$XX", "$XX"],
+                ["Leverage Ratio", "X.Xx", "X.Xx", "X.Xx", "X.Xx", "X.Xx", "X.Xx"],
+                ["Covenant", "X.Xx", "X.Xx", "X.Xx", "X.Xx", "X.Xx", "X.Xx"],
+                ["Headroom", "X.Xx", "X.Xx", "X.Xx", "X.Xx", "X.Xx", "X.Xx"],
+                ["Status", "Pass", "Pass", "Pass", "Pass", "Pass", "Pass"],
+            ]),
+            col_widths=[2.0, 1.2, 1.2, 1.2, 1.2, 1.2, 1.2],
+            subtitle="Leverage covenant compliance over projection period"
+        )
+
+        # Coverage Analysis
+        self._add_table_slide(
+            "Interest Coverage Trajectory",
+            ["Year", "Close", "1", "2", "3", "4", "5"],
+            data.get('coverage_trajectory', [
+                ["EBITDA", "$XX", "$XX", "$XX", "$XX", "$XX", "$XX"],
+                ["Interest Expense", "$X", "$X", "$X", "$X", "$X", "$X"],
+                ["Coverage Ratio", "X.Xx", "X.Xx", "X.Xx", "X.Xx", "X.Xx", "X.Xx"],
+                ["Covenant", "X.Xx", "X.Xx", "X.Xx", "X.Xx", "X.Xx", "X.Xx"],
+                ["Headroom", "X.Xx", "X.Xx", "X.Xx", "X.Xx", "X.Xx", "X.Xx"],
+                ["Status", "Pass", "Pass", "Pass", "Pass", "Pass", "Pass"],
+            ]),
+            col_widths=[2.0, 1.2, 1.2, 1.2, 1.2, 1.2, 1.2],
+            subtitle="Interest coverage covenant compliance"
+        )
+
+        # Covenant Stress Test
+        self._add_content_slide(
+            "Covenant Stress Test",
+            [
+                "Downside Scenario Impact on Covenants",
+                "",
+                "Leverage Ratio Stress Test:",
+                ("Base case: X.Xx (passes with X.Xx headroom)", 1),
+                ("Bear case: X.Xx (passes with X.Xx headroom)", 1),
+                ("Break-even EBITDA: $XXM (XX% below plan)", 1),
+                "",
+                "Interest Coverage Stress Test:",
+                ("Base case: X.Xx (passes with X.Xx headroom)", 1),
+                ("Bear case: X.Xx (passes with X.Xx headroom)", 1),
+                ("Break-even EBITDA: $XXM (XX% below plan)", 1),
+                "",
+                "Key Takeaway: Covenant package provides [adequate/tight] flexibility",
+            ],
+            subtitle="Covenant compliance under stress scenarios"
+        )
+
+        return self
+
+    # ============================================================
     # FULL DECK GENERATION
     # ============================================================
 
@@ -1260,6 +1605,68 @@ def generate_full_deck(company_name: str, output_path: str, data: Dict = None) -
 
 
 # ============================================================
+# INSTITUTIONAL MODULE QUICK ACCESS FUNCTIONS (7+ Day Case)
+# ============================================================
+
+def generate_scenario_analysis(company_name: str, output_path: str, data: Dict = None) -> str:
+    """Quick function to generate scenario analysis slides (Bull/Bear/Base)."""
+    gen = SlideGenerator(company_name)
+    gen._add_cover_slide(f"{company_name} - Scenario Analysis", "Bull/Bear/Base Case Comparison")
+    gen.add_scenario_analysis(data, include_cover=False)
+    return gen.save(output_path)
+
+
+def generate_management_vs_buyer(company_name: str, output_path: str, data: Dict = None) -> str:
+    """Quick function to generate management vs buyer case comparison slides."""
+    gen = SlideGenerator(company_name)
+    gen._add_cover_slide(f"{company_name} - Case Comparison", "Management vs Buyer Underwriting")
+    gen.add_management_vs_buyer(data, include_cover=False)
+    return gen.save(output_path)
+
+
+def generate_dcf_slides(company_name: str, output_path: str, data: Dict = None) -> str:
+    """Quick function to generate DCF valuation slides."""
+    gen = SlideGenerator(company_name)
+    gen._add_cover_slide(f"{company_name} - DCF Analysis", "Discounted Cash Flow Valuation")
+    gen.add_dcf_valuation(data, include_cover=False)
+    return gen.save(output_path)
+
+
+def generate_covenant_slides(company_name: str, output_path: str, data: Dict = None) -> str:
+    """Quick function to generate covenant analysis slides."""
+    gen = SlideGenerator(company_name)
+    gen._add_cover_slide(f"{company_name} - Covenant Analysis", "Financial Covenant Compliance")
+    gen.add_covenant_analysis(data, include_cover=False)
+    return gen.save(output_path)
+
+
+def generate_institutional_deck(company_name: str, output_path: str, data: Dict = None) -> str:
+    """Generate all institutional-quality slides (7+ day case depth)."""
+    data = data or {}
+    gen = SlideGenerator(company_name)
+    gen._add_cover_slide(f"{company_name} - Institutional Analysis", "Comprehensive Investment Analysis")
+
+    # Core modules
+    gen.add_company_overview(data.get('company'), include_cover=True)
+    gen.add_industry_analysis(data.get('industry'), include_cover=True)
+    gen.add_competitive_analysis(data.get('competitive'), include_cover=True)
+    gen.add_financial_analysis(data.get('financial'), include_cover=True)
+    gen.add_valuation(data.get('valuation'), include_cover=True)
+    gen.add_lbo_analysis(data.get('lbo'), include_cover=True)
+
+    # Institutional modules
+    gen.add_scenario_analysis(data.get('scenarios'), include_cover=True)
+    gen.add_management_vs_buyer(data.get('mgmt_vs_buyer'), include_cover=True)
+    gen.add_dcf_valuation(data.get('dcf'), include_cover=True)
+    gen.add_covenant_analysis(data.get('covenants'), include_cover=True)
+
+    # Thesis and recommendation
+    gen.add_investment_thesis(data.get('thesis'), include_cover=True)
+
+    return gen.save(output_path)
+
+
+# ============================================================
 # MODULE LISTING
 # ============================================================
 
@@ -1295,3 +1702,12 @@ if __name__ == "__main__":
     print("  generate_valuation_analysis(company, path)")
     print("  generate_investment_thesis(company, path)")
     print("  generate_full_deck(company, path)")
+
+    print("\n" + "=" * 60)
+    print("Institutional Functions (7+ Day Case):")
+    print("=" * 60)
+    print("  generate_scenario_analysis(company, path)")
+    print("  generate_management_vs_buyer(company, path)")
+    print("  generate_dcf_slides(company, path)")
+    print("  generate_covenant_slides(company, path)")
+    print("  generate_institutional_deck(company, path)")

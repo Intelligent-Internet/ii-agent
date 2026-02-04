@@ -14,8 +14,9 @@ Capabilities:
 - Capital Structure Analyzer (debt capacity, optimal financing)
 - Quality of Earnings Analyzer (EBITDA normalization, due diligence)
 - Parallel Agent Orchestration (see ORCHESTRATION_GUIDE.md)
+- Institutional Modules (scenario analysis, management vs buyer, DCF, covenants)
 
-Version: 1.4.0
+Version: 1.5.0
 """
 
 from typing import Dict, List, Optional
@@ -24,7 +25,7 @@ from pathlib import Path
 from ii_skills import BaseSkill, register_skill
 
 # Skill metadata
-__version__ = "1.4.0"
+__version__ = "1.5.0"
 __author__ = "II-Agent System"
 
 

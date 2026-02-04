@@ -15,6 +15,16 @@
 | "company overview", "business description", "customers" | `company_overview` | via SlideGenerator class |
 | "full deck", "complete analysis", "investment memo" | all modules | `generate_full_deck()` |
 
+### Institutional Modules (7+ Day Case)
+
+| User Request | Module | Function |
+|--------------|--------|----------|
+| "scenario analysis", "bull/bear/base", "probability weighted" | `scenario_analysis` | `generate_scenario_analysis()` |
+| "management vs buyer", "case comparison", "haircut" | `management_vs_buyer` | `generate_management_vs_buyer()` |
+| "DCF", "discounted cash flow", "terminal value" | `dcf_valuation` | `generate_dcf_slides()` |
+| "covenant analysis", "covenant compliance", "leverage ratio" | `covenant_analysis` | `generate_covenant_slides()` |
+| "institutional deck", "full institutional", "7-day case" | all + institutional | `generate_institutional_deck()` |
+
 ## Module Details
 
 ### 1. Industry Analysis (`industry_analysis`)
@@ -80,6 +90,46 @@
 
 **Best for:** IC memo, final recommendation
 
+---
+
+## Institutional Modules (7+ Day Case)
+
+These modules are designed for comprehensive institutional-quality analysis, typically used in 7+ day case studies or IC presentations.
+
+### 9. Scenario Analysis (`scenario_analysis`)
+**Slides generated:** 4
+- Scenario Comparison Summary (Bull/Bear/Base table)
+- Scenario Key Drivers (assumptions breakdown)
+- Probability-Weighted Returns
+- Downside Protection Analysis
+
+**Best for:** IC presentations, risk assessment, return attribution
+
+### 10. Management vs Buyer Case (`management_vs_buyer`)
+**Slides generated:** 3
+- Projection Case Comparison table
+- Key Variance Drivers
+- Returns Comparison
+
+**Best for:** Explaining haircuts to management plan, underwriting rationale
+
+### 11. DCF Valuation (`dcf_valuation`)
+**Slides generated:** 3
+- DCF Valuation Summary
+- Free Cash Flow Build table
+- DCF Sensitivity Analysis (WACC vs Exit Multiple)
+
+**Best for:** Standalone valuation support, triangulation with comps
+
+### 12. Covenant Analysis (`covenant_analysis`)
+**Slides generated:** 4
+- Covenant Package Overview
+- Leverage Ratio Trajectory
+- Interest Coverage Trajectory
+- Covenant Stress Test
+
+**Best for:** Credit analysis, lender presentations, downside protection
+
 ## Usage Examples
 
 ### Python - Single Module
@@ -114,6 +164,28 @@ generate_full_deck(
         'company': {'segments': [...]},
         'financial': {'historical': [...]},
     }
+)
+```
+
+### Python - Institutional Modules
+```python
+from slide_modules import SlideGenerator
+
+# Add specific institutional modules
+gen = SlideGenerator(company_name="Acme Corp")
+gen.add_scenario_analysis()
+gen.add_management_vs_buyer()
+gen.add_covenant_analysis()
+gen.save("C:/Users/user/Downloads/acme_institutional.pptx")
+```
+
+### Python - Full Institutional Deck
+```python
+from slide_modules import generate_institutional_deck
+
+generate_institutional_deck(
+    company_name="Acme Corp",
+    output_path="C:/Users/user/Downloads/acme_institutional_full.pptx"
 )
 ```
 

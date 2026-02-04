@@ -159,6 +159,30 @@ Sponsor Equity       Financing Fees
 - **Standard:** Multiple matrices (growth, margin, leverage)
 - **Comprehensive:** Monte Carlo inputs, tornado chart data
 
+### Scenario Analysis (`add_scenario_analysis`) - Institutional
+- Bull/Bear/Base case comparison
+- Probability-weighted returns calculation
+- Downside protection analysis
+- Sensitivity by scenario
+
+### Management vs Buyer (`add_management_vs_buyer`) - Institutional
+- Side-by-side projection comparison
+- Revenue and EBITDA variance analysis
+- Returns comparison under each case
+- Haircut rationale documentation
+
+### DCF Valuation (`add_dcf_valuation`) - Institutional
+- Unlevered free cash flow build
+- Terminal value calculation (Gordon Growth / Exit Multiple)
+- Present value calculation
+- Implied multiples and sanity checks
+
+### Covenant Analysis (`add_covenant_analysis`) - Institutional
+- Leverage ratio tracking (Total Debt / EBITDA)
+- Interest coverage tracking (EBITDA / Interest)
+- Covenant compliance status
+- Headroom analysis
+
 ---
 
 ## Prompt-to-Module Mapping
@@ -175,6 +199,16 @@ Sponsor Equity       Financing Fees
 | "sensitivity", "matrix", "scenarios" | `sensitivity_tables` | via ExcelModelGenerator |
 | "quick LBO", "24-hour model" | all essentials | `generate_quick_lbo()` |
 | "full LBO model", "detailed model" | all modules | `generate_comprehensive_lbo()` |
+
+### Institutional Modules (7+ Day Case)
+
+| User Request | Module | Quick Function |
+|--------------|--------|----------------|
+| "scenario analysis", "bull/bear/base", "probability weighted" | `scenario_analysis` | via ExcelModelGenerator |
+| "management vs buyer", "case comparison", "haircut analysis" | `management_vs_buyer` | via ExcelModelGenerator |
+| "DCF model", "discounted cash flow", "terminal value" | `dcf_valuation` | via ExcelModelGenerator |
+| "covenant analysis", "leverage covenant", "coverage covenant" | `covenant_analysis` | via ExcelModelGenerator |
+| "institutional model", "7-day model", "comprehensive LBO" | all + institutional | `generate_comprehensive_lbo()` |
 
 ---
 

@@ -82,6 +82,15 @@ Generate specific analysis slides on demand:
 | Valuation comps | `valuation` | `generate_valuation_analysis()` |
 | Thesis/recommendation | `investment_thesis` | `generate_investment_thesis()` |
 
+**Institutional Slides (7+ Day Case):**
+| Request Type | Module | Quick Function |
+|--------------|--------|----------------|
+| Scenario analysis | `scenario_analysis` | `generate_scenario_analysis()` |
+| Management vs buyer | `management_vs_buyer` | `generate_management_vs_buyer()` |
+| DCF valuation | `dcf_valuation` | `generate_dcf_slides()` |
+| Covenant analysis | `covenant_analysis` | `generate_covenant_slides()` |
+| Full institutional | all + institutional | `generate_institutional_deck()` |
+
 Template location: `src/ii_skills/ib_toolkit/templates/case_study/`
 Reference guide: `templates/case_study/SLIDE_REFERENCE.md`
 
@@ -93,7 +102,7 @@ Generate specific financial model components based on time available:
 |-----------|----------|------------------|
 | 24-hour case | `generate_quick_lbo()` | S&U, Operating, Returns, Sensitivity |
 | 48-hour case | `generate_standard_lbo()` | + Revenue, Expense, Debt, Working Capital |
-| 7+ day case | `generate_comprehensive_lbo()` | + WACC, DCF, Comps, Covenants |
+| 7+ day case | `generate_comprehensive_lbo()` | + WACC, DCF, Scenario, Mgmt vs Buyer, Covenants |
 
 Standalone module generation:
 | Request | Function |
@@ -102,6 +111,12 @@ Standalone module generation:
 | "WACC calculation" | `generate_wacc_model()` |
 | "revenue build" | `generate_revenue_build()` |
 | "SG&A breakdown" | `generate_expense_build()` |
+
+**Institutional modules included in 7+ day case:**
+- Scenario Analysis (Bull/Bear/Base with probability-weighted returns)
+- Management vs Buyer Case (projection comparison with variance analysis)
+- DCF Valuation (UFCF build, terminal value, PV calculation)
+- Covenant Analysis (leverage ratio, interest coverage, compliance tracking)
 
 Excel templates: `src/ii_skills/ib_toolkit/templates/excel_models/`
 Reference guide: `templates/excel_models/MODEL_REFERENCE.md`
@@ -173,5 +188,5 @@ ii-agent/
 ---
 
 *Base System: ii-agent (github.com/robertodbabaran/ii-agent)*
-*IB Toolkit Version: 1.4.0*
+*IB Toolkit Version: 1.5.0*
 *Last Updated: 2026-02-04*

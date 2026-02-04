@@ -1669,6 +1669,789 @@ class ExcelModelGenerator:
         return self
 
     # ============================================================
+    # MODULE: SCENARIO ANALYSIS (Bull/Bear/Base)
+    # ============================================================
+
+    def add_scenario_analysis(self, data: Dict = None) -> 'ExcelModelGenerator':
+        """Add Bull/Bear/Base scenario comparison sheet."""
+        ws = self.wb.create_sheet("Scenario Analysis")
+        self.sheets_created.append("Scenario Analysis")
+
+        a = self.assumptions
+        data = data or {}
+
+        # Define scenarios
+        scenarios = data.get('scenarios', {
+            'bear': {
+                'name': 'Bear Case',
+                'revenue_growth': [0.03, 0.02, 0.02, 0.02, 0.02],
+                'ebitda_margin': [0.18, 0.18, 0.18, 0.18, 0.18],
+                'exit_multiple': a.exit_multiple - 1.0,
+                'probability': 0.25,
+            },
+            'base': {
+                'name': 'Base Case',
+                'revenue_growth': list(a.revenue_growth),
+                'ebitda_margin': list(a.ebitda_margin),
+                'exit_multiple': a.exit_multiple,
+                'probability': 0.50,
+            },
+            'bull': {
+                'name': 'Bull Case',
+                'revenue_growth': [0.12, 0.10, 0.09, 0.08, 0.07],
+                'ebitda_margin': [0.22, 0.24, 0.25, 0.26, 0.26],
+                'exit_multiple': a.exit_multiple + 1.0,
+                'probability': 0.25,
+            },
+        })
+
+        # Calculate entry values (same across scenarios)
+        ev = a.ltm_ebitda * a.entry_multiple
+        total_debt = a.ltm_ebitda * (a.senior_debt_multiple + a.sub_debt_multiple)
+        fees = ev * 0.04
+        equity_check = ev + fees - total_debt
+
+        # Title
+        self._add_title(ws, f"{self.company_name} - Scenario Analysis", 1, 1)
+
+        # Scenario Assumptions
+        self._add_section_header(ws, "Scenario Assumptions", 3, 1)
+
+        headers = ["Assumption", "Bear Case", "Base Case", "Bull Case"]
+        for i, h in enumerate(headers):
+            ws.cell(row=4, column=1 + i, value=h)
+        self._format_header_row(ws, 4, 1, 4)
+
+        # Revenue growth (Year 1)
+        ws.cell(row=5, column=1, value="Revenue Growth (Y1)")
+        ws.cell(row=5, column=2, value=scenarios['bear']['revenue_growth'][0])
+        ws.cell(row=5, column=3, value=scenarios['base']['revenue_growth'][0])
+        ws.cell(row=5, column=4, value=scenarios['bull']['revenue_growth'][0])
+        for col in range(2, 5):
+            ws.cell(row=5, column=col).number_format = '0.0%'
+            self._format_input_cell(ws, 5, col)
+
+        # EBITDA margin (Exit)
+        ws.cell(row=6, column=1, value="Exit EBITDA Margin")
+        ws.cell(row=6, column=2, value=scenarios['bear']['ebitda_margin'][-1])
+        ws.cell(row=6, column=3, value=scenarios['base']['ebitda_margin'][-1])
+        ws.cell(row=6, column=4, value=scenarios['bull']['ebitda_margin'][-1])
+        for col in range(2, 5):
+            ws.cell(row=6, column=col).number_format = '0.0%'
+            self._format_input_cell(ws, 6, col)
+
+        # Exit multiple
+        ws.cell(row=7, column=1, value="Exit Multiple")
+        ws.cell(row=7, column=2, value=scenarios['bear']['exit_multiple'])
+        ws.cell(row=7, column=3, value=scenarios['base']['exit_multiple'])
+        ws.cell(row=7, column=4, value=scenarios['bull']['exit_multiple'])
+        for col in range(2, 5):
+            ws.cell(row=7, column=col).number_format = '0.0x'
+            self._format_input_cell(ws, 7, col)
+
+        # Probability
+        ws.cell(row=8, column=1, value="Probability Weight")
+        ws.cell(row=8, column=2, value=scenarios['bear']['probability'])
+        ws.cell(row=8, column=3, value=scenarios['base']['probability'])
+        ws.cell(row=8, column=4, value=scenarios['bull']['probability'])
+        for col in range(2, 5):
+            ws.cell(row=8, column=col).number_format = '0%'
+            self._format_input_cell(ws, 8, col)
+
+        # Calculate returns for each scenario
+        scenario_results = {}
+        for key, scenario in scenarios.items():
+            # Calculate exit EBITDA
+            revenues = [a.ltm_revenue]
+            for g in scenario['revenue_growth']:
+                revenues.append(revenues[-1] * (1 + g))
+            exit_ebitda = revenues[-1] * scenario['ebitda_margin'][-1]
+
+            # Exit EV and equity
+            exit_ev = exit_ebitda * scenario['exit_multiple']
+            debt_at_exit = total_debt * 0.50  # Simplified
+            exit_equity = exit_ev - debt_at_exit
+
+            moic = exit_equity / equity_check
+            irr = (moic ** (1 / a.hold_period)) - 1
+
+            scenario_results[key] = {
+                'exit_revenue': revenues[-1],
+                'exit_ebitda': exit_ebitda,
+                'exit_ev': exit_ev,
+                'exit_equity': exit_equity,
+                'moic': moic,
+                'irr': irr,
+            }
+
+        # Scenario Outputs
+        self._add_section_header(ws, "Scenario Outputs ($M)", 10, 1)
+
+        output_headers = ["Metric", "Bear Case", "Base Case", "Bull Case"]
+        for i, h in enumerate(output_headers):
+            ws.cell(row=11, column=1 + i, value=h)
+        self._format_header_row(ws, 11, 1, 4)
+
+        outputs = [
+            ("Exit Revenue", 'exit_revenue', '#,##0.0'),
+            ("Exit EBITDA", 'exit_ebitda', '#,##0.0'),
+            ("Exit EV", 'exit_ev', '#,##0.0'),
+            ("Exit Equity Value", 'exit_equity', '#,##0.0'),
+            ("MOIC", 'moic', '0.00x'),
+            ("IRR", 'irr', '0.0%'),
+        ]
+
+        for i, (label, key, fmt) in enumerate(outputs):
+            row = 12 + i
+            ws.cell(row=row, column=1, value=label)
+            ws.cell(row=row, column=2, value=scenario_results['bear'][key])
+            ws.cell(row=row, column=3, value=scenario_results['base'][key])
+            ws.cell(row=row, column=4, value=scenario_results['bull'][key])
+            for col in range(2, 5):
+                ws.cell(row=row, column=col).number_format = fmt
+
+        # Highlight MOIC and IRR rows
+        for col in range(1, 5):
+            ws.cell(row=17, column=col).font = Font(bold=True)
+            ws.cell(row=18, column=col).font = Font(bold=True)
+
+        # Probability-Weighted Returns
+        self._add_section_header(ws, "Probability-Weighted Returns", 20, 1)
+
+        weighted_moic = sum(scenario_results[k]['moic'] * scenarios[k]['probability'] for k in scenarios)
+        weighted_irr = sum(scenario_results[k]['irr'] * scenarios[k]['probability'] for k in scenarios)
+
+        ws.cell(row=21, column=1, value="Expected MOIC")
+        ws.cell(row=21, column=2, value=weighted_moic)
+        ws.cell(row=21, column=2).number_format = '0.00x'
+        ws.cell(row=21, column=2).font = Font(bold=True, size=14)
+        ws.cell(row=21, column=2).fill = PatternFill(start_color="90EE90", end_color="90EE90", fill_type="solid")
+
+        ws.cell(row=22, column=1, value="Expected IRR")
+        ws.cell(row=22, column=2, value=weighted_irr)
+        ws.cell(row=22, column=2).number_format = '0.0%'
+        ws.cell(row=22, column=2).font = Font(bold=True, size=14)
+        ws.cell(row=22, column=2).fill = PatternFill(start_color="90EE90", end_color="90EE90", fill_type="solid")
+
+        # Downside Protection
+        self._add_section_header(ws, "Downside Protection", 24, 1)
+
+        bear_moic = scenario_results['bear']['moic']
+        ws.cell(row=25, column=1, value="Bear Case MOIC")
+        ws.cell(row=25, column=2, value=bear_moic)
+        ws.cell(row=25, column=2).number_format = '0.00x'
+
+        ws.cell(row=26, column=1, value="Capital Protected?")
+        ws.cell(row=26, column=2, value="Yes" if bear_moic >= 1.0 else "No")
+        if bear_moic >= 1.0:
+            ws.cell(row=26, column=2).fill = PatternFill(start_color="90EE90", end_color="90EE90", fill_type="solid")
+        else:
+            ws.cell(row=26, column=2).fill = PatternFill(start_color="FF9090", end_color="FF9090", fill_type="solid")
+
+        # Set column widths
+        ws.column_dimensions['A'].width = 22
+        for col in ['B', 'C', 'D']:
+            ws.column_dimensions[col].width = 14
+
+        return self
+
+    # ============================================================
+    # MODULE: MANAGEMENT VS BUYER CASE
+    # ============================================================
+
+    def add_management_vs_buyer(self, data: Dict = None) -> 'ExcelModelGenerator':
+        """Add Management Case vs Buyer Case comparison sheet."""
+        ws = self.wb.create_sheet("Mgmt vs Buyer Case")
+        self.sheets_created.append("Mgmt vs Buyer Case")
+
+        a = self.assumptions
+        data = data or {}
+
+        # Define cases
+        mgmt_case = data.get('management', {
+            'revenue_growth': [0.12, 0.10, 0.09, 0.08, 0.07],
+            'ebitda_margin': [0.22, 0.24, 0.25, 0.26, 0.27],
+            'capex_pct': 0.04,
+            'nwc_pct': 0.08,
+        })
+
+        buyer_case = data.get('buyer', {
+            'revenue_growth': [0.08, 0.07, 0.06, 0.05, 0.05],
+            'ebitda_margin': [0.20, 0.21, 0.22, 0.22, 0.22],
+            'capex_pct': 0.05,
+            'nwc_pct': 0.10,
+        })
+
+        # Title
+        self._add_title(ws, f"{self.company_name} - Management vs Buyer Case", 1, 1)
+
+        # Year headers
+        ws.cell(row=3, column=1, value="")
+        ws.cell(row=3, column=2, value="LTM")
+        for i in range(self.projection_years):
+            ws.cell(row=3, column=3 + i, value=f"Year {i + 1}")
+        self._format_header_row(ws, 3, 1, 2 + self.projection_years)
+
+        # Management Case Section
+        self._add_section_header(ws, "MANAGEMENT CASE", 4, 1)
+
+        # Management revenue
+        mgmt_revenues = [a.ltm_revenue]
+        for g in mgmt_case['revenue_growth']:
+            mgmt_revenues.append(mgmt_revenues[-1] * (1 + g))
+
+        ws.cell(row=5, column=1, value="Revenue")
+        for i, rev in enumerate(mgmt_revenues):
+            ws.cell(row=5, column=2 + i, value=rev)
+            ws.cell(row=5, column=2 + i).number_format = '#,##0.0'
+
+        # Management growth
+        ws.cell(row=6, column=1, value="  % Growth")
+        ws.cell(row=6, column=2, value="—")
+        for i, g in enumerate(mgmt_case['revenue_growth']):
+            ws.cell(row=6, column=3 + i, value=g)
+            ws.cell(row=6, column=3 + i).number_format = '0.0%'
+            ws.cell(row=6, column=3 + i).font = Font(italic=True, color="666666")
+
+        # Management EBITDA
+        mgmt_ebitdas = [a.ltm_ebitda]
+        for i, margin in enumerate(mgmt_case['ebitda_margin']):
+            mgmt_ebitdas.append(mgmt_revenues[i + 1] * margin)
+
+        ws.cell(row=7, column=1, value="EBITDA")
+        for i, ebitda in enumerate(mgmt_ebitdas):
+            ws.cell(row=7, column=2 + i, value=ebitda)
+            ws.cell(row=7, column=2 + i).number_format = '#,##0.0'
+            ws.cell(row=7, column=2 + i).font = Font(bold=True)
+
+        # Management margin
+        ws.cell(row=8, column=1, value="  % Margin")
+        ws.cell(row=8, column=2, value=a.ltm_ebitda / a.ltm_revenue)
+        ws.cell(row=8, column=2).number_format = '0.0%'
+        for i, margin in enumerate(mgmt_case['ebitda_margin']):
+            ws.cell(row=8, column=3 + i, value=margin)
+            ws.cell(row=8, column=3 + i).number_format = '0.0%'
+            ws.cell(row=8, column=3 + i).font = Font(italic=True, color="666666")
+
+        # Buyer Case Section
+        self._add_section_header(ws, "BUYER CASE (HAIRCUT)", 10, 1)
+
+        # Buyer revenue
+        buyer_revenues = [a.ltm_revenue]
+        for g in buyer_case['revenue_growth']:
+            buyer_revenues.append(buyer_revenues[-1] * (1 + g))
+
+        ws.cell(row=11, column=1, value="Revenue")
+        for i, rev in enumerate(buyer_revenues):
+            ws.cell(row=11, column=2 + i, value=rev)
+            ws.cell(row=11, column=2 + i).number_format = '#,##0.0'
+
+        # Buyer growth
+        ws.cell(row=12, column=1, value="  % Growth")
+        ws.cell(row=12, column=2, value="—")
+        for i, g in enumerate(buyer_case['revenue_growth']):
+            ws.cell(row=12, column=3 + i, value=g)
+            ws.cell(row=12, column=3 + i).number_format = '0.0%'
+            ws.cell(row=12, column=3 + i).font = Font(italic=True, color="666666")
+
+        # Buyer EBITDA
+        buyer_ebitdas = [a.ltm_ebitda]
+        for i, margin in enumerate(buyer_case['ebitda_margin']):
+            buyer_ebitdas.append(buyer_revenues[i + 1] * margin)
+
+        ws.cell(row=13, column=1, value="EBITDA")
+        for i, ebitda in enumerate(buyer_ebitdas):
+            ws.cell(row=13, column=2 + i, value=ebitda)
+            ws.cell(row=13, column=2 + i).number_format = '#,##0.0'
+            ws.cell(row=13, column=2 + i).font = Font(bold=True)
+
+        # Buyer margin
+        ws.cell(row=14, column=1, value="  % Margin")
+        ws.cell(row=14, column=2, value=a.ltm_ebitda / a.ltm_revenue)
+        ws.cell(row=14, column=2).number_format = '0.0%'
+        for i, margin in enumerate(buyer_case['ebitda_margin']):
+            ws.cell(row=14, column=3 + i, value=margin)
+            ws.cell(row=14, column=3 + i).number_format = '0.0%'
+            ws.cell(row=14, column=3 + i).font = Font(italic=True, color="666666")
+
+        # Variance Analysis
+        self._add_section_header(ws, "VARIANCE ANALYSIS", 16, 1)
+
+        ws.cell(row=17, column=1, value="Revenue Variance")
+        for i in range(len(mgmt_revenues)):
+            variance = buyer_revenues[i] - mgmt_revenues[i]
+            pct_variance = variance / mgmt_revenues[i] if mgmt_revenues[i] != 0 else 0
+            ws.cell(row=17, column=2 + i, value=variance)
+            ws.cell(row=17, column=2 + i).number_format = '#,##0.0'
+            if variance < 0:
+                ws.cell(row=17, column=2 + i).font = Font(color="FF0000")
+
+        ws.cell(row=18, column=1, value="  % Variance")
+        for i in range(len(mgmt_revenues)):
+            pct_variance = (buyer_revenues[i] - mgmt_revenues[i]) / mgmt_revenues[i] if mgmt_revenues[i] != 0 else 0
+            ws.cell(row=18, column=2 + i, value=pct_variance)
+            ws.cell(row=18, column=2 + i).number_format = '0.0%'
+            if pct_variance < 0:
+                ws.cell(row=18, column=2 + i).font = Font(color="FF0000", italic=True)
+
+        ws.cell(row=20, column=1, value="EBITDA Variance")
+        for i in range(len(mgmt_ebitdas)):
+            variance = buyer_ebitdas[i] - mgmt_ebitdas[i]
+            ws.cell(row=20, column=2 + i, value=variance)
+            ws.cell(row=20, column=2 + i).number_format = '#,##0.0'
+            if variance < 0:
+                ws.cell(row=20, column=2 + i).font = Font(color="FF0000")
+
+        ws.cell(row=21, column=1, value="  % Variance")
+        for i in range(len(mgmt_ebitdas)):
+            pct_variance = (buyer_ebitdas[i] - mgmt_ebitdas[i]) / mgmt_ebitdas[i] if mgmt_ebitdas[i] != 0 else 0
+            ws.cell(row=21, column=2 + i, value=pct_variance)
+            ws.cell(row=21, column=2 + i).number_format = '0.0%'
+            if pct_variance < 0:
+                ws.cell(row=21, column=2 + i).font = Font(color="FF0000", italic=True)
+
+        # Returns Comparison
+        self._add_section_header(ws, "RETURNS COMPARISON (Year 5 Exit)", 23, 1)
+
+        ev = a.ltm_ebitda * a.entry_multiple
+        total_debt = a.ltm_ebitda * (a.senior_debt_multiple + a.sub_debt_multiple)
+        fees = ev * 0.04
+        equity_check = ev + fees - total_debt
+        debt_at_exit = total_debt * 0.50
+
+        # Management case returns
+        mgmt_exit_ev = mgmt_ebitdas[-1] * a.exit_multiple
+        mgmt_exit_equity = mgmt_exit_ev - debt_at_exit
+        mgmt_moic = mgmt_exit_equity / equity_check
+        mgmt_irr = (mgmt_moic ** (1 / a.hold_period)) - 1
+
+        # Buyer case returns
+        buyer_exit_ev = buyer_ebitdas[-1] * a.exit_multiple
+        buyer_exit_equity = buyer_exit_ev - debt_at_exit
+        buyer_moic = buyer_exit_equity / equity_check
+        buyer_irr = (buyer_moic ** (1 / a.hold_period)) - 1
+
+        ws.cell(row=24, column=1, value="")
+        ws.cell(row=24, column=2, value="Management")
+        ws.cell(row=24, column=3, value="Buyer")
+        ws.cell(row=24, column=4, value="Difference")
+        self._format_header_row(ws, 24, 1, 4)
+
+        ws.cell(row=25, column=1, value="Exit EBITDA")
+        ws.cell(row=25, column=2, value=mgmt_ebitdas[-1])
+        ws.cell(row=25, column=3, value=buyer_ebitdas[-1])
+        ws.cell(row=25, column=4, value=buyer_ebitdas[-1] - mgmt_ebitdas[-1])
+        for col in range(2, 5):
+            ws.cell(row=25, column=col).number_format = '#,##0.0'
+
+        ws.cell(row=26, column=1, value="Exit Equity")
+        ws.cell(row=26, column=2, value=mgmt_exit_equity)
+        ws.cell(row=26, column=3, value=buyer_exit_equity)
+        ws.cell(row=26, column=4, value=buyer_exit_equity - mgmt_exit_equity)
+        for col in range(2, 5):
+            ws.cell(row=26, column=col).number_format = '#,##0.0'
+
+        ws.cell(row=27, column=1, value="MOIC")
+        ws.cell(row=27, column=2, value=mgmt_moic)
+        ws.cell(row=27, column=3, value=buyer_moic)
+        ws.cell(row=27, column=4, value=buyer_moic - mgmt_moic)
+        for col in range(2, 5):
+            ws.cell(row=27, column=col).number_format = '0.00x'
+            ws.cell(row=27, column=col).font = Font(bold=True)
+
+        ws.cell(row=28, column=1, value="IRR")
+        ws.cell(row=28, column=2, value=mgmt_irr)
+        ws.cell(row=28, column=3, value=buyer_irr)
+        ws.cell(row=28, column=4, value=buyer_irr - mgmt_irr)
+        for col in range(2, 5):
+            ws.cell(row=28, column=col).number_format = '0.0%'
+            ws.cell(row=28, column=col).font = Font(bold=True)
+
+        # Color code the buyer case (what we're underwriting to)
+        for row in range(25, 29):
+            ws.cell(row=row, column=3).fill = PatternFill(start_color="90EE90", end_color="90EE90", fill_type="solid")
+
+        # Set column widths
+        ws.column_dimensions['A'].width = 20
+        for i in range(self.projection_years + 3):
+            ws.column_dimensions[get_column_letter(2 + i)].width = 12
+
+        return self
+
+    # ============================================================
+    # MODULE: DCF VALUATION
+    # ============================================================
+
+    def add_dcf_valuation(self, data: Dict = None) -> 'ExcelModelGenerator':
+        """Add DCF Valuation sheet."""
+        ws = self.wb.create_sheet("DCF Valuation")
+        self.sheets_created.append("DCF Valuation")
+
+        a = self.assumptions
+        data = data or {}
+
+        # WACC
+        wacc = data.get('wacc', 0.10)
+        terminal_growth = data.get('terminal_growth', 0.025)
+
+        # Calculate projections
+        revenues = [a.ltm_revenue]
+        for g in a.revenue_growth:
+            revenues.append(revenues[-1] * (1 + g))
+
+        margins = [a.ltm_ebitda / a.ltm_revenue] + list(a.ebitda_margin)
+        ebitdas = [revenues[i] * margins[i] for i in range(len(revenues))]
+
+        # Title
+        self._add_title(ws, f"{self.company_name} - DCF Valuation", 1, 1)
+
+        # Assumptions
+        self._add_section_header(ws, "DCF Assumptions", 3, 1)
+
+        ws.cell(row=4, column=1, value="WACC")
+        ws.cell(row=4, column=2, value=wacc)
+        ws.cell(row=4, column=2).number_format = '0.0%'
+        self._format_input_cell(ws, 4, 2)
+
+        ws.cell(row=5, column=1, value="Terminal Growth Rate")
+        ws.cell(row=5, column=2, value=terminal_growth)
+        ws.cell(row=5, column=2).number_format = '0.0%'
+        self._format_input_cell(ws, 5, 2)
+
+        ws.cell(row=6, column=1, value="Tax Rate")
+        ws.cell(row=6, column=2, value=a.tax_rate)
+        ws.cell(row=6, column=2).number_format = '0.0%'
+        self._format_input_cell(ws, 6, 2)
+
+        # Year headers
+        ws.cell(row=8, column=1, value="")
+        for i in range(self.projection_years):
+            ws.cell(row=8, column=2 + i, value=f"Year {i + 1}")
+        ws.cell(row=8, column=2 + self.projection_years, value="Terminal")
+        self._format_header_row(ws, 8, 1, 2 + self.projection_years)
+
+        # Free Cash Flow Build
+        self._add_section_header(ws, "Unlevered Free Cash Flow ($M)", 9, 1)
+
+        # EBITDA
+        ws.cell(row=10, column=1, value="EBITDA")
+        for i in range(self.projection_years):
+            ws.cell(row=10, column=2 + i, value=ebitdas[i + 1])
+            ws.cell(row=10, column=2 + i).number_format = '#,##0.0'
+
+        # D&A (assume = CapEx)
+        capex = [rev * a.capex_pct_revenue for rev in revenues]
+        ws.cell(row=11, column=1, value="Less: D&A")
+        for i in range(self.projection_years):
+            ws.cell(row=11, column=2 + i, value=-capex[i + 1])
+            ws.cell(row=11, column=2 + i).number_format = '(#,##0.0)'
+
+        # EBIT
+        ws.cell(row=12, column=1, value="EBIT")
+        for i in range(self.projection_years):
+            ebit = ebitdas[i + 1] - capex[i + 1]
+            ws.cell(row=12, column=2 + i, value=ebit)
+            ws.cell(row=12, column=2 + i).number_format = '#,##0.0'
+
+        # Taxes
+        ws.cell(row=13, column=1, value="Less: Taxes")
+        for i in range(self.projection_years):
+            ebit = ebitdas[i + 1] - capex[i + 1]
+            taxes = -ebit * a.tax_rate
+            ws.cell(row=13, column=2 + i, value=taxes)
+            ws.cell(row=13, column=2 + i).number_format = '(#,##0.0)'
+
+        # NOPAT
+        ws.cell(row=14, column=1, value="NOPAT")
+        for i in range(self.projection_years):
+            ebit = ebitdas[i + 1] - capex[i + 1]
+            nopat = ebit * (1 - a.tax_rate)
+            ws.cell(row=14, column=2 + i, value=nopat)
+            ws.cell(row=14, column=2 + i).number_format = '#,##0.0'
+
+        # Add back D&A
+        ws.cell(row=15, column=1, value="Plus: D&A")
+        for i in range(self.projection_years):
+            ws.cell(row=15, column=2 + i, value=capex[i + 1])
+            ws.cell(row=15, column=2 + i).number_format = '#,##0.0'
+
+        # CapEx
+        ws.cell(row=16, column=1, value="Less: CapEx")
+        for i in range(self.projection_years):
+            ws.cell(row=16, column=2 + i, value=-capex[i + 1])
+            ws.cell(row=16, column=2 + i).number_format = '(#,##0.0)'
+
+        # Change in NWC
+        nwc = [rev * a.nwc_pct_revenue for rev in revenues]
+        ws.cell(row=17, column=1, value="Less: Change in NWC")
+        for i in range(self.projection_years):
+            delta_nwc = -(nwc[i + 1] - nwc[i])
+            ws.cell(row=17, column=2 + i, value=delta_nwc)
+            ws.cell(row=17, column=2 + i).number_format = '(#,##0.0)'
+
+        # Unlevered FCF
+        ufcfs = []
+        ws.cell(row=18, column=1, value="Unlevered FCF")
+        for i in range(self.projection_years):
+            ebit = ebitdas[i + 1] - capex[i + 1]
+            nopat = ebit * (1 - a.tax_rate)
+            delta_nwc = nwc[i + 1] - nwc[i]
+            ufcf = nopat - delta_nwc  # D&A and CapEx cancel out
+            ufcfs.append(ufcf)
+            ws.cell(row=18, column=2 + i, value=ufcf)
+            ws.cell(row=18, column=2 + i).number_format = '#,##0.0'
+            ws.cell(row=18, column=2 + i).font = Font(bold=True)
+            ws.cell(row=18, column=2 + i).border = DOUBLE_BORDER
+
+        # Terminal Value
+        terminal_fcf = ufcfs[-1] * (1 + terminal_growth)
+        terminal_value = terminal_fcf / (wacc - terminal_growth)
+
+        ws.cell(row=18, column=2 + self.projection_years, value=terminal_value)
+        ws.cell(row=18, column=2 + self.projection_years).number_format = '#,##0.0'
+        ws.cell(row=18, column=2 + self.projection_years).font = Font(bold=True)
+
+        # Discount Factors
+        self._add_section_header(ws, "Present Value Calculation", 20, 1)
+
+        ws.cell(row=21, column=1, value="Discount Factor")
+        for i in range(self.projection_years):
+            df = 1 / ((1 + wacc) ** (i + 1))
+            ws.cell(row=21, column=2 + i, value=df)
+            ws.cell(row=21, column=2 + i).number_format = '0.000'
+
+        # Terminal discount factor
+        terminal_df = 1 / ((1 + wacc) ** self.projection_years)
+        ws.cell(row=21, column=2 + self.projection_years, value=terminal_df)
+        ws.cell(row=21, column=2 + self.projection_years).number_format = '0.000'
+
+        # Present Values
+        ws.cell(row=22, column=1, value="Present Value")
+        pv_fcfs = []
+        for i in range(self.projection_years):
+            df = 1 / ((1 + wacc) ** (i + 1))
+            pv = ufcfs[i] * df
+            pv_fcfs.append(pv)
+            ws.cell(row=22, column=2 + i, value=pv)
+            ws.cell(row=22, column=2 + i).number_format = '#,##0.0'
+
+        pv_terminal = terminal_value * terminal_df
+        ws.cell(row=22, column=2 + self.projection_years, value=pv_terminal)
+        ws.cell(row=22, column=2 + self.projection_years).number_format = '#,##0.0'
+
+        # Valuation Summary
+        self._add_section_header(ws, "Valuation Summary ($M)", 24, 1)
+
+        sum_pv_fcf = sum(pv_fcfs)
+
+        ws.cell(row=25, column=1, value="PV of Projection Period FCF")
+        ws.cell(row=25, column=2, value=sum_pv_fcf)
+        ws.cell(row=25, column=2).number_format = '#,##0.0'
+
+        ws.cell(row=26, column=1, value="PV of Terminal Value")
+        ws.cell(row=26, column=2, value=pv_terminal)
+        ws.cell(row=26, column=2).number_format = '#,##0.0'
+
+        enterprise_value = sum_pv_fcf + pv_terminal
+        ws.cell(row=27, column=1, value="Enterprise Value")
+        ws.cell(row=27, column=2, value=enterprise_value)
+        ws.cell(row=27, column=2).number_format = '#,##0.0'
+        ws.cell(row=27, column=2).font = Font(bold=True, size=14)
+        ws.cell(row=27, column=2).fill = PatternFill(start_color="90EE90", end_color="90EE90", fill_type="solid")
+
+        # Implied multiples
+        ws.cell(row=29, column=1, value="Implied EV / LTM EBITDA")
+        ws.cell(row=29, column=2, value=enterprise_value / a.ltm_ebitda)
+        ws.cell(row=29, column=2).number_format = '0.0x'
+
+        ws.cell(row=30, column=1, value="Implied EV / Exit EBITDA")
+        ws.cell(row=30, column=2, value=enterprise_value / ebitdas[-1])
+        ws.cell(row=30, column=2).number_format = '0.0x'
+
+        # Terminal Value as % of total
+        tv_pct = pv_terminal / enterprise_value
+        ws.cell(row=31, column=1, value="Terminal Value % of EV")
+        ws.cell(row=31, column=2, value=tv_pct)
+        ws.cell(row=31, column=2).number_format = '0.0%'
+
+        # Set column widths
+        ws.column_dimensions['A'].width = 25
+        for i in range(self.projection_years + 2):
+            ws.column_dimensions[get_column_letter(2 + i)].width = 12
+
+        return self
+
+    # ============================================================
+    # MODULE: COVENANT ANALYSIS
+    # ============================================================
+
+    def add_covenant_analysis(self, data: Dict = None) -> 'ExcelModelGenerator':
+        """Add Covenant Analysis sheet."""
+        ws = self.wb.create_sheet("Covenant Analysis")
+        self.sheets_created.append("Covenant Analysis")
+
+        a = self.assumptions
+        data = data or {}
+
+        # Covenant thresholds
+        covenants = data.get('covenants', {
+            'max_leverage': 6.0,
+            'min_interest_coverage': 2.0,
+            'min_fixed_charge': 1.1,
+        })
+
+        # Calculate projections
+        revenues = [a.ltm_revenue]
+        for g in a.revenue_growth:
+            revenues.append(revenues[-1] * (1 + g))
+
+        margins = [a.ltm_ebitda / a.ltm_revenue] + list(a.ebitda_margin)
+        ebitdas = [revenues[i] * margins[i] for i in range(len(revenues))]
+
+        # Debt balances (simplified)
+        total_debt_initial = a.ltm_ebitda * (a.senior_debt_multiple + a.sub_debt_multiple)
+        debt_balances = [total_debt_initial]
+        annual_paydown = total_debt_initial * 0.10
+        for i in range(self.projection_years):
+            debt_balances.append(max(0, debt_balances[-1] - annual_paydown))
+
+        # Interest (blended rate)
+        blended_rate = (a.senior_interest_rate * a.senior_debt_multiple +
+                       a.sub_interest_rate * a.sub_debt_multiple) / (a.senior_debt_multiple + a.sub_debt_multiple)
+
+        # Title
+        self._add_title(ws, f"{self.company_name} - Covenant Analysis", 1, 1)
+
+        # Covenant Thresholds
+        self._add_section_header(ws, "Covenant Thresholds", 3, 1)
+
+        ws.cell(row=4, column=1, value="Maximum Leverage (Debt/EBITDA)")
+        ws.cell(row=4, column=2, value=covenants['max_leverage'])
+        ws.cell(row=4, column=2).number_format = '0.0x'
+        self._format_input_cell(ws, 4, 2)
+
+        ws.cell(row=5, column=1, value="Minimum Interest Coverage")
+        ws.cell(row=5, column=2, value=covenants['min_interest_coverage'])
+        ws.cell(row=5, column=2).number_format = '0.0x'
+        self._format_input_cell(ws, 5, 2)
+
+        ws.cell(row=6, column=1, value="Minimum Fixed Charge Coverage")
+        ws.cell(row=6, column=2, value=covenants['min_fixed_charge'])
+        ws.cell(row=6, column=2).number_format = '0.0x'
+        self._format_input_cell(ws, 6, 2)
+
+        # Year headers
+        ws.cell(row=8, column=1, value="")
+        ws.cell(row=8, column=2, value="Entry")
+        for i in range(self.projection_years):
+            ws.cell(row=8, column=3 + i, value=f"Year {i + 1}")
+        self._format_header_row(ws, 8, 1, 2 + self.projection_years)
+
+        # Leverage Ratio
+        self._add_section_header(ws, "Leverage Ratio (Debt / EBITDA)", 9, 1)
+
+        ws.cell(row=10, column=1, value="Total Debt")
+        for i, debt in enumerate(debt_balances):
+            ws.cell(row=10, column=2 + i, value=debt)
+            ws.cell(row=10, column=2 + i).number_format = '#,##0.0'
+
+        ws.cell(row=11, column=1, value="EBITDA")
+        for i, ebitda in enumerate(ebitdas):
+            ws.cell(row=11, column=2 + i, value=ebitda)
+            ws.cell(row=11, column=2 + i).number_format = '#,##0.0'
+
+        ws.cell(row=12, column=1, value="Leverage Ratio")
+        for i in range(len(debt_balances)):
+            ratio = debt_balances[i] / ebitdas[i] if ebitdas[i] > 0 else 0
+            cell = ws.cell(row=12, column=2 + i, value=ratio)
+            cell.number_format = '0.0x'
+            cell.font = Font(bold=True)
+            # Color code vs covenant
+            if ratio <= covenants['max_leverage']:
+                cell.fill = PatternFill(start_color="90EE90", end_color="90EE90", fill_type="solid")
+            else:
+                cell.fill = PatternFill(start_color="FF9090", end_color="FF9090", fill_type="solid")
+
+        ws.cell(row=13, column=1, value="Covenant")
+        for i in range(len(debt_balances)):
+            ws.cell(row=13, column=2 + i, value=covenants['max_leverage'])
+            ws.cell(row=13, column=2 + i).number_format = '0.0x'
+            ws.cell(row=13, column=2 + i).font = Font(italic=True, color="666666")
+
+        ws.cell(row=14, column=1, value="Headroom")
+        for i in range(len(debt_balances)):
+            ratio = debt_balances[i] / ebitdas[i] if ebitdas[i] > 0 else 0
+            headroom = covenants['max_leverage'] - ratio
+            cell = ws.cell(row=14, column=2 + i, value=headroom)
+            cell.number_format = '0.0x'
+            if headroom < 0.5:
+                cell.font = Font(color="FF0000")
+
+        # Interest Coverage
+        self._add_section_header(ws, "Interest Coverage (EBITDA / Interest)", 16, 1)
+
+        ws.cell(row=17, column=1, value="EBITDA")
+        for i in range(self.projection_years):
+            ws.cell(row=17, column=3 + i, value=ebitdas[i + 1])
+            ws.cell(row=17, column=3 + i).number_format = '#,##0.0'
+
+        ws.cell(row=18, column=1, value="Interest Expense")
+        for i in range(self.projection_years):
+            avg_debt = (debt_balances[i] + debt_balances[i + 1]) / 2
+            interest = avg_debt * blended_rate
+            ws.cell(row=18, column=3 + i, value=interest)
+            ws.cell(row=18, column=3 + i).number_format = '#,##0.0'
+
+        ws.cell(row=19, column=1, value="Interest Coverage")
+        for i in range(self.projection_years):
+            avg_debt = (debt_balances[i] + debt_balances[i + 1]) / 2
+            interest = avg_debt * blended_rate
+            coverage = ebitdas[i + 1] / interest if interest > 0 else 99
+            cell = ws.cell(row=19, column=3 + i, value=coverage)
+            cell.number_format = '0.0x'
+            cell.font = Font(bold=True)
+            if coverage >= covenants['min_interest_coverage']:
+                cell.fill = PatternFill(start_color="90EE90", end_color="90EE90", fill_type="solid")
+            else:
+                cell.fill = PatternFill(start_color="FF9090", end_color="FF9090", fill_type="solid")
+
+        ws.cell(row=20, column=1, value="Covenant")
+        for i in range(self.projection_years):
+            ws.cell(row=20, column=3 + i, value=covenants['min_interest_coverage'])
+            ws.cell(row=20, column=3 + i).number_format = '0.0x'
+            ws.cell(row=20, column=3 + i).font = Font(italic=True, color="666666")
+
+        # Compliance Summary
+        self._add_section_header(ws, "Compliance Summary", 22, 1)
+
+        # Check all years
+        all_compliant = True
+        for i in range(self.projection_years):
+            leverage = debt_balances[i + 1] / ebitdas[i + 1] if ebitdas[i + 1] > 0 else 99
+            avg_debt = (debt_balances[i] + debt_balances[i + 1]) / 2
+            interest = avg_debt * blended_rate
+            coverage = ebitdas[i + 1] / interest if interest > 0 else 99
+
+            if leverage > covenants['max_leverage'] or coverage < covenants['min_interest_coverage']:
+                all_compliant = False
+                break
+
+        ws.cell(row=23, column=1, value="Overall Compliance")
+        ws.cell(row=23, column=2, value="PASS" if all_compliant else "FAIL")
+        if all_compliant:
+            ws.cell(row=23, column=2).fill = PatternFill(start_color="90EE90", end_color="90EE90", fill_type="solid")
+        else:
+            ws.cell(row=23, column=2).fill = PatternFill(start_color="FF9090", end_color="FF9090", fill_type="solid")
+        ws.cell(row=23, column=2).font = Font(bold=True, size=14)
+
+        # Set column widths
+        ws.column_dimensions['A'].width = 28
+        for i in range(self.projection_years + 2):
+            ws.column_dimensions[get_column_letter(2 + i)].width = 12
+
+        return self
+
+    # ============================================================
     # CASE FRAMEWORK GENERATION
     # ============================================================
 
@@ -1764,7 +2547,7 @@ def generate_standard_lbo(company_name: str, output_path: str, assumptions: Dict
 
 
 def generate_comprehensive_lbo(company_name: str, output_path: str, assumptions: Dict = None) -> str:
-    """Generate a comprehensive 7+ day LBO model."""
+    """Generate a comprehensive 7+ day LBO model with full institutional modules."""
     a = ModelAssumptions(company_name=company_name)
     if assumptions:
         for key, value in assumptions.items():
@@ -1772,6 +2555,8 @@ def generate_comprehensive_lbo(company_name: str, output_path: str, assumptions:
                 setattr(a, key, value)
 
     gen = ExcelModelGenerator(company_name, ModelDepth.COMPREHENSIVE, a)
+
+    # Core modules
     gen.add_sources_uses()
     gen.add_revenue_build()
     gen.add_expense_build()
@@ -1781,6 +2566,13 @@ def generate_comprehensive_lbo(company_name: str, output_path: str, assumptions:
     gen.add_wacc_calculation()
     gen.add_returns_analysis()
     gen.add_sensitivity_tables()
+
+    # Institutional modules (7+ day case)
+    gen.add_scenario_analysis()
+    gen.add_management_vs_buyer()
+    gen.add_dcf_valuation()
+    gen.add_covenant_analysis()
+
     return gen.save(output_path)
 
 
