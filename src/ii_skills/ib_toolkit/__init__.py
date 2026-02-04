@@ -576,7 +576,22 @@ def get_toolkit(config: Optional[Dict] = None) -> IBToolkitSkill:
 # Storage-integrated generation (optional, requires ii_skills.shared)
 try:
     from .storage_integration import IBToolkitStorage, generate_and_upload
-    __all__ = ["IBToolkitSkill", "get_toolkit", "IBToolkitStorage", "generate_and_upload"]
+    _has_storage = True
 except ImportError:
-    # Storage integration not available (standalone mode)
-    __all__ = ["IBToolkitSkill", "get_toolkit"]
+    _has_storage = False
+
+# Research-enhanced data fetching
+try:
+    from .enriched_data import EnrichedDataFetcher, get_enriched_company_data, research_deal
+    _has_research = True
+except ImportError:
+    _has_research = False
+
+# Build exports
+__all__ = ["IBToolkitSkill", "get_toolkit"]
+
+if _has_storage:
+    __all__.extend(["IBToolkitStorage", "generate_and_upload"])
+
+if _has_research:
+    __all__.extend(["EnrichedDataFetcher", "get_enriched_company_data", "research_deal"])

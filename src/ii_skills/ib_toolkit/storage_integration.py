@@ -402,6 +402,291 @@ class IBToolkitStorage:
         return result
 
     # =========================================================================
+    # RESEARCH-ENHANCED GENERATION
+    # =========================================================================
+
+    async def generate_research_enhanced_model(
+        self,
+        company_name: str,
+        ticker: str,
+        timeframe: str = "48_hour",
+        deal_type: str = "lbo",
+        include_research_report: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        Generate an LBO model with research-enhanced data.
+
+        Automatically fetches company data and conducts web research
+        to populate model assumptions and create a companion research report.
+
+        Args:
+            company_name: Company name
+            ticker: Stock ticker symbol
+            timeframe: LBO model timeframe
+            deal_type: Type of deal (lbo, growth_equity, add_on)
+            include_research_report: Generate markdown research report
+
+        Returns:
+            Dict with model, research data, and optional report
+        """
+        from ii_skills.ib_toolkit.enriched_data import EnrichedDataFetcher
+
+        results = {
+            "company": company_name,
+            "ticker": ticker,
+            "deal_type": deal_type,
+        }
+
+        # Fetch enriched data
+        fetcher = EnrichedDataFetcher()
+        research = await fetcher.research_for_deal(
+            company_name=company_name,
+            ticker=ticker,
+            deal_type=deal_type,
+        )
+
+        results["research"] = {
+            "company_data": research.company_data.__dict__ if research.company_data else {},
+            "investment_thesis": research.investment_thesis_points,
+            "risks": research.risk_factors,
+            "opportunities": research.growth_opportunities,
+            "competitive_advantages": research.competitive_advantages,
+            "news_articles": research.news_articles[:5],
+            "queries_used": research.queries_used,
+        }
+
+        # Build assumptions from research
+        assumptions = {}
+        if research.company_data:
+            cd = research.company_data
+            if cd.ebitda_ttm > 0:
+                assumptions["ltm_ebitda"] = cd.ebitda_ttm / 1e6  # Convert to millions
+            if cd.ev_ebitda > 0:
+                assumptions["entry_multiple"] = cd.ev_ebitda
+            if cd.revenue_ttm > 0 and cd.ebitda_ttm > 0:
+                assumptions["ebitda_margin"] = cd.ebitda_ttm / cd.revenue_ttm
+
+        # Generate LBO model
+        excel_result = await self.generate_lbo_model(
+            company_name=company_name,
+            company_symbol=ticker,
+            timeframe=timeframe,
+            assumptions=assumptions,
+        )
+        results["excel"] = excel_result
+
+        # Generate research report if requested
+        if include_research_report:
+            report_content = self._build_research_report(research)
+            report_filename = f"{company_name.replace(' ', '_')}_Research_{datetime.now().strftime('%Y%m%d')}.md"
+            report_path = self.output_dir / report_filename
+
+            with open(report_path, "w", encoding="utf-8") as f:
+                f.write(report_content)
+
+            # Upload report
+            report_result = await self._upload_and_track(
+                filepath=str(report_path),
+                company_symbol=ticker,
+                module_name="research_report",
+                input_parameters={"deal_type": deal_type},
+                tags=["research", "markdown", deal_type, ticker],
+            )
+            results["research_report"] = report_result
+
+        return results
+
+    def _build_research_report(self, research) -> str:
+        """Build a markdown research report from deal research."""
+        lines = [
+            f"# {research.company_name} ({research.ticker}) - Deal Research",
+            f"",
+            f"**Deal Type:** {research.deal_type.upper()}",
+            f"**Research Date:** {research.research_date.strftime('%B %d, %Y')}",
+            "",
+            "---",
+            "",
+        ]
+
+        # Company Overview
+        if research.company_data:
+            cd = research.company_data
+            lines.extend([
+                "## Company Overview",
+                "",
+                f"**Name:** {cd.name}",
+                f"**Sector:** {cd.sector}",
+                f"**Industry:** {cd.industry}",
+                f"**Country:** {cd.country}",
+                "",
+                cd.description[:500] if cd.description else "",
+                "",
+            ])
+
+            # Financial Summary
+            lines.extend([
+                "## Financial Summary",
+                "",
+                "| Metric | Value |",
+                "|--------|-------|",
+                f"| Market Cap | ${cd.market_cap/1e9:.1f}B |" if cd.market_cap else "",
+                f"| Enterprise Value | ${cd.enterprise_value/1e9:.1f}B |" if cd.enterprise_value else "",
+                f"| Revenue (TTM) | ${cd.revenue_ttm/1e9:.1f}B |" if cd.revenue_ttm else "",
+                f"| EBITDA (TTM) | ${cd.ebitda_ttm/1e9:.1f}B |" if cd.ebitda_ttm else "",
+                f"| EBITDA Margin | {cd.ebitda_margin:.1%} |" if cd.ebitda_margin else "",
+                f"| Net Debt | ${cd.net_debt/1e9:.1f}B |" if cd.net_debt else "",
+                "",
+                "### Valuation",
+                "",
+                "| Multiple | Value |",
+                "|----------|-------|",
+                f"| EV/EBITDA | {cd.ev_ebitda:.1f}x |" if cd.ev_ebitda else "",
+                f"| EV/Revenue | {cd.ev_revenue:.1f}x |" if cd.ev_revenue else "",
+                f"| P/E Ratio | {cd.pe_ratio:.1f}x |" if cd.pe_ratio else "",
+                "",
+            ])
+
+        # Investment Thesis
+        if research.investment_thesis_points:
+            lines.extend([
+                "## Investment Thesis",
+                "",
+            ])
+            for point in research.investment_thesis_points:
+                lines.append(f"- {point}")
+            lines.append("")
+
+        # Competitive Advantages
+        if research.competitive_advantages:
+            lines.extend([
+                "## Competitive Advantages",
+                "",
+            ])
+            for adv in research.competitive_advantages[:5]:
+                lines.append(f"- {adv[:200]}")
+            lines.append("")
+
+        # Growth Opportunities
+        if research.growth_opportunities:
+            lines.extend([
+                "## Growth Opportunities",
+                "",
+            ])
+            for opp in research.growth_opportunities[:5]:
+                lines.append(f"- {opp[:200]}")
+            lines.append("")
+
+        # Risk Factors
+        if research.risk_factors:
+            lines.extend([
+                "## Risk Factors",
+                "",
+            ])
+            for risk in research.risk_factors[:5]:
+                lines.append(f"- {risk[:200]}")
+            lines.append("")
+
+        # Recent News
+        if research.news_articles:
+            lines.extend([
+                "## Recent News & Articles",
+                "",
+            ])
+            for article in research.news_articles[:5]:
+                lines.append(f"- [{article.get('title', 'Article')}]({article.get('url', '#')})")
+            lines.append("")
+
+        # Financing Considerations
+        if research.financing_considerations:
+            lines.extend([
+                "## Financing Considerations",
+                "",
+            ])
+            for cons in research.financing_considerations:
+                lines.append(f"- {cons}")
+            lines.append("")
+
+        # Sources
+        lines.extend([
+            "---",
+            "",
+            "## Research Queries Used",
+            "",
+        ])
+        for query in research.queries_used:
+            lines.append(f"- {query}")
+
+        return "\n".join([line for line in lines if line is not None])
+
+    async def generate_research_enhanced_deck(
+        self,
+        company_name: str,
+        ticker: str,
+        deck_type: str = "standard",
+        deal_type: str = "lbo",
+    ) -> Dict[str, Any]:
+        """
+        Generate a PowerPoint deck with research-enhanced data.
+
+        Args:
+            company_name: Company name
+            ticker: Stock ticker symbol
+            deck_type: standard, institutional, comprehensive
+            deal_type: Type of deal for research focus
+
+        Returns:
+            Dict with deck and research data
+        """
+        from ii_skills.ib_toolkit.enriched_data import EnrichedDataFetcher
+
+        results = {
+            "company": company_name,
+            "ticker": ticker,
+        }
+
+        # Fetch enriched data
+        fetcher = EnrichedDataFetcher()
+        company_data = await fetcher.get_company_data(ticker)
+
+        # Build data dict for deck generation
+        deck_data = {
+            "company": {
+                "name": company_data.name,
+                "description": company_data.description,
+                "sector": company_data.sector,
+                "industry": company_data.industry,
+            },
+            "financials": {
+                "revenue": company_data.revenue_ttm,
+                "ebitda": company_data.ebitda_ttm,
+                "ebitda_margin": company_data.ebitda_margin,
+                "market_cap": company_data.market_cap,
+                "ev": company_data.enterprise_value,
+            },
+            "valuation": {
+                "ev_ebitda": company_data.ev_ebitda,
+                "ev_revenue": company_data.ev_revenue,
+                "pe_ratio": company_data.pe_ratio,
+            },
+            "news": company_data.recent_news,
+            "competitors": company_data.competitors,
+            "industry_trends": company_data.industry_trends,
+        }
+
+        # Generate deck
+        deck_result = await self.generate_investment_deck(
+            company_name=company_name,
+            company_symbol=ticker,
+            deck_type=deck_type,
+            data=deck_data,
+        )
+
+        results["deck"] = deck_result
+        results["research_data"] = deck_data
+
+        return results
+
+    # =========================================================================
     # BATCH OPERATIONS
     # =========================================================================
 
