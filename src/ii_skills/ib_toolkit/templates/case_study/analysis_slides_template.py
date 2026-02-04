@@ -9,11 +9,13 @@ Creates a 30-slide PowerPoint template covering:
 - Company Analysis (business overview, management)
 - Deal Analysis (investment thesis, risks, recommendation)
 
-Formatting: Goldman Sachs / McKinsey presentation standards
+Formatting: Matches Roberto Babaran's BCI/Northleaf case study style
+- Font: Arial
+- Primary color: #00365B (dark navy)
+- Layout: 10" x 7.5" slides with consistent positioning
 """
 
 from pptx import Presentation
-from pptx.util import Inches, Pt
 from pptx.util import Inches, Pt
 from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
 from pptx.enum.shapes import MSO_SHAPE
@@ -21,103 +23,118 @@ from pptx.dml.color import RGBColor
 from datetime import datetime
 import os
 
-# Color scheme (Goldman Sachs / institutional)
-NAVY = RGBColor(30, 58, 95)      # #1E3A5F - Headers
-DARK_GRAY = RGBColor(51, 51, 51) # #333333 - Body text
-LIGHT_GRAY = RGBColor(240, 240, 240)  # Background
-ACCENT_BLUE = RGBColor(37, 99, 235)   # #2563EB - Highlights
-ACCENT_GREEN = RGBColor(34, 197, 94)  # #22C55E - Positive
-ACCENT_RED = RGBColor(239, 68, 68)    # #EF4444 - Negative
+# Color scheme (Roberto's BCI/Northleaf style)
+NAVY = RGBColor(0, 54, 91)        # #00365B - Primary brand color
+DARK_GRAY = RGBColor(0, 0, 0)     # #000000 - Body text (pure black)
+LIGHT_GRAY = RGBColor(245, 245, 245)  # Background for boxes
+ACCENT_BLUE = RGBColor(0, 54, 91)     # Same as NAVY for consistency
+ACCENT_GREEN = RGBColor(34, 139, 34)  # #228B22 - Positive
+ACCENT_RED = RGBColor(178, 34, 34)    # #B22222 - Negative
 WHITE = RGBColor(255, 255, 255)
 
+# Font settings
+FONT_NAME = "Arial"
 
-def add_title_slide(prs, title, subtitle=""):
-    """Add a title slide."""
+
+def add_title_slide(prs, title, subtitle="", date_str=None):
+    """Add a cover slide matching BCI/Northleaf style."""
     slide_layout = prs.slide_layouts[6]  # Blank
     slide = prs.slides.add_slide(slide_layout)
 
-    # Navy background bar at top
-    shape = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, 0, Inches(13.33), Inches(2))
-    shape.fill.solid()
-    shape.fill.fore_color.rgb = NAVY
-    shape.line.fill.background()
-
-    # Title
-    txBox = slide.shapes.add_textbox(Inches(0.5), Inches(0.6), Inches(12), Inches(1))
+    # Case study title (position: 0.5", 1.5")
+    txBox = slide.shapes.add_textbox(Inches(0.5), Inches(1.5), Inches(9.1), Inches(1))
     tf = txBox.text_frame
     p = tf.paragraphs[0]
     p.text = title
-    p.font.size = Pt(36)
+    p.font.name = FONT_NAME
+    p.font.size = Pt(28)
     p.font.bold = True
-    p.font.color.rgb = WHITE
+    p.font.color.rgb = DARK_GRAY
 
-    # Subtitle
+    # Subtitle / description
     if subtitle:
-        txBox2 = slide.shapes.add_textbox(Inches(0.5), Inches(1.4), Inches(12), Inches(0.5))
+        txBox2 = slide.shapes.add_textbox(Inches(0.5), Inches(5.2), Inches(9.1), Inches(1))
         tf2 = txBox2.text_frame
         p2 = tf2.paragraphs[0]
         p2.text = subtitle
-        p2.font.size = Pt(18)
-        p2.font.color.rgb = RGBColor(200, 200, 200)
+        p2.font.name = FONT_NAME
+        p2.font.size = Pt(14)
+        p2.font.bold = True
+        p2.font.color.rgb = DARK_GRAY
+
+    # Date (position similar to user's: 2.3", 6.3")
+    if date_str is None:
+        date_str = datetime.now().strftime("%B %d, %Y")
+    txBox3 = slide.shapes.add_textbox(Inches(2.3), Inches(6.3), Inches(2), Inches(0.2))
+    tf3 = txBox3.text_frame
+    p3 = tf3.paragraphs[0]
+    p3.text = date_str
+    p3.font.name = FONT_NAME
+    p3.font.size = Pt(11)
+    p3.font.color.rgb = DARK_GRAY
 
     return slide
 
 
 def add_section_header(prs, section_title, section_number):
-    """Add a section divider slide."""
+    """Add a section divider slide - clean white background with navy text."""
     slide_layout = prs.slide_layouts[6]  # Blank
     slide = prs.slides.add_slide(slide_layout)
 
-    # Full navy background
-    shape = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, 0, Inches(13.33), Inches(7.5))
-    shape.fill.solid()
-    shape.fill.fore_color.rgb = NAVY
-    shape.line.fill.background()
-
-    # Section number
-    txBox = slide.shapes.add_textbox(Inches(0.75), Inches(2.5), Inches(2), Inches(1))
+    # Section number (smaller, left side)
+    txBox = slide.shapes.add_textbox(Inches(0.5), Inches(3.0), Inches(1.5), Inches(1))
     tf = txBox.text_frame
     p = tf.paragraphs[0]
     p.text = f"{section_number:02d}"
-    p.font.size = Pt(72)
+    p.font.name = FONT_NAME
+    p.font.size = Pt(48)
     p.font.bold = True
-    p.font.color.rgb = ACCENT_BLUE
+    p.font.color.rgb = NAVY
 
     # Section title
-    txBox2 = slide.shapes.add_textbox(Inches(0.75), Inches(3.5), Inches(11), Inches(1.5))
+    txBox2 = slide.shapes.add_textbox(Inches(2.0), Inches(3.0), Inches(7.5), Inches(1.5))
     tf2 = txBox2.text_frame
     p2 = tf2.paragraphs[0]
     p2.text = section_title
-    p2.font.size = Pt(44)
+    p2.font.name = FONT_NAME
+    p2.font.size = Pt(32)
     p2.font.bold = True
-    p2.font.color.rgb = WHITE
+    p2.font.color.rgb = NAVY
 
     return slide
 
 
-def add_content_slide(prs, title, content_items=None, has_table=False, table_data=None):
-    """Add a standard content slide with title and bullet points or table."""
+def add_content_slide(prs, title, content_items=None, subtitle=None, page_num=None, source_text=None):
+    """Add a standard content slide matching BCI/Northleaf 2-line summary layout."""
     slide_layout = prs.slide_layouts[6]  # Blank
     slide = prs.slides.add_slide(slide_layout)
 
-    # Header bar
-    shape = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, 0, Inches(13.33), Inches(1.1))
-    shape.fill.solid()
-    shape.fill.fore_color.rgb = NAVY
-    shape.line.fill.background()
-
-    # Title
-    txBox = slide.shapes.add_textbox(Inches(0.5), Inches(0.3), Inches(12), Inches(0.6))
+    # Title at (0.3", 0.2") - 9.5" wide
+    txBox = slide.shapes.add_textbox(Inches(0.3), Inches(0.2), Inches(9.5), Inches(0.3))
     tf = txBox.text_frame
     p = tf.paragraphs[0]
     p.text = title
-    p.font.size = Pt(24)
+    p.font.name = FONT_NAME
+    p.font.size = Pt(16)
     p.font.bold = True
-    p.font.color.rgb = WHITE
+    p.font.color.rgb = NAVY
+
+    # Subtitle at (0.3", 0.6") if provided
+    if subtitle:
+        txBox_sub = slide.shapes.add_textbox(Inches(0.3), Inches(0.6), Inches(9.5), Inches(0.5))
+        tf_sub = txBox_sub.text_frame
+        p_sub = tf_sub.paragraphs[0]
+        p_sub.text = subtitle
+        p_sub.font.name = FONT_NAME
+        p_sub.font.size = Pt(11)
+        p_sub.font.color.rgb = DARK_GRAY
+        content_top = 1.2
+    else:
+        content_top = 1.0
 
     # Content area
     if content_items:
-        txBox2 = slide.shapes.add_textbox(Inches(0.5), Inches(1.4), Inches(12), Inches(5.5))
+        txBox2 = slide.shapes.add_textbox(Inches(0.3), Inches(content_top), Inches(9.4), Inches(5.5))
         tf2 = txBox2.text_frame
         tf2.word_wrap = True
 
@@ -132,106 +149,166 @@ def add_content_slide(prs, title, content_items=None, has_table=False, table_dat
                 p.text = item[0]
                 p.level = item[1]
             else:
-                p.text = f"• {item}"
+                p.text = f"• {item}" if item and not item.startswith("•") else item
                 p.level = 0
 
-            p.font.size = Pt(14)
+            p.font.name = FONT_NAME
+            p.font.size = Pt(10)
             p.font.color.rgb = DARK_GRAY
-            p.space_after = Pt(8)
+            p.space_after = Pt(6)
+
+    # Page number at bottom right (9.0", 7.0")
+    if page_num is not None:
+        txBox_pg = slide.shapes.add_textbox(Inches(9.0), Inches(7.0), Inches(0.8), Inches(0.3))
+        tf_pg = txBox_pg.text_frame
+        p_pg = tf_pg.paragraphs[0]
+        p_pg.text = str(page_num)
+        p_pg.font.name = FONT_NAME
+        p_pg.font.size = Pt(10)
+        p_pg.font.color.rgb = DARK_GRAY
+
+    # Source footnote at bottom (1.1", 7.0")
+    if source_text:
+        txBox_src = slide.shapes.add_textbox(Inches(1.1), Inches(7.0), Inches(7.9), Inches(0.3))
+        tf_src = txBox_src.text_frame
+        p_src = tf_src.paragraphs[0]
+        p_src.text = f"Source: {source_text}"
+        p_src.font.name = FONT_NAME
+        p_src.font.size = Pt(8)
+        p_src.font.color.rgb = DARK_GRAY
 
     return slide
 
 
-def add_table_slide(prs, title, headers, rows, col_widths=None):
-    """Add a slide with a data table."""
+def add_table_slide(prs, title, headers, rows, col_widths=None, subtitle=None, page_num=None, source_text=None):
+    """Add a slide with a data table matching BCI/Northleaf style."""
     slide_layout = prs.slide_layouts[6]
     slide = prs.slides.add_slide(slide_layout)
 
-    # Header bar
-    shape = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, 0, Inches(13.33), Inches(1.1))
-    shape.fill.solid()
-    shape.fill.fore_color.rgb = NAVY
-    shape.line.fill.background()
-
-    # Title
-    txBox = slide.shapes.add_textbox(Inches(0.5), Inches(0.3), Inches(12), Inches(0.6))
+    # Title at (0.3", 0.2")
+    txBox = slide.shapes.add_textbox(Inches(0.3), Inches(0.2), Inches(9.5), Inches(0.3))
     tf = txBox.text_frame
     p = tf.paragraphs[0]
     p.text = title
-    p.font.size = Pt(24)
+    p.font.name = FONT_NAME
+    p.font.size = Pt(16)
     p.font.bold = True
-    p.font.color.rgb = WHITE
+    p.font.color.rgb = NAVY
+
+    # Subtitle at (0.3", 0.6") if provided
+    if subtitle:
+        txBox_sub = slide.shapes.add_textbox(Inches(0.3), Inches(0.6), Inches(9.5), Inches(0.5))
+        tf_sub = txBox_sub.text_frame
+        p_sub = tf_sub.paragraphs[0]
+        p_sub.text = subtitle
+        p_sub.font.name = FONT_NAME
+        p_sub.font.size = Pt(11)
+        p_sub.font.color.rgb = DARK_GRAY
+        table_top = 1.2
+    else:
+        table_top = 0.8
 
     # Table
     num_cols = len(headers)
     num_rows = len(rows) + 1  # +1 for header
 
     if col_widths is None:
-        col_widths = [Inches(12 / num_cols)] * num_cols
+        col_widths = [Inches(9.4 / num_cols)] * num_cols
 
-    table = slide.shapes.add_table(num_rows, num_cols, Inches(0.5), Inches(1.4), sum(col_widths), Inches(0.4 * num_rows)).table
+    table = slide.shapes.add_table(num_rows, num_cols, Inches(0.3), Inches(table_top), sum(col_widths), Inches(0.35 * num_rows)).table
 
     # Set column widths
     for i, width in enumerate(col_widths):
         table.columns[i].width = width
 
-    # Header row
+    # Header row - light navy background
     for i, header in enumerate(headers):
         cell = table.cell(0, i)
         cell.text = header
         cell.fill.solid()
         cell.fill.fore_color.rgb = NAVY
         p = cell.text_frame.paragraphs[0]
-        p.font.size = Pt(11)
+        p.font.name = FONT_NAME
+        p.font.size = Pt(10)
         p.font.bold = True
         p.font.color.rgb = WHITE
         p.alignment = PP_ALIGN.CENTER
 
-    # Data rows
+    # Data rows - alternating backgrounds for readability
     for row_idx, row_data in enumerate(rows):
         for col_idx, cell_value in enumerate(row_data):
             cell = table.cell(row_idx + 1, col_idx)
             cell.text = str(cell_value)
             p = cell.text_frame.paragraphs[0]
+            p.font.name = FONT_NAME
             p.font.size = Pt(10)
             p.font.color.rgb = DARK_GRAY
             if col_idx == 0:
                 p.alignment = PP_ALIGN.LEFT
+                p.font.bold = True
             else:
                 p.alignment = PP_ALIGN.CENTER
+
+    # Page number at bottom right
+    if page_num is not None:
+        txBox_pg = slide.shapes.add_textbox(Inches(9.0), Inches(7.0), Inches(0.8), Inches(0.3))
+        tf_pg = txBox_pg.text_frame
+        p_pg = tf_pg.paragraphs[0]
+        p_pg.text = str(page_num)
+        p_pg.font.name = FONT_NAME
+        p_pg.font.size = Pt(10)
+        p_pg.font.color.rgb = DARK_GRAY
+
+    # Source footnote at bottom
+    if source_text:
+        txBox_src = slide.shapes.add_textbox(Inches(1.1), Inches(7.0), Inches(7.9), Inches(0.3))
+        tf_src = txBox_src.text_frame
+        p_src = tf_src.paragraphs[0]
+        p_src.text = f"Source: {source_text}"
+        p_src.font.name = FONT_NAME
+        p_src.font.size = Pt(8)
+        p_src.font.color.rgb = DARK_GRAY
 
     return slide
 
 
-def add_framework_slide(prs, title, framework_type, items):
-    """Add a strategic framework slide (2x2, quadrant, etc.)."""
+def add_framework_slide(prs, title, framework_type, items, subtitle=None, page_num=None):
+    """Add a strategic framework slide (2x2, quadrant, etc.) matching BCI/Northleaf style."""
     slide_layout = prs.slide_layouts[6]
     slide = prs.slides.add_slide(slide_layout)
 
-    # Header bar
-    shape = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, 0, Inches(13.33), Inches(1.1))
-    shape.fill.solid()
-    shape.fill.fore_color.rgb = NAVY
-    shape.line.fill.background()
-
-    # Title
-    txBox = slide.shapes.add_textbox(Inches(0.5), Inches(0.3), Inches(12), Inches(0.6))
+    # Title at (0.3", 0.2")
+    txBox = slide.shapes.add_textbox(Inches(0.3), Inches(0.2), Inches(9.5), Inches(0.3))
     tf = txBox.text_frame
     p = tf.paragraphs[0]
     p.text = title
-    p.font.size = Pt(24)
+    p.font.name = FONT_NAME
+    p.font.size = Pt(16)
     p.font.bold = True
-    p.font.color.rgb = WHITE
+    p.font.color.rgb = NAVY
+
+    # Subtitle if provided
+    if subtitle:
+        txBox_sub = slide.shapes.add_textbox(Inches(0.3), Inches(0.6), Inches(9.5), Inches(0.5))
+        tf_sub = txBox_sub.text_frame
+        p_sub = tf_sub.paragraphs[0]
+        p_sub.text = subtitle
+        p_sub.font.name = FONT_NAME
+        p_sub.font.size = Pt(11)
+        p_sub.font.color.rgb = DARK_GRAY
+        content_top = 1.2
+    else:
+        content_top = 1.0
 
     if framework_type == "2x2":
-        # Create 2x2 grid
+        # Create 2x2 grid - adjusted for 10" width
         positions = [
-            (Inches(0.75), Inches(1.5), Inches(5.5), Inches(2.7)),   # Top-left
-            (Inches(6.75), Inches(1.5), Inches(5.5), Inches(2.7)),   # Top-right
-            (Inches(0.75), Inches(4.4), Inches(5.5), Inches(2.7)),   # Bottom-left
-            (Inches(6.75), Inches(4.4), Inches(5.5), Inches(2.7)),   # Bottom-right
+            (Inches(0.3), Inches(content_top), Inches(4.5), Inches(2.7)),    # Top-left
+            (Inches(5.0), Inches(content_top), Inches(4.5), Inches(2.7)),    # Top-right
+            (Inches(0.3), Inches(content_top + 2.9), Inches(4.5), Inches(2.7)),  # Bottom-left
+            (Inches(5.0), Inches(content_top + 2.9), Inches(4.5), Inches(2.7)),  # Bottom-right
         ]
-        colors = [ACCENT_BLUE, ACCENT_GREEN, RGBColor(245, 158, 11), ACCENT_RED]
+        colors = [NAVY, ACCENT_GREEN, RGBColor(200, 150, 50), ACCENT_RED]
 
         for i, (item_title, item_content) in enumerate(items[:4]):
             left, top, width, height = positions[i]
@@ -241,16 +318,17 @@ def add_framework_slide(prs, title, framework_type, items):
             box.fill.solid()
             box.fill.fore_color.rgb = RGBColor(248, 250, 252)
             box.line.color.rgb = colors[i]
-            box.line.width = Pt(2)
+            box.line.width = Pt(1.5)
 
             # Title
-            txBox = slide.shapes.add_textbox(left + Inches(0.15), top + Inches(0.1), width - Inches(0.3), Inches(0.4))
-            tf = txBox.text_frame
-            p = tf.paragraphs[0]
-            p.text = item_title
-            p.font.size = Pt(14)
-            p.font.bold = True
-            p.font.color.rgb = colors[i]
+            txBox_item = slide.shapes.add_textbox(left + Inches(0.15), top + Inches(0.1), width - Inches(0.3), Inches(0.4))
+            tf_item = txBox_item.text_frame
+            p_item = tf_item.paragraphs[0]
+            p_item.text = item_title
+            p_item.font.name = FONT_NAME
+            p_item.font.size = Pt(11)
+            p_item.font.bold = True
+            p_item.font.color.rgb = colors[i]
 
             # Content
             txBox2 = slide.shapes.add_textbox(left + Inches(0.15), top + Inches(0.5), width - Inches(0.3), height - Inches(0.6))
@@ -262,61 +340,75 @@ def add_framework_slide(prs, title, framework_type, items):
                 else:
                     p2 = tf2.add_paragraph()
                 p2.text = f"• {bullet}"
-                p2.font.size = Pt(10)
+                p2.font.name = FONT_NAME
+                p2.font.size = Pt(9)
                 p2.font.color.rgb = DARK_GRAY
 
     elif framework_type == "five_forces":
-        # Porter's Five Forces layout
+        # Porter's Five Forces layout - adjusted for 10" width
         # Center box
-        center = slide.shapes.add_shape(MSO_SHAPE.OVAL, Inches(5.25), Inches(3.2), Inches(2.8), Inches(1.5))
+        center = slide.shapes.add_shape(MSO_SHAPE.OVAL, Inches(3.6), Inches(3.0), Inches(2.5), Inches(1.3))
         center.fill.solid()
         center.fill.fore_color.rgb = NAVY
         center.line.fill.background()
 
-        txBox = slide.shapes.add_textbox(Inches(5.35), Inches(3.5), Inches(2.6), Inches(1))
-        tf = txBox.text_frame
-        p = tf.paragraphs[0]
-        p.text = "Competitive\nRivalry"
-        p.font.size = Pt(14)
-        p.font.bold = True
-        p.font.color.rgb = WHITE
-        p.alignment = PP_ALIGN.CENTER
+        txBox_center = slide.shapes.add_textbox(Inches(3.7), Inches(3.2), Inches(2.3), Inches(1))
+        tf_center = txBox_center.text_frame
+        p_center = tf_center.paragraphs[0]
+        p_center.text = "Competitive\nRivalry"
+        p_center.font.name = FONT_NAME
+        p_center.font.size = Pt(12)
+        p_center.font.bold = True
+        p_center.font.color.rgb = WHITE
+        p_center.alignment = PP_ALIGN.CENTER
 
-        # Five forces positions
+        # Five forces positions - adjusted for 10" width
         force_positions = [
-            (Inches(5.25), Inches(1.3), "Threat of\nNew Entrants", "↓"),   # Top
-            (Inches(5.25), Inches(5.3), "Threat of\nSubstitutes", "↑"),    # Bottom
-            (Inches(1.5), Inches(3.2), "Supplier\nPower", "→"),             # Left
-            (Inches(9.0), Inches(3.2), "Buyer\nPower", "←"),                # Right
+            (Inches(3.6), Inches(1.0), "Threat of\nNew Entrants"),   # Top
+            (Inches(3.6), Inches(5.0), "Threat of\nSubstitutes"),    # Bottom
+            (Inches(0.5), Inches(3.0), "Supplier\nPower"),           # Left
+            (Inches(7.0), Inches(3.0), "Buyer\nPower"),              # Right
         ]
 
-        for left, top, text, arrow in force_positions:
-            box = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, left, top, Inches(2.8), Inches(1.3))
+        for left, top, text in force_positions:
+            box = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, left, top, Inches(2.5), Inches(1.2))
             box.fill.solid()
             box.fill.fore_color.rgb = RGBColor(248, 250, 252)
-            box.line.color.rgb = ACCENT_BLUE
+            box.line.color.rgb = NAVY
             box.line.width = Pt(1.5)
 
-            txBox = slide.shapes.add_textbox(left + Inches(0.1), top + Inches(0.2), Inches(2.6), Inches(1))
-            tf = txBox.text_frame
-            p = tf.paragraphs[0]
-            p.text = text
-            p.font.size = Pt(12)
-            p.font.bold = True
-            p.font.color.rgb = NAVY
-            p.alignment = PP_ALIGN.CENTER
+            txBox_force = slide.shapes.add_textbox(left + Inches(0.1), top + Inches(0.2), Inches(2.3), Inches(1))
+            tf_force = txBox_force.text_frame
+            p_force = tf_force.paragraphs[0]
+            p_force.text = text
+            p_force.font.name = FONT_NAME
+            p_force.font.size = Pt(11)
+            p_force.font.bold = True
+            p_force.font.color.rgb = NAVY
+            p_force.alignment = PP_ALIGN.CENTER
+
+    # Page number at bottom right
+    if page_num is not None:
+        txBox_pg = slide.shapes.add_textbox(Inches(9.0), Inches(7.0), Inches(0.8), Inches(0.3))
+        tf_pg = txBox_pg.text_frame
+        p_pg = tf_pg.paragraphs[0]
+        p_pg.text = str(page_num)
+        p_pg.font.name = FONT_NAME
+        p_pg.font.size = Pt(10)
+        p_pg.font.color.rgb = DARK_GRAY
 
     return slide
 
 
 def create_analysis_slides_template(output_path=None):
-    """Create the full 30-slide analysis template."""
+    """Create the full 30-slide analysis template matching BCI/Northleaf styling."""
     prs = Presentation()
-    prs.slide_width = Inches(13.33)
+    # Match user's preferred dimensions: 10" x 7.5"
+    prs.slide_width = Inches(10)
     prs.slide_height = Inches(7.5)
 
     # ========== SLIDE 1: TITLE ==========
-    add_title_slide(prs, "[COMPANY NAME]", "Investment Analysis | Confidential")
+    add_title_slide(prs, "[COMPANY NAME] Investment Analysis", "[PE Firm] 2026 Analyst Case Study")
 
     # ========== SLIDE 2: TABLE OF CONTENTS ==========
     add_content_slide(prs, "Table of Contents", [
@@ -354,7 +446,8 @@ def create_analysis_slides_template(output_path=None):
             ["Total Leverage", "X.Xx", "Senior + Sub debt"],
             ["Sponsor Equity", "$XXX million", "XX% of total cap"],
         ],
-        [Inches(2.5), Inches(2), Inches(7.5)]
+        [Inches(2.0), Inches(1.8), Inches(5.5)],
+        subtitle="Key metrics and implied valuation multiples"
     )
 
     # ========== SECTION 2: COMPANY OVERVIEW ==========
@@ -382,7 +475,8 @@ def create_analysis_slides_template(output_path=None):
             ["Segment C", "$XX", "XX%", "+X%", "XX%"],
             ["Total", "$XXX", "100%", "+X%", "XX%"],
         ],
-        [Inches(3), Inches(2), Inches(2), Inches(2), Inches(2)]
+        [Inches(2.5), Inches(1.5), Inches(1.5), Inches(1.5), Inches(1.5)],
+        subtitle="LTM revenue breakdown by business segment"
     )
 
     # Slide 9: Customer Overview
@@ -446,7 +540,7 @@ def create_analysis_slides_template(output_path=None):
 
     # Slide 15: Competitive Landscape
     add_table_slide(prs, "Competitive Landscape",
-        ["Competitor", "Revenue", "Market Share", "Key Strengths", "Key Weaknesses"],
+        ["Competitor", "Revenue", "Share", "Key Strengths", "Key Weaknesses"],
         [
             ["Company (Target)", "$XXX", "XX%", "[Strength]", "[Weakness]"],
             ["Competitor A", "$XXX", "XX%", "[Strength]", "[Weakness]"],
@@ -454,7 +548,8 @@ def create_analysis_slides_template(output_path=None):
             ["Competitor C", "$XXX", "XX%", "[Strength]", "[Weakness]"],
             ["Other", "$XXX", "XX%", "—", "—"],
         ],
-        [Inches(2.2), Inches(1.5), Inches(1.8), Inches(3), Inches(3)]
+        [Inches(1.8), Inches(1.2), Inches(1.0), Inches(2.4), Inches(2.4)],
+        subtitle="Market share and competitive positioning vs. key competitors"
     )
 
     # Slide 16: SWOT Analysis
@@ -519,7 +614,8 @@ def create_analysis_slides_template(output_path=None):
             ["% of Revenue", "X%", "X%", "X%", "—"],
             ["Free Cash Flow", "$XX", "$XX", "$XX", "X%"],
         ],
-        [Inches(3), Inches(2), Inches(2), Inches(2), Inches(2)]
+        [Inches(2.5), Inches(1.5), Inches(1.5), Inches(1.5), Inches(1.5)],
+        subtitle="3-year historical performance summary"
     )
 
     # Slide 20: Projected Financials
@@ -533,7 +629,8 @@ def create_analysis_slides_template(output_path=None):
             ["CapEx", "($X)", "($X)", "($X)", "($X)", "($X)"],
             ["Unlevered FCF", "$XX", "$XX", "$XX", "$XX", "$XX"],
         ],
-        [Inches(2.5), Inches(1.8), Inches(1.8), Inches(1.8), Inches(1.8), Inches(1.8)]
+        [Inches(1.9), Inches(1.3), Inches(1.3), Inches(1.3), Inches(1.3), Inches(1.3)],
+        subtitle="5-year projected operating performance"
     )
 
     # Slide 21: Key Financial Metrics
@@ -547,7 +644,8 @@ def create_analysis_slides_template(output_path=None):
             ["Revenue per Employee", "$XXX", "$XXX", "+/- $XX", "[Efficiency]"],
             ["Days Sales Outstanding", "XX", "XX", "+/- X", "[Working capital]"],
         ],
-        [Inches(2.8), Inches(1.8), Inches(1.8), Inches(1.5), Inches(3.5)]
+        [Inches(2.2), Inches(1.3), Inches(1.3), Inches(1.2), Inches(2.5)],
+        subtitle="Benchmarking vs. peer group median"
     )
 
     # ========== SECTION 6: VALUATION ==========
@@ -555,7 +653,7 @@ def create_analysis_slides_template(output_path=None):
 
     # Slide 23: Trading Comps
     add_table_slide(prs, "Public Comparable Companies",
-        ["Company", "EV ($M)", "EV/Revenue", "EV/EBITDA", "Revenue Gr.", "EBITDA Margin"],
+        ["Company", "EV ($M)", "EV/Rev", "EV/EBITDA", "Rev Gr.", "EBITDA Mgn"],
         [
             ["Comp A", "$X,XXX", "X.Xx", "XX.Xx", "X%", "XX%"],
             ["Comp B", "$X,XXX", "X.Xx", "XX.Xx", "X%", "XX%"],
@@ -564,12 +662,14 @@ def create_analysis_slides_template(output_path=None):
             ["Mean", "—", "X.Xx", "XX.Xx", "X%", "XX%"],
             ["Median", "—", "X.Xx", "XX.Xx", "X%", "XX%"],
         ],
-        [Inches(2.2), Inches(1.8), Inches(1.8), Inches(2), Inches(1.8), Inches(2)]
+        [Inches(1.8), Inches(1.3), Inches(1.3), Inches(1.5), Inches(1.3), Inches(1.5)],
+        subtitle="Trading comparables as of [Date]",
+        source_text="Capital IQ, Company filings"
     )
 
     # Slide 24: Transaction Comps
     add_table_slide(prs, "Precedent Transactions",
-        ["Date", "Target", "Acquirer", "EV ($M)", "EV/Revenue", "EV/EBITDA"],
+        ["Date", "Target", "Acquirer", "EV ($M)", "EV/Rev", "EV/EBITDA"],
         [
             ["MM/YY", "Target A", "Buyer A", "$XXX", "X.Xx", "XX.Xx"],
             ["MM/YY", "Target B", "Buyer B", "$XXX", "X.Xx", "XX.Xx"],
@@ -578,7 +678,9 @@ def create_analysis_slides_template(output_path=None):
             ["Mean", "—", "—", "—", "X.Xx", "XX.Xx"],
             ["Median", "—", "—", "—", "X.Xx", "XX.Xx"],
         ],
-        [Inches(1.3), Inches(2.2), Inches(2.2), Inches(1.8), Inches(1.8), Inches(2)]
+        [Inches(1.0), Inches(1.8), Inches(1.8), Inches(1.3), Inches(1.3), Inches(1.5)],
+        subtitle="Selected M&A transactions in sector",
+        source_text="Capital IQ, PitchBook, Company announcements"
     )
 
     # Slide 25: Football Field
@@ -601,7 +703,7 @@ def create_analysis_slides_template(output_path=None):
 
     # Slide 27: Sources & Uses
     add_table_slide(prs, "Sources and Uses of Funds",
-        ["Sources", "$M", "% Total", "", "Uses", "$M", "% Total"],
+        ["Sources", "$M", "%", "", "Uses", "$M", "%"],
         [
             ["Senior Debt", "$XX", "XX%", "", "Purchase Price", "$XXX", "XX%"],
             ["Subordinated Debt", "$XX", "XX%", "", "Refinance Debt", "$XX", "XX%"],
@@ -610,12 +712,13 @@ def create_analysis_slides_template(output_path=None):
             ["", "", "", "", "Cash to B/S", "$XX", "XX%"],
             ["Total Sources", "$XXX", "100%", "", "Total Uses", "$XXX", "100%"],
         ],
-        [Inches(2), Inches(1.3), Inches(1.2), Inches(0.3), Inches(2), Inches(1.3), Inches(1.2)]
+        [Inches(1.6), Inches(1.0), Inches(0.9), Inches(0.2), Inches(1.6), Inches(1.0), Inches(0.9)],
+        subtitle="Transaction funding structure"
     )
 
     # Slide 28: Returns Analysis
     add_table_slide(prs, "LBO Returns Analysis",
-        ["Exit Year", "Exit EBITDA", "Exit Multiple", "Exit EV", "Net Debt", "Equity Value", "MOIC", "IRR"],
+        ["Exit Yr", "EBITDA", "Multiple", "Exit EV", "Net Debt", "Equity", "MOIC", "IRR"],
         [
             ["Year 3", "$XX", "X.Xx", "$XXX", "$XX", "$XXX", "X.Xx", "XX%"],
             ["Year 4", "$XX", "X.Xx", "$XXX", "$XX", "$XXX", "X.Xx", "XX%"],
@@ -623,7 +726,8 @@ def create_analysis_slides_template(output_path=None):
             ["Year 6", "$XX", "X.Xx", "$XXX", "$XX", "$XXX", "X.Xx", "XX%"],
             ["Year 7", "$XX", "X.Xx", "$XXX", "$XX", "$XXX", "X.Xx", "XX%"],
         ],
-        [Inches(1.2), Inches(1.5), Inches(1.5), Inches(1.3), Inches(1.3), Inches(1.5), Inches(1.2), Inches(1.2)]
+        [Inches(1.0), Inches(1.0), Inches(1.2), Inches(1.2), Inches(1.2), Inches(1.2), Inches(1.0), Inches(1.0)],
+        subtitle="Returns sensitivity by exit year (base case exit multiple)"
     )
 
     # ========== SECTION 8: INVESTMENT THESIS ==========
