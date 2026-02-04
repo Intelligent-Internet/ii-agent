@@ -6,14 +6,16 @@ financial models, and deal analysis frameworks.
 
 Capabilities:
 - PowerPoint Generation (Company profiles, IC decks, M&A pitch books)
+- Modular Slide Generation (industry, competitive, financial, LBO, etc.)
 - Excel Financial Models (DCF, LBO, Comps, 3-Statement)
 - Orchestrated Deal Analysis (52-prompt system)
 - Middle Market Case Study Support
 - LBO Quick Calculator (IRR/MOIC analysis, sensitivity)
 - Capital Structure Analyzer (debt capacity, optimal financing)
 - Quality of Earnings Analyzer (EBITDA normalization, due diligence)
+- Parallel Agent Orchestration (see ORCHESTRATION_GUIDE.md)
 
-Version: 1.3.0
+Version: 1.4.0
 """
 
 from typing import Dict, List, Optional
@@ -22,7 +24,7 @@ from pathlib import Path
 from ii_skills import BaseSkill, register_skill
 
 # Skill metadata
-__version__ = "1.3.0"
+__version__ = "1.4.0"
 __author__ = "II-Agent System"
 
 
@@ -70,6 +72,18 @@ class IBToolkitSkill(BaseSkill):
             "analyze_capital_structure",
             "analyze_quality_of_earnings",
             "generate_dd_questions",
+            # Modular slide generation
+            "generate_slides",
+            "generate_industry_slides",
+            "generate_competitive_slides",
+            "generate_financial_slides",
+            "generate_debt_slides",
+            "generate_lbo_slides",
+            "generate_management_slides",
+            "generate_valuation_slides",
+            "generate_thesis_slides",
+            "generate_full_deck",
+            "list_slide_modules",
         ]
 
     def execute(self, action: str, **kwargs) -> Dict:
@@ -98,6 +112,29 @@ class IBToolkitSkill(BaseSkill):
             return self._analyze_qoe(**kwargs)
         elif action == "generate_dd_questions":
             return self._generate_dd_questions(**kwargs)
+        # Modular slide generation
+        elif action == "generate_slides":
+            return self._generate_slides(**kwargs)
+        elif action == "generate_industry_slides":
+            return self._generate_module_slides("industry", **kwargs)
+        elif action == "generate_competitive_slides":
+            return self._generate_module_slides("competitive", **kwargs)
+        elif action == "generate_financial_slides":
+            return self._generate_module_slides("financial", **kwargs)
+        elif action == "generate_debt_slides":
+            return self._generate_module_slides("debt", **kwargs)
+        elif action == "generate_lbo_slides":
+            return self._generate_module_slides("lbo", **kwargs)
+        elif action == "generate_management_slides":
+            return self._generate_module_slides("management", **kwargs)
+        elif action == "generate_valuation_slides":
+            return self._generate_module_slides("valuation", **kwargs)
+        elif action == "generate_thesis_slides":
+            return self._generate_module_slides("thesis", **kwargs)
+        elif action == "generate_full_deck":
+            return self._generate_full_deck(**kwargs)
+        elif action == "list_slide_modules":
+            return self._list_slide_modules()
         else:
             raise NotImplementedError(f"Action '{action}' not implemented")
 
@@ -402,6 +439,106 @@ class IBToolkitSkill(BaseSkill):
             "success": True,
             "questions": questions,
         }
+
+    # ============================================================
+    # MODULAR SLIDE GENERATION
+    # ============================================================
+
+    def _generate_slides(
+        self,
+        company_name: str,
+        modules: List[str],
+        output_path: Optional[str] = None,
+        data: Optional[Dict] = None,
+    ) -> Dict:
+        """Generate slides for specified modules."""
+        from .templates.case_study.slide_modules import SlideGenerator
+
+        gen = SlideGenerator(company_name)
+
+        module_map = {
+            "industry": gen.add_industry_analysis,
+            "competitive": gen.add_competitive_analysis,
+            "financial": gen.add_financial_analysis,
+            "debt": gen.add_debt_analysis,
+            "lbo": gen.add_lbo_analysis,
+            "management": gen.add_management_analysis,
+            "valuation": gen.add_valuation,
+            "thesis": gen.add_investment_thesis,
+            "company": gen.add_company_overview,
+        }
+
+        for module in modules:
+            if module in module_map:
+                module_data = data.get(module, {}) if data else {}
+                module_map[module](module_data)
+
+        if output_path is None:
+            output_path = str(self.OUTPUT_DIR / f"{company_name.replace(' ', '_')}_analysis.pptx")
+
+        filepath = gen.save(output_path)
+        return {"success": True, "output_path": filepath, "slides": len(gen.prs.slides)}
+
+    def _generate_module_slides(
+        self,
+        module: str,
+        company_name: str = "Company",
+        output_path: Optional[str] = None,
+        data: Optional[Dict] = None,
+    ) -> Dict:
+        """Generate slides for a single module."""
+        from .templates.case_study.slide_modules import (
+            generate_industry_analysis,
+            generate_competitive_analysis,
+            generate_financial_analysis,
+            generate_debt_analysis,
+            generate_lbo_analysis,
+            generate_management_analysis,
+            generate_valuation_analysis,
+            generate_investment_thesis,
+        )
+
+        if output_path is None:
+            output_path = str(self.OUTPUT_DIR / f"{company_name.replace(' ', '_')}_{module}.pptx")
+
+        generators = {
+            "industry": generate_industry_analysis,
+            "competitive": generate_competitive_analysis,
+            "financial": generate_financial_analysis,
+            "debt": generate_debt_analysis,
+            "lbo": generate_lbo_analysis,
+            "management": generate_management_analysis,
+            "valuation": generate_valuation_analysis,
+            "thesis": generate_investment_thesis,
+        }
+
+        if module not in generators:
+            return {"success": False, "error": f"Unknown module: {module}"}
+
+        filepath = generators[module](company_name, output_path, data)
+        return {"success": True, "output_path": filepath}
+
+    def _generate_full_deck(
+        self,
+        company_name: str,
+        output_path: Optional[str] = None,
+        data: Optional[Dict] = None,
+    ) -> Dict:
+        """Generate a complete investment memo deck."""
+        from .templates.case_study.slide_modules import generate_full_deck
+
+        if output_path is None:
+            output_path = str(self.OUTPUT_DIR / f"{company_name.replace(' ', '_')}_full_deck.pptx")
+
+        filepath = generate_full_deck(company_name, output_path, data)
+        return {"success": True, "output_path": filepath}
+
+    def _list_slide_modules(self) -> Dict:
+        """List available slide modules."""
+        from .templates.case_study.slide_modules import list_available_modules
+
+        modules = list_available_modules()
+        return {"success": True, "modules": modules}
 
     def _get_available_modules(self) -> List[Dict]:
         """Get list of available analysis modules."""
