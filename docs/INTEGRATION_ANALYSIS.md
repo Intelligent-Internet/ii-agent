@@ -340,15 +340,15 @@ Skill Output Generated
 
 ## Implementation Roadmap
 
-### Phase 1: Foundation (Week 1-2) ✅ IN PROGRESS
+### Phase 1: Foundation (Week 1-2) ✅ COMPLETE
 
 | Task | Priority | Status |
 |------|----------|--------|
 | Create shared DataStore class | High | ✅ **DONE** |
 | Add GCS upload to skill outputs | Medium | ✅ **DONE** |
 | Create unified configuration system | Medium | ✅ **DONE** |
-| Migrate networth holdings to PostgreSQL | High | 🔄 Ready (migration helper created) |
-| Connect IB Toolkit to shared store | High | ⏳ Pending |
+| Migrate networth holdings to PostgreSQL | High | 🔄 Ready (run migration + loader) |
+| Connect IB Toolkit to shared store | High | ✅ **DONE** |
 
 **Completed Components:**
 - `src/ii_agent/db/skills_models.py` - 7 new database models
@@ -357,6 +357,8 @@ Skill Output Generated
 - `src/ii_skills/shared/storage.py` - GCS integration for skill outputs
 - `src/ii_skills/shared/skill_config.py` - Centralized configuration
 - `src/ii_skills/shared/portfolio_loader.py` - Migration helper for networth data
+- `src/ii_skills/ib_toolkit/storage_integration.py` - IB Toolkit GCS + DB integration
+- `scripts/run_migrations.py` - Standalone migration runner
 
 ### Phase 2: Research Integration (Week 3-4)
 
