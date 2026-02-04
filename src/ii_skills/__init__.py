@@ -6,8 +6,11 @@ Skills are self-contained modules that provide domain-specific functionality.
 
 Available Skills:
 - ib_toolkit: Investment banking presentations, Excel models, and analysis frameworks
-- market_newsletter: Daily market news and price tracking (coming soon)
-- health_dashboard: WHOOP health metrics integration (coming soon)
+- market_newsletter: Daily market news and price tracking with NewsAPI
+- health_dashboard: WHOOP health metrics integration (recovery, sleep, strain)
+- networth_newsletter: Daily net worth tracking and portfolio analysis
+- daily_investment_newsletter: Canadian investment news aggregation
+- memory: Long-term context and memory management (coming soon)
 """
 
 from typing import Dict, List, Optional, Type

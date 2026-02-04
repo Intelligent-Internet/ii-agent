@@ -1,16 +1,19 @@
 """
-Market Newsletter Skill (Coming Soon)
+Market Newsletter Skill
 
-Daily market news and price tracking for:
-- Commodities (Gold, Silver, Copper)
-- Cryptocurrencies (Bitcoin)
-- Individual stocks
+Daily market news and price tracking:
+- Precious metals (Gold, Silver)
+- Base metals (Copper)
+- Cryptocurrencies (Bitcoin, Ethereum)
+- Individual stocks and ETFs
+- Semiconductors sector
 
 Features:
-- Automated daily email newsletters
-- Price alerts
-- News aggregation via Brave Search API
+- Real-time prices from Yahoo Finance and CoinGecko
+- News aggregation via NewsAPI
+- Asset class performance summaries
+- Professional HTML email newsletters
 """
 
-__version__ = "0.1.0"
-__status__ = "planned"
+__version__ = "1.0.0"
+__status__ = "active"

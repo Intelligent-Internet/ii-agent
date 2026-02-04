@@ -15,8 +15,10 @@ Skills are self-contained modules that provide specialized functionality. Each s
 | Skill | Status | Description |
 |-------|--------|-------------|
 | `ib_toolkit` | ✅ Active | Investment banking presentations, Excel models, deal analysis |
-| `market_newsletter` | 🔜 Planned | Daily market news and price tracking |
-| `health_dashboard` | 🔜 Planned | WHOOP health metrics integration |
+| `market_newsletter` | ✅ Active | Daily market news and price tracking via NewsAPI |
+| `health_dashboard` | ✅ Active | WHOOP health metrics (recovery, sleep, strain, HRV) |
+| `networth_newsletter` | ✅ Active | Daily net worth tracking with multi-currency support |
+| `daily_investment_newsletter` | ✅ Active | Canadian investment news aggregation via Brave Search |
 | `memory` | 🔜 Planned | Long-term context and memory management |
 
 ## Architecture
@@ -36,8 +38,23 @@ ii_skills/
 │   ├── modules/             # Analysis modules (M1-M14)
 │   ├── templates/           # Slide and model templates
 │   └── output/              # Generated files
-├── market_newsletter/       # (Coming Soon)
-├── health_dashboard/        # (Coming Soon)
+├── market_newsletter/       # Daily market news & prices
+│   ├── newsletter.py        # Main newsletter generator
+│   ├── config.py            # Configuration template
+│   └── SKILL.md             # Documentation
+├── health_dashboard/        # WHOOP integration
+│   ├── whoop_newsletter.py  # Main dashboard generator
+│   ├── auth_setup.py        # OAuth setup helper
+│   ├── config.py            # Configuration template
+│   └── SKILL.md             # Documentation
+├── networth_newsletter/     # Net worth tracking
+│   ├── networth.py          # Main calculator
+│   ├── config.py            # Holdings configuration
+│   └── SKILL.md             # Documentation
+├── daily_investment_newsletter/  # Canadian investment news
+│   ├── generate_newsletter.py
+│   ├── templates/
+│   └── SKILL.md
 └── memory/                  # (Coming Soon)
 ```
 
