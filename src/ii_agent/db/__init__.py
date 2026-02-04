@@ -17,7 +17,19 @@ from ii_agent.db.models import (
 )
 from ii_agent.db.llm_provider import ProviderContainer, ProviderFile
 
+# Skills integration models
+from ii_agent.db.skills_models import (
+    PortfolioHolding,
+    PortfolioSnapshot,
+    MarketPrice,
+    CompanyProfile,
+    SkillOutput,
+    DealAnalysis,
+    SkillMemory,
+)
+
 __all__ = [
+    # Core models
     "Base",
     "User",
     "Session",
@@ -33,4 +45,12 @@ __all__ = [
     "BillingTransaction",
     "ProviderContainer",
     "ProviderFile",
+    # Skills integration models
+    "PortfolioHolding",
+    "PortfolioSnapshot",
+    "MarketPrice",
+    "CompanyProfile",
+    "SkillOutput",
+    "DealAnalysis",
+    "SkillMemory",
 ]
