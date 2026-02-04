@@ -571,3 +571,12 @@ def get_toolkit(config: Optional[Dict] = None) -> IBToolkitSkill:
     skill = IBToolkitSkill(config)
     skill.initialize()
     return skill
+
+
+# Storage-integrated generation (optional, requires ii_skills.shared)
+try:
+    from .storage_integration import IBToolkitStorage, generate_and_upload
+    __all__ = ["IBToolkitSkill", "get_toolkit", "IBToolkitStorage", "generate_and_upload"]
+except ImportError:
+    # Storage integration not available (standalone mode)
+    __all__ = ["IBToolkitSkill", "get_toolkit"]
