@@ -8,7 +8,7 @@ This is the ii-agent repository configured as your personal cloud operations bas
 
 | Skill | Location | Capabilities |
 |-------|----------|--------------|
-| `ib_toolkit` | `src/ii_skills/ib_toolkit/` | Investment banking presentations, Excel models, deal analysis (M1-M14 modules) |
+| `ib_toolkit` | `src/ii_skills/ib_toolkit/` | Investment banking presentations, Excel models, deal analysis (M1-M17 modules), modular slide generation, LBO calculator, capital structure analysis |
 | `networth_newsletter` | `src/ii_skills/networth_newsletter/` | Daily net worth tracking, portfolio analysis, 7am email reports |
 | `market_newsletter` | `src/ii_skills/market_newsletter/` | Market news aggregation, price tracking, asset class performance |
 | `health_dashboard` | `src/ii_skills/health_dashboard/` | WHOOP integration, recovery/sleep/strain metrics |
@@ -64,7 +64,26 @@ Each skill has detailed documentation:
 Additional IB documentation:
 - `docs/skills/ib_toolkit/BEST_PRACTICES.md`
 - `docs/skills/ib_toolkit/ORCHESTRATION_FRAMEWORK.md`
+- `docs/skills/ib_toolkit/ORCHESTRATION_GUIDE.md` - Parallel agent execution
 - `docs/skills/ib_toolkit/PROMPT_LIBRARY.md`
+
+### IB Toolkit - Modular Slide Generation
+
+Generate specific analysis slides on demand:
+
+| Request Type | Module | Quick Function |
+|--------------|--------|----------------|
+| Industry/market analysis | `industry_analysis` | `generate_industry_analysis()` |
+| Competitive/SWOT | `competitive_analysis` | `generate_competitive_analysis()` |
+| Financial analysis | `financial_analysis` | `generate_financial_analysis()` |
+| Debt/capital structure | `debt_analysis` | `generate_debt_analysis()` |
+| LBO/transaction | `lbo_analysis` | `generate_lbo_analysis()` |
+| Management team | `management_analysis` | `generate_management_analysis()` |
+| Valuation comps | `valuation` | `generate_valuation_analysis()` |
+| Thesis/recommendation | `investment_thesis` | `generate_investment_thesis()` |
+
+Template location: `src/ii_skills/ib_toolkit/templates/case_study/`
+Reference guide: `templates/case_study/SLIDE_REFERENCE.md`
 
 ## Development
 
@@ -112,6 +131,13 @@ ii-agent/
 > "Generate a company profile deck for Tourmaline Oil (TOU.TO)"
 > "Run the M7 valuation module for a target company"
 
+### PE/IB Analysis (Modular Slide Generation)
+> "Generate industry analysis slides for Company X"
+> "Create competitive analysis with SWOT for Acme Corp"
+> "Build LBO slides for a $50M EBITDA company at 8x entry"
+> "Generate a full investment deck for Target Company"
+> "Create debt capacity analysis slides"
+
 ### Health Tracking
 > "What was my average HRV this week?"
 > "Set up the WHOOP dashboard to send at 7am"
@@ -119,5 +145,5 @@ ii-agent/
 ---
 
 *Base System: ii-agent (github.com/robertodbabaran/ii-agent)*
-*Skills Version: 1.0.0*
+*IB Toolkit Version: 1.4.0*
 *Last Updated: 2026-02-04*
