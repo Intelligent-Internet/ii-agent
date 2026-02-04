@@ -233,6 +233,114 @@ SLIDE_MODULES = {
         "slides": ["deal_economics", "fund_economics"],
         "function": "add_sponsor_economics_slides"
     },
+
+    # ============================================================
+    # TRANSACTION STRUCTURE MODULES
+    # ============================================================
+
+    # Add-on Analysis
+    "addon_analysis": {
+        "name": "Add-on / Bolt-on Analysis",
+        "description": "Platform plus add-on, synergies, combined returns",
+        "slides": ["addon_overview", "combined_financials", "accretion_analysis"],
+        "function": "add_addon_analysis_slides"
+    },
+
+    # Synergy Model
+    "synergy_model": {
+        "name": "Synergy Analysis",
+        "description": "Revenue and cost synergies, timing, realization",
+        "slides": ["synergy_summary", "synergy_detail", "synergy_timeline"],
+        "function": "add_synergy_slides"
+    },
+
+    # Carve-out Analysis
+    "carveout_analysis": {
+        "name": "Carve-out Analysis",
+        "description": "Standalone costs, stranded costs, TSA requirements",
+        "slides": ["carveout_overview", "standalone_adjustments", "separation_timeline"],
+        "function": "add_carveout_slides"
+    },
+
+    # Earnout Model
+    "earnout_model": {
+        "name": "Earnout / Contingent Consideration",
+        "description": "Performance milestones, probability-weighted value",
+        "slides": ["earnout_structure", "milestone_analysis"],
+        "function": "add_earnout_slides"
+    },
+
+    # Purchase Price Allocation
+    "ppa_analysis": {
+        "name": "Purchase Price Allocation",
+        "description": "Asset valuation, goodwill, intangibles",
+        "slides": ["ppa_summary", "intangibles_detail"],
+        "function": "add_ppa_slides"
+    },
+
+    # ============================================================
+    # VALUE CREATION MODULES
+    # ============================================================
+
+    # Value Creation Bridge
+    "value_creation": {
+        "name": "Value Creation Bridge",
+        "description": "EBITDA growth, multiple expansion, deleveraging",
+        "slides": ["value_bridge", "value_drivers"],
+        "function": "add_value_creation_slides"
+    },
+
+    # 100-Day Plan
+    "hundred_day_plan": {
+        "name": "100-Day Plan",
+        "description": "Post-close priorities, quick wins, milestones",
+        "slides": ["plan_overview", "priority_matrix", "timeline"],
+        "function": "add_hundred_day_slides"
+    },
+
+    # Exit Readiness
+    "exit_readiness": {
+        "name": "Exit Readiness Assessment",
+        "description": "Exit options, timing, value maximization",
+        "slides": ["exit_options", "readiness_scorecard"],
+        "function": "add_exit_readiness_slides"
+    },
+
+    # Management Incentive Plan
+    "mip_analysis": {
+        "name": "Management Incentive Plan",
+        "description": "MIP structure, vesting, payout scenarios",
+        "slides": ["mip_structure", "payout_scenarios"],
+        "function": "add_mip_slides"
+    },
+
+    # ============================================================
+    # SPECIALIZED MODULES
+    # ============================================================
+
+    # Rollup Model
+    "rollup_model": {
+        "name": "Rollup / Platform Build",
+        "description": "Multi-acquisition strategy, combined metrics",
+        "slides": ["rollup_summary", "acquisition_timeline", "combined_metrics"],
+        "function": "add_rollup_slides"
+    },
+
+    # Tax Analysis
+    "tax_analysis": {
+        "name": "Tax Analysis",
+        "description": "Tax structure, NOLs, step-up, effective rate",
+        "slides": ["tax_overview", "tax_shield_analysis"],
+        "function": "add_tax_slides"
+    },
+
+    # Control Premium Analysis
+    "control_premium": {
+        "name": "Control Premium Analysis",
+        "description": "Premium to unaffected, historical premiums",
+        "slides": ["premium_analysis", "precedent_premiums"],
+        "function": "add_control_premium_slides"
+    },
 }
 
 
@@ -2008,6 +2116,725 @@ class SlideGenerator:
         return self
 
     # ============================================================
+    # TRANSACTION STRUCTURE MODULES
+    # ============================================================
+
+    def add_addon_analysis_slides(self, data: Dict = None, include_cover: bool = True):
+        """
+        Add Add-on / Bolt-on acquisition analysis slides.
+
+        Args:
+            data: Optional dict with add-on data
+            include_cover: Whether to add a section header
+        """
+        data = data or {}
+
+        if include_cover:
+            self._add_section_header("Add-on Analysis")
+
+        # Add-on Overview
+        self._add_table_slide(
+            "Add-on Transaction Summary",
+            ["Metric", "Platform", "Add-on", "Combined", "Accretion"],
+            data.get('addon_summary', [
+                ["Revenue", "$XXX", "$XX", "$XXX", "+XX%"],
+                ["EBITDA", "$XX", "$X", "$XX", "+XX%"],
+                ["Margin", "XX%", "XX%", "XX%", "+X bps"],
+                ["Purchase Price", "—", "$XXM", "—", "—"],
+                ["Implied Multiple", "—", "X.Xx", "—", "—"],
+            ]),
+            col_widths=[2.0, 1.5, 1.5, 1.5, 1.5],
+            subtitle="Platform + add-on combination metrics"
+        )
+
+        # Combined Financials
+        self._add_table_slide(
+            "Combined Pro Forma Financials",
+            ["Year", "1", "2", "3", "4", "5"],
+            data.get('combined_financials', [
+                ["Platform Revenue", "$XXX", "$XXX", "$XXX", "$XXX", "$XXX"],
+                ["Add-on Revenue", "$XX", "$XX", "$XX", "$XX", "$XX"],
+                ["Revenue Synergies", "$X", "$X", "$XX", "$XX", "$XX"],
+                ["Combined Revenue", "$XXX", "$XXX", "$XXX", "$XXX", "$XXX"],
+                ["Combined EBITDA", "$XX", "$XX", "$XX", "$XX", "$XX"],
+                ["% Margin", "XX%", "XX%", "XX%", "XX%", "XX%"],
+            ]),
+            col_widths=[2.5, 1.3, 1.3, 1.3, 1.3, 1.3],
+            subtitle="5-year pro forma with synergies"
+        )
+
+        # Accretion Analysis
+        self._add_content_slide(
+            "Returns Accretion Analysis",
+            [
+                "Platform-Only Returns",
+                ("Entry: X.Xx EBITDA, Exit: X.Xx EBITDA", 1),
+                ("MOIC: X.Xx, IRR: XX%", 1),
+                "",
+                "Platform + Add-on Returns",
+                ("Combined entry: X.Xx EBITDA", 1),
+                ("Combined exit: X.Xx EBITDA", 1),
+                ("MOIC: X.Xx (+X.Xx), IRR: XX% (+X%)", 1),
+                "",
+                "Key Value Drivers",
+                ("Multiple arbitrage: Buy at X.Xx, sell at X.Xx", 1),
+                ("Revenue synergies: $XXM run-rate by Year 3", 1),
+                ("Cost synergies: $XM from back-office consolidation", 1),
+            ],
+            subtitle="Impact of add-on acquisition on returns"
+        )
+
+        return self
+
+    def add_synergy_slides(self, data: Dict = None, include_cover: bool = True):
+        """
+        Add Synergy Analysis slides.
+
+        Args:
+            data: Optional dict with synergy data
+            include_cover: Whether to add a section header
+        """
+        data = data or {}
+
+        if include_cover:
+            self._add_section_header("Synergy Analysis")
+
+        # Synergy Summary
+        self._add_table_slide(
+            "Synergy Summary",
+            ["Category", "Run-Rate ($M)", "% of Target", "Timing", "Confidence"],
+            data.get('synergy_summary', [
+                ["Revenue Synergies", "", "", "", ""],
+                ["  Cross-sell opportunities", "$X.X", "X%", "Year 2-3", "Medium"],
+                ["  Pricing optimization", "$X.X", "X%", "Year 1", "High"],
+                ["Cost Synergies", "", "", "", ""],
+                ["  Headcount reduction", "$X.X", "X%", "Year 1", "High"],
+                ["  Procurement savings", "$X.X", "X%", "Year 1-2", "Medium"],
+                ["  Facility consolidation", "$X.X", "X%", "Year 2", "High"],
+                ["Total Synergies", "$XX.X", "XX%", "—", "—"],
+            ]),
+            col_widths=[2.8, 1.5, 1.2, 1.2, 1.2],
+            subtitle="Run-rate synergy targets by category"
+        )
+
+        # Synergy Detail
+        self._add_content_slide(
+            "Synergy Detail & Assumptions",
+            [
+                "Revenue Synergies ($X.XM run-rate)",
+                ("Cross-sell: X% of target customer base converts", 1),
+                ("Price increase: X% on overlapping products", 1),
+                ("New product launch: $X.XM incremental revenue", 1),
+                "",
+                "Cost Synergies ($X.XM run-rate)",
+                ("Corporate: X FTEs eliminated ($X.XM)", 1),
+                ("Procurement: X% savings on $XXM spend", 1),
+                ("IT/Systems: Consolidation to single platform ($X.XM)", 1),
+                "",
+                "One-Time Costs to Achieve",
+                ("Severance: $X.XM (X FTEs × $XXK avg)", 1),
+                ("Integration consulting: $X.XM", 1),
+                ("Systems migration: $X.XM", 1),
+            ],
+            subtitle="Key assumptions underlying synergy targets"
+        )
+
+        # Synergy Timeline
+        self._add_table_slide(
+            "Synergy Realization Timeline",
+            ["Synergy Type", "Year 1", "Year 2", "Year 3", "Run-Rate"],
+            data.get('synergy_timeline', [
+                ["Revenue Synergies", "XX%", "XX%", "100%", "$X.XM"],
+                ["Cost Synergies", "XX%", "XX%", "100%", "$X.XM"],
+                ["Total Synergies", "$X.XM", "$XX.XM", "$XX.XM", "$XX.XM"],
+                ["One-Time Costs", "($X.XM)", "($X.XM)", "—", "($X.XM)"],
+                ["Net Benefit", "($X.XM)", "$X.XM", "$XX.XM", "—"],
+            ]),
+            col_widths=[2.5, 1.5, 1.5, 1.5, 1.5],
+            subtitle="Phased synergy realization schedule"
+        )
+
+        return self
+
+    def add_carveout_slides(self, data: Dict = None, include_cover: bool = True):
+        """
+        Add Carve-out Analysis slides.
+
+        Args:
+            data: Optional dict with carve-out data
+            include_cover: Whether to add a section header
+        """
+        data = data or {}
+
+        if include_cover:
+            self._add_section_header("Carve-out Analysis")
+
+        # Carve-out Overview
+        self._add_content_slide(
+            "Carve-out Transaction Overview",
+            [
+                "Transaction Structure",
+                ("Seller: [Parent Company]", 1),
+                ("Target: [Division/Business Unit]", 1),
+                ("Revenue: $XXXM (XX% of parent)", 1),
+                ("EBITDA: $XXM (XX% margin)", 1),
+                "",
+                "Key Carve-out Considerations",
+                ("Shared services: $X.XM allocated from parent", 1),
+                ("Transition services required: XX months", 1),
+                ("Stranded costs at parent: $X.XM", 1),
+                "",
+                "Separation Complexity",
+                ("IT systems: [Integrated / Separate]", 1),
+                ("Facilities: [Shared / Dedicated]", 1),
+                ("Employees: XXX dedicated, XX shared", 1),
+            ],
+            subtitle="Key elements of the carve-out transaction"
+        )
+
+        # Standalone Adjustments
+        self._add_table_slide(
+            "Standalone Operating Adjustments",
+            ["Item", "As Reported ($M)", "Adjustment", "Standalone ($M)"],
+            data.get('standalone_adjustments', [
+                ["Revenue", "$XXX", "—", "$XXX"],
+                ["COGS", "($XX)", "—", "($XX)"],
+                ["Gross Profit", "$XX", "—", "$XX"],
+                ["Corporate Allocation", "($X)", "+$X", "$0"],
+                ["Shared IT Systems", "($X)", "+$X", "($X)"],
+                ["Standalone G&A", "—", "+($X)", "($X)"],
+                ["Insurance", "($X)", "+($X)", "($X)"],
+                ["Public Company Costs", "—", "+($X)", "($X)"],
+                ["Standalone EBITDA", "$XX", "($X)", "$XX"],
+            ]),
+            col_widths=[2.8, 2.0, 1.5, 2.0],
+            subtitle="Bridge from reported to standalone economics"
+        )
+
+        # Separation Timeline
+        self._add_table_slide(
+            "Separation & TSA Timeline",
+            ["Workstream", "Q1", "Q2", "Q3", "Q4", "Owner"],
+            data.get('separation_timeline', [
+                ["Legal entity setup", "●", "", "", "", "Legal"],
+                ["IT separation", "●", "●", "●", "", "IT"],
+                ["HR transition", "●", "●", "", "", "HR"],
+                ["Finance standalone", "●", "●", "●", "", "Finance"],
+                ["Facility separation", "", "●", "●", "●", "Ops"],
+                ["TSA exit", "", "", "●", "●", "PMO"],
+            ]),
+            col_widths=[2.5, 1.0, 1.0, 1.0, 1.0, 1.5],
+            subtitle="Key separation milestones and TSA duration"
+        )
+
+        return self
+
+    def add_earnout_slides(self, data: Dict = None, include_cover: bool = True):
+        """
+        Add Earnout / Contingent Consideration slides.
+
+        Args:
+            data: Optional dict with earnout data
+            include_cover: Whether to add a section header
+        """
+        data = data or {}
+
+        if include_cover:
+            self._add_section_header("Earnout Analysis")
+
+        # Earnout Structure
+        self._add_table_slide(
+            "Earnout Structure",
+            ["Milestone", "Target", "Earnout ($M)", "Period", "Probability"],
+            data.get('earnout_structure', [
+                ["Revenue Target Y1", "$XXXM", "$XX", "FY1", "XX%"],
+                ["Revenue Target Y2", "$XXXM", "$XX", "FY2", "XX%"],
+                ["EBITDA Target Y1", "$XXM", "$XX", "FY1", "XX%"],
+                ["EBITDA Target Y2", "$XXM", "$XX", "FY2", "XX%"],
+                ["Customer Retention", ">XX%", "$X", "FY1", "XX%"],
+                ["Total Earnout", "—", "$XXM", "—", "—"],
+            ]),
+            col_widths=[2.5, 1.5, 1.5, 1.2, 1.2],
+            subtitle="Performance milestones and contingent payments"
+        )
+
+        # Milestone Analysis
+        self._add_content_slide(
+            "Earnout Valuation & Risk Assessment",
+            [
+                "Probability-Weighted Value",
+                ("Total potential earnout: $XXM", 1),
+                ("Probability-weighted value: $X.XM", 1),
+                ("Discount rate applied: X%", 1),
+                ("Fair value at close: $X.XM", 1),
+                "",
+                "Milestone Achievement Risk",
+                ("Revenue targets: Management projects XX% probability", 1),
+                ("EBITDA targets: Sensitive to margin assumptions", 1),
+                ("Retention target: Historical retention supports achievement", 1),
+                "",
+                "Key Considerations",
+                ("Earnout caps total consideration at $XXXM", 1),
+                ("Accounting: Contingent liability on balance sheet", 1),
+                ("Management alignment: Seller executives staying X years", 1),
+            ],
+            subtitle="Fair value assessment of earnout consideration"
+        )
+
+        return self
+
+    def add_ppa_slides(self, data: Dict = None, include_cover: bool = True):
+        """
+        Add Purchase Price Allocation slides.
+
+        Args:
+            data: Optional dict with PPA data
+            include_cover: Whether to add a section header
+        """
+        data = data or {}
+
+        if include_cover:
+            self._add_section_header("Purchase Price Allocation")
+
+        # PPA Summary
+        self._add_table_slide(
+            "Purchase Price Allocation Summary",
+            ["Asset/Liability", "Book Value ($M)", "Fair Value ($M)", "Step-Up"],
+            data.get('ppa_summary', [
+                ["Current Assets", "$XX", "$XX", "—"],
+                ["PP&E", "$XX", "$XX", "$X"],
+                ["Identified Intangibles", "—", "$XX", "$XX"],
+                ["  Customer relationships", "—", "$XX", ""],
+                ["  Technology/IP", "—", "$X", ""],
+                ["  Trade names", "—", "$X", ""],
+                ["  Non-compete agreements", "—", "$X", ""],
+                ["Goodwill", "—", "$XXX", "$XXX"],
+                ["Deferred Tax Liability", "—", "($XX)", "($XX)"],
+                ["Total Purchase Price", "—", "$XXX", "—"],
+            ]),
+            col_widths=[3.0, 2.0, 2.0, 1.5],
+            subtitle="Preliminary purchase price allocation"
+        )
+
+        # Intangibles Detail
+        self._add_table_slide(
+            "Identified Intangible Assets",
+            ["Intangible", "Fair Value ($M)", "Life (Yrs)", "Annual Amort."],
+            data.get('intangibles', [
+                ["Customer Relationships", "$XX", "XX", "$X.X"],
+                ["Technology / Patents", "$X", "X", "$X.X"],
+                ["Trade Names", "$X", "Indef.", "—"],
+                ["Non-Compete Agreements", "$X", "X", "$X.X"],
+                ["Backlog", "$X", "X", "$X.X"],
+                ["Total Amortizing", "$XX", "—", "$X.X"],
+            ]),
+            col_widths=[3.0, 2.0, 1.5, 2.0],
+            subtitle="Intangible asset detail and amortization schedule"
+        )
+
+        return self
+
+    # ============================================================
+    # VALUE CREATION MODULES
+    # ============================================================
+
+    def add_value_creation_slides(self, data: Dict = None, include_cover: bool = True):
+        """
+        Add Value Creation Bridge slides.
+
+        Args:
+            data: Optional dict with value creation data
+            include_cover: Whether to add a section header
+        """
+        data = data or {}
+
+        if include_cover:
+            self._add_section_header("Value Creation Analysis")
+
+        # Value Bridge
+        self._add_table_slide(
+            "Value Creation Bridge",
+            ["Component", "Entry Value ($M)", "Exit Value ($M)", "Value Created"],
+            data.get('value_bridge', [
+                ["Entry Equity Value", "$XXX", "—", "—"],
+                ["EBITDA Growth", "—", "$XXX", "+$XXX"],
+                ["  Revenue growth contribution", "", "", "(+$XX)"],
+                ["  Margin expansion contribution", "", "", "(+$XX)"],
+                ["Multiple Expansion", "—", "$XX", "+$XX"],
+                ["Debt Paydown", "—", "$XX", "+$XX"],
+                ["Exit Equity Value", "—", "$XXX", "—"],
+                ["Total Value Created", "—", "—", "$XXX"],
+            ]),
+            col_widths=[3.0, 2.0, 2.0, 1.5],
+            subtitle="Attribution of equity value creation"
+        )
+
+        # Value Drivers
+        self._add_content_slide(
+            "Value Creation Drivers",
+            [
+                "EBITDA Growth (XX% of value created)",
+                ("Revenue CAGR: XX% ($XXM → $XXXM)", 1),
+                ("Margin expansion: XX% → XX% (+XXX bps)", 1),
+                ("Key initiatives: [pricing, new products, efficiency]", 1),
+                "",
+                "Multiple Expansion (XX% of value created)",
+                ("Entry multiple: X.Xx", 1),
+                ("Exit multiple: X.Xx (+X.Xx turn)", 1),
+                ("Drivers: Scale, market position, growth profile", 1),
+                "",
+                "Deleveraging (XX% of value created)",
+                ("Entry leverage: X.Xx", 1),
+                ("Exit leverage: X.Xx", 1),
+                ("Cumulative debt paydown: $XXM", 1),
+            ],
+            subtitle="Key drivers of equity value creation"
+        )
+
+        return self
+
+    def add_hundred_day_slides(self, data: Dict = None, include_cover: bool = True):
+        """
+        Add 100-Day Plan slides.
+
+        Args:
+            data: Optional dict with 100-day plan data
+            include_cover: Whether to add a section header
+        """
+        data = data or {}
+
+        if include_cover:
+            self._add_section_header("100-Day Plan")
+
+        # Plan Overview
+        self._add_content_slide(
+            "100-Day Plan Overview",
+            [
+                "Phase 1: Days 1-30 (Foundation)",
+                ("Finalize management team and reporting structure", 1),
+                ("Establish board cadence and KPI reporting", 1),
+                ("Complete integration planning (if add-on)", 1),
+                "",
+                "Phase 2: Days 31-60 (Quick Wins)",
+                ("Implement pricing initiatives ($X.XM impact)", 1),
+                ("Launch cost reduction program", 1),
+                ("Begin commercial excellence review", 1),
+                "",
+                "Phase 3: Days 61-100 (Strategic Initiatives)",
+                ("Finalize strategic plan and budget", 1),
+                ("Launch technology/systems roadmap", 1),
+                ("Complete organizational design", 1),
+            ],
+            subtitle="Post-close value creation priorities"
+        )
+
+        # Priority Matrix
+        self._add_table_slide(
+            "Initiative Priority Matrix",
+            ["Initiative", "Impact ($M)", "Effort", "Timeline", "Owner"],
+            data.get('priorities', [
+                ["Pricing optimization", "$X.X", "Low", "Q1", "CCO"],
+                ["Procurement savings", "$X.X", "Medium", "Q1-Q2", "COO"],
+                ["Sales force effectiveness", "$X.X", "Medium", "Q2", "CCO"],
+                ["Working capital optimization", "$X.X", "Low", "Q1", "CFO"],
+                ["Headcount rationalization", "$X.X", "High", "Q1", "CHRO"],
+                ["System consolidation", "$X.X", "High", "Q2-Q3", "CTO"],
+            ]),
+            col_widths=[2.8, 1.2, 1.2, 1.2, 1.2],
+            subtitle="Prioritized initiatives by impact and effort"
+        )
+
+        # Timeline
+        self._add_table_slide(
+            "100-Day Milestone Timeline",
+            ["Milestone", "Day 30", "Day 60", "Day 100", "Status"],
+            data.get('milestones', [
+                ["Management team in place", "●", "", "", ""],
+                ["KPI dashboard live", "●", "", "", ""],
+                ["Pricing changes implemented", "", "●", "", ""],
+                ["Cost savings identified", "", "●", "", ""],
+                ["Strategic plan approved", "", "", "●", ""],
+                ["Budget finalized", "", "", "●", ""],
+            ]),
+            col_widths=[3.0, 1.2, 1.2, 1.2, 1.0],
+            subtitle="Key milestones and accountability"
+        )
+
+        return self
+
+    def add_exit_readiness_slides(self, data: Dict = None, include_cover: bool = True):
+        """
+        Add Exit Readiness Assessment slides.
+
+        Args:
+            data: Optional dict with exit readiness data
+            include_cover: Whether to add a section header
+        """
+        data = data or {}
+
+        if include_cover:
+            self._add_section_header("Exit Readiness")
+
+        # Exit Options
+        self._add_table_slide(
+            "Exit Options Analysis",
+            ["Exit Route", "Probability", "Timing", "Expected Value", "Considerations"],
+            data.get('exit_options', [
+                ["Strategic Sale", "XX%", "Year X", "$XXX-XXXM", "Synergy premium potential"],
+                ["Sponsor-to-Sponsor", "XX%", "Year X", "$XXX-XXXM", "Clean process"],
+                ["IPO", "XX%", "Year X+", "$XXX-XXXM", "Market dependent"],
+                ["Dividend Recap", "XX%", "Year X", "$XXM dividend", "Partial liquidity"],
+            ]),
+            col_widths=[2.0, 1.2, 1.0, 1.8, 2.5],
+            subtitle="Potential exit routes and expected outcomes"
+        )
+
+        # Readiness Scorecard
+        self._add_table_slide(
+            "Exit Readiness Scorecard",
+            ["Dimension", "Current", "Target", "Gap", "Action Required"],
+            data.get('scorecard', [
+                ["Financial Performance", "●●●○○", "●●●●●", "2", "Continue EBITDA growth"],
+                ["Management Team", "●●●●○", "●●●●●", "1", "Hire CFO"],
+                ["Systems & Reporting", "●●●○○", "●●●●○", "1", "Implement ERP"],
+                ["Customer Concentration", "●●○○○", "●●●●○", "2", "Diversify top 5"],
+                ["Growth Story", "●●●●○", "●●●●●", "1", "Execute M&A pipeline"],
+                ["Market Position", "●●●●○", "●●●●●", "1", "Maintain share gains"],
+            ]),
+            col_widths=[2.2, 1.3, 1.3, 0.8, 2.8],
+            subtitle="Assessment of key exit readiness dimensions"
+        )
+
+        return self
+
+    def add_mip_slides(self, data: Dict = None, include_cover: bool = True):
+        """
+        Add Management Incentive Plan (MIP) slides.
+
+        Args:
+            data: Optional dict with MIP data
+            include_cover: Whether to add a section header
+        """
+        data = data or {}
+
+        if include_cover:
+            self._add_section_header("Management Incentive Plan")
+
+        # MIP Structure
+        self._add_content_slide(
+            "MIP Structure Overview",
+            [
+                "Pool Size & Allocation",
+                ("Total MIP pool: XX% of fully diluted equity", 1),
+                ("CEO allocation: XX%", 1),
+                ("CFO allocation: X%", 1),
+                ("Other executives: X%", 1),
+                ("Future hires reserve: X%", 1),
+                "",
+                "Vesting Terms",
+                ("Time vesting: XX% over X years (cliff + monthly)", 1),
+                ("Performance vesting: XX% tied to exit returns", 1),
+                ("Acceleration: Double trigger on CIC", 1),
+                "",
+                "Key Terms",
+                ("Strike price: Fair market value at grant ($X.XX/share)", 1),
+                ("Instrument: [Options / Profits Interests / RSUs]", 1),
+            ],
+            subtitle="Equity incentive structure for management team"
+        )
+
+        # Payout Scenarios
+        self._add_table_slide(
+            "MIP Payout Scenarios",
+            ["Exit Value", "MOIC", "MIP Pool Value", "CEO Payout", "% of Exit"],
+            data.get('mip_payouts', [
+                ["$200M", "1.5x", "$X.XM", "$X.XM", "X.X%"],
+                ["$300M", "2.0x", "$X.XM", "$X.XM", "X.X%"],
+                ["$400M", "2.5x", "$XX.XM", "$X.XM", "X.X%"],
+                ["$500M", "3.0x", "$XX.XM", "$XX.XM", "X.X%"],
+                ["$600M", "3.5x", "$XX.XM", "$XX.XM", "X.X%"],
+            ]),
+            col_widths=[1.8, 1.2, 1.8, 1.8, 1.4],
+            subtitle="Management equity value at various exit scenarios"
+        )
+
+        return self
+
+    # ============================================================
+    # SPECIALIZED MODULES
+    # ============================================================
+
+    def add_rollup_slides(self, data: Dict = None, include_cover: bool = True):
+        """
+        Add Rollup / Platform Build slides.
+
+        Args:
+            data: Optional dict with rollup data
+            include_cover: Whether to add a section header
+        """
+        data = data or {}
+
+        if include_cover:
+            self._add_section_header("Rollup Strategy")
+
+        # Rollup Summary
+        self._add_table_slide(
+            "Rollup Acquisition Summary",
+            ["Acquisition", "Close Date", "Revenue ($M)", "EBITDA ($M)", "Multiple"],
+            data.get('rollup_summary', [
+                ["Platform", "Year 0", "$XXX", "$XX", "X.Xx"],
+                ["Add-on #1", "Year 1", "$XX", "$X", "X.Xx"],
+                ["Add-on #2", "Year 2", "$XX", "$X", "X.Xx"],
+                ["Add-on #3", "Year 3", "$XX", "$X", "X.Xx"],
+                ["Combined", "—", "$XXX", "$XX", "X.Xx (blended)"],
+            ]),
+            col_widths=[2.0, 1.2, 1.5, 1.5, 1.5],
+            subtitle="Platform + add-on acquisition history"
+        )
+
+        # Acquisition Timeline
+        self._add_content_slide(
+            "Rollup Strategy & Pipeline",
+            [
+                "Strategy Overview",
+                ("Target market: [description]", 1),
+                ("Fragmentation: Top X players control XX% of market", 1),
+                ("Typical target profile: $X-XXM revenue, XX%+ margins", 1),
+                "",
+                "Acquisition Criteria",
+                ("Geography: [Regions of focus]", 1),
+                ("Valuation: X.Xx - X.Xx EBITDA", 1),
+                ("Synergy potential: Back-office, procurement", 1),
+                "",
+                "Pipeline Status",
+                ("Active discussions: X targets ($XXM combined revenue)", 1),
+                ("LOI stage: X targets", 1),
+                ("Dry powder available: $XXM", 1),
+            ],
+            subtitle="Acquisition strategy and current pipeline"
+        )
+
+        # Combined Metrics
+        self._add_table_slide(
+            "Combined Platform Metrics",
+            ["Metric", "Platform Only", "With Add-ons", "Target (Exit)"],
+            data.get('combined_metrics', [
+                ["Revenue", "$XXX", "$XXX", "$XXX"],
+                ["Revenue CAGR", "X%", "XX%", "XX%"],
+                ["EBITDA", "$XX", "$XX", "$XX"],
+                ["EBITDA Margin", "XX%", "XX%", "XX%"],
+                ["Leverage", "X.Xx", "X.Xx", "X.Xx"],
+                ["Blended Entry Multiple", "X.Xx", "X.Xx", "—"],
+                ["Exit Multiple Target", "—", "—", "X.Xx"],
+            ]),
+            col_widths=[2.8, 1.8, 1.8, 1.8],
+            subtitle="Platform value creation through rollup"
+        )
+
+        return self
+
+    def add_tax_slides(self, data: Dict = None, include_cover: bool = True):
+        """
+        Add Tax Analysis slides.
+
+        Args:
+            data: Optional dict with tax data
+            include_cover: Whether to add a section header
+        """
+        data = data or {}
+
+        if include_cover:
+            self._add_section_header("Tax Analysis")
+
+        # Tax Overview
+        self._add_content_slide(
+            "Tax Structure Overview",
+            [
+                "Transaction Tax Structure",
+                ("Deal structure: [Asset / Stock purchase]", 1),
+                ("Tax jurisdiction: [US / Canada / Other]", 1),
+                ("Step-up available: [Yes / No / Partial]", 1),
+                "",
+                "Key Tax Attributes",
+                ("Net Operating Losses: $XXM (expires 20XX)", 1),
+                ("Section 382 limitation: $X.XM annually", 1),
+                ("Tax credits available: $X.XM", 1),
+                "",
+                "Effective Tax Rate Projection",
+                ("Statutory rate: XX%", 1),
+                ("Estimated effective rate: XX%", 1),
+                ("Drivers: [NOL utilization, R&D credits, etc.]", 1),
+            ],
+            subtitle="Tax considerations and structure"
+        )
+
+        # Tax Shield Analysis
+        self._add_table_slide(
+            "Tax Shield Value Analysis",
+            ["Year", "1", "2", "3", "4", "5", "Total"],
+            data.get('tax_shield', [
+                ["Amortization (step-up)", "$X", "$X", "$X", "$X", "$X", "$XX"],
+                ["Interest deduction", "$X", "$X", "$X", "$X", "$X", "$XX"],
+                ["NOL utilization", "$X", "$X", "$X", "$X", "$X", "$XX"],
+                ["Total deductions", "$XX", "$XX", "$XX", "$XX", "$XX", "$XXX"],
+                ["Tax shield (XX%)", "$X", "$X", "$X", "$X", "$X", "$XX"],
+                ["PV of tax shield", "—", "—", "—", "—", "—", "$XX"],
+            ]),
+            col_widths=[2.2, 1.0, 1.0, 1.0, 1.0, 1.0, 1.2],
+            subtitle="Present value of tax attributes"
+        )
+
+        return self
+
+    def add_control_premium_slides(self, data: Dict = None, include_cover: bool = True):
+        """
+        Add Control Premium Analysis slides.
+
+        Args:
+            data: Optional dict with control premium data
+            include_cover: Whether to add a section header
+        """
+        data = data or {}
+
+        if include_cover:
+            self._add_section_header("Control Premium Analysis")
+
+        # Premium Analysis
+        self._add_table_slide(
+            "Offer Premium Analysis",
+            ["Metric", "Unaffected Price", "Offer Price", "Premium"],
+            data.get('premium_analysis', [
+                ["Share Price", "$XX.XX", "$XX.XX", "XX%"],
+                ["30-Day VWAP", "$XX.XX", "—", "XX%"],
+                ["52-Week High", "$XX.XX", "—", "XX%"],
+                ["Equity Value", "$XXXM", "$XXXM", "XX%"],
+                ["Enterprise Value", "$XXXM", "$XXXM", "XX%"],
+                ["EV/EBITDA", "X.Xx", "X.Xx", "+X.Xx turn"],
+            ]),
+            col_widths=[2.5, 2.0, 2.0, 1.5],
+            subtitle="Offer premium relative to unaffected price"
+        )
+
+        # Precedent Premiums
+        self._add_table_slide(
+            "Precedent Transaction Premiums",
+            ["Transaction", "Date", "Deal Value", "1-Day Premium", "30-Day Premium"],
+            data.get('precedent_premiums', [
+                ["Comparable Deal 1", "20XX", "$X.XB", "XX%", "XX%"],
+                ["Comparable Deal 2", "20XX", "$X.XB", "XX%", "XX%"],
+                ["Comparable Deal 3", "20XX", "$XXX M", "XX%", "XX%"],
+                ["Comparable Deal 4", "20XX", "$XXX M", "XX%", "XX%"],
+                ["Comparable Deal 5", "20XX", "$XXX M", "XX%", "XX%"],
+                ["Median", "—", "—", "XX%", "XX%"],
+                ["This Transaction", "—", "$XXXM", "XX%", "XX%"],
+            ]),
+            col_widths=[2.5, 1.0, 1.5, 1.5, 1.5],
+            subtitle="Control premiums paid in comparable transactions"
+        )
+
+        return self
+
+    # ============================================================
     # FULL DECK GENERATION
     # ============================================================
 
@@ -2274,6 +3101,114 @@ def generate_sponsor_economics_slides(company_name: str, output_path: str, data:
     gen = SlideGenerator(company_name)
     gen._add_cover_slide(f"{company_name} - Sponsor Economics", "GP Carry & Fund Returns")
     gen.add_sponsor_economics_slides(data, include_cover=False)
+    return gen.save(output_path)
+
+
+# ============================================================
+# TRANSACTION STRUCTURE QUICK ACCESS
+# ============================================================
+
+def generate_addon_slides(company_name: str, output_path: str, data: Dict = None) -> str:
+    """Quick function to generate Add-on / Bolt-on analysis slides."""
+    gen = SlideGenerator(company_name)
+    gen._add_cover_slide(f"{company_name} - Add-on Analysis", "Platform + Bolt-on Combination")
+    gen.add_addon_analysis_slides(data, include_cover=False)
+    return gen.save(output_path)
+
+
+def generate_synergy_slides(company_name: str, output_path: str, data: Dict = None) -> str:
+    """Quick function to generate Synergy Analysis slides."""
+    gen = SlideGenerator(company_name)
+    gen._add_cover_slide(f"{company_name} - Synergy Analysis", "Revenue & Cost Synergies")
+    gen.add_synergy_slides(data, include_cover=False)
+    return gen.save(output_path)
+
+
+def generate_carveout_slides(company_name: str, output_path: str, data: Dict = None) -> str:
+    """Quick function to generate Carve-out Analysis slides."""
+    gen = SlideGenerator(company_name)
+    gen._add_cover_slide(f"{company_name} - Carve-out Analysis", "Standalone Economics & Separation")
+    gen.add_carveout_slides(data, include_cover=False)
+    return gen.save(output_path)
+
+
+def generate_earnout_slides(company_name: str, output_path: str, data: Dict = None) -> str:
+    """Quick function to generate Earnout / Contingent Consideration slides."""
+    gen = SlideGenerator(company_name)
+    gen._add_cover_slide(f"{company_name} - Earnout Analysis", "Contingent Consideration & Milestones")
+    gen.add_earnout_slides(data, include_cover=False)
+    return gen.save(output_path)
+
+
+def generate_ppa_slides(company_name: str, output_path: str, data: Dict = None) -> str:
+    """Quick function to generate Purchase Price Allocation slides."""
+    gen = SlideGenerator(company_name)
+    gen._add_cover_slide(f"{company_name} - Purchase Price Allocation", "Asset Valuation & Goodwill")
+    gen.add_ppa_slides(data, include_cover=False)
+    return gen.save(output_path)
+
+
+# ============================================================
+# VALUE CREATION QUICK ACCESS
+# ============================================================
+
+def generate_value_creation_slides(company_name: str, output_path: str, data: Dict = None) -> str:
+    """Quick function to generate Value Creation Bridge slides."""
+    gen = SlideGenerator(company_name)
+    gen._add_cover_slide(f"{company_name} - Value Creation", "Equity Value Bridge Analysis")
+    gen.add_value_creation_slides(data, include_cover=False)
+    return gen.save(output_path)
+
+
+def generate_hundred_day_slides(company_name: str, output_path: str, data: Dict = None) -> str:
+    """Quick function to generate 100-Day Plan slides."""
+    gen = SlideGenerator(company_name)
+    gen._add_cover_slide(f"{company_name} - 100-Day Plan", "Post-Close Value Creation Priorities")
+    gen.add_hundred_day_slides(data, include_cover=False)
+    return gen.save(output_path)
+
+
+def generate_exit_readiness_slides(company_name: str, output_path: str, data: Dict = None) -> str:
+    """Quick function to generate Exit Readiness Assessment slides."""
+    gen = SlideGenerator(company_name)
+    gen._add_cover_slide(f"{company_name} - Exit Readiness", "Exit Options & Readiness Assessment")
+    gen.add_exit_readiness_slides(data, include_cover=False)
+    return gen.save(output_path)
+
+
+def generate_mip_slides(company_name: str, output_path: str, data: Dict = None) -> str:
+    """Quick function to generate Management Incentive Plan slides."""
+    gen = SlideGenerator(company_name)
+    gen._add_cover_slide(f"{company_name} - Management Incentive Plan", "MIP Structure & Payout Scenarios")
+    gen.add_mip_slides(data, include_cover=False)
+    return gen.save(output_path)
+
+
+# ============================================================
+# SPECIALIZED QUICK ACCESS
+# ============================================================
+
+def generate_rollup_slides(company_name: str, output_path: str, data: Dict = None) -> str:
+    """Quick function to generate Rollup / Platform Build slides."""
+    gen = SlideGenerator(company_name)
+    gen._add_cover_slide(f"{company_name} - Rollup Strategy", "Platform Build & Acquisition Pipeline")
+    gen.add_rollup_slides(data, include_cover=False)
+    return gen.save(output_path)
+
+
+def generate_tax_analysis_slides(company_name: str, output_path: str, data: Dict = None) -> str:
+    """Quick function to generate Tax Analysis slides."""
+    gen = SlideGenerator(company_name)
+    gen._add_cover_slide(f"{company_name} - Tax Analysis", "Tax Structure & Shield Value")
+    gen.add_tax_slides(data, include_cover=False)
+    return gen.save(output_path)
+
+
+def generate_control_premium_slides(company_name: str, output_path: str, data: Dict = None) -> str:
+    """Quick function to generate Control Premium Analysis slides."""
+    gen = SlideGenerator(company_name)
+    gen._add_cover_slide(f"{company_name} - Control Premium", "Premium Analysis & Precedents")
+    gen.add_control_premium_slides(data, include_cover=False)
     return gen.save(output_path)
 
 

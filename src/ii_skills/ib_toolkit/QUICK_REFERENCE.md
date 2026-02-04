@@ -3,8 +3,8 @@
 ## Reference Templates Location
 ```
 src/ii_skills/ib_toolkit/templates/reference_outputs/
-├── Institutional_LBO_Template.xlsx   # 17-sheet comprehensive model
-└── Institutional_Deck_Template.pptx  # 60+ slide institutional deck
+├── Institutional_LBO_Template.xlsx   # 30-sheet comprehensive model
+└── Institutional_Deck_Template.pptx  # 80+ slide institutional deck
 ```
 
 ## Request → Output Mapping
@@ -47,6 +47,33 @@ When the user asks for analysis, generate BOTH the Excel sheet AND corresponding
 | "waterfall", "cap table", "LP/GP split" | `add_cap_table_waterfall()` | Cap Table Waterfall | `add_waterfall_slides()` | 2 |
 | "sponsor economics", "GP carry", "fund returns" | `add_sponsor_economics()` | Sponsor Economics | `add_sponsor_economics_slides()` | 2 |
 
+### Transaction Structure Modules
+
+| User Request | Excel Module | Excel Sheet | Slide Module | Slides |
+|--------------|--------------|-------------|--------------|--------|
+| "add-on", "bolt-on", "tuck-in" | `add_addon_analysis()` | Add-on Analysis | `add_addon_analysis_slides()` | 3 |
+| "synergy", "cost savings", "revenue synergy" | `add_synergy_model()` | Synergy Model | `add_synergy_slides()` | 3 |
+| "carve-out", "spin-off", "divestiture" | `add_carveout_analysis()` | Carve-out Analysis | `add_carveout_slides()` | 3 |
+| "earnout", "contingent consideration" | `add_earnout_model()` | Earnout Model | `add_earnout_slides()` | 2 |
+| "PPA", "purchase price allocation", "goodwill" | `add_purchase_price_allocation()` | Purchase Price Allocation | `add_ppa_slides()` | 2 |
+
+### Value Creation Modules
+
+| User Request | Excel Module | Excel Sheet | Slide Module | Slides |
+|--------------|--------------|-------------|--------------|--------|
+| "value bridge", "value creation" | `add_value_creation_bridge()` | Value Creation Bridge | `add_value_creation_slides()` | 2 |
+| "100-day plan", "post-close", "quick wins" | `add_hundred_day_plan()` | 100-Day Plan | `add_hundred_day_slides()` | 3 |
+| "exit readiness", "exit planning" | `add_exit_readiness()` | Exit Readiness | `add_exit_readiness_slides()` | 2 |
+| "MIP", "management incentive", "equity incentive" | `add_management_incentive_plan()` | Management Incentive Plan | `add_mip_slides()` | 2 |
+
+### Specialized Modules
+
+| User Request | Excel Module | Excel Sheet | Slide Module | Slides |
+|--------------|--------------|-------------|--------------|--------|
+| "rollup", "platform build", "consolidation" | `add_rollup_model()` | Rollup Model | `add_rollup_slides()` | 3 |
+| "tax analysis", "tax shield", "NOL" | `add_tax_analysis()` | Tax Analysis | `add_tax_slides()` | 2 |
+| "control premium", "takeover premium" | `add_control_premium_analysis()` | Control Premium Analysis | `add_control_premium_slides()` | 2 |
+
 ### Slides Only (No Excel)
 
 | User Request | Slide Module | Slides |
@@ -63,7 +90,8 @@ When the user asks for analysis, generate BOTH the Excel sheet AND corresponding
 |-----------|----------------|--------|----------------|--------|
 | 24-hour | `generate_quick_lbo()` | 4 | `generate_full_deck()` | ~25 |
 | 48-hour | `generate_standard_lbo()` | 9 | `generate_full_deck()` | ~25 |
-| 7+ day | `generate_comprehensive_lbo()` | 17 | `generate_institutional_deck()` | 60+ |
+| 5-day | `generate_comprehensive_lbo()` | 17 | `generate_institutional_deck()` | 60+ |
+| 7+ day | `generate_full_lbo()` | 30 | `generate_comprehensive_deck()` | 80+ |
 
 ## Excel Sheet Details (Full Model)
 
@@ -100,6 +128,30 @@ When the user asks for analysis, generate BOTH the Excel sheet AND corresponding
 | Cap Table Waterfall | LP/GP splits | Distribution by exit value |
 | Sponsor Economics | GP carry, Fund returns | Total GP economics |
 
+### Transaction Structure Sheets
+| Sheet Name | Contents | Key Outputs |
+|------------|----------|-------------|
+| Add-on Analysis | Platform + add-on metrics | Combined returns, Accretion |
+| Synergy Model | Revenue + cost synergies | Run-rate synergies, Timeline |
+| Carve-out Analysis | Standalone adjustments | Standalone EBITDA, TSA costs |
+| Earnout Model | Contingent consideration | Probability-weighted value |
+| Purchase Price Allocation | Asset step-up, Intangibles | Goodwill, Amortization |
+
+### Value Creation Sheets
+| Sheet Name | Contents | Key Outputs |
+|------------|----------|-------------|
+| Value Creation Bridge | EBITDA growth, Multiple expansion | Value attribution |
+| 100-Day Plan | Post-close initiatives | Priority matrix, Timeline |
+| Exit Readiness | Exit options assessment | Readiness scorecard |
+| Management Incentive Plan | MIP structure, Payouts | Management equity value |
+
+### Specialized Sheets
+| Sheet Name | Contents | Key Outputs |
+|------------|----------|-------------|
+| Rollup Model | Platform + add-ons | Combined metrics, Blended multiple |
+| Tax Analysis | Tax structure, Shields | PV of tax attributes |
+| Control Premium Analysis | Premium to unaffected | Precedent premiums |
+
 ## Quick Access Functions
 
 ### Excel
@@ -115,6 +167,24 @@ gen.add_dividend_recap()
 gen.add_refinancing_analysis()
 gen.add_cap_table_waterfall()
 gen.add_sponsor_economics()
+
+# Transaction Structure
+gen.add_addon_analysis()
+gen.add_synergy_model()
+gen.add_carveout_analysis()
+gen.add_earnout_model()
+gen.add_purchase_price_allocation()
+
+# Value Creation
+gen.add_value_creation_bridge()
+gen.add_hundred_day_plan()
+gen.add_exit_readiness()
+gen.add_management_incentive_plan()
+
+# Specialized
+gen.add_rollup_model()
+gen.add_tax_analysis()
+gen.add_control_premium_analysis()
 ```
 
 ### Slides
@@ -130,6 +200,24 @@ generate_dividend_recap_slides(company, path)
 generate_refinancing_slides(company, path)
 generate_waterfall_slides(company, path)
 generate_sponsor_economics_slides(company, path)
+
+# Transaction Structure
+generate_addon_slides(company, path)
+generate_synergy_slides(company, path)
+generate_carveout_slides(company, path)
+generate_earnout_slides(company, path)
+generate_ppa_slides(company, path)
+
+# Value Creation
+generate_value_creation_slides(company, path)
+generate_hundred_day_slides(company, path)
+generate_exit_readiness_slides(company, path)
+generate_mip_slides(company, path)
+
+# Specialized
+generate_rollup_slides(company, path)
+generate_tax_analysis_slides(company, path)
+generate_control_premium_slides(company, path)
 ```
 
 ## File Locations

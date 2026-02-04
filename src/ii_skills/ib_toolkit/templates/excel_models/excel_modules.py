@@ -4089,6 +4089,669 @@ class ExcelModelGenerator:
         return self
 
     # ============================================================
+    # TRANSACTION STRUCTURE & EXECUTION MODULES
+    # ============================================================
+
+    def add_addon_analysis(self, data: Dict = None) -> 'ExcelModelGenerator':
+        """Add Add-on/Bolt-on Acquisition analysis sheet."""
+        ws = self.wb.create_sheet("Add-on Analysis")
+        self.sheets_created.append("Add-on Analysis")
+        a = self.assumptions
+        data = data or {}
+
+        self._add_title(ws, f"{self.company_name} - Add-on Acquisition Analysis", 1, 1)
+
+        # Platform
+        self._add_section_header(ws, "PLATFORM COMPANY", 3, 1)
+        platform_ebitda = data.get('platform_ebitda', a.ltm_ebitda)
+        platform_ev = platform_ebitda * a.entry_multiple
+        row = 4
+        ws.cell(row=row, column=1, value="Platform EBITDA")
+        ws.cell(row=row, column=2, value=platform_ebitda)
+        ws.cell(row=row, column=2).number_format = '#,##0.0'
+        row += 1
+        ws.cell(row=row, column=1, value="Entry Multiple")
+        ws.cell(row=row, column=2, value=a.entry_multiple)
+        ws.cell(row=row, column=2).number_format = '0.0x'
+        row += 3
+
+        # Add-ons
+        self._add_section_header(ws, "ADD-ON TARGETS", row, 1)
+        row += 1
+        headers = ["Target", "EBITDA", "Multiple", "EV", "Synergies"]
+        for i, h in enumerate(headers):
+            ws.cell(row=row, column=1+i, value=h)
+        self._format_header_row(ws, row, 1, 5)
+        row += 1
+
+        addons = data.get('addons', [
+            {'name': 'Target A', 'ebitda': 5.0, 'multiple': 5.5, 'synergies': 0.8},
+            {'name': 'Target B', 'ebitda': 3.0, 'multiple': 5.0, 'synergies': 0.5},
+        ])
+        total_ebitda, total_ev, total_syn = 0, 0, 0
+        for addon in addons:
+            ev = addon['ebitda'] * addon['multiple']
+            ws.cell(row=row, column=1, value=addon['name'])
+            ws.cell(row=row, column=2, value=addon['ebitda'])
+            ws.cell(row=row, column=3, value=addon['multiple'])
+            ws.cell(row=row, column=4, value=ev)
+            ws.cell(row=row, column=5, value=addon['synergies'])
+            for col in [2,4,5]: ws.cell(row=row, column=col).number_format = '#,##0.0'
+            ws.cell(row=row, column=3).number_format = '0.0x'
+            total_ebitda += addon['ebitda']
+            total_ev += ev
+            total_syn += addon['synergies']
+            row += 1
+
+        row += 1
+        combined_ebitda = platform_ebitda + total_ebitda + total_syn
+        ws.cell(row=row, column=1, value="Pro Forma EBITDA")
+        ws.cell(row=row, column=2, value=combined_ebitda)
+        ws.cell(row=row, column=2).number_format = '#,##0.0'
+        ws.cell(row=row, column=2).font = Font(bold=True)
+        ws.cell(row=row, column=2).fill = PatternFill(start_color="90EE90", end_color="90EE90", fill_type="solid")
+        row += 1
+        ws.cell(row=row, column=1, value="Multiple Arbitrage")
+        ws.cell(row=row, column=2, value=a.entry_multiple - (total_ev/total_ebitda if total_ebitda else 0))
+        ws.cell(row=row, column=2).number_format = '0.0x'
+        ws.cell(row=row, column=2).font = Font(bold=True, color="008000")
+
+        ws.column_dimensions['A'].width = 25
+        for c in ['B','C','D','E']: ws.column_dimensions[c].width = 12
+        return self
+
+    def add_synergy_model(self, data: Dict = None) -> 'ExcelModelGenerator':
+        """Add Synergy Model sheet with cost/revenue synergies."""
+        ws = self.wb.create_sheet("Synergy Model")
+        self.sheets_created.append("Synergy Model")
+        data = data or {}
+
+        self._add_title(ws, f"{self.company_name} - Synergy Analysis", 1, 1)
+        self._add_section_header(ws, "COST SYNERGIES", 3, 1)
+
+        headers = ["Category", "Yr 1", "Yr 2", "Yr 3", "Run-Rate", "Prob."]
+        row = 4
+        for i, h in enumerate(headers):
+            ws.cell(row=row, column=1+i, value=h)
+        self._format_header_row(ws, row, 1, 6)
+        row += 1
+
+        synergies = data.get('cost_synergies', [
+            {'name': 'Headcount', 'y1': 2.0, 'y2': 4.0, 'y3': 5.0, 'prob': 0.90},
+            {'name': 'Procurement', 'y1': 1.0, 'y2': 2.0, 'y3': 2.5, 'prob': 0.85},
+            {'name': 'Facilities', 'y1': 0.5, 'y2': 1.5, 'y3': 2.0, 'prob': 0.75},
+        ])
+        total = {'y1': 0, 'y2': 0, 'y3': 0, 'run': 0}
+        for syn in synergies:
+            ws.cell(row=row, column=1, value=syn['name'])
+            ws.cell(row=row, column=2, value=syn['y1'])
+            ws.cell(row=row, column=3, value=syn['y2'])
+            ws.cell(row=row, column=4, value=syn['y3'])
+            ws.cell(row=row, column=5, value=syn['y3'])
+            ws.cell(row=row, column=6, value=syn['prob'])
+            ws.cell(row=row, column=6).number_format = '0%'
+            for c in [2,3,4,5]: ws.cell(row=row, column=c).number_format = '#,##0.0'
+            total['y1'] += syn['y1']
+            total['y2'] += syn['y2']
+            total['y3'] += syn['y3']
+            total['run'] += syn['y3']
+            row += 1
+
+        row += 1
+        ws.cell(row=row, column=1, value="Total Cost Synergies")
+        ws.cell(row=row, column=5, value=total['run'])
+        ws.cell(row=row, column=5).number_format = '#,##0.0'
+        ws.cell(row=row, column=5).font = Font(bold=True)
+        ws.cell(row=row, column=5).fill = PatternFill(start_color="90EE90", end_color="90EE90", fill_type="solid")
+
+        ws.column_dimensions['A'].width = 25
+        for c in ['B','C','D','E','F']: ws.column_dimensions[c].width = 12
+        return self
+
+    def add_carveout_analysis(self, data: Dict = None) -> 'ExcelModelGenerator':
+        """Add Carve-out Analysis sheet."""
+        ws = self.wb.create_sheet("Carve-out")
+        self.sheets_created.append("Carve-out")
+        a = self.assumptions
+        data = data or {}
+
+        self._add_title(ws, f"{self.company_name} - Carve-out Analysis", 1, 1)
+        self._add_section_header(ws, "STANDALONE COST ANALYSIS", 3, 1)
+
+        headers = ["Category", "Allocated", "Standalone", "Variance"]
+        row = 4
+        for i, h in enumerate(headers):
+            ws.cell(row=row, column=1+i, value=h)
+        self._format_header_row(ws, row, 1, 4)
+        row += 1
+
+        costs = data.get('costs', [
+            {'name': 'Corporate overhead', 'allocated': 5.0, 'standalone': 3.5},
+            {'name': 'IT infrastructure', 'allocated': 3.0, 'standalone': 4.0},
+            {'name': 'Finance/Accounting', 'allocated': 2.0, 'standalone': 2.5},
+        ])
+        total_alloc, total_stand = 0, 0
+        for cost in costs:
+            ws.cell(row=row, column=1, value=cost['name'])
+            ws.cell(row=row, column=2, value=cost['allocated'])
+            ws.cell(row=row, column=3, value=cost['standalone'])
+            ws.cell(row=row, column=4, value=cost['standalone'] - cost['allocated'])
+            for c in [2,3,4]: ws.cell(row=row, column=c).number_format = '#,##0.0'
+            total_alloc += cost['allocated']
+            total_stand += cost['standalone']
+            row += 1
+
+        row += 1
+        ws.cell(row=row, column=1, value="Dis-synergies")
+        ws.cell(row=row, column=4, value=total_stand - total_alloc)
+        ws.cell(row=row, column=4).number_format = '#,##0.0'
+        ws.cell(row=row, column=4).font = Font(bold=True, color="FF0000" if total_stand > total_alloc else "008000")
+
+        ws.column_dimensions['A'].width = 25
+        for c in ['B','C','D']: ws.column_dimensions[c].width = 15
+        return self
+
+    def add_earnout_model(self, data: Dict = None) -> 'ExcelModelGenerator':
+        """Add Earnout/Contingent Consideration modeling sheet."""
+        ws = self.wb.create_sheet("Earnout Model")
+        self.sheets_created.append("Earnout Model")
+        data = data or {}
+
+        self._add_title(ws, f"{self.company_name} - Earnout Analysis", 1, 1)
+        self._add_section_header(ws, "EARNOUT STRUCTURE", 3, 1)
+
+        row = 4
+        upfront = data.get('upfront', 150.0)
+        max_earnout = data.get('max_earnout', 50.0)
+        ws.cell(row=row, column=1, value="Upfront Consideration")
+        ws.cell(row=row, column=2, value=upfront)
+        ws.cell(row=row, column=2).number_format = '#,##0.0'
+        row += 1
+        ws.cell(row=row, column=1, value="Maximum Earnout")
+        ws.cell(row=row, column=2, value=max_earnout)
+        ws.cell(row=row, column=2).number_format = '#,##0.0'
+        row += 3
+
+        self._add_section_header(ws, "SCENARIO ANALYSIS", row, 1)
+        row += 1
+        headers = ["Scenario", "Prob.", "Payout", "Weighted"]
+        for i, h in enumerate(headers):
+            ws.cell(row=row, column=1+i, value=h)
+        self._format_header_row(ws, row, 1, 4)
+        row += 1
+
+        scenarios = data.get('scenarios', [
+            {'name': 'Exceed', 'prob': 0.20, 'payout': 50.0},
+            {'name': 'Meet', 'prob': 0.45, 'payout': 35.0},
+            {'name': 'Partial', 'prob': 0.25, 'payout': 15.0},
+            {'name': 'Miss', 'prob': 0.10, 'payout': 0.0},
+        ])
+        expected = 0
+        for sc in scenarios:
+            ws.cell(row=row, column=1, value=sc['name'])
+            ws.cell(row=row, column=2, value=sc['prob'])
+            ws.cell(row=row, column=2).number_format = '0%'
+            ws.cell(row=row, column=3, value=sc['payout'])
+            ws.cell(row=row, column=3).number_format = '#,##0.0'
+            ws.cell(row=row, column=4, value=sc['prob'] * sc['payout'])
+            ws.cell(row=row, column=4).number_format = '#,##0.0'
+            expected += sc['prob'] * sc['payout']
+            row += 1
+
+        row += 1
+        ws.cell(row=row, column=1, value="Expected Earnout")
+        ws.cell(row=row, column=4, value=expected)
+        ws.cell(row=row, column=4).number_format = '#,##0.0'
+        ws.cell(row=row, column=4).font = Font(bold=True)
+        row += 1
+        ws.cell(row=row, column=1, value="Effective Purchase Price")
+        ws.cell(row=row, column=4, value=upfront + expected)
+        ws.cell(row=row, column=4).number_format = '#,##0.0'
+        ws.cell(row=row, column=4).font = Font(bold=True)
+        ws.cell(row=row, column=4).fill = PatternFill(start_color="90EE90", end_color="90EE90", fill_type="solid")
+
+        ws.column_dimensions['A'].width = 25
+        for c in ['B','C','D']: ws.column_dimensions[c].width = 12
+        return self
+
+    def add_purchase_price_allocation(self, data: Dict = None) -> 'ExcelModelGenerator':
+        """Add Purchase Price Allocation (PPA) sheet."""
+        ws = self.wb.create_sheet("PPA")
+        self.sheets_created.append("PPA")
+        a = self.assumptions
+        data = data or {}
+
+        self._add_title(ws, f"{self.company_name} - Purchase Price Allocation", 1, 1)
+        purchase_price = data.get('purchase_price', a.ltm_ebitda * a.entry_multiple)
+
+        self._add_section_header(ws, "ASSETS ACQUIRED AT FAIR VALUE", 3, 1)
+        headers = ["Asset", "Book", "Step-Up", "Fair Value"]
+        row = 4
+        for i, h in enumerate(headers):
+            ws.cell(row=row, column=1+i, value=h)
+        self._format_header_row(ws, row, 1, 4)
+        row += 1
+
+        assets = data.get('assets', [
+            {'name': 'Tangible assets', 'book': 50.0, 'stepup': 10.0},
+            {'name': 'Customer relationships', 'book': 0.0, 'stepup': 60.0},
+            {'name': 'Technology/IP', 'book': 5.0, 'stepup': 30.0},
+            {'name': 'Trade name', 'book': 0.0, 'stepup': 15.0},
+        ])
+        total_fv = 0
+        for asset in assets:
+            fv = asset['book'] + asset['stepup']
+            ws.cell(row=row, column=1, value=asset['name'])
+            ws.cell(row=row, column=2, value=asset['book'])
+            ws.cell(row=row, column=3, value=asset['stepup'])
+            ws.cell(row=row, column=4, value=fv)
+            for c in [2,3,4]: ws.cell(row=row, column=c).number_format = '#,##0.0'
+            total_fv += fv
+            row += 1
+
+        row += 1
+        liabilities = data.get('liabilities', 30.0)
+        net_assets = total_fv - liabilities
+        goodwill = purchase_price - net_assets
+
+        ws.cell(row=row, column=1, value="Total Identifiable Assets")
+        ws.cell(row=row, column=4, value=total_fv)
+        ws.cell(row=row, column=4).number_format = '#,##0.0'
+        row += 1
+        ws.cell(row=row, column=1, value="Less: Liabilities")
+        ws.cell(row=row, column=4, value=-liabilities)
+        ws.cell(row=row, column=4).number_format = '(#,##0.0)'
+        row += 1
+        ws.cell(row=row, column=1, value="Net Identifiable Assets")
+        ws.cell(row=row, column=4, value=net_assets)
+        ws.cell(row=row, column=4).number_format = '#,##0.0'
+        row += 2
+        ws.cell(row=row, column=1, value="Purchase Price")
+        ws.cell(row=row, column=4, value=purchase_price)
+        ws.cell(row=row, column=4).number_format = '#,##0.0'
+        row += 1
+        ws.cell(row=row, column=1, value="Goodwill")
+        ws.cell(row=row, column=4, value=goodwill)
+        ws.cell(row=row, column=4).number_format = '#,##0.0'
+        ws.cell(row=row, column=4).font = Font(bold=True)
+        ws.cell(row=row, column=4).fill = PatternFill(start_color="FFFF99", end_color="FFFF99", fill_type="solid")
+
+        ws.column_dimensions['A'].width = 25
+        for c in ['B','C','D']: ws.column_dimensions[c].width = 15
+        return self
+
+    # ============================================================
+    # VALUE CREATION & OPERATIONS MODULES
+    # ============================================================
+
+    def add_value_creation_bridge(self, data: Dict = None) -> 'ExcelModelGenerator':
+        """Add detailed Value Creation Bridge sheet."""
+        ws = self.wb.create_sheet("Value Creation")
+        self.sheets_created.append("Value Creation")
+        a = self.assumptions
+        data = data or {}
+
+        self._add_title(ws, f"{self.company_name} - Value Creation Bridge", 1, 1)
+
+        entry_equity = data.get('entry_equity', a.ltm_ebitda * a.entry_multiple * 0.55)
+        exit_equity = data.get('exit_equity', entry_equity * 2.5)
+        value_created = exit_equity - entry_equity
+
+        self._add_section_header(ws, "VALUE CREATION ATTRIBUTION", 3, 1)
+        row = 4
+        ws.cell(row=row, column=1, value="Entry Equity Value")
+        ws.cell(row=row, column=2, value=entry_equity)
+        ws.cell(row=row, column=2).number_format = '#,##0.0'
+        row += 2
+
+        attribution = data.get('attribution', [
+            {'name': 'Revenue Growth', 'value': value_created * 0.35},
+            {'name': 'Margin Improvement', 'value': value_created * 0.25},
+            {'name': 'Multiple Expansion', 'value': value_created * 0.15},
+            {'name': 'Debt Paydown', 'value': value_created * 0.20},
+            {'name': 'Add-on M&A', 'value': value_created * 0.05},
+        ])
+        for attr in attribution:
+            ws.cell(row=row, column=1, value=attr['name'])
+            ws.cell(row=row, column=2, value=attr['value'])
+            ws.cell(row=row, column=2).number_format = '#,##0.0'
+            ws.cell(row=row, column=3, value=attr['value'] / value_created if value_created else 0)
+            ws.cell(row=row, column=3).number_format = '0%'
+            row += 1
+
+        row += 1
+        ws.cell(row=row, column=1, value="Exit Equity Value")
+        ws.cell(row=row, column=2, value=exit_equity)
+        ws.cell(row=row, column=2).number_format = '#,##0.0'
+        ws.cell(row=row, column=2).font = Font(bold=True)
+        ws.cell(row=row, column=2).fill = PatternFill(start_color="90EE90", end_color="90EE90", fill_type="solid")
+
+        ws.column_dimensions['A'].width = 25
+        ws.column_dimensions['B'].width = 15
+        ws.column_dimensions['C'].width = 10
+        return self
+
+    def add_hundred_day_plan(self, data: Dict = None) -> 'ExcelModelGenerator':
+        """Add 100-Day Plan Tracker sheet."""
+        ws = self.wb.create_sheet("100-Day Plan")
+        self.sheets_created.append("100-Day Plan")
+        data = data or {}
+
+        self._add_title(ws, f"{self.company_name} - 100-Day Plan", 1, 1)
+        self._add_section_header(ws, "KEY INITIATIVES", 3, 1)
+
+        headers = ["Initiative", "Owner", "Timeline", "Status", "Value ($M)"]
+        row = 4
+        for i, h in enumerate(headers):
+            ws.cell(row=row, column=1+i, value=h)
+        self._format_header_row(ws, row, 1, 5)
+        row += 1
+
+        initiatives = data.get('initiatives', [
+            {'name': 'Management assessment', 'owner': 'CEO', 'timeline': 'Days 1-30', 'status': 'Complete', 'value': 0},
+            {'name': 'Procurement RFP', 'owner': 'CFO', 'timeline': 'Days 30-90', 'status': 'In Progress', 'value': 3.0},
+            {'name': 'Sales effectiveness', 'owner': 'CRO', 'timeline': 'Days 30-100', 'status': 'Planning', 'value': 5.0},
+            {'name': 'Working capital optimization', 'owner': 'CFO', 'timeline': 'Days 15-75', 'status': 'In Progress', 'value': 1.5},
+        ])
+        total_value = 0
+        for init in initiatives:
+            ws.cell(row=row, column=1, value=init['name'])
+            ws.cell(row=row, column=2, value=init['owner'])
+            ws.cell(row=row, column=3, value=init['timeline'])
+            ws.cell(row=row, column=4, value=init['status'])
+            ws.cell(row=row, column=5, value=init['value'] if init['value'] > 0 else "—")
+            status_colors = {'Complete': "90EE90", 'In Progress': "FFFF99", 'Planning': "FFE4B5"}
+            if init['status'] in status_colors:
+                ws.cell(row=row, column=4).fill = PatternFill(start_color=status_colors[init['status']], end_color=status_colors[init['status']], fill_type="solid")
+            if init['value'] > 0: ws.cell(row=row, column=5).number_format = '#,##0.0'
+            total_value += init['value']
+            row += 1
+
+        row += 1
+        ws.cell(row=row, column=1, value="Total Value at Stake")
+        ws.cell(row=row, column=5, value=total_value)
+        ws.cell(row=row, column=5).number_format = '#,##0.0'
+        ws.cell(row=row, column=5).font = Font(bold=True)
+        ws.cell(row=row, column=5).fill = PatternFill(start_color="90EE90", end_color="90EE90", fill_type="solid")
+
+        ws.column_dimensions['A'].width = 30
+        for c in ['B','C','D','E']: ws.column_dimensions[c].width = 12
+        return self
+
+    def add_exit_readiness(self, data: Dict = None) -> 'ExcelModelGenerator':
+        """Add Exit Readiness Assessment sheet."""
+        ws = self.wb.create_sheet("Exit Readiness")
+        self.sheets_created.append("Exit Readiness")
+        data = data or {}
+
+        self._add_title(ws, f"{self.company_name} - Exit Readiness", 1, 1)
+        self._add_section_header(ws, "READINESS SCORECARD", 3, 1)
+
+        headers = ["Category", "Score", "Weight", "Weighted"]
+        row = 4
+        for i, h in enumerate(headers):
+            ws.cell(row=row, column=1+i, value=h)
+        self._format_header_row(ws, row, 1, 4)
+        row += 1
+
+        categories = data.get('categories', [
+            {'name': 'Financial Performance', 'score': 4, 'weight': 0.25},
+            {'name': 'Management Team', 'score': 4, 'weight': 0.20},
+            {'name': 'Growth Profile', 'score': 4, 'weight': 0.20},
+            {'name': 'Market Position', 'score': 3, 'weight': 0.15},
+            {'name': 'Financial Reporting', 'score': 3, 'weight': 0.10},
+            {'name': 'Legal/Compliance', 'score': 4, 'weight': 0.10},
+        ])
+        total = 0
+        for cat in categories:
+            ws.cell(row=row, column=1, value=cat['name'])
+            ws.cell(row=row, column=2, value=cat['score'])
+            ws.cell(row=row, column=3, value=cat['weight'])
+            ws.cell(row=row, column=3).number_format = '0%'
+            ws.cell(row=row, column=4, value=cat['score'] * cat['weight'])
+            ws.cell(row=row, column=4).number_format = '0.0'
+            color = "90EE90" if cat['score'] >= 4 else "FFFF99" if cat['score'] >= 3 else "FFB6C1"
+            ws.cell(row=row, column=2).fill = PatternFill(start_color=color, end_color=color, fill_type="solid")
+            total += cat['score'] * cat['weight']
+            row += 1
+
+        row += 1
+        ws.cell(row=row, column=1, value="Overall Score")
+        ws.cell(row=row, column=4, value=total)
+        ws.cell(row=row, column=4).number_format = '0.0'
+        ws.cell(row=row, column=4).font = Font(bold=True)
+        ws.cell(row=row, column=4).fill = PatternFill(start_color="90EE90", end_color="90EE90", fill_type="solid")
+
+        ws.column_dimensions['A'].width = 25
+        for c in ['B','C','D']: ws.column_dimensions[c].width = 12
+        return self
+
+    def add_management_incentive_plan(self, data: Dict = None) -> 'ExcelModelGenerator':
+        """Add Management Incentive Plan (MIP) sheet."""
+        ws = self.wb.create_sheet("Management MIP")
+        self.sheets_created.append("Management MIP")
+        a = self.assumptions
+        data = data or {}
+
+        self._add_title(ws, f"{self.company_name} - Management Incentive Plan", 1, 1)
+
+        mip_pool = data.get('mip_pool_pct', 0.10)
+        entry_equity = a.ltm_ebitda * a.entry_multiple * 0.55
+
+        self._add_section_header(ws, "MIP STRUCTURE", 3, 1)
+        row = 4
+        ws.cell(row=row, column=1, value="MIP Pool (% of equity)")
+        ws.cell(row=row, column=2, value=mip_pool)
+        ws.cell(row=row, column=2).number_format = '0.0%'
+        row += 1
+        ws.cell(row=row, column=1, value="MIP Pool Value ($M)")
+        ws.cell(row=row, column=2, value=entry_equity * mip_pool)
+        ws.cell(row=row, column=2).number_format = '#,##0.0'
+        row += 3
+
+        self._add_section_header(ws, "PAYOUT BY EXIT MOIC", row, 1)
+        row += 1
+        headers = ["Exit MOIC", "Exit Equity", "MIP Value", "CEO (35%)"]
+        for i, h in enumerate(headers):
+            ws.cell(row=row, column=1+i, value=h)
+        self._format_header_row(ws, row, 1, 4)
+        row += 1
+
+        for moic in [1.5, 2.0, 2.5, 3.0]:
+            exit_equity = entry_equity * moic
+            mip_value = exit_equity * mip_pool
+            ceo_payout = mip_value * 0.35
+            ws.cell(row=row, column=1, value=moic)
+            ws.cell(row=row, column=1).number_format = '0.0x'
+            ws.cell(row=row, column=2, value=exit_equity)
+            ws.cell(row=row, column=3, value=mip_value)
+            ws.cell(row=row, column=4, value=ceo_payout)
+            for c in [2,3,4]: ws.cell(row=row, column=c).number_format = '#,##0.0'
+            row += 1
+
+        ws.column_dimensions['A'].width = 20
+        for c in ['B','C','D']: ws.column_dimensions[c].width = 15
+        return self
+
+    # ============================================================
+    # SPECIALIZED SITUATIONS MODULES
+    # ============================================================
+
+    def add_rollup_model(self, data: Dict = None) -> 'ExcelModelGenerator':
+        """Add Roll-up/Consolidation Model sheet."""
+        ws = self.wb.create_sheet("Roll-up Model")
+        self.sheets_created.append("Roll-up Model")
+        a = self.assumptions
+        data = data or {}
+
+        self._add_title(ws, f"{self.company_name} - Roll-up Strategy", 1, 1)
+
+        platform_ebitda = data.get('platform_ebitda', a.ltm_ebitda)
+        self._add_section_header(ws, "ACQUISITION SCHEDULE", 3, 1)
+
+        headers = ["Year", "Target", "EBITDA", "Multiple", "EV"]
+        row = 4
+        for i, h in enumerate(headers):
+            ws.cell(row=row, column=1+i, value=h)
+        self._format_header_row(ws, row, 1, 5)
+        row += 1
+
+        acquisitions = data.get('acquisitions', [
+            {'year': 1, 'name': 'Tuck-in A', 'ebitda': 3.0, 'multiple': 5.0},
+            {'year': 2, 'name': 'Regional B', 'ebitda': 5.0, 'multiple': 5.5},
+            {'year': 3, 'name': 'Strategic C', 'ebitda': 8.0, 'multiple': 6.0},
+        ])
+        total_ebitda, total_ev = 0, 0
+        for acq in acquisitions:
+            ev = acq['ebitda'] * acq['multiple']
+            ws.cell(row=row, column=1, value=acq['year'])
+            ws.cell(row=row, column=2, value=acq['name'])
+            ws.cell(row=row, column=3, value=acq['ebitda'])
+            ws.cell(row=row, column=4, value=acq['multiple'])
+            ws.cell(row=row, column=5, value=ev)
+            ws.cell(row=row, column=3).number_format = '#,##0.0'
+            ws.cell(row=row, column=4).number_format = '0.0x'
+            ws.cell(row=row, column=5).number_format = '#,##0.0'
+            total_ebitda += acq['ebitda']
+            total_ev += ev
+            row += 1
+
+        row += 1
+        combined = platform_ebitda + total_ebitda
+        ws.cell(row=row, column=1, value="Pro Forma EBITDA")
+        ws.cell(row=row, column=3, value=combined)
+        ws.cell(row=row, column=3).number_format = '#,##0.0'
+        ws.cell(row=row, column=3).font = Font(bold=True)
+        ws.cell(row=row, column=3).fill = PatternFill(start_color="90EE90", end_color="90EE90", fill_type="solid")
+        row += 1
+        ws.cell(row=row, column=1, value="Blended Acquisition Multiple")
+        ws.cell(row=row, column=4, value=total_ev / total_ebitda if total_ebitda else 0)
+        ws.cell(row=row, column=4).number_format = '0.0x'
+        ws.cell(row=row, column=4).font = Font(bold=True)
+
+        ws.column_dimensions['A'].width = 15
+        for c in ['B','C','D','E']: ws.column_dimensions[c].width = 12
+        return self
+
+    def add_tax_analysis(self, data: Dict = None) -> 'ExcelModelGenerator':
+        """Add Tax Analysis sheet (338(h)(10), step-up, NOLs)."""
+        ws = self.wb.create_sheet("Tax Analysis")
+        self.sheets_created.append("Tax Analysis")
+        a = self.assumptions
+        data = data or {}
+
+        self._add_title(ws, f"{self.company_name} - Tax Structure Analysis", 1, 1)
+
+        purchase_price = data.get('purchase_price', a.ltm_ebitda * a.entry_multiple)
+        tax_basis = data.get('tax_basis', purchase_price * 0.30)
+        step_up = purchase_price - tax_basis
+
+        self._add_section_header(ws, "STEP-UP BENEFIT (338(h)(10))", 3, 1)
+        row = 4
+        ws.cell(row=row, column=1, value="Purchase Price")
+        ws.cell(row=row, column=2, value=purchase_price)
+        ws.cell(row=row, column=2).number_format = '#,##0.0'
+        row += 1
+        ws.cell(row=row, column=1, value="Existing Tax Basis")
+        ws.cell(row=row, column=2, value=tax_basis)
+        ws.cell(row=row, column=2).number_format = '#,##0.0'
+        row += 1
+        ws.cell(row=row, column=1, value="Step-Up Amount")
+        ws.cell(row=row, column=2, value=step_up)
+        ws.cell(row=row, column=2).number_format = '#,##0.0'
+        ws.cell(row=row, column=2).font = Font(bold=True)
+        row += 2
+
+        # Tax shield calculation
+        annual_amort = step_up / 15
+        annual_shield = annual_amort * a.tax_rate
+        npv_shield = sum(annual_shield / ((1.10) ** i) for i in range(1, 16))
+
+        ws.cell(row=row, column=1, value="Annual Amortization (15 yr)")
+        ws.cell(row=row, column=2, value=annual_amort)
+        ws.cell(row=row, column=2).number_format = '#,##0.0'
+        row += 1
+        ws.cell(row=row, column=1, value="Annual Tax Shield")
+        ws.cell(row=row, column=2, value=annual_shield)
+        ws.cell(row=row, column=2).number_format = '#,##0.0'
+        row += 1
+        ws.cell(row=row, column=1, value="NPV of Tax Benefit (@10%)")
+        ws.cell(row=row, column=2, value=npv_shield)
+        ws.cell(row=row, column=2).number_format = '#,##0.0'
+        ws.cell(row=row, column=2).font = Font(bold=True)
+        ws.cell(row=row, column=2).fill = PatternFill(start_color="90EE90", end_color="90EE90", fill_type="solid")
+
+        ws.column_dimensions['A'].width = 30
+        ws.column_dimensions['B'].width = 15
+        return self
+
+    def add_control_premium_analysis(self, data: Dict = None) -> 'ExcelModelGenerator':
+        """Add Control Premium Analysis sheet."""
+        ws = self.wb.create_sheet("Control Premium")
+        self.sheets_created.append("Control Premium")
+        data = data or {}
+
+        self._add_title(ws, f"{self.company_name} - Control Premium Analysis", 1, 1)
+
+        self._add_section_header(ws, "PRECEDENT TRANSACTION PREMIA", 3, 1)
+        headers = ["Target", "1-Day", "30-Day"]
+        row = 4
+        for i, h in enumerate(headers):
+            ws.cell(row=row, column=1+i, value=h)
+        self._format_header_row(ws, row, 1, 3)
+        row += 1
+
+        transactions = data.get('transactions', [
+            {'name': 'Comp A', '1day': 0.25, '30day': 0.35},
+            {'name': 'Comp B', '1day': 0.30, '30day': 0.40},
+            {'name': 'Comp C', '1day': 0.22, '30day': 0.32},
+            {'name': 'Comp D', '1day': 0.28, '30day': 0.38},
+        ])
+        premia_1d, premia_30d = [], []
+        for txn in transactions:
+            ws.cell(row=row, column=1, value=txn['name'])
+            ws.cell(row=row, column=2, value=txn['1day'])
+            ws.cell(row=row, column=2).number_format = '0.0%'
+            ws.cell(row=row, column=3, value=txn['30day'])
+            ws.cell(row=row, column=3).number_format = '0.0%'
+            premia_1d.append(txn['1day'])
+            premia_30d.append(txn['30day'])
+            row += 1
+
+        row += 1
+        mean_30d = sum(premia_30d) / len(premia_30d)
+        ws.cell(row=row, column=1, value="Mean Premium")
+        ws.cell(row=row, column=2, value=sum(premia_1d)/len(premia_1d))
+        ws.cell(row=row, column=2).number_format = '0.0%'
+        ws.cell(row=row, column=2).font = Font(bold=True)
+        ws.cell(row=row, column=3, value=mean_30d)
+        ws.cell(row=row, column=3).number_format = '0.0%'
+        ws.cell(row=row, column=3).font = Font(bold=True)
+        row += 3
+
+        unaffected = data.get('unaffected_price', 50.0)
+        self._add_section_header(ws, "IMPLIED OFFER PRICE", row, 1)
+        row += 1
+        ws.cell(row=row, column=1, value="Unaffected Share Price")
+        ws.cell(row=row, column=2, value=unaffected)
+        ws.cell(row=row, column=2).number_format = '$#,##0.00'
+        row += 1
+        ws.cell(row=row, column=1, value="Selected Premium (30-day)")
+        ws.cell(row=row, column=2, value=mean_30d)
+        ws.cell(row=row, column=2).number_format = '0.0%'
+        row += 1
+        ws.cell(row=row, column=1, value="Implied Offer Price")
+        ws.cell(row=row, column=2, value=unaffected * (1 + mean_30d))
+        ws.cell(row=row, column=2).number_format = '$#,##0.00'
+        ws.cell(row=row, column=2).font = Font(bold=True)
+        ws.cell(row=row, column=2).fill = PatternFill(start_color="90EE90", end_color="90EE90", fill_type="solid")
+
+        ws.column_dimensions['A'].width = 25
+        ws.column_dimensions['B'].width = 12
+        ws.column_dimensions['C'].width = 12
+        return self
+
+    # ============================================================
     # CASE FRAMEWORK GENERATION
     # ============================================================
 
