@@ -3,7 +3,7 @@
 Professional-grade investment banking tools for creating presentations and financial models.
 
 ## Version
-1.2.0
+1.3.0
 
 ## Capabilities
 
@@ -23,6 +23,11 @@ Professional-grade investment banking tools for creating presentations and finan
 - **Orchestrated Deal Analysis** - 52-prompt system for structured deal execution
 - **Middle Market Case Studies** - Modular analysis blocks for interview prep
 - **Investment Thesis Builder** - 3-pillar thesis construction
+
+### 4. PE-Informed Quick Analysis (NEW in v1.3)
+- **LBO Quick Calculator** - Rapid IRR/MOIC analysis with sensitivity matrices and value creation attribution
+- **Capital Structure Analyzer** - Debt capacity assessment, optimal financing recommendations, industry benchmarks
+- **Quality of Earnings Analyzer** - EBITDA normalization framework, adjustment risk-tiering, DD question generation
 
 ### 4. Data Fetching
 - Live company financials from Yahoo Finance
@@ -81,6 +86,58 @@ result = toolkit.execute(
 )
 ```
 
+### LBO Quick Calculator (NEW)
+
+```python
+# Quick LBO returns analysis
+result = toolkit.execute(
+    "quick_lbo_analysis",
+    ebitda=50,           # $50M EBITDA
+    entry_multiple=8.0,
+    exit_multiple=8.5,
+    leverage=4.5,
+    hold_years=5,
+    ebitda_growth=0.08
+)
+print(f"MOIC: {result['moic']}x | IRR: {result['irr']}%")
+print(result['summary_report'])
+```
+
+### Capital Structure Analysis (NEW)
+
+```python
+# Analyze debt capacity
+result = toolkit.execute(
+    "analyze_capital_structure",
+    ebitda=75,
+    revenue=500,
+    capex=25,
+    industry="business_services",
+    revenue_volatility="moderate"
+)
+print(f"Max Debt: ${result['max_debt_capacity']}M ({result['max_leverage']:.1f}x)")
+print(result['report'])
+```
+
+### Quality of Earnings Analysis (NEW)
+
+```python
+# Analyze EBITDA adjustments
+result = toolkit.execute(
+    "analyze_quality_of_earnings",
+    revenue=250,
+    reported_ebitda=35,
+    adjustments=[
+        {"description": "Restructuring", "amount": 2.5, "category": "one_time", "risk": "low"},
+        {"description": "Stock comp", "amount": 3.2, "category": "accounting", "risk": "moderate"},
+        {"description": "New customer run-rate", "amount": 2.0, "category": "run_rate", "risk": "moderate"},
+    ],
+    company_name="Target Corp"
+)
+print(f"Adjusted EBITDA: ${result['adjusted_ebitda']}M")
+print(result['report'])
+```
+
 ## Documentation
 
 Full documentation available in `docs/skills/ib_toolkit/`:
@@ -114,6 +171,9 @@ Modular analysis blocks for case studies:
 | M12 | Investment Recommendation | Output | 15-20 min |
 | M13 | Risk Assessment & Mitigants | Output | 15-20 min |
 | M14 | Due Diligence Questions | Output | 20-30 min |
+| **M15** | **LBO Quick Calculator** | **Quick Analysis** | **10-15 min** |
+| **M16** | **Capital Structure Analysis** | **Quick Analysis** | **15-20 min** |
+| **M17** | **Quality of Earnings Analysis** | **Due Diligence** | **20-30 min** |
 
 ## Dependencies
 
@@ -147,6 +207,7 @@ output/
 
 ---
 
-*Source: Claire Agent System*
+*Source: II-Agent System*
 *Best Practices: BCI Growth Equity (2026), Northleaf PE (2025)*
 *Orchestration: Buyside Agent Resources (52-Prompt PE System)*
+*PE Frameworks: Based on Pignataro LBO Analysis, Mastering Private Equity, PE Operational DD*

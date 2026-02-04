@@ -9,8 +9,11 @@ Capabilities:
 - Excel Financial Models (DCF, LBO, Comps, 3-Statement)
 - Orchestrated Deal Analysis (52-prompt system)
 - Middle Market Case Study Support
+- LBO Quick Calculator (IRR/MOIC analysis, sensitivity)
+- Capital Structure Analyzer (debt capacity, optimal financing)
+- Quality of Earnings Analyzer (EBITDA normalization, due diligence)
 
-Version: 1.2.0
+Version: 1.3.0
 """
 
 from typing import Dict, List, Optional
@@ -19,8 +22,8 @@ from pathlib import Path
 from ii_skills import BaseSkill, register_skill
 
 # Skill metadata
-__version__ = "1.2.0"
-__author__ = "Claire Agent System"
+__version__ = "1.3.0"
+__author__ = "II-Agent System"
 
 
 @register_skill
@@ -61,6 +64,12 @@ class IBToolkitSkill(BaseSkill):
             "fetch_company_data",
             "run_case_intake",
             "execute_analysis_module",
+            # New PE-informed capabilities
+            "quick_lbo_analysis",
+            "lbo_sensitivity",
+            "analyze_capital_structure",
+            "analyze_quality_of_earnings",
+            "generate_dd_questions",
         ]
 
     def execute(self, action: str, **kwargs) -> Dict:
@@ -78,6 +87,17 @@ class IBToolkitSkill(BaseSkill):
             return self._run_case_intake(**kwargs)
         elif action == "execute_analysis_module":
             return self._execute_module(**kwargs)
+        # New PE-informed actions
+        elif action == "quick_lbo_analysis":
+            return self._quick_lbo_analysis(**kwargs)
+        elif action == "lbo_sensitivity":
+            return self._lbo_sensitivity(**kwargs)
+        elif action == "analyze_capital_structure":
+            return self._analyze_capital_structure(**kwargs)
+        elif action == "analyze_quality_of_earnings":
+            return self._analyze_qoe(**kwargs)
+        elif action == "generate_dd_questions":
+            return self._generate_dd_questions(**kwargs)
         else:
             raise NotImplementedError(f"Action '{action}' not implemented")
 
@@ -182,6 +202,207 @@ class IBToolkitSkill(BaseSkill):
             }
         return {"success": False, "error": f"Module file not found: {module_id}"}
 
+    def _quick_lbo_analysis(
+        self,
+        ebitda: float,
+        entry_multiple: float = 8.0,
+        exit_multiple: float = 8.0,
+        leverage: float = 4.0,
+        hold_years: int = 5,
+        ebitda_growth: float = 0.08,
+    ) -> Dict:
+        """Run quick LBO returns analysis."""
+        from .lbo_calculator import quick_lbo, generate_lbo_summary, LBOAssumptions
+
+        # Quick analysis
+        result = quick_lbo(
+            ebitda=ebitda,
+            entry_multiple=entry_multiple,
+            exit_multiple=exit_multiple,
+            leverage=leverage,
+            hold_years=hold_years,
+            ebitda_growth=ebitda_growth,
+        )
+
+        # Full summary
+        assumptions = LBOAssumptions(
+            entry_ebitda=ebitda,
+            entry_multiple=entry_multiple,
+            senior_debt_multiple=min(leverage * 0.75, 4.0),
+            sub_debt_multiple=max(0, leverage - min(leverage * 0.75, 4.0)),
+            ebitda_growth_rate=ebitda_growth,
+            exit_multiple=exit_multiple,
+            hold_period=hold_years,
+        )
+        summary = generate_lbo_summary(assumptions)
+
+        return {
+            "success": True,
+            "moic": result["moic"],
+            "irr": result["irr"],
+            "value_creation": result["value_creation"],
+            "summary_report": summary,
+        }
+
+    def _lbo_sensitivity(
+        self,
+        ebitda: float,
+        entry_multiple: float = 8.0,
+        exit_multiples: Optional[List[float]] = None,
+        leverage_levels: Optional[List[float]] = None,
+    ) -> Dict:
+        """Generate LBO sensitivity matrices."""
+        from .lbo_calculator import build_sensitivity_matrix, LBOAssumptions
+
+        if exit_multiples is None:
+            exit_multiples = [6.0, 7.0, 8.0, 9.0, 10.0]
+        if leverage_levels is None:
+            leverage_levels = [3.0, 4.0, 5.0, 6.0]
+
+        base = LBOAssumptions(
+            entry_ebitda=ebitda,
+            entry_multiple=entry_multiple,
+        )
+
+        # Entry vs Exit multiple sensitivity
+        entry_exit_matrix = build_sensitivity_matrix(
+            base,
+            row_param="entry_multiple",
+            row_values=[entry_multiple - 1, entry_multiple, entry_multiple + 1],
+            col_param="exit_multiple",
+            col_values=exit_multiples,
+            output_metric="moic",
+        )
+
+        return {
+            "success": True,
+            "entry_exit_sensitivity": entry_exit_matrix,
+        }
+
+    def _analyze_capital_structure(
+        self,
+        ebitda: float,
+        revenue: float,
+        capex: float,
+        industry: str = "industrials",
+        existing_debt: float = 0,
+        revenue_volatility: str = "moderate",
+    ) -> Dict:
+        """Analyze debt capacity and optimal capital structure."""
+        from .capital_structure import (
+            CompanyFinancials, Industry, calculate_debt_capacity,
+            generate_structure_report
+        )
+
+        # Map industry string to enum
+        industry_map = {
+            "technology": Industry.TECHNOLOGY,
+            "healthcare": Industry.HEALTHCARE,
+            "industrials": Industry.INDUSTRIALS,
+            "consumer": Industry.CONSUMER,
+            "business_services": Industry.BUSINESS_SERVICES,
+            "financial_services": Industry.FINANCIAL_SERVICES,
+            "real_estate": Industry.REAL_ESTATE,
+            "energy": Industry.ENERGY,
+            "retail": Industry.RETAIL,
+            "media": Industry.MEDIA,
+        }
+
+        company = CompanyFinancials(
+            ebitda=ebitda,
+            revenue=revenue,
+            capex=capex,
+            existing_debt=existing_debt,
+            industry=industry_map.get(industry.lower(), Industry.INDUSTRIALS),
+            revenue_volatility=revenue_volatility,
+        )
+
+        result = calculate_debt_capacity(company)
+        report = generate_structure_report(company)
+
+        return {
+            "success": True,
+            "max_debt_capacity": result.max_total_debt,
+            "max_leverage": result.debt_to_ebitda,
+            "interest_coverage": result.interest_coverage,
+            "recommended_structure": result.recommended_structure,
+            "risk_assessment": result.risk_assessment,
+            "report": report,
+        }
+
+    def _analyze_qoe(
+        self,
+        revenue: float,
+        reported_ebitda: float,
+        adjustments: Optional[List[Dict]] = None,
+        company_name: str = "Target",
+        period: str = "LTM",
+    ) -> Dict:
+        """Analyze quality of earnings and EBITDA adjustments."""
+        from .qoe_analyzer import (
+            QoEAnalysis, EBITDAAdjustment, AdjustmentCategory,
+            AdjustmentRisk, generate_qoe_report
+        )
+
+        # Build adjustment list
+        adj_list = []
+        if adjustments:
+            for adj in adjustments:
+                adj_list.append(EBITDAAdjustment(
+                    description=adj.get("description", "Adjustment"),
+                    amount=adj.get("amount", 0),
+                    category=AdjustmentCategory[adj.get("category", "ONE_TIME").upper()],
+                    risk=AdjustmentRisk[adj.get("risk", "MODERATE").upper()],
+                    notes=adj.get("notes", ""),
+                ))
+
+        analysis = QoEAnalysis(
+            company_name=company_name,
+            period=period,
+            reported_revenue=revenue,
+            reported_ebitda=reported_ebitda,
+            adjustments=adj_list,
+        )
+
+        report = generate_qoe_report(analysis)
+
+        return {
+            "success": True,
+            "reported_ebitda": reported_ebitda,
+            "adjusted_ebitda": analysis.adjusted_ebitda(),
+            "buyer_adjusted_ebitda": analysis.buyer_adjusted_ebitda(),
+            "total_adjustments": sum(a.amount for a in adj_list),
+            "high_risk_adjustments": analysis.high_risk_adjustments(),
+            "report": report,
+        }
+
+    def _generate_dd_questions(
+        self,
+        adjustments: Optional[List[Dict]] = None,
+    ) -> Dict:
+        """Generate due diligence questions based on adjustments."""
+        from .qoe_analyzer import (
+            EBITDAAdjustment, AdjustmentCategory, AdjustmentRisk,
+            generate_due_diligence_questions
+        )
+
+        adj_list = []
+        if adjustments:
+            for adj in adjustments:
+                adj_list.append(EBITDAAdjustment(
+                    description=adj.get("description", "Adjustment"),
+                    amount=adj.get("amount", 0),
+                    category=AdjustmentCategory[adj.get("category", "ONE_TIME").upper()],
+                    risk=AdjustmentRisk[adj.get("risk", "MODERATE").upper()],
+                ))
+
+        questions = generate_due_diligence_questions(adj_list)
+
+        return {
+            "success": True,
+            "questions": questions,
+        }
+
     def _get_available_modules(self) -> List[Dict]:
         """Get list of available analysis modules."""
         return [
@@ -199,6 +420,10 @@ class IBToolkitSkill(BaseSkill):
             {"id": "M12", "name": "Investment Recommendation", "phase": "Output"},
             {"id": "M13", "name": "Risk Assessment & Mitigants", "phase": "Output"},
             {"id": "M14", "name": "Due Diligence Questions", "phase": "Output"},
+            # New PE-informed modules
+            {"id": "M15", "name": "LBO Quick Calculator", "phase": "Quick Analysis"},
+            {"id": "M16", "name": "Capital Structure Analysis", "phase": "Quick Analysis"},
+            {"id": "M17", "name": "Quality of Earnings Analysis", "phase": "Due Diligence"},
         ]
 
 
