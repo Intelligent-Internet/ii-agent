@@ -1,7 +1,7 @@
 # Daily Net Worth Newsletter Skill
 
 ## Overview
-Automated daily net worth tracking that calculates portfolio value, tracks historical performance, and sends a formatted dashboard email.
+Automated daily net worth tracking that calculates portfolio value, tracks historical performance, runs risk analytics, and sends a formatted dashboard email.
 
 ## Capabilities
 - Fetches real-time prices for all holdings
@@ -9,6 +9,7 @@ Automated daily net worth tracking that calculates portfolio value, tracks histo
 - Tracks cost basis and unrealized gains/losses
 - Maintains historical net worth data (up to 365 days)
 - Generates 3-month trend chart
+- **Portfolio Risk Analytics** (NEW in v1.1)
 - Sends professional HTML dashboard email
 
 ## Dashboard Contents
@@ -16,9 +17,27 @@ Automated daily net worth tracking that calculates portfolio value, tracks histo
 2. **Daily Change** (compared to previous day)
 3. **3-Month Trend Chart** (embedded in email)
 4. **Summary** (Total Assets vs Liabilities)
-5. **Market Assets Table** (with gains/losses)
-6. **Cash & Bank Accounts**
-7. **Liabilities**
+5. **Asset Allocation** (by asset class with visual bars)
+6. **Portfolio Risk Analytics** (NEW)
+   - Volatility (daily/annual)
+   - Sharpe Ratio
+   - Beta vs S&P 500
+   - Max Drawdown
+   - Value at Risk (95%)
+7. **Concentration Analysis** (NEW)
+   - Top 5 holdings weight
+   - HHI concentration index
+   - Largest position alert
+8. **Rebalancing Recommendations** (NEW)
+   - Current vs target allocation
+   - Drift alerts (>5% threshold)
+   - Buy/Sell recommendations
+9. **Correlation Highlights** (NEW)
+   - Highest correlated positions
+   - Diversification risk alerts
+10. **Market Assets Table** (with gains/losses)
+11. **Cash & Bank Accounts**
+12. **Liabilities**
 
 ## Asset Categories Supported
 - Market assets (stocks, ETFs, commodities, crypto)
@@ -83,6 +102,20 @@ LIABILITIES = {
 ### Change Base Currency
 Edit `BASE_CURRENCY` in `config.py` (default: "CAD")
 
+### Customize Target Allocation (for Rebalancing Alerts)
+Edit `portfolio_analytics.py`:
+```python
+DEFAULT_TARGET_ALLOCATION = {
+    "Equities": 0.50,      # 50%
+    "Fixed Income": 0.10,  # 10%
+    "Commodities": 0.15,   # 15%
+    "Crypto": 0.10,        # 10%
+    "Cash": 0.15,          # 15%
+}
+
+REBALANCING_THRESHOLD = 0.05  # Alert if drift > 5%
+```
+
 ## Example Prompts for Claude
 
 > "Add 50 shares of Apple to my net worth tracker with a cost basis of $8,000 USD"
@@ -98,8 +131,17 @@ Edit `BASE_CURRENCY` in `config.py` (default: "CAD")
 yfinance>=0.2.0
 requests>=2.28.0
 matplotlib>=3.5.0
+numpy>=1.21.0
 ```
 
+## Files
+| File | Description |
+|------|-------------|
+| `networth.py` | Main newsletter generator |
+| `portfolio_analytics.py` | Risk analytics module (NEW) |
+| `config.py` | Holdings and credentials |
+| `networth_history.json` | Historical data |
+
 ---
-*Skill Version: 1.0.0*
+*Skill Version: 1.1.0*
 *Last Updated: 2026-02-04*

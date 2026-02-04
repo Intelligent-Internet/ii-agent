@@ -33,6 +33,14 @@ from config import (
     REAL_ESTATE, LIABILITIES, BASE_CURRENCY, HISTORY_FILE
 )
 
+# Try to import portfolio analytics
+try:
+    from portfolio_analytics import run_portfolio_analytics
+    ANALYTICS_AVAILABLE = True
+except ImportError:
+    ANALYTICS_AVAILABLE = False
+    print("Warning: portfolio_analytics not available. Risk analytics will be disabled.")
+
 # Get the directory where the script is located
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 HISTORY_PATH = os.path.join(SCRIPT_DIR, HISTORY_FILE)
@@ -424,7 +432,7 @@ def format_change(value: float, is_percent: bool = False) -> str:
         return f'<span style="color: #ef4444;">{formatted}</span>'
 
 
-def generate_html(data: dict, chart_base64: str = None) -> str:
+def generate_html(data: dict, chart_base64: str = None, analytics_html: str = None) -> str:
     """Generate the HTML newsletter."""
     today = datetime.now().strftime("%B %d, %Y")
     usd_cad = data["exchange_rate"]
@@ -685,6 +693,10 @@ def generate_html(data: dict, chart_base64: str = None) -> str:
     </div>
 """
 
+    # Risk Analytics section (if available)
+    if analytics_html:
+        html += analytics_html
+
     # Market holdings section
     if data["market_holdings"]:
         html += """
@@ -917,6 +929,32 @@ def main():
     chart_base64 = generate_chart(history)
     print()
 
+    # Run portfolio analytics (if available)
+    analytics_html = None
+    if ANALYTICS_AVAILABLE:
+        try:
+            print("Running portfolio risk analytics...")
+            # Build holdings dict with current values for analytics
+            holdings_for_analytics = {}
+            for h in market_holdings:
+                name = h["name"]
+                holdings_for_analytics[name] = {
+                    "ticker": MARKET_HOLDINGS[name]["ticker"],
+                    "value_cad": h["value_cad"],
+                    "asset_class": h.get("asset_class", "Other"),
+                    "type": MARKET_HOLDINGS[name].get("type", "stock"),
+                }
+
+            _, _, _, analytics_html = run_portfolio_analytics(
+                holdings_for_analytics,
+                asset_allocation
+            )
+            print("Portfolio analytics completed.")
+        except Exception as e:
+            print(f"Warning: Portfolio analytics failed: {e}")
+            analytics_html = None
+    print()
+
     # Prepare data for HTML
     data = {
         "exchange_rate": usd_to_cad,
@@ -935,7 +973,7 @@ def main():
 
     # Generate HTML
     print("Generating newsletter...")
-    html_content = generate_html(data, chart_base64)
+    html_content = generate_html(data, chart_base64, analytics_html)
 
     # Send email
     print("Sending email...")
