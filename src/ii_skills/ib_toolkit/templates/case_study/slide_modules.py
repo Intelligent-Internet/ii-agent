@@ -161,6 +161,78 @@ SLIDE_MODULES = {
         "slides": ["covenant_overview", "leverage_trajectory", "coverage_analysis"],
         "function": "add_covenant_analysis"
     },
+
+    # ============================================================
+    # DUE DILIGENCE & QUALITY MODULES
+    # ============================================================
+
+    # Quality of Earnings
+    "quality_of_earnings": {
+        "name": "Quality of Earnings",
+        "description": "EBITDA normalization, adjustments, run-rate analysis",
+        "slides": ["qoe_summary", "adjustment_detail", "run_rate_bridge"],
+        "function": "add_quality_of_earnings"
+    },
+
+    # Working Capital
+    "working_capital_analysis": {
+        "name": "Working Capital Analysis",
+        "description": "NWC components, days analysis, peg mechanism",
+        "slides": ["nwc_components", "nwc_peg"],
+        "function": "add_working_capital_analysis"
+    },
+
+    # Customer Quality
+    "customer_quality": {
+        "name": "Customer & Revenue Quality",
+        "description": "Customer concentration, retention, unit economics",
+        "slides": ["concentration", "retention_metrics", "unit_economics"],
+        "function": "add_customer_quality_analysis"
+    },
+
+    # Credit Analysis
+    "credit_analysis": {
+        "name": "Credit & Debt Sizing",
+        "description": "Credit ratios, debt capacity, stress testing",
+        "slides": ["credit_ratios", "debt_capacity", "stress_test"],
+        "function": "add_credit_analysis_slides"
+    },
+
+    # ============================================================
+    # RETURNS & CAPITAL STRUCTURE MODULES
+    # ============================================================
+
+    # Dividend Recap
+    "dividend_recap": {
+        "name": "Dividend Recapitalization",
+        "description": "Mid-hold dividend, capital return, returns impact",
+        "slides": ["recap_overview", "returns_impact"],
+        "function": "add_dividend_recap_slides"
+    },
+
+    # Refinancing
+    "refinancing": {
+        "name": "Refinancing Analysis",
+        "description": "Rate savings, maturity extension, cost-benefit",
+        "slides": ["structure_comparison", "savings_analysis"],
+        "function": "add_refinancing_slides"
+    },
+
+    # Waterfall
+    "waterfall": {
+        "name": "Equity Waterfall",
+        "description": "Cap table, distribution waterfall, LP/GP splits",
+        "slides": ["cap_table", "waterfall"],
+        "function": "add_waterfall_slides"
+    },
+
+    # Sponsor Economics
+    "sponsor_economics": {
+        "name": "Sponsor Economics",
+        "description": "GP carry, management fees, fund-level returns",
+        "slides": ["deal_economics", "fund_economics"],
+        "function": "add_sponsor_economics_slides"
+    },
 }
 
 
@@ -1469,6 +1541,473 @@ class SlideGenerator:
         return self
 
     # ============================================================
+    # DUE DILIGENCE & QUALITY MODULES
+    # ============================================================
+
+    def add_quality_of_earnings(self, data: Dict = None, include_cover: bool = True):
+        """
+        Add Quality of Earnings analysis slides.
+
+        Args:
+            data: Optional dict with QoE data
+            include_cover: Whether to add a section header
+        """
+        data = data or {}
+
+        if include_cover:
+            self._add_section_header("Quality of Earnings")
+
+        # QoE Summary
+        self._add_table_slide(
+            "EBITDA Normalization Summary",
+            ["Adjustment", "LTM ($M)", "FY-1 ($M)", "Commentary"],
+            data.get('adjustments', [
+                ["Reported EBITDA", "$XX.X", "$XX.X", "Per management accounts"],
+                ["Owner comp normalization", "+$X.X", "+$X.X", "Above-market compensation"],
+                ["One-time legal costs", "+$X.X", "+$X.X", "Settlement costs"],
+                ["Non-recurring consulting", "+$X.X", "+$X.X", "Carve-out related"],
+                ["Stock-based compensation", "+$X.X", "+$X.X", "Non-cash expense"],
+                ["Run-rate cost savings", "+$X.X", "—", "In-progress initiatives"],
+                ["Adjusted EBITDA", "$XX.X", "$XX.X", "Normalized earnings"],
+            ]),
+            col_widths=[2.5, 1.5, 1.5, 3.0],
+            subtitle="EBITDA adjustments and normalization"
+        )
+
+        # Adjustment Categories
+        self._add_content_slide(
+            "Key QoE Findings",
+            [
+                "Revenue Quality",
+                ("XX% of revenue is recurring/contractual", 1),
+                ("Top 10 customers represent XX% of revenue", 1),
+                ("No material revenue recognition issues identified", 1),
+                "",
+                "Cost Structure",
+                ("Gross margin stable at XX% over 3 years", 1),
+                ("SG&A includes $X.XM of one-time items", 1),
+                ("Identified $X.XM of run-rate cost savings", 1),
+                "",
+                "Key Adjustments",
+                ("Total add-backs: $X.XM (XX% of reported EBITDA)", 1),
+                ("Largest adjustment: [description]", 1),
+                ("All adjustments supported by documentation", 1),
+            ],
+            subtitle="Summary of due diligence findings"
+        )
+
+        # Run-Rate Bridge
+        self._add_table_slide(
+            "Run-Rate EBITDA Bridge",
+            ["Item", "Amount ($M)", "Timing", "Confidence"],
+            data.get('run_rate', [
+                ["Adjusted LTM EBITDA", "$XX.X", "—", "—"],
+                ["Full-year price increase", "+$X.X", "Q1 implementation", "High"],
+                ["New customer annualization", "+$X.X", "Signed contracts", "High"],
+                ["Planned cost reductions", "+$X.X", "In progress", "Medium"],
+                ["Lost customer impact", "($X.X)", "Known churn", "High"],
+                ["Run-Rate EBITDA", "$XX.X", "—", "—"],
+            ]),
+            col_widths=[3.0, 1.5, 2.0, 1.5],
+            subtitle="Bridge from adjusted to run-rate EBITDA"
+        )
+
+        return self
+
+    def add_working_capital_analysis(self, data: Dict = None, include_cover: bool = True):
+        """
+        Add Working Capital analysis slides.
+
+        Args:
+            data: Optional dict with NWC data
+            include_cover: Whether to add a section header
+        """
+        data = data or {}
+
+        if include_cover:
+            self._add_section_header("Working Capital Analysis")
+
+        # NWC Components
+        self._add_table_slide(
+            "Working Capital Components",
+            ["Component", "LTM ($M)", "FY-1", "FY-2", "Avg", "Days"],
+            data.get('nwc_components', [
+                ["Accounts Receivable", "$XX", "$XX", "$XX", "$XX", "XX"],
+                ["Inventory", "$XX", "$XX", "$XX", "$XX", "XX"],
+                ["Prepaid Expenses", "$X", "$X", "$X", "$X", "—"],
+                ["Accounts Payable", "($XX)", "($XX)", "($XX)", "($XX)", "XX"],
+                ["Accrued Expenses", "($X)", "($X)", "($X)", "($X)", "—"],
+                ["Deferred Revenue", "($X)", "($X)", "($X)", "($X)", "—"],
+                ["Net Working Capital", "$XX", "$XX", "$XX", "$XX", "—"],
+            ]),
+            col_widths=[2.5, 1.2, 1.2, 1.2, 1.2, 1.2],
+            subtitle="Historical NWC components and days analysis"
+        )
+
+        # NWC Peg Analysis
+        self._add_content_slide(
+            "NWC Peg Mechanism",
+            [
+                "Target NWC Calculation",
+                ("Methodology: Trailing 12-month average", 1),
+                ("Target NWC: $XX.XM", 1),
+                ("Estimated closing NWC: $XX.XM", 1),
+                "",
+                "Purchase Agreement Mechanism",
+                ("Estimated adjustment: $X.XM [to buyer/seller]", 1),
+                ("True-up period: 90 days post-close", 1),
+                ("Dispute resolution: Independent accountant", 1),
+                "",
+                "Key Considerations",
+                ("Seasonality impact: Q4 NWC typically XX% higher", 1),
+                ("Excluded items: Cash, debt, transaction expenses", 1),
+                ("Collar: +/- $X.XM de minimis threshold", 1),
+            ],
+            subtitle="NWC target and adjustment mechanism"
+        )
+
+        return self
+
+    def add_customer_quality_analysis(self, data: Dict = None, include_cover: bool = True):
+        """
+        Add Customer/Revenue Quality analysis slides.
+
+        Args:
+            data: Optional dict with customer data
+            include_cover: Whether to add a section header
+        """
+        data = data or {}
+
+        if include_cover:
+            self._add_section_header("Customer & Revenue Quality")
+
+        # Customer Concentration
+        self._add_table_slide(
+            "Customer Concentration Analysis",
+            ["Customer", "Revenue ($M)", "% of Total", "Tenure", "Contract"],
+            data.get('customers', [
+                ["Customer A", "$XX", "XX%", "X yrs", "Multi-year"],
+                ["Customer B", "$XX", "XX%", "X yrs", "Annual"],
+                ["Customer C", "$XX", "XX%", "X yrs", "Multi-year"],
+                ["Customer D", "$XX", "XX%", "X yrs", "Annual"],
+                ["Customer E", "$XX", "XX%", "X yrs", "M-t-M"],
+                ["Other (XXX customers)", "$XXX", "XX%", "Avg X yrs", "Various"],
+                ["Total", "$XXX", "100%", "—", "—"],
+            ]),
+            col_widths=[2.5, 1.5, 1.2, 1.2, 1.5],
+            subtitle="Top customer analysis and concentration risk"
+        )
+
+        # Retention Metrics
+        self._add_table_slide(
+            "Revenue Retention & Churn",
+            ["Metric", "FY-2", "FY-1", "LTM", "Trend"],
+            data.get('retention', [
+                ["Gross Revenue Retention", "XX%", "XX%", "XX%", "→"],
+                ["Net Revenue Retention", "XXX%", "XXX%", "XXX%", "↑"],
+                ["Logo Churn Rate", "X%", "X%", "X%", "↓"],
+                ["Dollar Churn Rate", "X%", "X%", "X%", "↓"],
+            ]),
+            col_widths=[3.0, 1.5, 1.5, 1.5, 1.0],
+            subtitle="Customer retention and churn analysis"
+        )
+
+        # Unit Economics
+        self._add_content_slide(
+            "Unit Economics Summary",
+            [
+                "Customer Acquisition",
+                ("Customer Acquisition Cost (CAC): $X,XXX", 1),
+                ("CAC Payback Period: XX months", 1),
+                ("Sales efficiency: X.Xx (LTV/CAC)", 1),
+                "",
+                "Customer Lifetime Value",
+                ("Average Revenue Per User: $XX,XXX", 1),
+                ("Gross Margin: XX%", 1),
+                ("Annual Churn: X%", 1),
+                ("LTV: $XXX,XXX", 1),
+                "",
+                "Assessment",
+                ("LTV/CAC of X.Xx indicates [healthy/marginal] unit economics", 1),
+                ("[Revenue quality is strong due to X, Y, Z]", 1),
+            ],
+            subtitle="Customer acquisition and lifetime value analysis"
+        )
+
+        return self
+
+    def add_credit_analysis_slides(self, data: Dict = None, include_cover: bool = True):
+        """
+        Add Credit/Debt Sizing analysis slides.
+
+        Args:
+            data: Optional dict with credit data
+            include_cover: Whether to add a section header
+        """
+        data = data or {}
+
+        if include_cover:
+            self._add_section_header("Credit Analysis")
+
+        # Credit Metrics
+        self._add_table_slide(
+            "Key Credit Ratios",
+            ["Ratio", "Current", "Covenant", "Headroom", "Status"],
+            data.get('ratios', [
+                ["Total Debt / EBITDA", "X.Xx", "X.Xx", "X.Xx", "Pass"],
+                ["Net Debt / EBITDA", "X.Xx", "X.Xx", "X.Xx", "Pass"],
+                ["EBITDA / Interest", "X.Xx", "X.Xx", "X.Xx", "Pass"],
+                ["(EBITDA-CapEx) / Interest", "X.Xx", "X.Xx", "X.Xx", "Pass"],
+                ["Fixed Charge Coverage", "X.Xx", "X.Xx", "X.Xx", "Pass"],
+            ]),
+            col_widths=[2.5, 1.3, 1.3, 1.3, 1.3],
+            subtitle="Current leverage and coverage metrics"
+        )
+
+        # Debt Capacity
+        self._add_table_slide(
+            "Debt Capacity Analysis",
+            ["Constraint", "Max Debt ($M)", "Implied Multiple", "Binding?"],
+            data.get('capacity', [
+                ["Leverage Ratio (5.5x)", "$XXX", "5.5x", ""],
+                ["Interest Coverage (2.0x)", "$XXX", "X.Xx", ""],
+                ["Fixed Charge (1.5x)", "$XXX", "X.Xx", "✓"],
+                ["Senior Secured (4.0x)", "$XXX", "4.0x", ""],
+            ]),
+            col_widths=[3.0, 2.0, 2.0, 1.5],
+            subtitle="Maximum debt capacity under various constraints"
+        )
+
+        # Stress Test
+        self._add_table_slide(
+            "EBITDA Stress Test",
+            ["Decline", "EBITDA ($M)", "Leverage", "Coverage", "Status"],
+            data.get('stress_test', [
+                ["Base Case", "$XX", "X.Xx", "X.Xx", "Pass"],
+                ["-10%", "$XX", "X.Xx", "X.Xx", "Pass"],
+                ["-20%", "$XX", "X.Xx", "X.Xx", "Pass"],
+                ["-30%", "$XX", "X.Xx", "X.Xx", "Tight"],
+                ["-40%", "$XX", "X.Xx", "X.Xx", "Breach"],
+            ]),
+            col_widths=[1.5, 1.5, 1.5, 1.5, 1.5],
+            subtitle="Covenant compliance under EBITDA stress scenarios"
+        )
+
+        return self
+
+    # ============================================================
+    # RETURNS & CAPITAL STRUCTURE MODULES
+    # ============================================================
+
+    def add_dividend_recap_slides(self, data: Dict = None, include_cover: bool = True):
+        """
+        Add Dividend Recapitalization analysis slides.
+
+        Args:
+            data: Optional dict with recap data
+            include_cover: Whether to add a section header
+        """
+        data = data or {}
+
+        if include_cover:
+            self._add_section_header("Dividend Recapitalization")
+
+        # Recap Structure
+        self._add_content_slide(
+            "Dividend Recap Overview",
+            [
+                "Transaction Summary",
+                ("Timing: Year [X] of hold period", 1),
+                ("New debt raised: $XXM", 1),
+                ("Net dividend to equity: $XXM", 1),
+                "",
+                "Capital Structure Impact",
+                ("Pre-recap leverage: X.Xx", 1),
+                ("Post-recap leverage: X.Xx", 1),
+                ("Interest rate on new debt: X.X%", 1),
+                "",
+                "Rationale",
+                ("Return capital to LPs while maintaining ownership", 1),
+                ("De-risk investment ahead of exit", 1),
+                ("Take advantage of favorable debt markets", 1),
+            ],
+            subtitle="Mid-hold dividend recapitalization"
+        )
+
+        # Returns Impact
+        self._add_table_slide(
+            "Returns Impact Analysis",
+            ["Metric", "Without Recap", "With Recap", "Impact"],
+            data.get('returns_impact', [
+                ["Initial Equity", "$XXXM", "$XXXM", "—"],
+                ["Dividend (Year X)", "—", "$XXM", "+$XXM"],
+                ["Exit Equity", "$XXXM", "$XXXM", "($XXM)"],
+                ["Total Proceeds", "$XXXM", "$XXXM", "+$XXM"],
+                ["MOIC", "X.Xx", "X.Xx", "+X.Xx"],
+                ["IRR", "XX%", "XX%", "+X%"],
+            ]),
+            col_widths=[2.5, 2.0, 2.0, 1.5],
+            subtitle="Comparison of returns with and without recap"
+        )
+
+        return self
+
+    def add_refinancing_slides(self, data: Dict = None, include_cover: bool = True):
+        """
+        Add Refinancing Analysis slides.
+
+        Args:
+            data: Optional dict with refinancing data
+            include_cover: Whether to add a section header
+        """
+        data = data or {}
+
+        if include_cover:
+            self._add_section_header("Refinancing Analysis")
+
+        # Current vs New Structure
+        self._add_table_slide(
+            "Debt Structure Comparison",
+            ["Tranche", "Current ($M)", "Rate", "New ($M)", "Rate"],
+            data.get('structure', [
+                ["Term Loan A", "$XXX", "X.X%", "—", "—"],
+                ["Term Loan B", "$XXX", "X.X%", "$XXX", "X.X%"],
+                ["Senior Notes", "$XX", "X.X%", "—", "—"],
+                ["Total", "$XXX", "X.X%", "$XXX", "X.X%"],
+            ]),
+            col_widths=[2.0, 1.5, 1.2, 1.5, 1.2],
+            subtitle="Current debt structure vs. refinancing proposal"
+        )
+
+        # Savings Analysis
+        self._add_content_slide(
+            "Refinancing Economics",
+            [
+                "Annual Savings",
+                ("Current interest expense: $X.XM", 1),
+                ("New interest expense: $X.XM", 1),
+                ("Annual savings: $X.XM", 1),
+                ("Rate reduction: XXX bps", 1),
+                "",
+                "Transaction Costs",
+                ("Call premium / make-whole: $X.XM", 1),
+                ("Arrangement fee: $X.XM", 1),
+                ("Legal & advisory: $X.XM", 1),
+                ("Total costs: $X.XM", 1),
+                "",
+                "Payback Analysis",
+                ("Payback period: X.X years", 1),
+                ("Recommendation: [Proceed / Wait]", 1),
+            ],
+            subtitle="Cost-benefit analysis of refinancing"
+        )
+
+        return self
+
+    def add_waterfall_slides(self, data: Dict = None, include_cover: bool = True):
+        """
+        Add Cap Table / Waterfall analysis slides.
+
+        Args:
+            data: Optional dict with waterfall data
+            include_cover: Whether to add a section header
+        """
+        data = data or {}
+
+        if include_cover:
+            self._add_section_header("Equity Waterfall")
+
+        # Cap Table
+        self._add_table_slide(
+            "Capitalization Table",
+            ["Investor", "Invested ($M)", "Ownership", "Security"],
+            data.get('cap_table', [
+                ["Sponsor Fund", "$XXX", "XX%", "Common"],
+                ["Co-Investors", "$XX", "XX%", "Common"],
+                ["Management", "$X", "X%", "Common"],
+                ["Rollover Equity", "$X", "X%", "Common"],
+                ["Total", "$XXX", "100%", "—"],
+            ]),
+            col_widths=[2.5, 2.0, 1.5, 2.0],
+            subtitle="Ownership structure at close"
+        )
+
+        # Waterfall
+        self._add_table_slide(
+            "Distribution Waterfall by Exit Value",
+            ["Component", "$200M", "$300M", "$400M", "$500M"],
+            data.get('waterfall', [
+                ["Return of Capital", "$XXX", "$XXX", "$XXX", "$XXX"],
+                ["Preferred Return", "$XX", "$XX", "$XX", "$XX"],
+                ["GP Catch-Up", "$X", "$XX", "$XX", "$XX"],
+                ["Remaining (80/20)", "$X", "$XX", "$XX", "$XX"],
+                ["Total to LPs", "$XXX", "$XXX", "$XXX", "$XXX"],
+                ["Total to GP (Carry)", "$X", "$XX", "$XX", "$XX"],
+                ["LP MOIC", "X.Xx", "X.Xx", "X.Xx", "X.Xx"],
+            ]),
+            col_widths=[2.5, 1.5, 1.5, 1.5, 1.5],
+            subtitle="LP and GP distributions at various exit values"
+        )
+
+        return self
+
+    def add_sponsor_economics_slides(self, data: Dict = None, include_cover: bool = True):
+        """
+        Add Sponsor Economics analysis slides.
+
+        Args:
+            data: Optional dict with sponsor data
+            include_cover: Whether to add a section header
+        """
+        data = data or {}
+
+        if include_cover:
+            self._add_section_header("Sponsor Economics")
+
+        # Deal Economics
+        self._add_content_slide(
+            "GP Economics - This Deal",
+            [
+                "Deal Investment",
+                ("Deal equity: $XXXM (XX% of fund)", 1),
+                ("Expected MOIC: X.Xx", 1),
+                ("Expected IRR: XX%", 1),
+                "",
+                "GP Economics",
+                ("Carried interest (20% of profit): $XXM", 1),
+                ("GP co-invest return: $X.XM", 1),
+                ("Total GP economics: $XXM", 1),
+                "",
+                "Fund Context",
+                ("Fund size: $XXXM", 1),
+                ("This deal as % of fund: XX%", 1),
+                ("Hurdle rate: X%", 1),
+            ],
+            subtitle="GP carried interest and co-investment returns"
+        )
+
+        # Fund Level
+        self._add_table_slide(
+            "Fund-Level Economics (Illustrative)",
+            ["Component", "Amount ($M)", "% of Fund"],
+            data.get('fund_economics', [
+                ["Fund Size (Committed)", "$XXX", "1.0x"],
+                ["Gross Proceeds", "$X,XXX", "X.Xx"],
+                ["Gross Profit", "$XXX", "—"],
+                ["", "", ""],
+                ["Management Fees (total)", "$XX", "X%"],
+                ["Carried Interest (20%)", "$XXX", "XX%"],
+                ["GP Co-Invest Profit", "$XX", "X%"],
+                ["", "", ""],
+                ["Total GP Revenue", "$XXX", "—"],
+            ]),
+            col_widths=[3.5, 2.0, 1.5],
+            subtitle="Illustrative fund-level GP economics"
+        )
+
+        return self
+
+    # ============================================================
     # FULL DECK GENERATION
     # ============================================================
 
@@ -1663,6 +2202,78 @@ def generate_institutional_deck(company_name: str, output_path: str, data: Dict 
     # Thesis and recommendation
     gen.add_investment_thesis(data.get('thesis'), include_cover=True)
 
+    return gen.save(output_path)
+
+
+# ============================================================
+# DUE DILIGENCE & QUALITY QUICK ACCESS
+# ============================================================
+
+def generate_qoe_slides(company_name: str, output_path: str, data: Dict = None) -> str:
+    """Quick function to generate Quality of Earnings slides."""
+    gen = SlideGenerator(company_name)
+    gen._add_cover_slide(f"{company_name} - Quality of Earnings", "EBITDA Normalization & Run-Rate Analysis")
+    gen.add_quality_of_earnings(data, include_cover=False)
+    return gen.save(output_path)
+
+
+def generate_nwc_slides(company_name: str, output_path: str, data: Dict = None) -> str:
+    """Quick function to generate Working Capital analysis slides."""
+    gen = SlideGenerator(company_name)
+    gen._add_cover_slide(f"{company_name} - Working Capital Analysis", "NWC Components & Peg Mechanism")
+    gen.add_working_capital_analysis(data, include_cover=False)
+    return gen.save(output_path)
+
+
+def generate_customer_quality_slides(company_name: str, output_path: str, data: Dict = None) -> str:
+    """Quick function to generate Customer/Revenue Quality slides."""
+    gen = SlideGenerator(company_name)
+    gen._add_cover_slide(f"{company_name} - Customer Quality", "Concentration, Retention & Unit Economics")
+    gen.add_customer_quality_analysis(data, include_cover=False)
+    return gen.save(output_path)
+
+
+def generate_credit_slides(company_name: str, output_path: str, data: Dict = None) -> str:
+    """Quick function to generate Credit Analysis slides."""
+    gen = SlideGenerator(company_name)
+    gen._add_cover_slide(f"{company_name} - Credit Analysis", "Debt Capacity & Stress Testing")
+    gen.add_credit_analysis_slides(data, include_cover=False)
+    return gen.save(output_path)
+
+
+# ============================================================
+# RETURNS & CAPITAL STRUCTURE QUICK ACCESS
+# ============================================================
+
+def generate_dividend_recap_slides(company_name: str, output_path: str, data: Dict = None) -> str:
+    """Quick function to generate Dividend Recap slides."""
+    gen = SlideGenerator(company_name)
+    gen._add_cover_slide(f"{company_name} - Dividend Recapitalization", "Capital Return Analysis")
+    gen.add_dividend_recap_slides(data, include_cover=False)
+    return gen.save(output_path)
+
+
+def generate_refinancing_slides(company_name: str, output_path: str, data: Dict = None) -> str:
+    """Quick function to generate Refinancing Analysis slides."""
+    gen = SlideGenerator(company_name)
+    gen._add_cover_slide(f"{company_name} - Refinancing Analysis", "Rate Savings & Cost-Benefit")
+    gen.add_refinancing_slides(data, include_cover=False)
+    return gen.save(output_path)
+
+
+def generate_waterfall_slides(company_name: str, output_path: str, data: Dict = None) -> str:
+    """Quick function to generate Equity Waterfall slides."""
+    gen = SlideGenerator(company_name)
+    gen._add_cover_slide(f"{company_name} - Equity Waterfall", "Cap Table & Distribution Analysis")
+    gen.add_waterfall_slides(data, include_cover=False)
+    return gen.save(output_path)
+
+
+def generate_sponsor_economics_slides(company_name: str, output_path: str, data: Dict = None) -> str:
+    """Quick function to generate Sponsor Economics slides."""
+    gen = SlideGenerator(company_name)
+    gen._add_cover_slide(f"{company_name} - Sponsor Economics", "GP Carry & Fund Returns")
+    gen.add_sponsor_economics_slides(data, include_cover=False)
     return gen.save(output_path)
 
 
