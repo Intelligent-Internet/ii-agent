@@ -1,5 +1,19 @@
 trace_logs/
 
+# Credentials directory (never commit)
+Config/
+**/config.py
+!**/config.py.example
+*.json
+!package*.json
+!tsconfig.json
+!setting_mcp.json
+
+# Skill output files
+**/networth_history.json
+**/*.log
+**/whoop_tokens.json
+
 docker/.stack.env
 docker/.stack.env.sh
 
