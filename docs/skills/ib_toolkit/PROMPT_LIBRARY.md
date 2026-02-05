@@ -1290,6 +1290,265 @@ Create 1-page executive summary for IC.
 
 ---
 
+## Additional Prompts
+
+### P36: IC Memorandum Writer
+
+```markdown
+# ROLE
+You are a PE associate drafting an Investment Committee memorandum.
+
+# CONTEXT
+Company: [COMPANY_NAME]
+Deal Type: [DEAL_TYPE]
+Completed: All Phase 0-2 prompts + P30 (Thesis), P31 (Risk Matrix)
+
+# OBJECTIVE
+Create a comprehensive IC memorandum (Word document format) that
+synthesizes all analysis into a persuasive, data-driven recommendation.
+
+# OUTPUT FORMAT
+## CONFIDENTIAL — INVESTMENT COMMITTEE MEMORANDUM
+
+### I. Executive Summary (1 page)
+- **Recommendation**: [BUY / QUALIFIED BUY / PASS]
+- **Company**: [Name], [Sector], [Geography]
+- **Transaction**: $[X]M investment for [X]% ownership at $[X]M [pre/post]-money
+- **Base Case Returns**: [X]x MOIC / [X]% IRR over [X]-year hold
+- **Key Thesis**: [3 bullet points — one per pillar]
+- **Key Risks**: [3 bullet points — top risks with mitigations]
+- **Diligence Gates**: [Conditions for final approval, if qualified buy]
+
+### II. Company Overview (1-2 pages)
+- Business description and founding story
+- Product/service offering
+- Revenue model and unit economics
+- Key customers and market position
+- Management team summary
+
+### III. Market Opportunity (1 page)
+- TAM/SAM/SOM with methodology
+- Market growth drivers
+- "Why now" thesis
+- Competitive dynamics summary
+
+### IV. Investment Thesis (2-3 pages)
+For each of the 3 pillars:
+- **Claim**: [One sentence thesis statement]
+- **Evidence**: [3-4 supporting data points with sources]
+- **Counter-argument**: [Anticipated objection]
+- **Rebuttal**: [Why counter-argument is manageable]
+- **Returns Implication**: [How pillar drives MOIC/IRR]
+
+### V. Financial Analysis (2-3 pages)
+- Historical financial summary (3-year P&L, key metrics)
+- Projection methodology and key assumptions
+- Revenue build summary
+- Margin progression path
+- Cash flow profile
+- Working capital dynamics
+
+### VI. Transaction Structure (1 page)
+- Sources & Uses table
+- Capital structure (debt tranches, terms, covenants)
+- Key governance / board rights
+- Management rollover / incentive plan
+
+### VII. Returns Analysis (1-2 pages)
+- Base case MOIC/IRR with value creation bridge
+- Scenario analysis (Bull/Base/Bear with probabilities)
+- Sensitivity analysis (entry/exit multiple, growth, margins)
+- Breakeven analysis
+
+### VIII. Risk Assessment (1-2 pages)
+- Risk matrix (probability × severity)
+- Top 5 risks with detailed mitigations
+- "What Must Be True" — critical assumptions
+- Walk-away triggers
+
+### IX. Value Creation Plan (1 page)
+- 100-day priorities
+- 1-3 year initiatives
+- Exit strategy and potential buyers
+
+### X. Recommendation & Next Steps (0.5 page)
+- Final recommendation with conviction level
+- Proposed terms summary
+- Remaining diligence items
+- Requested IC action (approve / conditional approve / decline)
+
+### Appendices
+- A: Detailed financial model outputs
+- B: Comparable companies analysis
+- C: Precedent transactions
+- D: Detailed management bios
+- E: Market research sources
+
+# FORMATTING
+- Professional tone: analytical, not promotional
+- Every claim must cite a data source
+- Use tables and charts where data is dense
+- Target: 12-18 pages total (excluding appendices)
+- Footer: "CONFIDENTIAL — For internal use only"
+
+# VALIDATION
+- [ ] All numbers match the financial model exactly
+- [ ] Every thesis pillar has quantitative support
+- [ ] Risks are honestly presented (not buried)
+- [ ] Recommendation is clearly stated with conditions
+- [ ] No unsourced claims
+```
+
+---
+
+### P37: Management Presentation Analysis
+
+```markdown
+# ROLE
+You are a PE associate analyzing a management presentation/CIM
+for key claims, aggressive assumptions, and stress-test targets.
+
+# CONTEXT
+Company: [COMPANY_NAME]
+Document: [MANAGEMENT_DECK / CIM / INVESTOR_PRESENTATION]
+Pages: [PAGE_RANGE]
+
+# OBJECTIVE
+Extract and critically evaluate management's key claims and projections.
+Identify what to stress-test in the model and where to push back in diligence.
+
+# TASKS
+1. Extract all quantitative claims (revenue, growth, margins, market size)
+2. Categorize each claim as Verified / Plausible / Aggressive / Unsupported
+3. Map claims to model assumptions (which cells to stress-test)
+4. Generate follow-up questions for management meetings
+
+# OUTPUT FORMAT
+## Management Claim Analysis | [COMPANY_NAME]
+
+### Claim Inventory
+| # | Claim | Source (Page) | Category | Our Assessment |
+|---|-------|---------------|----------|----------------|
+| 1 | "Revenue will grow 40% in 2026" | CIM p.12 | Aggressive | Historical is 25%; requires 2x customer adds |
+| 2 | "TAM is $5B" | CIM p.8 | Plausible | Third-party report confirms; methodology sound |
+| 3 | "EBITDA margins will reach 30%" | Deck p.15 | Unsupported | No margin bridge provided; peer median is 22% |
+| ... | ... | ... | ... | ... |
+
+### Categories
+- **Verified**: Supported by audited financials or third-party data
+- **Plausible**: Reasonable based on available evidence
+- **Aggressive**: Optimistic relative to historical trends or peers
+- **Unsupported**: No evidence provided; assertion only
+
+### Aggressive Projections to Stress-Test
+| Mgmt Assumption | Mgmt Value | Our Base Case | Our Bear Case | Model Cell |
+|-----------------|------------|---------------|---------------|------------|
+| Revenue growth | 40% | [X]% | [X]% | RevBuild!B5 |
+| EBITDA margin | 30% | [X]% | [X]% | OpModel!B20 |
+| Customer adds | 500/year | [X] | [X] | RevBuild!B8 |
+
+### Management Narrative vs. Reality
+| Narrative Theme | Management's Story | Counter-Evidence | Our Take |
+|-----------------|-------------------|------------------|----------|
+| [Theme 1] | [Their version] | [What data shows] | [Our view] |
+| [Theme 2] | [Their version] | [What data shows] | [Our view] |
+
+### Diligence Questions Generated
+**From aggressive claims:**
+1. [Question targeting Claim #X]
+2. [Question targeting Claim #Y]
+
+**From missing information:**
+1. [Question about data gap]
+2. [Question about unexplained trend]
+
+**From inconsistencies:**
+1. [Question about conflicting data points]
+
+# VALIDATION
+- [ ] All quantitative claims extracted
+- [ ] Each claim categorized with rationale
+- [ ] Stress-test values are reasonable
+- [ ] Diligence questions are specific and actionable
+```
+
+---
+
+### P38: Model Iteration & Feedback Loop
+
+```markdown
+# ROLE
+You are a PE associate updating the financial model after receiving
+IC feedback, new diligence data, or management meeting insights.
+
+# CONTEXT
+Company: [COMPANY_NAME]
+Feedback Source: [IC_COMMENTS / DILIGENCE_FINDINGS / MGMT_MEETING]
+Current Model Version: [VERSION]
+
+# OBJECTIVE
+Incorporate feedback into the model systematically, track changes,
+and document the impact on returns.
+
+# INPUT
+Paste the feedback or new information below:
+[FEEDBACK_TEXT]
+
+# TASKS
+1. Parse feedback into discrete model changes
+2. For each change, identify which tab/cell is affected
+3. Make the changes and recalculate returns
+4. Document the before/after impact
+5. Flag any changes that introduce new risks or alter the thesis
+
+# OUTPUT FORMAT
+## Model Update Log | [COMPANY_NAME] | v[OLD] → v[NEW]
+
+### Changes Requested
+| # | Source | Change Description | Tab Affected | Priority |
+|---|--------|-------------------|--------------|----------|
+| 1 | [Source] | [Description] | [Tab] | HIGH/MED/LOW |
+| 2 | [Source] | [Description] | [Tab] | HIGH/MED/LOW |
+
+### Impact Analysis
+| Change | Before | After | MOIC Impact | IRR Impact |
+|--------|--------|-------|-------------|------------|
+| [Change 1] | [Old value] | [New value] | [+/- X.Xx] | [+/- X%] |
+| [Change 2] | [Old value] | [New value] | [+/- X.Xx] | [+/- X%] |
+| **Net Impact** | — | — | **[+/- X.Xx]** | **[+/- X%]** |
+
+### Updated Returns Summary
+| Scenario | Prior MOIC | Updated MOIC | Prior IRR | Updated IRR |
+|----------|------------|--------------|-----------|-------------|
+| Bull | [X]x | [X]x | [X]% | [X]% |
+| Base | [X]x | [X]x | [X]% | [X]% |
+| Bear | [X]x | [X]x | [X]% | [X]% |
+
+### Thesis Impact Assessment
+| Pillar | Impact | Notes |
+|--------|--------|-------|
+| Pillar 1 | Unchanged / Strengthened / Weakened | [Explanation] |
+| Pillar 2 | Unchanged / Strengthened / Weakened | [Explanation] |
+| Pillar 3 | Unchanged / Strengthened / Weakened | [Explanation] |
+
+### New Risks Identified
+- [Any new risks from the updated information]
+
+### Version Control
+- Prior version saved as: [filename_vX.xlsx]
+- Updated version: [filename_vY.xlsx]
+- Summary of changes: [1-2 sentences]
+
+# VALIDATION
+- [ ] All requested changes implemented
+- [ ] Returns recalculated correctly
+- [ ] Balance sheet still balances
+- [ ] No broken formulas from changes
+- [ ] Version properly saved and labeled
+```
+
+---
+
 ## Appendix: Quick Reference
 
 ### Prompt Dependency Map
@@ -1313,6 +1572,11 @@ P00 → P01 → P02 → P03 → P04
                             └─────────┬─────────┘
                                       ↓
                                      P33 → P34 → P35
+
+STANDALONE PROMPTS (can run after core phases):
+P36 (IC Memo)          ← Requires: P30-P32 + all model tabs
+P37 (Mgmt Deck Scan)   ← Requires: P01 (Material Inventory)
+P38 (Model Iteration)  ← Requires: Any completed model version
 ```
 
 ### Phase Timing Guide
@@ -1322,9 +1586,21 @@ P00 → P01 → P02 → P03 → P04
 | 1: Analysis | P10-P14 | 8-16 hours | Due diligence insights |
 | 2: Modeling | P20-P24 | 8-16 hours | Financial projections |
 | 3: IC Prep | P30-P35 | 8-16 hours | IC materials |
+| Extended | P36-P38 | As needed | Memo, mgmt analysis, iterations |
+
+### Prompt Routing
+| Prompt | Environment | Primary Output |
+|--------|-------------|----------------|
+| P00-P04 | Web | Research & setup documents |
+| P10-P14 | Web | Analysis documents |
+| P20-P24 | Excel + Web | Financial models + tables |
+| P30-P35 | Web | IC materials |
+| P36 | Web | IC memorandum (Word) |
+| P37 | Web | Management claim analysis |
+| P38 | Excel + Web | Updated model + change log |
 
 ---
 
-*Prompt Library Version: 1.0.0*
-*Total Prompts: 20 (Core Set)*
+*Prompt Library Version: 1.1.0*
+*Total Prompts: 23 (Core Set: 20 + Extended: 3)*
 *Full Library: 52 prompts available in extended version*

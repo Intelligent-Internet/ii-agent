@@ -142,31 +142,91 @@ def get_available_prompts() -> list:
 
 ### Phase Gates
 
-Each phase transition requires validation:
+Each phase transition requires validation. Run the full checklist before advancing.
 
-#### Phase 0 → Phase 1 Gate
-- [ ] Material inventory complete
-- [ ] Company overview validated
-- [ ] Market sizing documented
-- [ ] Business model understood
+#### Phase 0 → Phase 1 Gate (Foundation Complete)
 
-#### Phase 1 → Phase 2 Gate
-- [ ] Competitive landscape mapped
-- [ ] Customer analysis complete
-- [ ] Management team assessed
-- [ ] No critical blockers identified
+**Material Completeness:**
+- [ ] Material inventory complete — all documents catalogued with page references
+- [ ] Company overview validated — all metrics sourced and cross-checked
+- [ ] Market sizing documented — TAM/SAM/SOM with methodology
+- [ ] Business model understood — revenue model, unit economics, cost structure mapped
 
-#### Phase 2 → Phase 3 Gate
-- [ ] Revenue model complete
-- [ ] Operating model validated
-- [ ] Returns analysis complete
-- [ ] Scenarios defined (Bull/Base/Bear)
+**Data Quality Check:**
+- [ ] No conflicting numbers between CIM, management deck, and financials
+- [ ] Historical financials extracted accurately (verify totals, margins)
+- [ ] Missing data gaps identified and flagged for diligence
+- [ ] Key Metrics Table created and verified
 
-#### Phase 3 → IC Gate
-- [ ] Investment thesis finalized
-- [ ] Risk matrix complete
-- [ ] All 17 slides drafted
-- [ ] Q&A prep complete
+#### Phase 1 → Phase 2 Gate (Analysis Complete)
+
+**Analysis Completeness:**
+- [ ] Competitive landscape mapped — all major competitors identified, 2x2 positioned
+- [ ] Customer analysis complete — concentration, cohorts, ICP defined
+- [ ] Management team assessed — scorecard complete, gaps identified
+- [ ] Red flags scanned — all materials reviewed, flags severity-rated
+- [ ] Diligence questions prioritized — Priority 1 questions identified
+
+**Judgment Check:**
+- [ ] No critical red flags that should halt the process
+- [ ] Thesis direction is forming (even if not finalized)
+- [ ] Sufficient data exists to build a credible model
+
+#### Phase 2 → Phase 3 Gate (Model Complete)
+
+**Model Integrity (run MODEL_AUDIT_CHECKLIST.md Sections 1-4):**
+- [ ] Balance sheet balances in every period (A = L + E)
+- [ ] Cash flow ending cash = Balance Sheet cash (every period)
+- [ ] Sources = Uses exactly (zero difference)
+- [ ] Debt schedule opening balances = S&U tranche amounts
+- [ ] Net Income flows from P&L to Retained Earnings exactly
+- [ ] No #REF!, #VALUE!, #DIV/0! errors in any tab
+- [ ] All projection cells contain formulas (no hardcodes in formula cells)
+- [ ] Covenants met in Base case (and checked in Bear case)
+
+**Model Reasonableness:**
+- [ ] Revenue growth in realistic range for industry (see SECTOR_PLAYBOOKS.md)
+- [ ] Margin expansion supported by identified initiatives
+- [ ] Debt paydown consistent with free cash flow generation
+- [ ] Exit multiple justified by comparable transactions
+- [ ] MOIC × timing ≈ IRR (sanity check per reference table)
+- [ ] Returns in investable range (20%+ IRR for buyout, 25%+ for growth)
+
+**Sensitivity Verification:**
+- [ ] Sensitivity ranges bracket realistic outcomes
+- [ ] Model doesn't break at reasonable stress levels
+- [ ] Downside case still services debt
+- [ ] Breakeven assumptions identified
+
+#### Phase 3 → IC Gate (IC Materials Complete)
+
+**Deliverable Completeness:**
+- [ ] Investment thesis finalized — 3 pillars with evidence and counter-arguments
+- [ ] Risk matrix complete — probability × severity, top 5 deep dives
+- [ ] "What Must Be True" documented — critical assumptions with validation plans
+- [ ] All slides drafted — 15-20 slide IC deck content complete
+- [ ] Q&A prep complete — 15 anticipated questions with written answers
+
+**Cross-Deliverable Consistency (Critical):**
+- [ ] Numbers in slides match the financial model exactly
+- [ ] Numbers in IC memo (if written) match the model exactly
+- [ ] Thesis pillars in deck match thesis in memo
+- [ ] Risk assessment in deck matches risk matrix
+- [ ] Returns in executive summary match returns tab
+- [ ] Scenario analysis in deck matches model scenarios
+
+**Presentation Readiness:**
+- [ ] Can present thesis in 60 seconds without notes
+- [ ] Key numbers memorized (IRR, MOIC, entry multiple, revenue CAGR)
+- [ ] Backup slides prepared for anticipated deep-dive questions
+
+#### Post-Feedback Gate (After IC Review)
+
+If the IC requests changes or additional analysis:
+- [ ] All feedback items logged (use P38: Model Iteration prompt)
+- [ ] Changes implemented and impact quantified
+- [ ] Updated model passes Phase 2 → Phase 3 gate checks
+- [ ] Version control maintained (prior version saved)
 
 ---
 
