@@ -172,7 +172,7 @@ class IBToolkitStorage:
             company_name=company_name,
             assumptions=model_assumptions,
         )
-        generator.for_case_timeframe(timeframe)
+        generator.build_for_timeframe(timeframe)
 
         # Save locally
         filename = self._generate_filename(company_name, f"LBO_{timeframe}", "xlsx")
