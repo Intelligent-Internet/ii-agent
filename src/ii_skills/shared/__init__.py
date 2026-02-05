@@ -192,6 +192,27 @@ from ii_skills.shared.regression import (
     DiffReport,
 )
 
+# Terminal Model Renderer
+from ii_skills.shared.terminal_renderer import (
+    TerminalModelRenderer,
+    ModelMetrics,
+    extract_metrics,
+    render_from_assumptions,
+)
+
+# Case Study Auto-Trigger
+from ii_skills.shared.case_trigger import (
+    CaseStudyTrigger,
+    CaseSetupResult,
+)
+
+# Live Progress Reporter
+from ii_skills.shared.progress import (
+    ProgressReporter,
+    ProgressCallbacks,
+    ProgressEvent,
+)
+
 # Generic phase runner
 from ii_skills.shared.phase_runner import (
     PhaseRunner,
@@ -356,4 +377,16 @@ __all__ = [
     "RegressionRunner",
     "BaselineSnapshot",
     "DiffReport",
+    # Terminal Model Renderer
+    "TerminalModelRenderer",
+    "ModelMetrics",
+    "extract_metrics",
+    "render_from_assumptions",
+    # Case Study Auto-Trigger
+    "CaseStudyTrigger",
+    "CaseSetupResult",
+    # Live Progress Reporter
+    "ProgressReporter",
+    "ProgressCallbacks",
+    "ProgressEvent",
 ]
