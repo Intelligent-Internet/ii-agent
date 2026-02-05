@@ -973,3 +973,310 @@ class DataStore:
             result = await db.execute(query)
             await db.commit()
             return result.rowcount
+
+    # =========================================================================
+    # MEMORY SERVICE METHODS (Enhanced for memory.py)
+    # =========================================================================
+
+    async def upsert_memory(
+        self,
+        user_id: str,
+        memory_data: Dict[str, Any],
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Insert or update a memory record.
+
+        Args:
+            user_id: User ID
+            memory_data: Memory data including skill_name, memory_type, memory_key, content
+
+        Returns:
+            Created/updated memory record as dict
+        """
+        memory_id = await self.remember(
+            user_id=user_id,
+            skill_name=memory_data.get("skill_name", "global"),
+            memory_type=memory_data.get("memory_type", "fact"),
+            memory_key=memory_data.get("memory_key", ""),
+            content=memory_data.get("content", {}),
+        )
+        return {"id": memory_id, **memory_data}
+
+    async def get_memory(
+        self,
+        user_id: str,
+        skill_name: str,
+        memory_type: Optional[str],
+        memory_key: str,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get a specific memory by key.
+
+        Args:
+            user_id: User ID
+            skill_name: Skill name
+            memory_type: Memory type (optional)
+            memory_key: Memory key
+
+        Returns:
+            Memory record or None
+        """
+        memories = await self.recall(
+            user_id=user_id,
+            skill_name=skill_name,
+            memory_type=memory_type,
+            memory_key=memory_key,
+        )
+        return memories[0] if memories else None
+
+    async def update_memory_access(self, memory_id: str) -> None:
+        """Update access timestamp and count for a memory."""
+        if not self._db_available:
+            return
+
+        from ii_agent.db.manager import get_db
+        from ii_agent.db.skills_models import SkillMemory
+        from sqlalchemy import select
+
+        now = datetime.now(timezone.utc)
+
+        async with get_db() as db:
+            query = select(SkillMemory).where(SkillMemory.id == memory_id)
+            result = await db.execute(query)
+            memory = result.scalar_one_or_none()
+
+            if memory:
+                memory.access_count += 1
+                memory.last_accessed_at = now
+                await db.commit()
+
+    async def list_memories(
+        self,
+        user_id: str,
+        skill_name: Optional[str] = None,
+        memory_type: Optional[str] = None,
+        limit: int = 100,
+    ) -> List[Dict[str, Any]]:
+        """
+        List memories with optional filters.
+
+        Args:
+            user_id: User ID
+            skill_name: Filter by skill name
+            memory_type: Filter by memory type
+            limit: Maximum results
+
+        Returns:
+            List of memory records
+        """
+        if not self._db_available:
+            return []
+
+        from ii_agent.db.manager import get_db
+        from ii_agent.db.skills_models import SkillMemory
+        from sqlalchemy import select
+
+        async with get_db() as db:
+            query = select(SkillMemory).where(SkillMemory.user_id == user_id)
+
+            if skill_name:
+                query = query.where(SkillMemory.skill_name == skill_name)
+            if memory_type:
+                query = query.where(SkillMemory.memory_type == memory_type)
+
+            query = query.order_by(SkillMemory.relevance_score.desc()).limit(limit)
+
+            result = await db.execute(query)
+            memories = result.scalars().all()
+
+            return [
+                {
+                    "id": m.id,
+                    "skill_name": m.skill_name,
+                    "memory_type": m.memory_type,
+                    "memory_key": m.memory_key,
+                    "content": m.content,
+                    "access_count": m.access_count,
+                    "relevance_score": m.relevance_score,
+                    "created_at": m.created_at,
+                    "last_accessed_at": m.last_accessed_at,
+                }
+                for m in memories
+            ]
+
+    async def search_memories(
+        self,
+        user_id: str,
+        query: str,
+        skill_names: Optional[List[str]] = None,
+        memory_types: Optional[List[str]] = None,
+        limit: int = 10,
+    ) -> List[Dict[str, Any]]:
+        """
+        Search memories by keyword in content.
+
+        This is a basic keyword search. For semantic search,
+        use the vector store integration.
+
+        Args:
+            user_id: User ID
+            query: Search query
+            skill_names: Filter by skill names
+            memory_types: Filter by memory types
+            limit: Maximum results
+
+        Returns:
+            List of matching memories
+        """
+        if not self._db_available:
+            return []
+
+        from ii_agent.db.manager import get_db
+        from ii_agent.db.skills_models import SkillMemory
+        from sqlalchemy import select, cast, String
+        from sqlalchemy.dialects.postgresql import JSONB
+
+        async with get_db() as db:
+            # Basic text search in JSONB content
+            # PostgreSQL can search JSONB with :: text cast
+            query_clause = select(SkillMemory).where(
+                SkillMemory.user_id == user_id,
+                cast(SkillMemory.content, String).ilike(f"%{query}%"),
+            )
+
+            if skill_names:
+                query_clause = query_clause.where(SkillMemory.skill_name.in_(skill_names))
+            if memory_types:
+                query_clause = query_clause.where(SkillMemory.memory_type.in_(memory_types))
+
+            query_clause = query_clause.order_by(SkillMemory.relevance_score.desc()).limit(limit)
+
+            result = await db.execute(query_clause)
+            memories = result.scalars().all()
+
+            return [
+                {
+                    "id": m.id,
+                    "skill_name": m.skill_name,
+                    "memory_type": m.memory_type,
+                    "memory_key": m.memory_key,
+                    "content": m.content,
+                    "access_count": m.access_count,
+                    "relevance_score": m.relevance_score,
+                    "created_at": m.created_at,
+                    "last_accessed_at": m.last_accessed_at,
+                }
+                for m in memories
+            ]
+
+    async def delete_memory(
+        self,
+        user_id: str,
+        skill_name: str,
+        memory_type: Optional[str],
+        memory_key: str,
+    ) -> bool:
+        """
+        Delete a specific memory.
+
+        Args:
+            user_id: User ID
+            skill_name: Skill name
+            memory_type: Memory type
+            memory_key: Memory key
+
+        Returns:
+            True if deleted
+        """
+        deleted = await self.forget(
+            user_id=user_id,
+            skill_name=skill_name,
+            memory_type=memory_type,
+            memory_key=memory_key,
+        )
+        return deleted > 0
+
+    # =========================================================================
+    # ALERTS
+    # =========================================================================
+
+    async def save_alert(
+        self,
+        user_id: str,
+        alert_data: Dict[str, Any],
+    ) -> str:
+        """
+        Save or update an alert rule.
+
+        Args:
+            user_id: User ID
+            alert_data: Alert data dictionary
+
+        Returns:
+            Alert ID
+        """
+        if not self._db_available:
+            raise RuntimeError("Database not available")
+
+        # Alerts are stored in SkillMemory with memory_type='alert'
+        alert_id = alert_data.get("id", str(uuid.uuid4()))
+
+        await self.remember(
+            user_id=user_id,
+            skill_name="alerts",
+            memory_type="alert",
+            memory_key=alert_id,
+            content=alert_data,
+        )
+
+        return alert_id
+
+    async def get_alerts(
+        self,
+        user_id: str,
+        status: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Get all alerts for a user.
+
+        Args:
+            user_id: User ID
+            status: Filter by status (optional)
+
+        Returns:
+            List of alert dictionaries
+        """
+        memories = await self.recall(
+            user_id=user_id,
+            skill_name="alerts",
+            memory_type="alert",
+        )
+
+        alerts = [m.get("content", {}) for m in memories]
+
+        if status:
+            alerts = [a for a in alerts if a.get("status") == status]
+
+        return alerts
+
+    async def delete_alert(
+        self,
+        user_id: str,
+        alert_id: str,
+    ) -> bool:
+        """
+        Delete an alert.
+
+        Args:
+            user_id: User ID
+            alert_id: Alert ID
+
+        Returns:
+            True if deleted
+        """
+        return await self.delete_memory(
+            user_id=user_id,
+            skill_name="alerts",
+            memory_type="alert",
+            memory_key=alert_id,
+        )
