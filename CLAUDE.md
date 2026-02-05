@@ -55,10 +55,27 @@ The most comprehensive skill - 67 modular analysis components for PE/IB deal wor
 
 | Timeframe | Sheets | What's Included |
 |-----------|--------|-----------------|
-| **24-hour** | 4 | Sources & Uses, Operating Model, Returns, Sensitivity |
-| **48-hour** | 9 | + Revenue Build, Expense Build, Debt Schedule, Working Capital, WACC |
-| **5-day** | 17 | + Scenario Analysis, Mgmt vs Buyer, DCF, Covenants, Due Diligence |
-| **7+ day** | 30 | + Transaction Structure, Value Creation, Specialized modules |
+| **24-hour** | 5 | Assumptions, Sources & Uses, Operating Model, Returns, Sensitivity |
+| **48-hour** | 10 | + Revenue Build, Expense Build, Debt Schedule, Working Capital, WACC |
+| **5-day** | 18 | + Scenario Analysis, Mgmt vs Buyer, DCF, Covenants, Due Diligence |
+| **7+ day** | 31 | + Transaction Structure, Value Creation, Specialized modules |
+
+**Smart Excel Models (Live Formulas):**
+
+All generated workbooks include a central **Assumptions** sheet. The 8 core financial modules write real Excel formulas instead of static values — change an assumption and all downstream sheets update automatically.
+
+| Sheet | Formula References |
+|-------|-------------------|
+| **Assumptions** | Central input sheet (all blue-font inputs) |
+| **Sources & Uses** | `=Assumptions!B6*Assumptions!B12` for debt, residual equity |
+| **Operating Model** | `=B10*(1+C5)` revenue growth, `=C10*C6` EBITDA |
+| **Debt Schedule** | Multi-tranche with `=MAX(0,...)` balance rollforward, cash sweep referencing Operating Model EBITDA |
+| **Returns Analysis** | Cross-refs Sources & Uses, Operating Model, Debt Schedule for MOIC/IRR |
+| **Working Capital** | `=Revenue*NWC%` referencing Operating Model |
+| **DCF Valuation** | UFCF/Terminal Value/PV formulas with `=1/(1+WACC)^n` discount factors |
+| **Sensitivity Tables** | Formula grids computing MOIC/IRR from entry/exit multiple headers |
+
+Helper: `formula_builder.py` provides `FormulaBuilder` class with `ref()`, `sheet_ref()`, `sum_range()`, `iferror()`, `max_zero()` utilities.
 
 **Quick Commands:**
 ```
@@ -448,7 +465,9 @@ ii-agent/
 │       │   ├── LBO_CASE_GUIDE.md    # Case approach guide
 │       │   ├── QUICK_REFERENCE.md   # Request → Module map
 │       │   └── templates/
-│       │       ├── excel_models/    # Excel generation code
+│       │       ├── excel_models/    # Excel generation code (smart formulas)
+│       │       │   ├── excel_modules.py   # 33 module functions (8 with live formulas)
+│       │       │   └── formula_builder.py # Cell reference & formula helpers
 │       │       ├── case_study/      # Slide generation code
 │       │       └── reference_outputs/ # 30 template files
 │       ├── ir_toolkit/              # Infrastructure IR (33 modules)
@@ -522,4 +541,4 @@ ii-agent/
 *IB Toolkit: 67 modules (33 Excel + 34 Slides)*
 *IR Toolkit: 33 modules (Excel ↔ Slide pairs)*
 *Deal Support: deal_memory (10), output_organizer (7), pdf_extractor (6)*
-*Last Updated: 2026-02-04*
+*Last Updated: 2026-02-05*
