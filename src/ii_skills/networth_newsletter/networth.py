@@ -331,26 +331,114 @@ def save_history(history: list):
         json.dump(history, f, indent=2)
 
 
-def add_to_history(net_worth_cad: float, net_worth_usd: float):
-    """Add today's net worth to history."""
+def add_to_history(net_worth_cad: float, net_worth_usd: float,
+                   market_holdings: list = None, cash_accounts: list = None,
+                   liabilities: list = None):
+    """Add today's net worth to history with per-holding snapshots."""
     history = load_history()
     today = datetime.now().strftime("%Y-%m-%d")
 
     # Remove existing entry for today if present
     history = [h for h in history if h["date"] != today]
 
-    # Add new entry
-    history.append({
+    # Build entry with snapshots for contribution analysis
+    entry = {
         "date": today,
         "net_worth_cad": net_worth_cad,
         "net_worth_usd": net_worth_usd
-    })
+    }
+
+    # Store per-holding value snapshots
+    if market_holdings:
+        entry["holdings_snapshot"] = {
+            h["name"]: {"value_cad": h["value_cad"], "asset_class": h.get("asset_class", "Other")}
+            for h in market_holdings
+        }
+    if cash_accounts:
+        entry["cash_snapshot"] = {
+            a["name"]: a["value_cad"] for a in cash_accounts
+        }
+    if liabilities:
+        entry["liabilities_snapshot"] = {
+            d["name"]: d["value_cad"] for d in liabilities
+        }
+
+    history.append(entry)
 
     # Keep only last 365 days
     history = sorted(history, key=lambda x: x["date"])[-365:]
 
     save_history(history)
     return history
+
+
+def calculate_contribution_analysis(history: list) -> dict:
+    """Calculate day-over-day contribution analysis from history snapshots."""
+    if len(history) < 2:
+        return None
+
+    today = history[-1]
+    yesterday = history[-2]
+
+    # Need snapshots in both entries
+    if "holdings_snapshot" not in today or "holdings_snapshot" not in yesterday:
+        return None
+
+    total_change = today["net_worth_cad"] - yesterday["net_worth_cad"]
+
+    # Compare per-holding values
+    movers = []
+    today_holdings = today.get("holdings_snapshot", {})
+    yesterday_holdings = yesterday.get("holdings_snapshot", {})
+
+    all_names = set(list(today_holdings.keys()) + list(yesterday_holdings.keys()))
+    for name in all_names:
+        today_val = today_holdings.get(name, {}).get("value_cad", 0) if isinstance(today_holdings.get(name), dict) else 0
+        yesterday_val = yesterday_holdings.get(name, {}).get("value_cad", 0) if isinstance(yesterday_holdings.get(name), dict) else 0
+        change = today_val - yesterday_val
+        asset_class = today_holdings.get(name, {}).get("asset_class", "Other") if isinstance(today_holdings.get(name), dict) else "Other"
+        if abs(change) > 0.01:
+            movers.append({
+                "name": name,
+                "change_cad": change,
+                "asset_class": asset_class,
+                "today_val": today_val,
+                "yesterday_val": yesterday_val,
+            })
+
+    # Compare cash accounts
+    today_cash = today.get("cash_snapshot", {})
+    yesterday_cash = yesterday.get("cash_snapshot", {})
+    cash_change = sum(today_cash.values()) - sum(yesterday_cash.values())
+
+    # Compare liabilities
+    today_liab = today.get("liabilities_snapshot", {})
+    yesterday_liab = yesterday.get("liabilities_snapshot", {})
+    liab_change = sum(today_liab.values()) - sum(yesterday_liab.values())
+
+    # Sort by absolute impact
+    movers.sort(key=lambda x: abs(x["change_cad"]), reverse=True)
+
+    # Roll up by asset class
+    class_changes = {}
+    for m in movers:
+        ac = m["asset_class"]
+        class_changes[ac] = class_changes.get(ac, 0) + m["change_cad"]
+    if abs(cash_change) > 0.01:
+        class_changes["Cash (Accounts)"] = cash_change
+    if abs(liab_change) > 0.01:
+        class_changes["Liabilities"] = -liab_change  # reduction in liabilities is positive
+
+    class_changes_sorted = sorted(class_changes.items(), key=lambda x: abs(x[1]), reverse=True)
+
+    return {
+        "total_change": total_change,
+        "movers": movers,
+        "class_changes": class_changes_sorted,
+        "cash_change": cash_change,
+        "liabilities_change": liab_change,
+        "prev_date": yesterday["date"],
+    }
 
 
 def generate_chart(history: list) -> str:
@@ -417,6 +505,15 @@ def format_currency(value: float, currency: str = "CAD") -> str:
     if value < 0:
         return f"-{symbol}{abs(value):,.2f}"
     return f"{symbol}{value:,.2f}"
+
+
+def parse_holding_name(name: str) -> tuple:
+    """Split 'Asset Name (Account)' into (asset, account). Falls back to (name, '')."""
+    if "(" in name and name.endswith(")"):
+        asset = name[:name.rfind("(")].strip()
+        account = name[name.rfind("(") + 1:-1].strip()
+        return asset, account
+    return name, ""
 
 
 def format_change(value: float, is_percent: bool = False) -> str:
@@ -611,6 +708,101 @@ def generate_html(data: dict, chart_base64: str = None, analytics_html: str = No
     </div>
 """
 
+    # Contribution Analysis section
+    contribution = data.get("contribution")
+    if contribution:
+        total_chg = contribution["total_change"]
+        prev_date = contribution["prev_date"]
+        chg_color = "#22c55e" if total_chg >= 0 else "#ef4444"
+
+        html += f"""
+    <div class="section">
+        <h2>What Moved Your Net Worth</h2>
+        <p style="font-size: 13px; color: #6b7280; margin: 0 0 15px 0;">
+            Change since {prev_date}: <strong style="color: {chg_color};">{format_change(total_chg)} CAD</strong>
+        </p>
+        <table>
+            <thead>
+                <tr>
+                    <th>Asset</th>
+                    <th>Account</th>
+                    <th>Yesterday (CAD)</th>
+                    <th>Today (CAD)</th>
+                    <th>Change (CAD)</th>
+                </tr>
+            </thead>
+            <tbody>
+"""
+        for m in contribution["movers"]:
+            chg_class = "positive" if m["change_cad"] >= 0 else "negative"
+            asset_name, account_name = parse_holding_name(m["name"])
+            html += f"""
+                <tr>
+                    <td><strong>{asset_name}</strong></td>
+                    <td style="color: #6b7280; font-size: 13px;">{account_name}</td>
+                    <td>{format_currency(m["yesterday_val"], "CAD")}</td>
+                    <td>{format_currency(m["today_val"], "CAD")}</td>
+                    <td class="{chg_class}">{format_change(m["change_cad"])}</td>
+                </tr>
+"""
+        # Cash and liability changes
+        if abs(contribution["cash_change"]) > 0.01:
+            chg_class = "positive" if contribution["cash_change"] >= 0 else "negative"
+            html += f"""
+                <tr>
+                    <td><strong>Cash Accounts</strong></td>
+                    <td></td>
+                    <td colspan="2" style="color: #6b7280;">net change</td>
+                    <td class="{chg_class}">{format_change(contribution["cash_change"])}</td>
+                </tr>
+"""
+        if abs(contribution["liabilities_change"]) > 0.01:
+            liab_impact = -contribution["liabilities_change"]
+            chg_class = "positive" if liab_impact >= 0 else "negative"
+            html += f"""
+                <tr>
+                    <td><strong>Liabilities</strong></td>
+                    <td></td>
+                    <td colspan="2" style="color: #6b7280;">net change</td>
+                    <td class="{chg_class}">{format_change(liab_impact)}</td>
+                </tr>
+"""
+
+        html += """
+            </tbody>
+        </table>
+"""
+
+        # Asset class rollup
+        if contribution["class_changes"]:
+            html += """
+        <h3 style="font-size: 15px; color: #1e3a8a; margin: 20px 0 10px 0; padding-top: 15px; border-top: 1px solid #e5e7eb;">By Asset Class</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>Asset Class</th>
+                    <th>Change (CAD)</th>
+                </tr>
+            </thead>
+            <tbody>
+"""
+            for ac, chg in contribution["class_changes"]:
+                chg_class = "positive" if chg >= 0 else "negative"
+                html += f"""
+                <tr>
+                    <td><strong>{ac}</strong></td>
+                    <td class="{chg_class}">{format_change(chg)}</td>
+                </tr>
+"""
+            html += """
+            </tbody>
+        </table>
+"""
+
+        html += """
+    </div>
+"""
+
     # Chart section
     if chart_base64:
         html += f"""
@@ -697,8 +889,12 @@ def generate_html(data: dict, chart_base64: str = None, analytics_html: str = No
     if analytics_html:
         html += analytics_html
 
-    # Market holdings section
-    if data["market_holdings"]:
+    # Split market holdings into investable assets vs cash-equivalents
+    cash_holdings = [h for h in data["market_holdings"] if h.get("asset_class") == "Cash"]
+    market_only = [h for h in data["market_holdings"] if h.get("asset_class") != "Cash"]
+
+    # Market holdings section (excludes cash-classified holdings)
+    if market_only:
         html += """
     <div class="section">
         <h2>Market Assets</h2>
@@ -706,6 +902,7 @@ def generate_html(data: dict, chart_base64: str = None, analytics_html: str = No
             <thead>
                 <tr>
                     <th>Asset</th>
+                    <th>Account</th>
                     <th>Qty</th>
                     <th>Price</th>
                     <th>Value (CAD)</th>
@@ -717,11 +914,11 @@ def generate_html(data: dict, chart_base64: str = None, analytics_html: str = No
 """
         total_market_cad = 0
         total_cost_cad = 0
-        for h in data["market_holdings"]:
+        for h in market_only:
             total_market_cad += h["value_cad"]
             total_cost_cad += h["cost_basis_cad"]
             gain_class = "positive" if h["gain_loss_cad"] >= 0 else "negative"
-            # Show price in native currency
+            asset_name, account_name = parse_holding_name(h["name"])
             currency = h.get("currency", "USD")
             if currency == "CAD":
                 price_display = f"C${h['price_cad']:,.2f}"
@@ -729,7 +926,8 @@ def generate_html(data: dict, chart_base64: str = None, analytics_html: str = No
                 price_display = f"${h['price_usd']:,.2f}"
             html += f"""
                 <tr>
-                    <td><strong>{h["name"]}</strong></td>
+                    <td><strong>{asset_name}</strong></td>
+                    <td style="color: #6b7280; font-size: 13px;">{account_name}</td>
                     <td>{h["quantity"]} {h["unit"]}</td>
                     <td>{price_display}</td>
                     <td>{format_currency(h["value_cad"], "CAD")}</td>
@@ -741,7 +939,7 @@ def generate_html(data: dict, chart_base64: str = None, analytics_html: str = No
         gain_class = "positive" if total_gain >= 0 else "negative"
         html += f"""
                 <tr class="total-row">
-                    <td colspan="3"><strong>Total Market Assets</strong></td>
+                    <td colspan="4"><strong>Total Market Assets</strong></td>
                     <td><strong>{format_currency(total_market_cad, "CAD")}</strong></td>
                     <td>{format_currency(total_cost_cad, "CAD")}</td>
                     <td class="{gain_class}"><strong>{format_change(total_gain)}</strong></td>
@@ -751,16 +949,18 @@ def generate_html(data: dict, chart_base64: str = None, analytics_html: str = No
     </div>
 """
 
-    # Cash accounts section
-    if data["cash_accounts"]:
+    # Cash & Cash Equivalents section (account cash + cash-classified market holdings)
+    all_cash = data["cash_accounts"] or []
+    if all_cash or cash_holdings:
         html += """
     <div class="section">
-        <h2>Cash & Bank Accounts</h2>
+        <h2>Cash &amp; Cash Equivalents</h2>
         <table>
             <thead>
                 <tr>
+                    <th>Instrument</th>
                     <th>Account</th>
-                    <th>Balance</th>
+                    <th>Details</th>
                     <th>Value (USD)</th>
                     <th>Value (CAD)</th>
                 </tr>
@@ -768,11 +968,33 @@ def generate_html(data: dict, chart_base64: str = None, analytics_html: str = No
             <tbody>
 """
         total_cash_cad = 0
-        for a in data["cash_accounts"]:
+
+        # Cash-equivalent market holdings first (JPST, CASH.TO, TCSH, etc.)
+        for h in cash_holdings:
+            total_cash_cad += h["value_cad"]
+            asset_name, account_name = parse_holding_name(h["name"])
+            currency = h.get("currency", "USD")
+            if currency == "CAD":
+                price_display = f"{h['quantity']} shares @ C${h['price_cad']:,.2f}"
+            else:
+                price_display = f"{h['quantity']} shares @ ${h['price_usd']:,.2f}"
+            html += f"""
+                <tr>
+                    <td><strong>{asset_name}</strong></td>
+                    <td style="color: #6b7280; font-size: 13px;">{account_name}</td>
+                    <td>{price_display}</td>
+                    <td>${h["value_usd"]:,.2f}</td>
+                    <td>{format_currency(h["value_cad"], "CAD")}</td>
+                </tr>
+"""
+
+        # Account cash balances
+        for a in all_cash:
             total_cash_cad += a["value_cad"]
             html += f"""
                 <tr>
-                    <td><strong>{a["name"]}</strong></td>
+                    <td><strong>Cash</strong></td>
+                    <td style="color: #6b7280; font-size: 13px;">{a["name"]}</td>
                     <td>{a["currency"]} ${a["balance"]:,.2f}</td>
                     <td>${a["value_usd"]:,.2f}</td>
                     <td>{format_currency(a["value_cad"], "CAD")}</td>
@@ -780,7 +1002,7 @@ def generate_html(data: dict, chart_base64: str = None, analytics_html: str = No
 """
         html += f"""
                 <tr class="total-row">
-                    <td colspan="3"><strong>Total Cash</strong></td>
+                    <td colspan="4"><strong>Total Cash &amp; Equivalents</strong></td>
                     <td><strong>{format_currency(total_cash_cad, "CAD")}</strong></td>
                 </tr>
             </tbody>
@@ -918,10 +1140,21 @@ def main():
             print(f"  {asset_class}: ${data['value_cad']:,.2f} ({data['percentage']:.1f}%)")
     print()
 
-    # Update history
+    # Update history (with per-holding snapshots for contribution analysis)
     print("Updating history...")
-    history = add_to_history(net_worth_cad, net_worth_usd)
+    history = add_to_history(net_worth_cad, net_worth_usd,
+                             market_holdings, cash_accounts, liabilities)
     print(f"History entries: {len(history)}")
+
+    # Calculate contribution analysis
+    print("Calculating contribution analysis...")
+    contribution = calculate_contribution_analysis(history)
+    if contribution:
+        print(f"  Net worth change: ${contribution['total_change']:+,.2f} CAD")
+        for m in contribution["movers"][:5]:
+            print(f"  {m['name']}: ${m['change_cad']:+,.2f}")
+    else:
+        print("  No previous snapshot available (will be available tomorrow)")
     print()
 
     # Generate chart
@@ -968,7 +1201,8 @@ def main():
         "total_liabilities_cad": total_liabilities_cad,
         "net_worth_cad": net_worth_cad,
         "net_worth_usd": net_worth_usd,
-        "history": history
+        "history": history,
+        "contribution": contribution
     }
 
     # Generate HTML
