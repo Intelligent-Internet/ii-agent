@@ -139,12 +139,87 @@ SHEET_METHOD_MAP = {
 }
 
 
+def extract_assumptions_from_cim(extracted_data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Map PDF-extracted financial data into ModelAssumptions-compatible dict.
+
+    Takes the output of pdf_extractor's extract_financials and returns
+    a dict that can be passed as `assumptions` to the orchestrator.
+    """
+    assumptions = {}
+    income = extracted_data.get("income_statement", {})
+    metrics = extracted_data.get("metrics", {})
+    line_items = income.get("line_items", {})
+
+    # LTM Revenue — last year in extracted data
+    revenues = line_items.get("revenue", [])
+    if revenues:
+        assumptions["ltm_revenue"] = abs(revenues[-1])
+
+    # LTM EBITDA — last year
+    ebitdas = line_items.get("ebitda", [])
+    if ebitdas:
+        assumptions["ltm_ebitda"] = abs(ebitdas[-1])
+
+    # Revenue growth — compute from extracted years or use metrics
+    if len(revenues) >= 2 and revenues[-2] > 0:
+        historical_growth = (revenues[-1] / revenues[-2]) - 1
+        # Project tapering growth
+        g = max(0.02, min(0.15, historical_growth))
+        assumptions["revenue_growth"] = [
+            round(g, 4),
+            round(g * 0.9, 4),
+            round(g * 0.8, 4),
+            round(g * 0.7, 4),
+            round(g * 0.65, 4),
+        ]
+    elif metrics.get("revenue_growth"):
+        g = metrics["revenue_growth"] / 100.0
+        g = max(0.02, min(0.15, g))
+        assumptions["revenue_growth"] = [
+            round(g, 4),
+            round(g * 0.9, 4),
+            round(g * 0.8, 4),
+            round(g * 0.7, 4),
+            round(g * 0.65, 4),
+        ]
+
+    # EBITDA margin — from extracted or metrics
+    if ebitdas and revenues and revenues[-1] > 0:
+        margin = ebitdas[-1] / revenues[-1]
+        margin = max(0.05, min(0.50, margin))
+        # Slight expansion over hold period
+        assumptions["ebitda_margin"] = [
+            round(margin, 4),
+            round(margin + 0.005, 4),
+            round(margin + 0.010, 4),
+            round(margin + 0.015, 4),
+            round(margin + 0.020, 4),
+        ]
+    elif metrics.get("ebitda_margin"):
+        margin = metrics["ebitda_margin"] / 100.0
+        margin = max(0.05, min(0.50, margin))
+        assumptions["ebitda_margin"] = [
+            round(margin, 4),
+            round(margin + 0.005, 4),
+            round(margin + 0.010, 4),
+            round(margin + 0.015, 4),
+            round(margin + 0.020, 4),
+        ]
+
+    # CapEx % from metrics
+    if metrics.get("capex_pct"):
+        assumptions["capex_pct"] = metrics["capex_pct"] / 100.0
+
+    return assumptions
+
+
 class CaseWorkflowOrchestrator:
     """
     End-to-end case study pipeline.
 
-    Orchestrates folder creation, model generation, terminal rendering,
-    and progress reporting into a single run() call.
+    Orchestrates folder creation, CIM extraction, model generation,
+    terminal rendering, and progress reporting into a single run() call.
     """
 
     def __init__(
@@ -205,8 +280,9 @@ class CaseWorkflowOrchestrator:
         depth_str = config["depth"]
         sheet_list = config["sheets"]
 
-        # Count phases: folder + model + render + (optional CIM)
-        total_phases = 3
+        # Count phases: folder + (optional CIM extract) + model + render
+        has_cim = cim_path and Path(cim_path).exists() and str(cim_path).lower().endswith(".pdf")
+        total_phases = 4 if has_cim else 3
         progress = ProgressReporter(
             total_phases=total_phases,
             case_name=f"{company_name} {case_type.upper()}",
@@ -239,6 +315,70 @@ class CaseWorkflowOrchestrator:
             progress.error(f"Folder creation failed: {exc}")
             progress.phase_complete("Create Deal Folder")
 
+        # ── PHASE 1.5: Extract CIM Financials (if PDF provided) ──
+        cim_assumptions = {}
+        if has_cim:
+            progress.phase_start("Extract CIM Financials")
+            try:
+                from ii_skills.pdf_extractor import get_pdf_extractor
+                extractor = get_pdf_extractor()
+                extraction = extractor.execute(
+                    "extract_financials",
+                    pdf_path=cim_path,
+                    company_name=company_name,
+                )
+                if extraction.get("success"):
+                    extracted_data = extraction["extracted_data"]
+                    cim_assumptions = extract_assumptions_from_cim(extracted_data)
+
+                    # Save extracted financials Excel alongside model
+                    if result.deal_folder:
+                        data_dir = Path(result.deal_folder) / "04_data"
+                        if not data_dir.exists():
+                            data_dir.mkdir(parents=True, exist_ok=True)
+                        ext_xlsx = str(data_dir / f"{company_name.lower().replace(' ', '_')}_extracted.xlsx")
+                        extractor.execute(
+                            "export_to_excel",
+                            extracted_data=extracted_data,
+                            company_name=company_name,
+                            output_path=ext_xlsx,
+                        )
+                        result.files_created.append({
+                            "filename": Path(ext_xlsx).name,
+                            "destination": ext_xlsx,
+                            "subfolder": "04_data",
+                        })
+                        progress.file_created(ext_xlsx, "Extracted Financials")
+
+                    # Report what was extracted
+                    if cim_assumptions.get("ltm_revenue"):
+                        progress.metric("CIM Revenue", f"${cim_assumptions['ltm_revenue']:.1f}M")
+                    if cim_assumptions.get("ltm_ebitda"):
+                        progress.metric("CIM EBITDA", f"${cim_assumptions['ltm_ebitda']:.1f}M")
+
+                    progress.phase_complete("Extract CIM Financials", {
+                        "fields_extracted": len(cim_assumptions),
+                    })
+                else:
+                    result.warnings.append(
+                        f"CIM extraction returned no data: {extraction.get('error', 'unknown')}"
+                    )
+                    progress.phase_complete("Extract CIM Financials")
+            except ImportError:
+                result.warnings.append("pymupdf not installed — CIM extraction skipped")
+                progress.error("pymupdf not installed — skipping CIM extraction")
+                progress.phase_complete("Extract CIM Financials")
+            except Exception as exc:
+                result.warnings.append(f"CIM extraction failed: {exc}")
+                progress.error(f"CIM extraction failed: {exc}")
+                progress.phase_complete("Extract CIM Financials")
+
+        # Merge assumptions: CIM-extracted < user-provided overrides
+        merged_assumptions = {}
+        merged_assumptions.update(cim_assumptions)
+        if assumptions:
+            merged_assumptions.update(assumptions)
+
         # ── PHASE 2: Generate LBO Model ──
         progress.phase_start("Generate LBO Model")
         try:
@@ -246,8 +386,8 @@ class CaseWorkflowOrchestrator:
             depth = getattr(ModelDepth, depth_str, ModelDepth.QUICK)
             model_assumptions = ModelAssumptions(company_name=company_name)
 
-            if assumptions:
-                for key, val in assumptions.items():
+            if merged_assumptions:
+                for key, val in merged_assumptions.items():
                     if hasattr(model_assumptions, key):
                         setattr(model_assumptions, key, val)
 
@@ -312,8 +452,8 @@ class CaseWorkflowOrchestrator:
         try:
             # Build assumptions dict for render_from_assumptions
             render_assumptions = {"company_name": company_name}
-            if assumptions:
-                render_assumptions.update(assumptions)
+            if merged_assumptions:
+                render_assumptions.update(merged_assumptions)
             else:
                 # Use defaults from ModelAssumptions
                 render_assumptions.update({

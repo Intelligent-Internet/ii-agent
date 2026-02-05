@@ -218,6 +218,7 @@ from ii_skills.shared.case_orchestrator import (
     CaseWorkflowOrchestrator,
     CaseResult,
     TIMEFRAME_CONFIG,
+    extract_assumptions_from_cim,
 )
 
 # Generic phase runner
@@ -400,4 +401,5 @@ __all__ = [
     "CaseWorkflowOrchestrator",
     "CaseResult",
     "TIMEFRAME_CONFIG",
+    "extract_assumptions_from_cim",
 ]

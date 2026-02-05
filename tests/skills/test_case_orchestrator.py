@@ -10,6 +10,7 @@ from ii_skills.shared.case_orchestrator import (
     CaseResult,
     TIMEFRAME_CONFIG,
     SHEET_METHOD_MAP,
+    extract_assumptions_from_cim,
 )
 
 
@@ -259,3 +260,144 @@ class TestCaseWorkflowOrchestrator:
         # No fatal errors
         fatal = [e for e in result.errors if "failed" in e.lower()]
         assert len(fatal) == 0
+
+    def test_cim_pdf_gracefully_skipped_without_pymupdf(self, orch, tmp_path):
+        """If pymupdf isn't installed, CIM extraction is skipped gracefully."""
+        cim = tmp_path / "test_cim.pdf"
+        cim.write_bytes(b"%PDF-1.4 fake")
+
+        result = orch.run(
+            company_name="Skip Corp",
+            case_type="lbo",
+            timeframe="24-hour",
+            cim_path=str(cim),
+        )
+
+        # Should still succeed even if extraction fails/skips
+        assert result.success is True
+        assert Path(result.model_path).exists()
+
+    def test_merged_assumptions_cim_under_user(self, orch, tmp_path):
+        """User-provided assumptions override CIM-extracted ones."""
+        # No real CIM — just test that user overrides work with merged logic
+        result = orch.run(
+            company_name="Merge Corp",
+            case_type="lbo",
+            timeframe="24-hour",
+            assumptions={
+                "ltm_revenue": 500.0,
+                "ltm_ebitda": 100.0,
+            },
+        )
+
+        assert result.success is True
+        assert "$500.0M" in result.metrics.get("Entry EV", "") or "500" in result.terminal_output
+
+
+# ---------------------------------------------------------------------------
+# extract_assumptions_from_cim
+# ---------------------------------------------------------------------------
+
+class TestExtractAssumptionsFromCIM:
+
+    def test_empty_data(self):
+        result = extract_assumptions_from_cim({})
+        assert result == {}
+
+    def test_revenue_and_ebitda(self):
+        data = {
+            "income_statement": {
+                "line_items": {
+                    "revenue": [80.0, 100.0, 120.0],
+                    "ebitda": [12.0, 16.0, 24.0],
+                },
+            },
+            "metrics": {},
+        }
+        result = extract_assumptions_from_cim(data)
+
+        assert result["ltm_revenue"] == 120.0
+        assert result["ltm_ebitda"] == 24.0
+
+    def test_revenue_growth_computed(self):
+        data = {
+            "income_statement": {
+                "line_items": {
+                    "revenue": [100.0, 120.0],  # 20% growth
+                    "ebitda": [20.0, 24.0],
+                },
+            },
+            "metrics": {},
+        }
+        result = extract_assumptions_from_cim(data)
+
+        # Growth should be capped at 15% and taper
+        assert len(result["revenue_growth"]) == 5
+        assert result["revenue_growth"][0] == 0.15  # Capped
+        assert result["revenue_growth"][4] < result["revenue_growth"][0]
+
+    def test_ebitda_margin_computed(self):
+        data = {
+            "income_statement": {
+                "line_items": {
+                    "revenue": [100.0, 150.0],
+                    "ebitda": [15.0, 30.0],  # 20% margin
+                },
+            },
+            "metrics": {},
+        }
+        result = extract_assumptions_from_cim(data)
+
+        assert len(result["ebitda_margin"]) == 5
+        assert result["ebitda_margin"][0] == 0.2
+        # Slight expansion
+        assert result["ebitda_margin"][4] > result["ebitda_margin"][0]
+
+    def test_metrics_fallback(self):
+        data = {
+            "income_statement": {"line_items": {}},
+            "metrics": {
+                "revenue_growth": 8.0,
+                "ebitda_margin": 22.0,
+                "capex_pct": 4.0,
+            },
+        }
+        result = extract_assumptions_from_cim(data)
+
+        assert len(result["revenue_growth"]) == 5
+        assert result["revenue_growth"][0] == 0.08
+        assert len(result["ebitda_margin"]) == 5
+        assert result["ebitda_margin"][0] == 0.22
+        assert result.get("capex_pct") == 0.04
+
+    def test_single_year_no_growth(self):
+        data = {
+            "income_statement": {
+                "line_items": {
+                    "revenue": [100.0],
+                    "ebitda": [20.0],
+                },
+            },
+            "metrics": {},
+        }
+        result = extract_assumptions_from_cim(data)
+
+        assert result["ltm_revenue"] == 100.0
+        assert result["ltm_ebitda"] == 20.0
+        # No growth computed from single year
+        assert "revenue_growth" not in result
+
+    def test_negative_values_use_absolute(self):
+        data = {
+            "income_statement": {
+                "line_items": {
+                    "revenue": [-100.0, -150.0],
+                    "ebitda": [-20.0, -30.0],
+                },
+            },
+            "metrics": {},
+        }
+        result = extract_assumptions_from_cim(data)
+
+        assert result["ltm_revenue"] == 150.0
+        assert result["ltm_ebitda"] == 30.0
