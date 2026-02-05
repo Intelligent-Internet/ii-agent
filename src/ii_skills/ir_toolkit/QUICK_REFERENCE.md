@@ -1,5 +1,17 @@
 # Quick Reference — IR Toolkit
 
+## Key Documentation
+
+| Document | Purpose |
+|----------|---------|
+| `CAPABILITIES.md` | Complete module reference (33 Excel ↔ Slide pairs) |
+| `CASE_GUIDE.md` | Phased workflow, quality gates, common mistakes, IC vs LP guide |
+| `PROMPT_LIBRARY.md` | 24 ready-to-use prompts (core + interview prep + Anki) |
+| `SLIDE_LAYOUTS.md` | Visual slide templates with ASCII diagrams |
+| `references/infra_jargon_metrics.md` | Infrastructure terminology guide |
+
+---
+
 ## Request → Module Mapping
 
 | Request / Keyword | Primary Excel Modules | Paired Slides |
@@ -70,3 +82,31 @@ Slides: 12-16 slides (Full LP Update + Outlook + Strategic Discussion)
 | "waterfall" | Driver breakdown table | Waterfall chart |
 | "sensitivity" | Grid of scenarios | Heat map or matrix |
 | "timeline" | Date-based schedule | Gantt or timeline |
+
+## Interview Prep Quick Reference
+
+| Need | Use Prompt # | Output |
+|------|--------------|--------|
+| Q&A preparation | 19 | 50-question prep document |
+| Cheat sheet | 20 | 1-page memorization sheet |
+| Mock interview | 21 | Interactive 15-question session |
+| 60-second pitch | 22 | Scripted verbal pitch |
+| IR fundamentals flashcards | 23 | 80-card Anki TSV |
+| Case-specific flashcards | 24 | 50-card Anki TSV |
+
+## Phased Workflow Summary
+
+| Phase | Focus | Key Outputs |
+|-------|-------|-------------|
+| 0 | Triage & Intake | Execution plan |
+| 1 | Data Foundation | Excel + Key Metrics Table |
+| 2 | Research & Narrative | DDQ drafts, LP comms |
+| 3 | LP Presentation | .pptx file |
+| 4 | Polish & Supporting | Final formatting, Q&A prep |
+| 5 | Final QA | Consistency audit, interview readiness |
+
+See `CASE_GUIDE.md` for full workflow details.
+
+---
+
+*Version: 2.0 | Last Updated: February 2026*

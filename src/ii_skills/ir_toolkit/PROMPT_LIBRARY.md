@@ -1,8 +1,12 @@
 # Prompt Library — Infrastructure IR
 
-Ready-to-use prompts for common IR analysis requests.
+*Ready-to-use prompts for common IR analysis requests. 24 prompts covering core deliverables, interview prep, and specialized analyses.*
 
-## 1. LP Quarterly Update
+---
+
+## Core Deliverables (Prompts 1-12)
+
+### 1. LP Quarterly Update
 
 **Prompt:**
 ```
@@ -24,7 +28,7 @@ Inputs needed:
 
 ---
 
-## 2. Fundraising Narrative
+### 2. Fundraising Narrative
 
 **Prompt:**
 ```
@@ -45,7 +49,7 @@ Inputs needed:
 
 ---
 
-## 3. Asset Performance Deep Dive
+### 3. Asset Performance Deep Dive
 
 **Prompt:**
 ```
@@ -65,7 +69,7 @@ Inputs needed:
 
 ---
 
-## 4. Downside Case Stress Test
+### 4. Downside Case Stress Test
 
 **Prompt:**
 ```
@@ -84,7 +88,7 @@ Inputs needed:
 
 ---
 
-## 5. DDQ Response Pack
+### 5. DDQ Response Pack
 
 **Prompt:**
 ```
@@ -103,7 +107,7 @@ Inputs needed:
 
 ---
 
-## 6. NAV Roll-Forward
+### 6. NAV Roll-Forward
 
 **Prompt:**
 ```
@@ -123,7 +127,7 @@ Inputs needed:
 
 ---
 
-## 7. Regulatory Reset View
+### 7. Regulatory Reset View
 
 **Prompt:**
 ```
@@ -143,7 +147,7 @@ Inputs needed:
 
 ---
 
-## 8. Distribution Coverage Analysis
+### 8. Distribution Coverage Analysis
 
 **Prompt:**
 ```
@@ -162,7 +166,7 @@ Inputs needed:
 
 ---
 
-## 9. Leverage & Coverage Profile
+### 9. Leverage & Coverage Profile
 
 **Prompt:**
 ```
@@ -182,7 +186,7 @@ Inputs needed:
 
 ---
 
-## 10. Term Sheet Summary
+### 10. Term Sheet Summary
 
 **Prompt:**
 ```
@@ -202,7 +206,7 @@ Inputs needed:
 
 ---
 
-## 11. Peer Benchmarking
+### 11. Peer Benchmarking
 
 **Prompt:**
 ```
@@ -221,7 +225,7 @@ Inputs needed:
 
 ---
 
-## 12. ESG Impact Summary
+### 12. ESG Impact Summary
 
 **Prompt:**
 ```
@@ -241,14 +245,476 @@ Inputs needed:
 
 ---
 
+## Additional Analysis Prompts (Prompts 13-18)
+
+### 13. Fund Economics Model
+
+**Prompt:**
+```
+Build a fund economics model showing management fees, carried interest,
+and net returns to LPs over the fund life. Include J-curve visualization.
+
+Inputs needed:
+- Fund size and GP commitment
+- Fee structure (mgmt fee, carry, hurdle)
+- Projected deployment pace
+- Projected exit timing and multiples
+
+Create:
+1. Capital account with annual calls/distributions
+2. Fee calculations (mgmt fee with step-down, carry waterfall)
+3. Gross vs. net returns comparison
+4. J-curve chart data
+```
+
+**Sample Output:**
+- Excel: Full fund model with fee waterfall
+- Slide: "Net returns of 11.5% after fees vs. 13.0% gross"
+
+---
+
+### 14. LP Communication Draft
+
+**Prompt:**
+```
+Draft an LP-facing communication for [quarterly update / fundraising
+outreach / exit announcement]. Tone should be professional and factual.
+
+Inputs needed:
+- Communication type and purpose
+- Key metrics to highlight
+- Any issues to address proactively
+- Call to action (if applicable)
+
+Format:
+- Subject line (for email)
+- Opening paragraph (key message)
+- Performance summary (with data)
+- Portfolio/activity update
+- Outlook and next steps
+- Closing and contact information
+```
+
+**Sample Output:**
+- 1-2 page LP letter or email
+
+---
+
+### 15. Asset One-Pager
+
+**Prompt:**
+```
+Create a single-page asset summary for LP reporting or data room.
+Include business overview, KPIs, value creation, and outlook.
+
+Inputs needed:
+- Asset name, sector, geography
+- Acquisition details (date, price, multiple)
+- Current financials (revenue, EBITDA, margins)
+- Operational KPIs (availability, contracted %)
+- Value creation initiatives
+- Exit pathway and timing
+
+Format (single page):
+- Header: Asset name, sector, geography
+- Business Overview (3-4 sentences)
+- Financial Highlights (entry vs. current table)
+- Operational KPIs (key metrics)
+- Value Creation (3 bullet points)
+- Status & Outlook (2-3 sentences)
+```
+
+**Sample Output:**
+- 1-page asset summary PDF-ready
+
+---
+
+### 16. Co-Investment Memo
+
+**Prompt:**
+```
+Draft a co-investment opportunity memo for LPs considering a direct
+investment alongside the fund.
+
+Inputs needed:
+- Asset overview and investment thesis
+- Transaction terms (size, structure, timeline)
+- Co-invest allocation and minimum
+- Risk factors and mitigants
+- GP track record with similar assets
+
+Format:
+1. Executive Summary
+2. Asset Overview
+3. Investment Thesis
+4. Transaction Terms
+5. Co-Invest Terms
+6. Risks and Mitigants
+7. Next Steps
+```
+
+**Sample Output:**
+- 3-5 page co-invest memo
+
+---
+
+### 17. Annual Meeting Deck
+
+**Prompt:**
+```
+Create an annual meeting presentation for existing LPs. Cover fund
+performance, portfolio review, market outlook, and strategic priorities.
+
+Inputs needed:
+- Annual performance summary
+- Portfolio asset updates
+- Market and competitive landscape
+- Strategic priorities for coming year
+- Q&A preparation topics
+
+Slide sequence:
+1. Agenda
+2. Fund Performance Summary
+3-5. Portfolio Asset Reviews (top 3-5 assets)
+6. Cash Flow Summary
+7. Valuation & NAV
+8. Market Outlook
+9. Strategic Priorities
+10. Q&A / Discussion
+```
+
+**Sample Output:**
+- 10-12 slide annual meeting deck
+
+---
+
+### 18. Crisis Communication
+
+**Prompt:**
+```
+Draft a crisis communication for LPs regarding [asset incident /
+performance issue / regulatory development / market event].
+
+Inputs needed:
+- Nature of the issue
+- Impact on fund/asset
+- Actions taken / mitigants
+- Outlook and next steps
+
+Format:
+- Immediate acknowledgment of issue
+- Facts (what happened, when, impact)
+- Response (actions taken)
+- Mitigation (how we're protecting value)
+- Outlook (expected resolution, timeline)
+- Commitment (ongoing communication cadence)
+
+Tone: Transparent, proactive, accountable
+```
+
+**Sample Output:**
+- 1-page crisis communication
+
+---
+
+## Interview Prep Prompts (Prompts 19-22)
+
+### 19. Q&A Preparation Document
+
+**Prompt:**
+```
+Create a Q&A preparation document for my IR case interview. Include
+questions about my deliverables, fund mechanics, LP relations, and
+role fit.
+
+KEY METRICS:
+[PASTE YOUR KEY METRICS TABLE HERE]
+
+Generate 50 questions across these categories:
+
+1. ABOUT YOUR DELIVERABLES (10 questions):
+   "Walk me through the pitchbook you created"
+   "Why did you choose this slide sequence?"
+   "How would you pitch this fund in 60 seconds?"
+
+2. FUND MECHANICS (10 questions):
+   "Explain the management fee calculation"
+   "Walk me through the carried interest waterfall"
+   "What is DPI and why do LPs care about it?"
+
+3. LP RELATIONS & COMMUNICATION (10 questions):
+   "How would you handle an LP who is unhappy with performance?"
+   "Describe your approach to a quarterly investor update"
+   "What makes a good fundraising pitchbook?"
+
+4. INFRA-SPECIFIC (10 questions):
+   "What is contracted vs. merchant revenue?"
+   "How do regulatory resets affect infrastructure returns?"
+   "What is DSCR and why is it important?"
+
+5. ROLE FIT & MOTIVATION (10 questions):
+   "Why investor relations vs. the deal team?"
+   "What skills transfer to IR?"
+   "Where do you see IR career progression?"
+
+For EACH question provide:
+- Model answer (2-4 sentences, uses real data from case)
+- Key numbers to cite
+- Common mistakes to avoid
+```
+
+**Sample Output:**
+- 50-question Q&A preparation document
+
+---
+
+### 20. One-Page Cheat Sheet
+
+**Prompt:**
+```
+Create a one-page cheat sheet with EVERY number I need memorized for
+the interview. Format to fit on one printed page.
+
+KEY METRICS:
+[PASTE YOUR KEY METRICS TABLE HERE]
+
+Include:
+
+FUND SNAPSHOT:
+Fund: ___ | Vintage: ___ | Strategy: ___ | Size: $___M
+GP: ___ | AUM: $___B | GP Commitment: $___M (___%)
+
+FEE STRUCTURE:
+Mgmt Fee: ___% on ___ | Carry: ___% | Hurdle: ___% | Waterfall: ___
+
+PERFORMANCE (ALL FUNDS):
+| Fund | Vintage | Size | Net IRR | Net MOIC | DPI | TVPI |
+
+CURRENT PORTFOLIO (top 5 assets):
+| Asset | Sector | Cost | Value | MOIC | Contracted % |
+
+INFRA-SPECIFIC:
+Contracted Revenue: ___% | Cash Yield: ___% | Avg DSCR: ___x
+
+60-SECOND FUND PITCH:
+[Write out a verbal pitch of the fund]
+
+KEY LP CONCERNS & RESPONSES:
+1. ___
+2. ___
+3. ___
+
+BENCHMARKS:
+Strategy median Net IRR: ___% | Top quartile: ___%
+```
+
+**Sample Output:**
+- 1-page cheat sheet
+
+---
+
+### 21. Mock Interview Simulation
+
+**Prompt:**
+```
+Conduct a mock interview. You are the Head of IR at [target firm],
+interviewing me for an IR Analyst/Associate position. Ask me 15
+questions, one at a time:
+
+ROUND 1 — WARM-UP (3 questions):
+1. "Tell me about yourself and why you're interested in IR"
+2. "Walk me through the work you did on this case study"
+3. "How would you pitch this fund to an LP in 60 seconds?"
+
+ROUND 2 — DELIVERABLE DEEP DIVE (4 questions):
+4-7. Questions about specific choices in the pitchbook, data
+presentation, and written communications
+
+ROUND 3 — IR KNOWLEDGE (4 questions):
+8-11. Fund mechanics, LP relations, fundraising process,
+communication scenarios
+
+ROUND 4 — JUDGMENT & FIT (4 questions):
+12-15. "What would you do differently with more time?"
+"How would you tailor this for different LP types?"
+"Why IR instead of the deal team?"
+
+After each answer, score 1-5 and provide:
+- What was good
+- What was missing
+- The "perfect answer" for comparison
+
+Focus scoring on: communication clarity, accuracy,
+professionalism, and LP-centricity.
+```
+
+**Sample Output:**
+- Interactive mock interview session
+
+---
+
+### 22. 60-Second Fund Pitch
+
+**Prompt:**
+```
+Create a 60-second verbal pitch for this infrastructure fund.
+Structure it for an LP meeting opening.
+
+KEY METRICS:
+[PASTE YOUR KEY METRICS TABLE HERE]
+
+Format:
+
+[Opening hook - 10 seconds]
+"[Fund Name] is a $[X]B infrastructure fund focused on [strategy]..."
+
+[Track record - 15 seconds]
+"Across [X] funds, we've generated [X]% net IRR, top-quartile vs.
+Cambridge benchmarks, with [X]x DPI reflecting real cash returns..."
+
+[Differentiation - 15 seconds]
+"What sets us apart is [key differentiator]. Our portfolio is [X]%
+contracted with [X]% inflation linkage, providing..."
+
+[Current opportunity - 10 seconds]
+"Fund IV is [X]% deployed with a strong pipeline in [sectors].
+We're seeing attractive entry points at [X]x..."
+
+[Ask - 10 seconds]
+"We'd welcome the opportunity to discuss a $[X]M commitment
+and how [Fund] fits your infrastructure allocation."
+
+Provide:
+- Full 60-second script
+- Key numbers to emphasize
+- Backup data points if asked follow-up
+```
+
+**Sample Output:**
+- 60-second pitch script with backup points
+
+---
+
+## Anki Flashcard Generation (Prompts 23-24)
+
+### 23. IR Fundamentals Flashcards
+
+**Prompt:**
+```
+Create Anki flashcards covering IR fundamentals. TSV format (front\tback).
+Generate 80 cards across these categories:
+
+1. FUND MECHANICS (20 cards):
+   "What is a management fee step-down?"
+   "What is DPI vs. TVPI?"
+   "Explain European vs. American waterfall"
+   "What is a GP commitment and why does it matter?"
+   "What is a key-man provision?"
+   "What is preferred return / hurdle rate?"
+
+2. INFRA-SPECIFIC CONCEPTS (20 cards):
+   "What is contracted vs. merchant revenue?"
+   "What is DSCR?"
+   "What are regulatory resets?"
+   "What is availability in infrastructure?"
+   "What is WACL (weighted average contract life)?"
+   "What is CPI linkage?"
+
+3. IR ROLE KNOWLEDGE (15 cards):
+   "What does an IR analyst do day-to-day?"
+   "What is a DDQ?"
+   "What is a pitchbook vs. a tearsheet?"
+   "Describe the fundraising process"
+   "What is an LPAC?"
+
+4. LP TYPES & CONCERNS (15 cards):
+   "What are the main LP types?"
+   "What do pensions prioritize?"
+   "What do endowments prioritize?"
+   "What are common LP objections?"
+
+5. COMMUNICATION SKILLS (10 cards):
+   "How to pitch a fund in 60 seconds"
+   "How to handle a tough LP question"
+   "Key differences between marketing and reporting"
+
+Format: question\tanswer
+```
+
+**Sample Output:**
+- TSV file with 80 flashcards
+
+---
+
+### 24. Case-Specific Flashcards
+
+**Prompt:**
+```
+Create Anki flashcards for this specific case study.
+TSV format (front\tback). Generate 50 cards.
+
+KEY METRICS:
+[PASTE YOUR KEY METRICS TABLE HERE]
+
+Categories:
+
+1. THIS FUND'S DATA (20 cards):
+   "What is [Fund Name]'s Fund III net IRR?"
+   "What is the DPI for Fund II?"
+   "What is the current fund size target?"
+   "What is the GP commitment?"
+   "Name the top 3 portfolio assets"
+
+2. DELIVERABLE CONTENT (15 cards):
+   "What are the key slides in the pitchbook?"
+   "What is the main message of slide 5?"
+   "What are the fund's top 3 differentiators?"
+
+3. INTERVIEW ANSWERS (15 cards):
+   "How would you pitch this fund in 60 seconds?"
+   "Why is DPI important for this fund?"
+   "What are the main risks and mitigants?"
+   "How does this fund compare to benchmarks?"
+
+Study schedule:
+- Night before: Full deck review
+- Morning of: #funddata + #pitchbook only
+- 1 hour before: Cheat sheet cards only
+
+Format: question\tanswer
+```
+
+**Sample Output:**
+- TSV file with 50 case-specific flashcards
+
+---
+
 ## Prompt Structure Template
 
 For any IR analysis, use this structure:
 
 ```
 [Action]: Create/Build/Generate/Analyze
-[Module]: [specific module from capabilities]
+[Module]: [specific module from CAPABILITIES.md]
 [Data requirements]: [list specific inputs]
 [Output format]: Excel table + paired slide
 [Infra nuance]: [specific infra elements to highlight]
 ```
+
+---
+
+## Quick Reference: Prompt Routing
+
+| Prompt | Environment | Primary Output |
+|--------|-------------|----------------|
+| 1-12 | Excel + Web | Excel tables + slides |
+| 13 | Excel | Fund model |
+| 14, 16, 18 | Web | Written communications |
+| 15, 17 | Web | Presentations |
+| 19-22 | Web | Interview prep docs |
+| 23-24 | Web | Anki TSV files |
+
+---
+
+*Version: 2.0 | Last Updated: February 2026*
+*24 prompts covering core deliverables, additional analysis, and interview preparation*
