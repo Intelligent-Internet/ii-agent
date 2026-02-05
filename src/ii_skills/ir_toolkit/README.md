@@ -90,9 +90,9 @@ result = await toolkit.generate_lp_update(
 
 - `templates/excel/` - Excel model templates
 - `templates/slides/` - PowerPoint slide templates
-- `references/` - Jargon, metrics, presentation patterns
+- `references/` - Jargon, metrics, ontology, schemas
 - `benchmark_library/` - Peer benchmarking data
-- `modules/` - Analysis module specifications
+- `modules/` - Analysis module specifications (terms analyzer, company profiles)
 
 ## Documentation
 
@@ -103,3 +103,4 @@ result = await toolkit.generate_lp_update(
 - `SCENARIO_LIBRARY.md` - Stress test scenarios
 - `DATA_ROOM_CHECKLIST.md` - Fundraising data room prep
 - `QA_RUBRIC.md` - Quality assurance scoring
+- `ROADMAP_II_AGENT_IR_TOOLKIT.md` - Expansion strategy for II Agent integration, infra terminology depth, and LP/GP term analytics

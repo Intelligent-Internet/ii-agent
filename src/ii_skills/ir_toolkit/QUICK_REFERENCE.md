@@ -9,6 +9,12 @@
 | `PROMPT_LIBRARY.md` | 24 ready-to-use prompts (core + interview prep + Anki) |
 | `SLIDE_LAYOUTS.md` | Visual slide templates with ASCII diagrams |
 | `references/infra_jargon_metrics.md` | Infrastructure terminology guide |
+| `references/infra_ontology.yml` | Machine-readable infra taxonomy (asset classes, revenue profiles, financing, ops) |
+| `references/claim_evidence_schema.yml` | Schema for evidence-linked synthesis |
+| `references/ir_event_schemas.yml` | Typed event payloads for workflow telemetry |
+| `modules/terms_analyzer.md` | LP/GP deal-term analyzer spec (extraction, scoring, red flags) |
+| `modules/company_profiles/bip.yml` | Brookfield Infrastructure Partners profile skeleton |
+| `ROADMAP_II_AGENT_IR_TOOLKIT.md` | Expansion game plan (ontology, term analytics, BIP, benchmarking) |
 
 ---
 
@@ -35,6 +41,12 @@
 | "leverage" | Leverage & Coverage | Leverage Profile |
 | "pipeline" | Fundraising Pipeline | Pipeline Slide |
 | "benchmark" | Peer Benchmark | Benchmark Slide |
+| "term analysis" | Term Extraction, LP-Friendliness Scorecard | Term Sheet Overview, Terms Quality Summary |
+| "red flags" | Red-Flag Register | Negotiation Priorities |
+| "negotiation" | Negotiation Priorities Summary | Negotiation Priorities |
+| "term comparison" | Term Comparison (Fund-over-Fund) | Terms Evolution |
+| "BIP" / "Brookfield" | BIP Profile Pack | BIP Monitoring Views |
+| "claim evidence" | Claim-Evidence Graph | Evidence Trail (footnotes) |
 
 ## Case Type → Module Set
 
@@ -93,6 +105,10 @@ Slides: 12-16 slides (Full LP Update + Outlook + Strategic Discussion)
 | 60-second pitch | 22 | Scripted verbal pitch |
 | IR fundamentals flashcards | 23 | 80-card Anki TSV |
 | Case-specific flashcards | 24 | 50-card Anki TSV |
+| Term sheet red-flag scan | 25 | Red-flag register + negotiation priorities |
+| Negotiation priorities memo | 26 | 1-page negotiation summary |
+| Term comparison (fund vs peers) | 27 | Side-by-side term comparison |
+| LP-friendliness scorecard | 28 | Scored term quality assessment |
 
 ## Phased Workflow Summary
 

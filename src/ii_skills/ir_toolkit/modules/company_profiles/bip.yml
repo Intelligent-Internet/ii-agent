@@ -1,0 +1,299 @@
+# Company Profile: Brookfield Infrastructure Partners (BIP / BIPC)
+# Prebuilt profile skeleton for IR intelligence workflows
+# See ROADMAP_II_AGENT_IR_TOOLKIT.md § 6
+
+version: "1.0"
+last_updated: "2026-02-05"
+status: skeleton  # skeleton → draft → validated → production
+
+# ─────────────────────────────────────────────
+# Entity Information
+# ─────────────────────────────────────────────
+entity:
+  legal_name: Brookfield Infrastructure Partners L.P.
+  ticker_lp: BIP.UN (TSX) / BIP (NYSE)
+  ticker_corp: BIPC (TSX / NYSE)
+  parent: Brookfield Asset Management (BAM)
+  structure: Master limited partnership (BIP) + C-corp mirror (BIPC)
+  domicile: Bermuda (LP) / Canada (Corp)
+  listing_currency: USD
+  fiscal_year_end: December 31
+  index_memberships: [S&P/TSX Composite, S&P Global Infrastructure]
+
+# ─────────────────────────────────────────────
+# Segment Taxonomy
+# ─────────────────────────────────────────────
+segments:
+  utilities:
+    description: Regulated or contracted utilities (gas, electric distribution)
+    ontology_mapping: utilities  # maps to infra_ontology.yml
+    revenue_profile: regulated
+    geographic_exposure: [North America, South America, Australasia]
+    key_assets_examples:
+      - name: "Brazilian regulated gas distribution"
+        type: gas_distribution
+      - name: "UK regulated distribution"
+        type: electric_distribution
+
+  transport:
+    description: Toll roads, rail, ports
+    ontology_mapping: transport
+    revenue_profile: [contracted, regulated, availability_based]
+    geographic_exposure: [South America, India, North America, Australasia]
+    key_assets_examples:
+      - name: "Brazilian toll roads"
+        type: toll_roads
+      - name: "Australian rail operation"
+        type: rail_freight
+      - name: "North American port terminals"
+        type: ports_and_terminals
+
+  midstream:
+    description: Natural gas pipelines and processing
+    ontology_mapping: midstream
+    revenue_profile: [contracted, take_or_pay]
+    geographic_exposure: [North America]
+    key_assets_examples:
+      - name: "Western Canadian gas gathering and processing"
+        type: gathering_systems
+      - name: "Heartland Petrochemical Complex"
+        type: ngl_processing
+
+  data:
+    description: Data centers, fiber, telecom towers
+    ontology_mapping: data_infrastructure
+    revenue_profile: [contracted, cpi_indexed]
+    geographic_exposure: [Global]
+    key_assets_examples:
+      - name: "Indian telecom towers"
+        type: telecom_towers
+      - name: "French fiber-to-the-home network"
+        type: fiber_networks
+
+# ─────────────────────────────────────────────
+# Historical KPI Dictionary
+# ─────────────────────────────────────────────
+# Populate with actuals from SEC filings (20-F) and supplemental info
+kpi_dictionary:
+  ffo_per_unit:
+    label: FFO per Unit
+    unit: USD
+    source: Supplemental Information
+    history: {}  # {period: value} — populate from filings
+
+  affo_per_unit:
+    label: AFFO per Unit
+    unit: USD
+    source: Supplemental Information
+    history: {}
+
+  distribution_per_unit:
+    label: Distribution per Unit (annualized)
+    unit: USD
+    source: Press releases
+    history: {}
+
+  distribution_growth_rate:
+    label: Year-over-Year Distribution Growth
+    unit: "%"
+    target_range: [5, 9]  # management long-term guidance
+    history: {}
+
+  ffo_payout_ratio:
+    label: FFO Payout Ratio
+    unit: "%"
+    healthy_range: [60, 80]
+    history: {}
+
+  organic_growth_rate:
+    label: Organic FFO Growth (same-store)
+    unit: "%"
+    source: MD&A
+    history: {}
+
+  debt_to_ebitda:
+    label: Proportionate Net Debt / EBITDA
+    unit: "x"
+    target: "<6.0x at asset level"
+    history: {}
+
+  contracted_revenue_pct:
+    label: Revenue from Contracted or Regulated Sources
+    unit: "%"
+    target: ">85%"
+    history: {}
+
+  inflation_linkage_pct:
+    label: Revenue with Inflation Escalators
+    unit: "%"
+    history: {}
+
+  weighted_avg_contract_life:
+    label: Weighted Average Remaining Contract Life
+    unit: years
+    history: {}
+
+# ─────────────────────────────────────────────
+# Capital Allocation Framework
+# ─────────────────────────────────────────────
+capital_allocation:
+  strategy: >
+    Acquire high-quality infrastructure assets at value; fund through
+    asset recycling and retained cash flow; target 12-15% total return
+    composed of 5-9% distribution growth + 3-4% organic FFO growth
+    + value-enhancing capital deployment.
+
+  funding_sources:
+    - retained_cash_flow
+    - asset_recycling         # sell mature assets at premium
+    - equity_issuance         # primarily BIPC shares
+    - debt_at_asset_level     # non-recourse project finance
+    - brookfield_co_investment
+
+  return_composition:
+    distribution_yield: "4-6% current"
+    distribution_growth: "5-9% annually (management target)"
+    total_return_target: "12-15%"
+
+  asset_recycling_philosophy: >
+    Sell de-risked, mature assets to lower-cost-of-capital buyers (pensions,
+    sovereign wealth). Redeploy proceeds into higher-return greenfield or
+    value-add opportunities. Typical hold period: 7-10 years.
+
+# ─────────────────────────────────────────────
+# Distribution / Payout Analysis
+# ─────────────────────────────────────────────
+distribution_framing:
+  key_questions:
+    - Is distribution growth funded by FFO growth or debt/equity issuance?
+    - What is the FFO payout ratio trend?
+    - How sustainable is the 5-9% growth target?
+    - What is the cash tax shield from LP structure depreciation?
+
+  risk_factors:
+    - asset_recycling_execution   # dependent on selling assets at premium
+    - fx_impact                   # ~50% non-USD earnings
+    - interest_rate_sensitivity   # floating rate exposure at asset level
+    - concentrated_counterparty   # some large single-counterparty assets
+    - brookfield_governance       # BAM as GP introduces alignment questions
+
+  monitoring_kpis:
+    - ffo_payout_ratio
+    - distribution_coverage_ratio
+    - organic_vs_acquisition_ffo_growth
+    - debt_maturity_profile
+
+# ─────────────────────────────────────────────
+# Leverage & Refinancing Watchlist
+# ─────────────────────────────────────────────
+leverage_profile:
+  structure: >
+    Non-recourse, asset-level debt. No material corporate-level debt
+    at BIP partnership. Each operating entity has standalone financing.
+
+  key_metrics_to_track:
+    - proportionate_net_debt_to_ebitda
+    - weighted_avg_debt_maturity
+    - floating_rate_pct
+    - near_term_maturities   # next 24 months
+
+  refinancing_watchlist:
+    description: >
+      Track maturities by segment and size. Flag any maturity > $500M
+      within 12 months or any maturity into a rising-rate environment.
+    items: []  # populate from supplemental disclosures
+
+# ─────────────────────────────────────────────
+# Monitoring Dashboard Views (future implementation)
+# ─────────────────────────────────────────────
+monitoring_views:
+  distribution_sustainability:
+    description: FFO coverage, payout ratio trend, organic growth quality
+    refresh: quarterly
+    data_sources: [supplemental_info, press_releases]
+
+  maturity_wall:
+    description: Debt maturity ladder by segment with refinancing risk heat map
+    refresh: quarterly
+    data_sources: [supplemental_info, rating_agency_reports]
+
+  fx_rates_sensitivity:
+    description: FFO sensitivity to FX and interest rate moves
+    refresh: quarterly
+    data_sources: [md_and_a, supplemental_info]
+
+  regulatory_contract_calendar:
+    description: Upcoming regulatory resets and contract expirations
+    refresh: semi_annually
+    data_sources: [supplemental_info, regulatory_filings]
+
+# ─────────────────────────────────────────────
+# LP Q&A Topics (for Q&A simulator)
+# ─────────────────────────────────────────────
+lp_qa_topics:
+  - topic: Distribution sustainability
+    likely_questions:
+      - "How confident are you in maintaining 5-9% distribution growth?"
+      - "What happens to payout ratio if asset recycling slows?"
+      - "How much of FFO growth is organic vs. acquisition-driven?"
+    evidence_sources: [ffo_per_unit, distribution_growth_rate, ffo_payout_ratio]
+
+  - topic: Interest rate sensitivity
+    likely_questions:
+      - "What is your floating rate exposure and hedge position?"
+      - "How do rising rates affect acquisition economics?"
+      - "What is the refinancing risk in the next 24 months?"
+    evidence_sources: [debt_to_ebitda, near_term_maturities, floating_rate_pct]
+
+  - topic: Growth quality
+    likely_questions:
+      - "What is your organic growth rate vs. M&A contribution?"
+      - "How does asset recycling create value vs. just maintaining returns?"
+      - "Are you seeing competitive pressure on deal multiples?"
+    evidence_sources: [organic_growth_rate, capital_allocation]
+
+  - topic: Governance and alignment
+    likely_questions:
+      - "How do BAM economics align with BIP unitholders?"
+      - "What happens if BAM is conflicted on an allocation?"
+      - "Why should LPs prefer BIP vs. Brookfield Infrastructure Fund?"
+    evidence_sources: [brookfield_governance, capital_allocation]
+
+# ─────────────────────────────────────────────
+# Source Ingestion Checklist
+# ─────────────────────────────────────────────
+source_checklist:
+  - source: "20-F Annual Report (SEC EDGAR)"
+    frequency: annual
+    priority: critical
+    status: not_ingested
+
+  - source: "6-K Quarterly Filings (SEC EDGAR)"
+    frequency: quarterly
+    priority: critical
+    status: not_ingested
+
+  - source: "Supplemental Information (Investor page)"
+    frequency: quarterly
+    priority: critical
+    status: not_ingested
+
+  - source: "Earnings Call Transcripts"
+    frequency: quarterly
+    priority: high
+    status: not_ingested
+
+  - source: "Investor Day Presentations"
+    frequency: periodic
+    priority: high
+    status: not_ingested
+
+  - source: "Rating Agency Reports (S&P, Moody's, DBRS)"
+    frequency: as_published
+    priority: medium
+    status: not_ingested
+
+  - source: "Peer Supplemental (Brookfield Renewable, TransAlta, AltaGas)"
+    frequency: quarterly
+    priority: medium
+    status: not_ingested

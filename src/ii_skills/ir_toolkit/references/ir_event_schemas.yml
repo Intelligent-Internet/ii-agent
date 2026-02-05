@@ -1,0 +1,215 @@
+# IR Event Schemas — Typed Payloads for Workflow Telemetry
+# Extends ii_skills/shared/event_schema.py with IR-specific events
+# See ROADMAP_II_AGENT_IR_TOOLKIT.md § 2.4
+
+version: "1.0"
+last_updated: "2026-02-05"
+
+# ─────────────────────────────────────────────
+# Event: doc_extracted
+# Emitted when a source document is ingested and parsed
+# ─────────────────────────────────────────────
+doc_extracted:
+  description: A source document has been ingested, classified, and initial entities extracted
+  phase: ingest
+  fields:
+    event_id:
+      type: string
+      format: "EVT-DOC-{uuid}"
+    timestamp:
+      type: datetime
+    run_id:
+      type: string
+      description: Parent run identifier for tracing
+    document_class:
+      type: enum
+      values:
+        - sec_filing
+        - earnings_transcript
+        - investor_presentation
+        - quarterly_letter
+        - lpa_document
+        - side_letter
+        - benchmark_report
+        - third_party_research
+        - internal_model
+    document_name:
+      type: string
+      example: "BIP_Q3_2025_Supplemental.pdf"
+    period:
+      type: string
+      description: Reporting period covered
+      example: "Q3 2025"
+    entities_extracted:
+      type: list[string]
+      description: Named entities identified (companies, funds, assets)
+      example: ["Brookfield Infrastructure Partners", "Fund IV", "Heartland Petrochemical Complex"]
+    page_count:
+      type: integer
+    sections_parsed:
+      type: integer
+    extraction_confidence:
+      type: float
+      range: [0.0, 1.0]
+    warnings:
+      type: list[string]
+      description: Issues encountered during extraction
+      example: ["Table on p.15 could not be parsed — image-based"]
+
+# ─────────────────────────────────────────────
+# Event: kpi_reconciled
+# Emitted when a KPI value is updated or confirmed vs. prior period
+# ─────────────────────────────────────────────
+kpi_reconciled:
+  description: A KPI has been extracted and reconciled against prior-period value
+  phase: extract
+  fields:
+    event_id:
+      type: string
+      format: "EVT-KPI-{uuid}"
+    timestamp:
+      type: datetime
+    run_id:
+      type: string
+    metric_name:
+      type: string
+      example: "dscr"
+    asset_or_fund:
+      type: string
+      description: Entity the KPI belongs to
+      example: "Fund IV — Utilities Segment"
+    old_value:
+      type: number
+      nullable: true
+      description: Prior-period value (null if first observation)
+    new_value:
+      type: number
+    unit:
+      type: string
+      example: "x"
+    period_old:
+      type: string
+      nullable: true
+      example: "Q2 2025"
+    period_new:
+      type: string
+      example: "Q3 2025"
+    delta:
+      type: number
+      nullable: true
+      description: new_value - old_value
+    delta_pct:
+      type: number
+      nullable: true
+      description: Percentage change
+    source_provenance:
+      type: object
+      fields:
+        document: string
+        page_or_section: string
+        extraction_method:
+          type: enum
+          values: [table_parse, text_regex, manual_input, model_calculation]
+    reconciliation_status:
+      type: enum
+      values:
+        - confirmed      # matches or is consistent with prior
+        - updated        # legitimately changed
+        - discrepancy    # does not reconcile — requires investigation
+        - new_metric     # first time this KPI is tracked
+    flags:
+      type: list[string]
+      description: Anomaly or quality flags
+      example: ["delta > 20% — verify source", "unit changed from % to bps"]
+
+# ─────────────────────────────────────────────
+# Event: term_risk_flagged
+# Emitted when a deal-term red flag or notable provision is detected
+# ─────────────────────────────────────────────
+term_risk_flagged:
+  description: A fund or co-invest term has been flagged as a risk or negotiation priority
+  phase: extract
+  fields:
+    event_id:
+      type: string
+      format: "EVT-TERM-{uuid}"
+    timestamp:
+      type: datetime
+    run_id:
+      type: string
+    clause_id:
+      type: string
+      description: Reference to the specific LPA section or clause
+      example: "LPA § 8.3(b) — Valuation Policy"
+    clause_text:
+      type: string
+      description: Relevant excerpt from the document
+    risk_type:
+      type: enum
+      values:
+        - economics_risk          # fee, carry, hurdle issues
+        - governance_risk         # LP oversight, voting, key-person
+        - transparency_risk       # reporting, audit, valuation discretion
+        - liquidity_risk          # transfer, secondary, lock-up
+        - conflict_risk           # related-party, allocation, co-invest
+        - structural_risk         # fund life, extension, recycling
+    severity:
+      type: enum
+      values: [low, medium, high, critical]
+    description:
+      type: string
+      description: Plain-language explanation of the risk
+      example: "Broad GP discretion on asset valuation with no independent valuation committee"
+    lp_friendliness_impact:
+      type: float
+      range: [-1.0, 0.0]
+      description: Negative score representing impact on LP-friendliness
+    gp_flexibility_impact:
+      type: float
+      range: [0.0, 1.0]
+      description: Positive score representing GP flexibility gained
+    benchmark_comparison:
+      type: string
+      nullable: true
+      description: How this compares to ILPA best practices or market standard
+      example: "Below ILPA best practice — recommends independent valuation agent"
+    negotiation_priority:
+      type: enum
+      values: [must_negotiate, should_negotiate, nice_to_have, acceptable]
+    suggested_revision:
+      type: string
+      nullable: true
+      description: Recommended language or structural change
+      example: "Request annual independent third-party valuation with LP committee review"
+
+# ─────────────────────────────────────────────
+# Aggregate Telemetry Fields (per run)
+# ─────────────────────────────────────────────
+run_telemetry_extensions:
+  description: IR-specific fields added to the run-level telemetry summary
+  fields:
+    evidence_coverage_ratio:
+      type: float
+      definition: claims_with_evidence / total_claims
+      target: ">= 0.95"
+    uncited_claim_count:
+      type: integer
+      definition: Number of claims with no evidence_id
+      target: 0
+    term_sheet_fields_extracted:
+      type: integer
+      definition: Number of LP/GP term fields successfully parsed
+    term_red_flags_count:
+      type: integer
+      definition: Number of term_risk_flagged events with severity >= medium
+    benchmark_confidence_score:
+      type: float
+      range: [0.0, 1.0]
+      definition: Weighted confidence across all benchmark comparisons in the run
+    kpi_discrepancy_count:
+      type: integer
+      definition: Number of kpi_reconciled events with status = discrepancy
+    documents_ingested:
+      type: integer
+    total_evidence_nodes:
+      type: integer

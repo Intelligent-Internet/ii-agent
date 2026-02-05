@@ -1,6 +1,6 @@
 # Prompt Library — Infrastructure IR
 
-*Ready-to-use prompts for common IR analysis requests. 24 prompts covering core deliverables, interview prep, and specialized analyses.*
+*Ready-to-use prompts for common IR analysis requests. 28 prompts covering core deliverables, interview prep, specialized analyses, and LP/GP term negotiation.*
 
 ---
 
@@ -689,6 +689,149 @@ Format: question\tanswer
 
 ---
 
+## LP/GP Term Negotiation Prompts (Prompts 25-28)
+
+### 25. Term Sheet Red-Flag Scan
+
+**Prompt:**
+```
+Scan the attached term sheet or LPA excerpt for LP red flags. For each
+flagged item, provide the clause reference, a plain-language risk
+description, ILPA benchmark comparison, and a suggested revision.
+
+Inputs needed:
+- Term sheet text or LPA excerpt
+- Fund strategy and vintage (for market comparison)
+- Any known side-letter provisions
+
+Output:
+1. Red-Flag Register (table: # | Clause | Risk | Severity | ILPA Benchmark | Suggested Revision)
+2. One-page Negotiation Priorities summary (must / should / nice-to-have)
+3. Overall LP-Friendliness score (0-100)
+
+Key areas to scan:
+- Management fee basis and step-down
+- Carry waterfall and clawback
+- Key-person and no-fault divorce thresholds
+- Valuation policy and LP oversight
+- Co-invest economics and allocation
+- Recycling and extension provisions
+- Related-party and conflict provisions
+```
+
+**Sample Output:**
+- Red-Flag Register with 8-12 flagged items
+- Negotiation Priorities one-pager
+- LP-Friendliness score with subscores
+
+---
+
+### 26. Negotiation Priorities Memo
+
+**Prompt:**
+```
+Using the term extraction and red-flag analysis, draft a one-page
+Negotiation Priorities memo for the LP investment committee.
+
+Inputs needed:
+- Red-Flag Register from Prompt 25
+- LP-Friendliness and Alignment scores
+- Prior fund terms (if available, for comparison)
+- LP's specific negotiation priorities or constraints
+
+Format:
+1. Composite Scores (LP-Friendliness, GP-Flexibility, Alignment)
+2. MUST NEGOTIATE items (critical/high severity)
+3. SHOULD NEGOTIATE items (medium severity)
+4. NICE-TO-HAVE improvements
+5. Term Comparison vs. Prior Fund (table)
+6. Recommended side-letter requests
+
+Tone: Factual, action-oriented, suitable for investment committee review.
+```
+
+**Sample Output:**
+- 1-page negotiation memo with prioritized action items
+
+---
+
+### 27. Term Comparison (Fund vs. Peers)
+
+**Prompt:**
+```
+Create a side-by-side comparison of fund terms against peer funds
+and ILPA Principles 3.0 benchmarks.
+
+Inputs needed:
+- Target fund term sheet
+- 2-3 peer fund term sheets (or market median data)
+- ILPA Principles reference points
+
+Output Excel table:
+| Term | Target Fund | Peer 1 | Peer 2 | Market Median | ILPA Best Practice | Assessment |
+
+Cover these fields:
+- Management fee (commitment period + post-investment)
+- Carried interest % and hurdle rate
+- Catch-up structure
+- GP commitment ($ and %)
+- Key-person provision
+- No-fault divorce threshold
+- Fund life and extension options
+- Recycling provisions
+- Co-invest fee/carry policy
+- Valuation policy
+- Transfer restrictions
+- LPAC rights
+
+Assessment column: "LP-favorable" / "Market" / "GP-favorable" / "Red flag"
+
+Paired slide: Summary heat map showing LP vs. GP positioning by term category.
+```
+
+**Sample Output:**
+- Excel: Term comparison table (12+ rows)
+- Slide: "Fund IV terms are market-standard on economics, below-market on governance"
+
+---
+
+### 28. LP-Friendliness Scorecard
+
+**Prompt:**
+```
+Score the fund's terms on LP-friendliness across four dimensions.
+Provide an explainable scorecard suitable for LP committee reporting.
+
+Inputs needed:
+- Complete term sheet or LPA summary
+- Fund strategy and vintage
+- Market benchmarks (optional — will use defaults if not provided)
+
+Scoring Framework:
+1. ECONOMICS (30% weight): Fee level, carry alignment, GP co-invest, fee offsets
+2. GOVERNANCE (30% weight): Key-person, no-fault, LPAC scope, removal rights
+3. TRANSPARENCY (20% weight): Reporting, valuation policy, audit, information rights
+4. LIQUIDITY (20% weight): Transfer, secondary, distribution mechanics, lock-up
+
+For each dimension:
+- Score 1-5 with rationale
+- Benchmark vs. ILPA and market median
+- Specific items driving the score
+
+Output:
+1. Scorecard table (Dimension | Score | Weight | Weighted | Key Drivers)
+2. Composite LP-Friendliness Score (0-100)
+3. Radar chart data (4-axis)
+4. 3-5 sentence executive summary
+5. Paired slide with radar chart and composite score
+```
+
+**Sample Output:**
+- Excel: Scored rubric with weighted composite
+- Slide: "LP-Friendliness: 72/100 — strong economics, governance needs improvement"
+
+---
+
 ## Prompt Structure Template
 
 For any IR analysis, use this structure:
@@ -713,8 +856,12 @@ For any IR analysis, use this structure:
 | 15, 17 | Web | Presentations |
 | 19-22 | Web | Interview prep docs |
 | 23-24 | Web | Anki TSV files |
+| 25 | Excel + Web | Red-flag register + negotiation priorities |
+| 26 | Web | Negotiation priorities memo |
+| 27 | Excel + Web | Term comparison table + slide |
+| 28 | Excel + Web | LP-friendliness scorecard + slide |
 
 ---
 
 *Version: 2.0 | Last Updated: February 2026*
-*24 prompts covering core deliverables, additional analysis, and interview preparation*
+*28 prompts covering core deliverables, additional analysis, interview preparation, and LP/GP term negotiation*

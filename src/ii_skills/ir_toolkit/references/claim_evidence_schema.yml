@@ -1,0 +1,184 @@
+# Claim-Evidence Graph Schema
+# Ensures every summary assertion maps to source evidence
+# See ROADMAP_II_AGENT_IR_TOOLKIT.md § 4.1
+
+version: "1.0"
+last_updated: "2026-02-05"
+
+# ─────────────────────────────────────────────
+# Core Objects
+# ─────────────────────────────────────────────
+
+claim:
+  description: An assertion made in an executive summary, slide headline, or narrative section
+  fields:
+    claim_id:
+      type: string
+      format: "CLM-{sequential}"
+      example: "CLM-001"
+    text:
+      type: string
+      description: The claim text as it appears in the output
+      example: "Fund IV cash yield remains above 8% supported by contracted revenue"
+    confidence:
+      type: float
+      range: [0.0, 1.0]
+      description: Confidence level based on evidence strength
+      thresholds:
+        high: ">= 0.8 — multiple corroborating sources"
+        medium: "0.5 - 0.79 — single strong source or partial corroboration"
+        low: "< 0.5 — extrapolation or estimate"
+    category:
+      type: enum
+      values:
+        - performance          # fund or asset returns
+        - cash_flow            # distribution, coverage, yield
+        - valuation            # NAV, multiples, sensitivity
+        - risk                 # risk factor, mitigation claim
+        - operational          # asset KPI, availability, throughput
+        - market               # macro, benchmark, peer comparison
+        - terms                # fee, carry, governance
+        - outlook              # forward-looking statement
+    output_location:
+      type: string
+      description: Where this claim appears in the deliverable
+      example: "Executive Summary Slide, bullet 2"
+    evidence_ids:
+      type: list[string]
+      description: References to supporting evidence nodes
+      min_required: 1
+    contradictory_evidence_ids:
+      type: list[string]
+      description: References to evidence that conflicts with this claim
+      default: []
+    recommendation_id:
+      type: string
+      nullable: true
+      description: Link to resulting recommendation if applicable
+
+evidence_node:
+  description: A discrete piece of supporting data from a source document
+  fields:
+    evidence_id:
+      type: string
+      format: "EV-{sequential}"
+      example: "EV-001"
+    source_document:
+      type: string
+      description: Filing name, transcript title, or deck filename
+      example: "BIP Q3 2025 Supplemental Information"
+    source_type:
+      type: enum
+      values:
+        - sec_filing           # 10-K, 10-Q, 20-F, 6-K
+        - earnings_transcript  # quarterly earnings call
+        - investor_presentation
+        - quarterly_letter     # GP letter to LPs
+        - lpa_document         # Limited Partnership Agreement
+        - side_letter
+        - data_room_document
+        - benchmark_report     # Cambridge, Preqin, GRESB
+        - third_party_research
+        - internal_model       # IR team's own analysis
+    section:
+      type: string
+      description: Section or page reference within the source
+      example: "p.12, Segment Overview — Utilities"
+    period:
+      type: string
+      description: Reporting period the evidence covers
+      example: "Q3 2025"
+    extracted_text:
+      type: string
+      description: Verbatim quote or paraphrased data point
+    extracted_value:
+      type: object
+      nullable: true
+      description: Structured numeric data if applicable
+      fields:
+        metric: string
+        value: number
+        unit: string
+        period: string
+    retrieval_date:
+      type: date
+      description: When the evidence was extracted or last verified
+
+contradictory_evidence:
+  description: Evidence that conflicts with or weakens a claim
+  fields:
+    evidence_id:
+      type: string
+      description: Reference to the evidence_node
+    conflict_type:
+      type: enum
+      values:
+        - direct_contradiction  # opposite conclusion from same metric
+        - magnitude_disagreement # same direction but materially different scale
+        - temporal_mismatch     # data from different period undermines claim
+        - methodological        # different calculation yields different result
+    severity:
+      type: enum
+      values: [low, medium, high]
+    resolution_note:
+      type: string
+      nullable: true
+      description: How the conflict was resolved or disclosed
+
+recommendation:
+  description: An actionable recommendation derived from claims and evidence
+  fields:
+    recommendation_id:
+      type: string
+      format: "REC-{sequential}"
+    text:
+      type: string
+      example: "Recommend highlighting cash yield resilience in LP letter; flag refinancing risk in appendix"
+    priority:
+      type: enum
+      values: [critical, important, informational]
+    supporting_claim_ids:
+      type: list[string]
+    action_owner:
+      type: string
+      nullable: true
+      description: IR team member or function responsible
+
+# ─────────────────────────────────────────────
+# Quality Rules
+# ─────────────────────────────────────────────
+
+quality_rules:
+  - rule: Every claim must have at least one evidence_id
+    enforcement: hard_fail
+    qa_metric: evidence_coverage_ratio
+
+  - rule: Claims with confidence < 0.5 must be flagged for review
+    enforcement: warning
+    qa_metric: low_confidence_claim_count
+
+  - rule: Contradictory evidence must be disclosed in output footnotes
+    enforcement: hard_fail
+    qa_metric: undisclosed_contradiction_count
+
+  - rule: All numeric claims must trace to an extracted_value
+    enforcement: warning
+    qa_metric: uncited_numeric_count
+
+  - rule: Evidence older than 2 quarters should be flagged as stale
+    enforcement: warning
+    qa_metric: stale_evidence_count
+
+# ─────────────────────────────────────────────
+# Output Integration
+# ─────────────────────────────────────────────
+
+output_integration:
+  executive_summary:
+    description: Each bullet maps to claim_ids; footnotes cite evidence_ids
+  slide_headlines:
+    description: Headline text is a claim; speaker notes include evidence trail
+  excel_annotations:
+    description: Cell comments link to evidence_ids for key metrics
+  qa_report:
+    description: Summary table of claims, evidence coverage, contradictions, and gaps

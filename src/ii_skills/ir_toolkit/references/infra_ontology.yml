@@ -1,0 +1,227 @@
+# Infrastructure Ontology — Machine-Readable Taxonomy
+# Companion to infra_jargon_metrics.md (human-readable reference)
+# See ROADMAP_II_AGENT_IR_TOOLKIT.md § 3.1 for design rationale
+
+version: "1.0"
+last_updated: "2026-02-05"
+
+# ─────────────────────────────────────────────
+# Asset Classes
+# ─────────────────────────────────────────────
+asset_classes:
+  transport:
+    label: Transportation
+    subcategories:
+      - toll_roads
+      - airports
+      - ports_and_terminals
+      - rail_freight
+      - mass_transit
+    typical_revenue_profile: [contracted, regulated, availability_based]
+    typical_contract_life_years: [15, 30]
+    key_kpis: [traffic_volume, availability, toll_rate, capex_per_lane_km]
+
+  midstream:
+    label: Midstream Energy
+    subcategories:
+      - gas_pipelines
+      - ngl_processing
+      - lng_terminals
+      - storage_facilities
+      - gathering_systems
+    typical_revenue_profile: [contracted, take_or_pay]
+    typical_contract_life_years: [10, 25]
+    key_kpis: [throughput, contracted_capacity_pct, counterparty_credit_rating, recontracting_spread]
+
+  utilities:
+    label: Regulated Utilities
+    subcategories:
+      - electric_distribution
+      - electric_transmission
+      - gas_distribution
+      - water_and_wastewater
+      - district_energy
+    typical_revenue_profile: [regulated]
+    typical_contract_life_years: [perpetual]
+    key_kpis: [rate_base, allowed_roe, regulatory_lag_months, capex_to_rate_base_pct]
+
+  data_infrastructure:
+    label: Digital / Data Infrastructure
+    subcategories:
+      - data_centers
+      - fiber_networks
+      - telecom_towers
+      - small_cells
+      - subsea_cables
+    typical_revenue_profile: [contracted, cpi_indexed]
+    typical_contract_life_years: [5, 15]
+    key_kpis: [utilization_pct, churn_rate, power_usage_effectiveness, arpu]
+
+  contracted_power:
+    label: Contracted Power Generation
+    subcategories:
+      - onshore_wind
+      - offshore_wind
+      - solar_pv
+      - hydro
+      - biomass
+      - battery_storage
+    typical_revenue_profile: [contracted, merchant, cpi_indexed]
+    typical_contract_life_years: [10, 25]
+    key_kpis: [capacity_factor, availability, ppa_price, curtailment_pct, merchant_exposure_pct]
+
+  regulated_networks:
+    label: Regulated Networks
+    subcategories:
+      - electricity_transmission
+      - gas_transmission
+      - water_networks
+    typical_revenue_profile: [regulated]
+    typical_contract_life_years: [perpetual]
+    key_kpis: [rab_growth_pct, totex_efficiency, outage_minutes, leakage_rate]
+
+# ─────────────────────────────────────────────
+# Revenue Profile Terms
+# ─────────────────────────────────────────────
+revenue_profiles:
+  contracted:
+    definition: Revenue secured under long-term offtake, capacity, or service agreements
+    risk_level: low
+    inflation_linkage: varies
+    typical_tenor_years: [10, 30]
+    counterparty_dependency: high
+
+  regulated:
+    definition: Revenue determined by a regulatory body (tariff, rate base, allowed return)
+    risk_level: low_to_medium
+    inflation_linkage: typically_partial
+    reset_frequency: [1, 5]  # years between rate reviews
+    political_risk: medium
+
+  merchant:
+    definition: Revenue exposed to market pricing (spot or short-term contracts)
+    risk_level: high
+    inflation_linkage: indirect
+    typical_tenor_years: [0, 2]
+    price_volatility: high
+
+  take_or_pay:
+    definition: Counterparty pays regardless of actual usage up to contracted volumes
+    risk_level: low
+    inflation_linkage: typically_cpi_indexed
+    volume_risk: minimal
+    counterparty_dependency: high
+
+  cpi_indexed:
+    definition: Revenue or tariff escalates with a consumer price index
+    risk_level: low
+    pass_through_lag_months: [0, 12]
+    floor: often_zero
+    cap: varies
+
+  availability_based:
+    definition: Revenue paid for asset availability, not actual throughput
+    risk_level: low
+    volume_risk: minimal
+    performance_penalty: deductions_for_downtime
+    typical_sectors: [transport, contracted_power]
+
+# ─────────────────────────────────────────────
+# Financing Terms
+# ─────────────────────────────────────────────
+financing_terms:
+  dscr:
+    label: Debt Service Coverage Ratio
+    definition: Cash available for debt service / debt service obligation
+    healthy_range: [1.3, 2.5]
+    covenant_typical: 1.2
+    stress_floor: 1.0
+
+  llcr:
+    label: Loan Life Coverage Ratio
+    definition: NPV of future cash flows over loan life / outstanding debt
+    healthy_range: [1.3, 2.0]
+    used_in: project_finance
+
+  sculpted_amortization:
+    label: Sculpted Amortization
+    definition: Debt repayment schedule shaped to match projected cash flow profile
+    advantage: optimizes_dscr_stability
+    typical_sectors: [transport, contracted_power]
+
+  bullet_maturity:
+    label: Bullet Maturity
+    definition: Full principal repayment at maturity (no interim amortization)
+    refinancing_risk: high
+    typical_tenor_years: [5, 7]
+
+  covenant_holiday:
+    label: Covenant Holiday
+    definition: Period during construction or ramp-up where covenants are waived
+    typical_duration_months: [12, 36]
+    risk: delayed_visibility_of_stress
+
+  cash_sweep:
+    label: Cash Sweep
+    definition: Mandatory excess cash flow applied to debt prepayment
+    trigger: typically_dscr_based
+    sweep_pct_range: [50, 100]
+
+  reserve_accounts:
+    label: Reserve Accounts
+    definition: Restricted cash balances (debt service, maintenance, distribution lock-up)
+    types: [debt_service_reserve, maintenance_reserve, distribution_reserve]
+    sizing: typically_6_months_debt_service
+
+# ─────────────────────────────────────────────
+# Operations Terms
+# ─────────────────────────────────────────────
+operations_terms:
+  forced_outage_factor:
+    label: Forced Outage Factor
+    definition: Unplanned downtime as a percentage of total hours
+    target: "<5%"
+    impact: availability_based_revenue_deductions
+
+  availability_factor:
+    label: Availability Factor
+    definition: Hours available for operation / total hours
+    target: ">95%"
+    sectors: [contracted_power, transport, data_infrastructure]
+
+  throughput:
+    label: Throughput
+    definition: Volume processed or transported (units vary by asset)
+    units: [bcf_per_day, mtpa, vehicles_per_day, mwh]
+    relevance: revenue_driver_for_volume_based_contracts
+
+  load_factor:
+    label: Load Factor
+    definition: Actual output / maximum possible output
+    range: [0.25, 0.95]
+    context: generation_assets_and_transport
+
+  heat_rate:
+    label: Heat Rate
+    definition: Energy input per unit of electricity output (thermal plants)
+    units: btu_per_kwh
+    lower_is_better: true
+
+  opex_per_unit:
+    label: Operating Cost per Unit
+    definition: Total operating cost divided by capacity or output measure
+    benchmarking: peer_comparison_metric
+    trend: should_decline_or_stay_flat
+
+# ─────────────────────────────────────────────
+# Semantic Tags (for extraction tagging)
+# ─────────────────────────────────────────────
+semantic_tags:
+  - asset_class          # maps to asset_classes above
+  - cash_flow_type       # maps to revenue_profiles above
+  - regulatory_exposure  # none | low | medium | high
+  - counterparty_risk    # investment_grade | sub_investment_grade | government | unrated
+  - inflation_linkage    # none | partial | full | capped
+  - contract_tenor       # short (<5y) | medium (5-15y) | long (>15y) | perpetual
+  - leverage_profile     # conservative | moderate | aggressive
+  - operational_risk     # low | medium | high
