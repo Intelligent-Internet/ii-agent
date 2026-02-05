@@ -221,7 +221,7 @@ All slides match Roberto's BCI/Northleaf case study style:
 For comprehensive design guidance, see:
 **[docs/skills/SLIDE_DESIGN_GUIDE.md](../../../../docs/skills/SLIDE_DESIGN_GUIDE.md)**
 
-This guide includes 14 professional slide templates extracted from TD Securities presentations:
+This guide includes 14 professional slide templates extracted from institutional IB presentations:
 
 | Template | Use For |
 |----------|---------|

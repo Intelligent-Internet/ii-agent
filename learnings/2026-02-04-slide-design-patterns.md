@@ -5,13 +5,12 @@
 
 ## What Happened
 
-Analyzed 25+ slides from user's Historical Work folder and Infrastructure Sample Slides to extract professional IB/IR slide design patterns:
-- TD Securities: Florence Strategic Rationale (2022)
-- TD Securities: Northview Acquisition Disposition (2025)
-- TD Securities: Spring Living IPO Mandate (2025)
-- PropelR Investor Presentation (2025)
-- Brookfield Infrastructure Partners: Investor Day Presentations (2021-2025)
-- Brookfield Infrastructure Partners: Corporate Profile (2026)
+Analyzed 25+ slides from user's Historical Work folder and Infrastructure Sample Slides to extract professional IB/IR slide design patterns from institutional-quality presentations including:
+- IPO mandates and strategic rationale decks
+- Acquisition/disposition materials
+- Private equity investor presentations
+- Infrastructure fund investor day presentations
+- Corporate profiles
 
 ## What Was Learned
 
@@ -25,7 +24,7 @@ Analyzed 25+ slides from user's Historical Work folder and Infrastructure Sample
 
 ### 27 Slide Templates Identified
 
-**TD Securities / Deal-Focused (Templates 1-14):**
+**Deal-Focused Templates (1-14):**
 - Executive Summary, Numbered Key Points, Peer Benchmarking
 - Comps Table, Time Series, Before/After, Sources & Uses
 - Scenario Analysis, Horizontal Bar + Pie, Gantt Chart
@@ -38,7 +37,7 @@ Analyzed 25+ slides from user's Historical Work folder and Infrastructure Sample
 - Platform Overview, Deal Showcase Grid, Investment Perimeter
 - Cost of Capital Spectrum
 
-### Color Palette (TD Securities Style)
+### Color Palette (Professional IB Style)
 
 - Primary (Subject): #00A651 (Green)
 - Secondary: #006341 (Dark Green)

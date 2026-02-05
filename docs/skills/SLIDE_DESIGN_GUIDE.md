@@ -16,7 +16,7 @@ Best practices for IB/PE/IR slide generation extracted from institutional-qualit
 
 | Element | Color | Hex |
 |---------|-------|-----|
-| Primary (Subject) | TD Green | `#00A651` |
+| Primary (Subject) | Green | `#00A651` |
 | Secondary (Comparison) | Dark Green | `#006341` |
 | Neutral (Peers) | Gray | `#808080` |
 | Headers | Dark Gray | `#4A4A4A` |
@@ -61,7 +61,7 @@ Best practices for IB/PE/IR slide generation extracted from institutional-qualit
 └─────────────────────────────────────────────────────────────┘
 ```
 
-**Pattern:** Spring Living IPO Introduction (Slide 4)
+**Pattern:** IPO Introduction Slide
 
 ---
 
@@ -94,7 +94,7 @@ Best practices for IB/PE/IR slide generation extracted from institutional-qualit
 └─────────────────────────────────────────────────────────────┘
 ```
 
-**Pattern:** Florence Strategic Rationale (Slide 26)
+**Pattern:** Strategic Rationale Slide
 
 ---
 
@@ -132,7 +132,7 @@ Best practices for IB/PE/IR slide generation extracted from institutional-qualit
 - Company logos below bars
 - Values above bars
 
-**Pattern:** Northview REIT Benchmarking (Slide 10)
+**Pattern:** REIT Benchmarking Slide
 
 ---
 
@@ -171,7 +171,7 @@ Best practices for IB/PE/IR slide generation extracted from institutional-qualit
 - Negative values in parentheses and red
 - Consistent decimal places per column
 
-**Pattern:** Northview Multi-Residential Comps (Slide 22)
+**Pattern:** Multi-Residential Comps Slide
 
 ---
 
@@ -213,7 +213,7 @@ Best practices for IB/PE/IR slide generation extracted from institutional-qualit
 - Event annotations with callout boxes
 - Legend at bottom with cumulative returns
 
-**Pattern:** Spring Living Price Performance (Slide 16), InterRent Multiple Expansion (Slide 35)
+**Pattern:** Price Performance / Multiple Expansion Slide
 
 ---
 
@@ -257,7 +257,7 @@ Best practices for IB/PE/IR slide generation extracted from institutional-qualit
 - KPI summary boxes with key metrics
 - Green for positive changes
 
-**Pattern:** Spring Living Value-Add Strategy (Slide 23)
+**Pattern:** Value-Add Strategy Slide
 
 ---
 
@@ -307,7 +307,7 @@ Best practices for IB/PE/IR slide generation extracted from institutional-qualit
 - Totals rows highlighted
 - Clear separation between sections
 
-**Pattern:** Spring Living IPO Analysis (Slide 30)
+**Pattern:** IPO Analysis Slide
 
 ---
 
@@ -358,7 +358,7 @@ Best practices for IB/PE/IR slide generation extracted from institutional-qualit
 - Accretion/dilution analysis
 - Color-coded positive (green) / negative (red) impacts
 
-**Pattern:** Northview Scenario Analysis (Slide 17)
+**Pattern:** Scenario Analysis Slide
 
 ---
 
@@ -403,7 +403,7 @@ Best practices for IB/PE/IR slide generation extracted from institutional-qualit
 - Green bars for subject company metrics
 - Clear legend and source
 
-**Pattern:** Northview Growth Cities (Slide 5)
+**Pattern:** Market Exposure / Growth Cities Slide
 
 ---
 
@@ -446,7 +446,7 @@ Best practices for IB/PE/IR slide generation extracted from institutional-qualit
 - Clear time axis (months or quarters)
 - Workstreams listed vertically
 
-**Pattern:** Spring Living IPO Timeline (Slide 51)
+**Pattern:** IPO Timeline Slide
 
 ---
 
@@ -488,7 +488,7 @@ Best practices for IB/PE/IR slide generation extracted from institutional-qualit
 - Summary metric (avg/IRR) in final column
 - Clear color scale legend
 
-**Pattern:** PropelR Annual Returns (Slide 10)
+**Pattern:** Annual Returns Heat Map Slide
 
 ---
 
@@ -531,7 +531,7 @@ Best practices for IB/PE/IR slide generation extracted from institutional-qualit
 - Clean column headers with sections
 - Key takeaway at bottom
 
-**Pattern:** PropelR Portfolio Valuations (Slide 14)
+**Pattern:** Portfolio Valuations Slide
 
 ---
 
@@ -571,7 +571,7 @@ Best practices for IB/PE/IR slide generation extracted from institutional-qualit
 - Clear legend
 - Infrastructure/context overlay (transit, highways)
 
-**Pattern:** Florence Toronto Map (Slide 17)
+**Pattern:** Geographic Market Map Slide
 
 ---
 
@@ -615,7 +615,7 @@ Best practices for IB/PE/IR slide generation extracted from institutional-qualit
 - Additional metrics section below
 - Consistent decimal formatting
 
-**Pattern:** Spring Living Debt Benchmarking (Slide 60)
+**Pattern:** Debt Benchmarking Slide
 
 ---
 
@@ -721,7 +721,7 @@ The green bar at the bottom should:
 
 ## Infrastructure Investor Day Templates
 
-*Additional patterns extracted from Brookfield Infrastructure Partners (BIP) investor day presentations (2021-2025).*
+*Additional patterns extracted from institutional infrastructure investor day presentations.*
 
 ### Template 15: Mission Statement / Strategic Focus
 
@@ -753,7 +753,7 @@ The green bar at the bottom should:
 - Key metric highlighted
 - Clean white space
 
-**Pattern:** BIP Mission Statement (2025 Investor Day, Slide 4)
+**Pattern:** Mission Statement Slide
 
 ---
 
@@ -787,7 +787,7 @@ The green bar at the bottom should:
 - Consistent box sizing
 - No data overload
 
-**Pattern:** BIP Year in Review (2021, 2022 Investor Days)
+**Pattern:** Year in Review Slide
 
 ---
 
@@ -824,7 +824,7 @@ The green bar at the bottom should:
 - Clean timeline axis
 - Single metric focus per chart
 
-**Pattern:** BIP FFO per Unit Track Record (Multiple Investor Days)
+**Pattern:** FFO Track Record Slide
 
 ---
 
@@ -858,7 +858,7 @@ The green bar at the bottom should:
 - Brief descriptive text
 - Consistent visual weight
 
-**Pattern:** BIP Strategy Framework (2025 Investor Day, Slide 5)
+**Pattern:** Strategy Framework Slide
 
 ---
 
@@ -892,7 +892,7 @@ The green bar at the bottom should:
 - IRR and MoC for each exit
 - Total/average row at bottom
 
-**Pattern:** BIP Capital Recycling (2025 Investor Day, Slide 52)
+**Pattern:** Capital Recycling Summary Slide
 
 ---
 
@@ -927,7 +927,7 @@ The green bar at the bottom should:
 - Quantified evidence for each criterion
 - Clean two-column layout
 
-**Pattern:** BIP Investment Criteria (2021 Investor Day, IPL Analysis)
+**Pattern:** Investment Criteria Checklist Slide
 
 ---
 
@@ -964,7 +964,7 @@ The green bar at the bottom should:
 - 2-3 supporting bullet points each
 - Consistent visual treatment
 
-**Pattern:** BIP Super Cycle (2022 Investor Day, Slide 17)
+**Pattern:** Macro Themes / Super Cycle Slide
 
 ---
 
@@ -1004,7 +1004,7 @@ The green bar at the bottom should:
 - "Beyond" bucket for long-dated debt
 - Supporting metrics in boxes below
 
-**Pattern:** BIP Financial Position (Corporate Profile, Slide 14)
+**Pattern:** Financial Position / Debt Maturity Slide
 
 ---
 
@@ -1042,7 +1042,7 @@ The green bar at the bottom should:
 - Labels below each component
 - Target metric prominently displayed
 
-**Pattern:** BIP Organic Growth (Corporate Profile, Slide 16)
+**Pattern:** Organic Growth Attribution Slide
 
 ---
 
@@ -1080,7 +1080,7 @@ The green bar at the bottom should:
 - Sector labels and descriptions below
 - Consistent visual hierarchy
 
-**Pattern:** BIP Asset Classes (Corporate Profile, Slide 6)
+**Pattern:** Asset Class / Segment Overview Slide
 
 ---
 
@@ -1114,7 +1114,7 @@ The green bar at the bottom should:
 - Enterprise value for each
 - Closing date/status
 
-**Pattern:** BIP Marquee Transactions (2025 Investor Day, Slide 37)
+**Pattern:** Marquee Transactions Showcase Slide
 
 ---
 
@@ -1158,7 +1158,7 @@ The green bar at the bottom should:
 - Show capability additions over time
 - New items highlighted or in different color
 
-**Pattern:** BIP Investment Perimeter (2025 Investor Day, Slide 33)
+**Pattern:** Investment Perimeter Evolution Slide
 
 ---
 
@@ -1194,7 +1194,7 @@ The green bar at the bottom should:
 - Labels for each funding type
 - Constraints noted (e.g., rating limits)
 
-**Pattern:** BIP Cost of Capital (2025 Investor Day, Slide 58)
+**Pattern:** Cost of Capital Spectrum Slide
 
 ---
 
@@ -1223,9 +1223,6 @@ LIGHT_GRAY = RGBColor(240, 240, 240) # #F0F0F0
 
 ---
 
-*Extracted from:*
-- *TD Securities: Florence Strategic Rationale (2022), Northview Acquisition Disposition (2025), Spring Living IPO Mandate (2025)*
-- *PropelR Investor Presentation (2025)*
-- *Brookfield Infrastructure Partners: Investor Day Presentations (2021-2025), Corporate Profile (2026)*
+*Extracted from institutional-quality IB/PE/IR presentations including IPO mandates, strategic rationales, investor day materials, and corporate profiles.*
 
 *Last Updated: 2026-02-04*

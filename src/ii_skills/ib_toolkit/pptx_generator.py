@@ -3,9 +3,7 @@
 Investment Banking PowerPoint Generator
 Creates professional presentations for industry research, company profiles, and pitch books.
 
-Design patterns extracted from institutional presentations:
-- TD Securities (Florence, Northview, Spring Living)
-- PropelR Investor Presentation
+Design patterns extracted from institutional-quality IB/PE/IR presentations.
 
 See: docs/skills/SLIDE_DESIGN_GUIDE.md for complete template reference.
 """
@@ -26,7 +24,7 @@ from config import (
     TITLE_FONT_SIZE, SUBTITLE_FONT_SIZE, BODY_FONT_SIZE
 )
 
-# Professional color palette (TD Securities style)
+# Professional color palette (institutional IB style)
 COLORS_PROFESSIONAL = {
     "primary": "00A651",      # TD Green
     "secondary": "006341",    # Dark Green
@@ -199,7 +197,7 @@ class IBPresentation:
         p.alignment = PP_ALIGN.RIGHT
 
     def _add_key_takeaway_bar(self, slide, text: str):
-        """Add green key takeaway bar at bottom of slide (TD Securities style)."""
+        """Add green key takeaway bar at bottom of slide (professional IB style)."""
         # Green background bar
         bar = slide.shapes.add_shape(
             MSO_SHAPE.RECTANGLE, Inches(0), Inches(6.5),
@@ -224,7 +222,7 @@ class IBPresentation:
         return bar
 
     def _add_header_bar(self, slide, text: str, subtitle: str = None, top: float = 0.9):
-        """Add gray header bar with white text (TD Securities style)."""
+        """Add gray header bar with white text (professional IB style)."""
         # Gray header bar
         bar = slide.shapes.add_shape(
             MSO_SHAPE.RECTANGLE, Inches(0.5), Inches(top),
@@ -251,7 +249,7 @@ class IBPresentation:
         return bar
 
     def _add_source_citation(self, slide, source_text: str, footnotes: List[str] = None):
-        """Add source citation and footnotes (TD Securities style)."""
+        """Add source citation and footnotes (professional IB style)."""
         y_pos = 7.1
 
         # Source line
@@ -288,7 +286,7 @@ class IBPresentation:
         source: str = "Company filings"
     ):
         """
-        Add peer benchmarking bar chart slide (TD Securities style).
+        Add peer benchmarking bar chart slide (professional IB style).
 
         Peers highlighted in gray, subject company in green.
         Values shown above bars, company names below.
@@ -443,7 +441,7 @@ class IBPresentation:
         takeaway: str = None
     ):
         """
-        Add Sources & Uses / Transaction Summary slide (TD Securities style).
+        Add Sources & Uses / Transaction Summary slide (professional IB style).
 
         Multiple scenario columns (Low/Mid/High), valuation summary on left.
         """
@@ -525,7 +523,7 @@ class IBPresentation:
         takeaway: str = None
     ):
         """
-        Add numbered key point slide (TD Securities style).
+        Add numbered key point slide (professional IB style).
 
         Number in box before title, narrative on left, charts on bottom.
         """
@@ -599,7 +597,7 @@ class IBPresentation:
         takeaway: str = None
     ):
         """
-        Add Before/After comparison slide (TD Securities style).
+        Add Before/After comparison slide (professional IB style).
 
         KPI grid on top-right, case study with data table at bottom.
         """

@@ -7,8 +7,7 @@ Each Excel module has a corresponding slide with headline and key takeaways.
 Core Principle: Every Excel analysis has a matching PowerPoint slide.
 
 Design patterns extracted from institutional presentations:
-- TD Securities (Florence, Northview, Spring Living)
-- PropelR Investor Presentation
+Extracted from institutional-quality IB/PE/IR presentations.
 
 See: docs/skills/SLIDE_DESIGN_GUIDE.md for complete template reference.
 """
