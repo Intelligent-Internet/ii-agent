@@ -587,6 +587,18 @@ try:
 except ImportError:
     _has_research = False
 
+# Deal orchestration
+try:
+    from .deal_orchestrator import DealOrchestrator, run_deal_analysis, DealState, DealPhase
+    from .orchestrator_events import (
+        EventStreamProgressCallback,
+        CompositeProgressCallback,
+        create_orchestrator_with_events,
+    )
+    _has_orchestrator = True
+except ImportError:
+    _has_orchestrator = False
+
 # Build exports
 __all__ = ["IBToolkitSkill", "get_toolkit"]
 
@@ -595,3 +607,14 @@ if _has_storage:
 
 if _has_research:
     __all__.extend(["EnrichedDataFetcher", "get_enriched_company_data", "research_deal"])
+
+if _has_orchestrator:
+    __all__.extend([
+        "DealOrchestrator",
+        "run_deal_analysis",
+        "DealState",
+        "DealPhase",
+        "EventStreamProgressCallback",
+        "CompositeProgressCallback",
+        "create_orchestrator_with_events",
+    ])
