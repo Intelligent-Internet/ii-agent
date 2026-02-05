@@ -13,6 +13,10 @@ Personal cloud operations base with specialized skills for investment banking an
 | Build an LBO model | [IB Toolkit - LBO Models](#ib-toolkit---lbo-models) |
 | Create deal slides | [IB Toolkit - Slide Generation](#ib-toolkit---slide-generation) |
 | Full IB capabilities | [IB Toolkit Complete Reference](#ib-toolkit-complete-reference) |
+| Audit a model | `docs/skills/ib_toolkit/MODEL_AUDIT_CHECKLIST.md` |
+| Excel formatting standards | `docs/skills/ib_toolkit/EXCEL_CONVENTIONS.md` |
+| Sector-specific analysis | `docs/skills/ib_toolkit/SECTOR_PLAYBOOKS.md` |
+| Prep for IC presentation | `docs/skills/ib_toolkit/IC_PRESENTATION_PLAYBOOK.md` |
 | LP quarterly update | [IR Toolkit](#ir-toolkit-infrastructure-investor-relations) |
 | Fundraising deck | [IR Toolkit - Case Types](#ir-case-types) |
 | Track portfolio | [Net Worth Newsletter](#networth_newsletter) |
@@ -29,12 +33,21 @@ The most comprehensive skill - 67 modular analysis components for PE/IB deal wor
 
 ### Key Documentation Files
 
-| Document | Purpose |
-|----------|---------|
-| `CAPABILITIES.md` | **Complete reference of all 67 modules** |
-| `LBO_CASE_GUIDE.md` | **How to approach LBO cases by timeframe** |
-| `QUICK_REFERENCE.md` | Request keywords → Module mapping |
-| `templates/reference_outputs/MODULE_INDEX.md` | Template files with use cases |
+| Document | Location | Purpose |
+|----------|----------|---------|
+| `CAPABILITIES.md` | `src/ii_skills/ib_toolkit/` | **Complete reference of all 67 modules** |
+| `LBO_CASE_GUIDE.md` | `src/ii_skills/ib_toolkit/` | **How to approach LBO cases by timeframe** |
+| `QUICK_REFERENCE.md` | `src/ii_skills/ib_toolkit/` | Request keywords → Module mapping |
+| `MODULE_INDEX.md` | `templates/reference_outputs/` | Template files with use cases |
+| `MODEL_AUDIT_CHECKLIST.md` | `docs/skills/ib_toolkit/` | **30+ point model audit & debugging guide** |
+| `EXCEL_CONVENTIONS.md` | `docs/skills/ib_toolkit/` | **Color coding, number formats, model architecture** |
+| `SECTOR_PLAYBOOKS.md` | `docs/skills/ib_toolkit/` | **Sector-specific adjustments (SaaS, Healthcare, Industrial, Business Services, Consumer)** |
+| `IC_PRESENTATION_PLAYBOOK.md` | `docs/skills/ib_toolkit/` | **IC oral prep, Q&A frameworks, handling objections** |
+| `PROMPT_LIBRARY.md` | `docs/skills/ib_toolkit/` | 23 execution prompts (P00-P38) |
+| `ORCHESTRATION_FRAMEWORK.md` | `docs/skills/ib_toolkit/` | Phased workflow with validation gates |
+| `BEST_PRACTICES.md` | `docs/skills/ib_toolkit/` | Slide & model standards from real case studies |
+| `CASE_INTAKE_PROTOCOL.md` | `docs/skills/ib_toolkit/` | 4-step intake with case type routing |
+| `SLIDE_TEMPLATES.md` | `docs/skills/ib_toolkit/` | 25+ ASCII slide layout diagrams |
 
 ### IB Toolkit - LBO Models
 
@@ -182,9 +195,10 @@ Specialized toolkit for infrastructure fund investor relations - orthogonal to I
 | Document | Purpose |
 |----------|---------|
 | `CAPABILITIES.md` | **Complete reference of all 33 Excel ↔ Slide pairs** |
-| `CASE_GUIDE.md` | **How to approach IR deliverables by timeframe** |
+| `CASE_GUIDE.md` | **IR deliverable guide with IC vs LP differentiation, quality gates** |
 | `QUICK_REFERENCE.md` | Request keywords → Module mapping |
-| `PROMPT_LIBRARY.md` | 12 ready-to-use prompts |
+| `PROMPT_LIBRARY.md` | **24 ready-to-use prompts (core + interview prep + Anki)** |
+| `SLIDE_LAYOUTS.md` | **Visual slide templates with ASCII diagrams** |
 | `references/infra_jargon_metrics.md` | Infrastructure terminology guide |
 
 ### IR Case Types
@@ -378,7 +392,8 @@ ii-agent/
 │       ├── ir_toolkit/              # Infrastructure IR (33 modules)
 │       │   ├── CAPABILITIES.md      # Full module reference
 │       │   ├── CASE_GUIDE.md        # IR deliverable guide
-│       │   ├── PROMPT_LIBRARY.md    # Ready-to-use prompts
+│       │   ├── PROMPT_LIBRARY.md    # 24 ready-to-use prompts
+│       │   ├── SLIDE_LAYOUTS.md     # Visual slide templates
 │       │   └── references/          # Jargon and metrics guide
 │       ├── shared/                  # Common infrastructure
 │       │   ├── event_telemetry.py   # Run tracking
@@ -389,7 +404,18 @@ ii-agent/
 │       ├── market_newsletter/
 │       ├── health_dashboard/
 │       └── daily_investment_newsletter/
-├── docs/                            # Additional documentation
+├── docs/
+│   └── skills/
+│       └── ib_toolkit/              # Extended IB documentation
+│           ├── BEST_PRACTICES.md    # Slide & model standards
+│           ├── CASE_INTAKE_PROTOCOL.md  # Case type routing
+│           ├── ORCHESTRATION_FRAMEWORK.md # Phased workflow
+│           ├── PROMPT_LIBRARY.md    # 23 execution prompts
+│           ├── SLIDE_TEMPLATES.md   # 25+ ASCII slide diagrams
+│           ├── MODEL_AUDIT_CHECKLIST.md  # Model QA & debugging
+│           ├── EXCEL_CONVENTIONS.md # Formatting standards
+│           ├── SECTOR_PLAYBOOKS.md  # SaaS/Healthcare/Industrial/etc.
+│           └── IC_PRESENTATION_PLAYBOOK.md # IC oral prep & Q&A
 └── Config/                          # Credentials (gitignored)
 ```
 
