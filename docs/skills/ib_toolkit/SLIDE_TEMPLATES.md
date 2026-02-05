@@ -474,6 +474,532 @@
 
 ---
 
+## LBO / PE Additional Slides (Continued)
+
+### SaaS Peer Benchmarking with Quartiles
+```
+┌─────────────────────────────────────────────────────────────┐
+│ PEER BENCHMARKING ANALYSIS                        [LOGO]    │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│ ┌──────────────────┬────────┬────────┬────────┬────────────┐│
+│ │ Metric           │ Bottom │  2nd   │  3rd   │   Top      ││
+│ │                  │Quartile│Quartile│Quartile│ Quartile   ││
+│ │                  │ (Red)  │(Yellow)│(Lt Grn)│  (Green)   ││
+│ ├──────────────────┼────────┼────────┼────────┼────────────┤│
+│ │ GROWTH           │        │        │        │            ││
+│ │ ARR Growth (YoY) │  <9%   │  9-13% │ 13-21% │   >21%     ││
+│ │ [Company: 35%]   │        │        │        │    ████    ││
+│ ├──────────────────┼────────┼────────┼────────┼────────────┤│
+│ │ RETENTION        │        │        │        │            ││
+│ │ Net Dollar Ret.  │  <97%  │97-105% │105-115%│  >115%     ││
+│ │ [Company: 118%]  │        │        │        │    ████    ││
+│ │ Gross Dollar Ret.│  <78%  │ 78-85% │ 85-90% │   >90%     ││
+│ │ [Company: 92%]   │        │        │        │    ████    ││
+│ ├──────────────────┼────────┼────────┼────────┼────────────┤│
+│ │ EFFICIENCY       │        │        │        │            ││
+│ │ Magic Number     │ <0.37x │0.37-0.47│0.47-0.72│ >0.72x    ││
+│ │ [Company: 0.85x] │        │        │        │    ████    ││
+│ │ LTV/CAC          │ <2.0x  │2.0-3.0x│3.0-4.5x│  >4.5x    ││
+│ │ [Company: 3.8x]  │        │        │ ████   │            ││
+│ │ Burn Multiple    │ >3.5x  │2.5-3.5x│1.8-2.5x│  <1.8x    ││
+│ │ [Company: 1.5x]  │        │        │        │    ████    ││
+│ └──────────────────┴────────┴────────┴────────┴────────────┘│
+│                                                             │
+│ Source: Drake Star, KeyBanc SaaS Survey, Company data       │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Key Rules:**
+- Quartile thresholds from industry surveys (Drake Star, KeyBanc)
+- Color-coded columns: Red → Yellow → Light Green → Green
+- Company's actual metric shown with quartile position highlighted
+- Group by category (Growth, Retention, Efficiency, Unit Economics)
+
+**Pattern:** BCI Growth Equity Case Study (SaaS Benchmarking)
+
+---
+
+### Precedent Transactions Table
+```
+┌─────────────────────────────────────────────────────────────┐
+│ PRECEDENT TRANSACTIONS                            [LOGO]    │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│ ┌───────┬──────┬───────┬───────┬──────┬──────┬────────────┐│
+│ │ Date  │Target│Acquir.│EV ($M)│EV/Rev│EV/   │ Rev Growth ││
+│ │       │      │       │       │      │EBITDA│            ││
+│ ├───────┼──────┼───────┼───────┼──────┼──────┼────────────┤│
+│ │ Q1'25 │ Co A │ PE A  │ $2,500│ 8.5x │ 22.0x│    28%     ││
+│ │ Q4'24 │ Co B │ PE B  │ $1,800│ 7.2x │ 19.5x│    35%     ││
+│ │ Q3'24 │ Co C │ Strat │ $3,200│10.1x │ 25.0x│    42%     ││
+│ │ Q2'24 │ Co D │ PE C  │ $1,200│ 6.8x │ 18.0x│    22%     ││
+│ │ Q1'24 │ Co E │ PE D  │ $4,500│12.0x │ 28.0x│    55%     ││
+│ ├───────┼──────┼───────┼───────┼──────┼──────┼────────────┤│
+│ │       │      │ Mean  │       │ 8.9x │ 22.5x│    36%     ││
+│ │       │      │Median │       │ 8.5x │ 22.0x│    35%     ││
+│ ├───────┼──────┼───────┼───────┼──────┼──────┼────────────┤│
+│ │       │[SUBJ]│ Impl. │ $[XX] │[X.X]x│[XX]x │   [XX]%    ││ ← Green
+│ └───────┴──────┴───────┴───────┴──────┴──────┴────────────┘│
+│                                                             │
+│ Source: Capital IQ, PitchBook, Company filings              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Key Rules:**
+- Sorted by date (most recent first)
+- Subject company row highlighted green at bottom
+- Mean/Median summary row
+- Include deal context (strategic vs. PE buyer, growth rate)
+
+---
+
+### DCF Valuation Summary
+```
+┌─────────────────────────────────────────────────────────────┐
+│ DCF VALUATION                                     [LOGO]    │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│ KEY ASSUMPTIONS                                             │
+│ ┌─────────────────────────────────────────────────────────┐ │
+│ │ WACC: [XX.X]%  │  TGR: [X.X]%  │  Projection: [X] yrs │ │
+│ └─────────────────────────────────────────────────────────┘ │
+│                                                             │
+│ FREE CASH FLOW PROJECTION                                   │
+│ ┌────────┬────────┬────────┬────────┬────────┬────────────┐ │
+│ │        │ 2025E  │ 2026E  │ 2027E  │ 2028E  │ 2029E      │ │
+│ ├────────┼────────┼────────┼────────┼────────┼────────────┤ │
+│ │ Revenue│ $[XX]M │ $[XX]M │ $[XXX]M│ $[XXX]M│ $[XXX]M    │ │
+│ │ EBITDA │ $[XX]M │ $[XX]M │ $[XX]M │ $[XX]M │ $[XX]M     │ │
+│ │ uFCF   │ $[XX]M │ $[XX]M │ $[XX]M │ $[XX]M │ $[XX]M     │ │
+│ └────────┴────────┴────────┴────────┴────────┴────────────┘ │
+│                                                             │
+│ VALUATION BUILD                                             │
+│ ┌─────────────────────────────────────────────────────────┐ │
+│ │ PV of Projection Period FCF              $[XXX]M        │ │
+│ │ + PV of Terminal Value                   $[XXX]M        │ │
+│ │ = Enterprise Value                       $[XXX]M        │ │
+│ │ - Net Debt                               ($[XX]M)       │ │
+│ │ = Equity Value                           $[XXX]M        │ │
+│ │                                                         │ │
+│ │ Implied EV/EBITDA: [XX.X]x                              │ │
+│ │ Implied EV/Revenue: [X.X]x                              │ │
+│ └─────────────────────────────────────────────────────────┘ │
+│                                                             │
+│ SENSITIVITY (WACC vs. TGR)                                  │
+│ ┌──────────┬────────┬────────┬────────┬────────┐            │
+│ │ WACC\TGR │  1.5%  │  2.0%  │  2.5%  │  3.0%  │            │
+│ ├──────────┼────────┼────────┼────────┼────────┤            │
+│ │   9.0%   │ $[XXX] │ $[XXX] │ $[XXX] │ $[XXX] │            │
+│ │  10.0%   │ $[XXX] │[$[XXX]]│ $[XXX] │ $[XXX] │            │
+│ │  11.0%   │ $[XXX] │ $[XXX] │ $[XXX] │ $[XXX] │            │
+│ └──────────┴────────┴────────┴────────┴────────┘            │
+│                           [Base case highlighted]           │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### Sensitivity Matrix (Entry vs. Exit Multiple)
+```
+┌─────────────────────────────────────────────────────────────┐
+│ RETURN SENSITIVITY                                [LOGO]    │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│ MOIC SENSITIVITY (Entry Multiple vs. Exit Multiple)         │
+│ ┌───────────────┬────────┬────────┬────────┬────────┐       │
+│ │ Entry \ Exit  │  6.0x  │  8.0x  │ 10.0x  │ 12.0x  │       │
+│ ├───────────────┼────────┼────────┼────────┼────────┤       │
+│ │ 6.0x ($117M)  │  2.4x  │  3.1x  │  3.9x  │  4.7x  │       │
+│ │ 8.0x ($156M)  │  1.8x  │ [2.4x] │  2.9x  │  3.5x  │       │
+│ │ 10.0x ($195M) │  1.4x  │  1.9x  │  2.4x  │  2.8x  │       │
+│ │ 12.0x ($234M) │  1.2x  │  1.6x  │  2.0x  │  2.3x  │       │
+│ └───────────────┴────────┴────────┴────────┴────────┘       │
+│                                                             │
+│ IRR SENSITIVITY (Entry Multiple vs. Exit Multiple)          │
+│ ┌───────────────┬────────┬────────┬────────┬────────┐       │
+│ │ Entry \ Exit  │  6.0x  │  8.0x  │ 10.0x  │ 12.0x  │       │
+│ ├───────────────┼────────┼────────┼────────┼────────┤       │
+│ │ 6.0x ($117M)  │  19.2% │  25.4% │  31.1% │  36.0% │       │
+│ │ 8.0x ($156M)  │  12.3% │ [19.0%]│  24.5% │  29.2% │       │
+│ │ 10.0x ($195M) │   7.2% │  13.8% │  19.5% │  24.0% │       │
+│ │ 12.0x ($234M) │   3.4% │   9.8% │  15.1% │  19.7% │       │
+│ └───────────────┴────────┴────────┴────────┴────────┘       │
+│                                                             │
+│ [X.Xx] = Base case highlighted   Green: >20% IRR           │
+│ Source: Company model                                       │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Key Rules:**
+- Two matrices: MOIC and IRR
+- Base case cell highlighted (blue border)
+- Color gradient: Green (>20% IRR) → Yellow (10-20%) → Red (<10%)
+- Entry equity shown alongside multiple
+
+---
+
+### IRR Attribution Bridge (Waterfall)
+```
+┌─────────────────────────────────────────────────────────────┐
+│ KEY RETURN DRIVERS | BASE CASE                    [LOGO]    │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│ MOIC VALUE BRIDGE ($M)                                      │
+│                                                             │
+│              +$173                                          │
+│           ┌────────┐                                        │
+│   $97     │ Revenue│                              $290      │
+│ ┌──────┐  │ Growth │  -$45  +$65                ┌────────┐  │
+│ │Entry │  │        │┌──────┐┌────┐              │ Exit   │  │
+│ │Equity│  │        ││Multi ││Debt│              │ Equity │  │
+│ │      │  │ (Green)││Contr.││Paydn│              │(Navy)  │  │
+│ │      │  │        ││(Red) ││(Grn)│              │        │  │
+│ └──────┘  └────────┘└──────┘└────┘              └────────┘  │
+│                                                             │
+│ Implied MOIC: 3.0x                                          │
+│                                                             │
+│ IRR ATTRIBUTION BRIDGE (%)                                  │
+│                                                             │
+│              +35%                                           │
+│           ┌────────┐                                        │
+│    0%     │ Revenue│                                20%     │
+│ ┌──────┐  │ Growth │  -14%   -1%                ┌────────┐  │
+│ │Base  │  │        │┌──────┐┌────┐              │ Net    │  │
+│ │(0%)  │  │        ││Multi ││Dil.│              │ IRR    │  │
+│ │      │  │ (Green)││Contr.││(Red)│              │(Navy)  │  │
+│ └──────┘  └────────┘└──────┘└────┘              └────────┘  │
+│                                                             │
+│ Returns primarily driven by revenue growth rather than      │
+│ multiple expansion; assumed contraction protects downside    │
+│                                                             │
+│ Source: Company model                                       │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Key Rules:**
+- Stacked waterfall: invisible base + green increases + red decreases + navy total
+- Both MOIC and IRR bridges on same slide
+- Positive contributors in green, negative in red
+- Entry/exit bars in navy
+- Key insight text at bottom
+
+**Pattern:** BCI 2026 Case Study Slide 18
+
+---
+
+### Debt Schedule & Credit Metrics
+```
+┌─────────────────────────────────────────────────────────────┐
+│ DEBT SCHEDULE & CREDIT ANALYSIS                   [LOGO]    │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│ DEBT STRUCTURE                                              │
+│ ┌──────────────┬────────┬──────┬──────┬──────┬────────────┐ │
+│ │ Tranche      │ Amount │ Rate │ Mult.│Matur.│ Amort.     │ │
+│ ├──────────────┼────────┼──────┼──────┼──────┼────────────┤ │
+│ │ Revolver     │  $25M  │S+250 │ 0.0x │ 2030 │   —        │ │
+│ │ Term Loan A  │ $100M  │S+300 │ 2.6x │ 2030 │ 5% / yr    │ │
+│ │ Term Loan B  │  $75M  │S+400 │ 4.5x │ 2031 │ 1% / yr    │ │
+│ │ Sr. Notes    │  $50M  │ 8.5% │ 5.8x │ 2032 │ Bullet     │ │
+│ ├──────────────┼────────┼──────┼──────┼──────┼────────────┤ │
+│ │ Total Debt   │ $250M  │      │ 5.8x │      │            │ │
+│ │ (−) Cash     │ ($10M) │      │      │      │            │ │
+│ │ Net Debt     │ $240M  │      │ 5.6x │      │            │ │
+│ └──────────────┴────────┴──────┴──────┴──────┴────────────┘ │
+│                                                             │
+│ CREDIT METRICS OVER HOLD                                    │
+│ ┌──────────┬────────┬────────┬────────┬────────┬──────────┐ │
+│ │          │ Entry  │ Yr 1   │ Yr 2   │ Yr 3   │  Exit    │ │
+│ ├──────────┼────────┼────────┼────────┼────────┼──────────┤ │
+│ │Total Lev.│  5.8x  │  4.9x  │  4.1x  │  3.5x  │   2.8x   │ │
+│ │Sr. Lev.  │  4.5x  │  3.8x  │  3.2x  │  2.7x  │   2.2x   │ │
+│ │Int. Cov. │  2.1x  │  2.5x  │  2.9x  │  3.4x  │   4.0x   │ │
+│ │FCCR      │  1.4x  │  1.7x  │  2.0x  │  2.3x  │   2.7x   │ │
+│ └──────────┴────────┴────────┴────────┴────────┴──────────┘ │
+│                                                             │
+│ COVENANT HEADROOM                                           │
+│ Max Leverage: 6.5x │ Current: 5.8x │ Cushion: 0.7x        │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Key Rules:**
+- Full debt structure with tranches, rates, maturities
+- Credit metrics projected over hold period
+- Leverage shown declining (deleveraging story)
+- Covenant headroom quantified
+
+---
+
+### Management vs. Buyer Case Comparison
+```
+┌─────────────────────────────────────────────────────────────┐
+│ MANAGEMENT CASE vs. BUYER CASE                    [LOGO]    │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│ KEY ASSUMPTION DIFFERENCES                                  │
+│ ┌────────────────┬──────────────┬──────────────┬──────────┐ │
+│ │ Assumption     │  Mgmt Case   │  Buyer Case  │  Delta   │ │
+│ ├────────────────┼──────────────┼──────────────┼──────────┤ │
+│ │ Rev Growth '26 │    35%       │    28%       │  (7pp)   │ │
+│ │ Rev Growth '27 │    30%       │    22%       │  (8pp)   │ │
+│ │ NDR Trajectory │  125%→130%   │  118%→120%   │  (7-10pp)│ │
+│ │ EBITDA Margin  │  -5%→+15%   │  -8%→+10%    │  (3-5pp) │ │
+│ │ Exit Multiple  │   12.0x      │    8.0x      │  (4.0x)  │ │
+│ ├────────────────┼──────────────┼──────────────┼──────────┤ │
+│ │ Exit Revenue   │   $350M      │    $250M     │  (29%)   │ │
+│ │ Exit EBITDA    │    $53M      │     $25M     │  (53%)   │ │
+│ └────────────────┴──────────────┴──────────────┴──────────┘ │
+│                                                             │
+│ RETURNS COMPARISON                                          │
+│ ┌────────────────┬──────────────┬──────────────┐            │
+│ │                │  Mgmt Case   │  Buyer Case  │            │
+│ ├────────────────┼──────────────┼──────────────┤            │
+│ │ MOIC           │    5.2x      │    2.4x      │            │
+│ │ IRR            │    38%       │    19%        │            │
+│ │ Hold Period    │    5 yrs     │    5 yrs      │            │
+│ └────────────────┴──────────────┴──────────────┘            │
+│                                                             │
+│ Conservative underwriting: Buyer case assumptions used      │
+│ for base case returns; mgmt case provides upside optionality│
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### Operating Model / P&L Summary
+```
+┌─────────────────────────────────────────────────────────────┐
+│ OPERATING MODEL                                   [LOGO]    │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│ ┌──────────┬────────┬────────┬────────┬────────┬──────────┐ │
+│ │ ($M)     │ 2024A  │ 2025E  │ 2026E  │ 2027E  │ 2028E    │ │
+│ ├──────────┼────────┼────────┼────────┼────────┼──────────┤ │
+│ │ Revenue  │  $65.0 │  $87.8 │ $110.2 │ $134.4 │  $159.1  │ │
+│ │  Growth  │   42%  │   35%  │   26%  │   22%  │    18%   │ │
+│ ├──────────┼────────┼────────┼────────┼────────┼──────────┤ │
+│ │ COGS     │ ($22.8)│ ($28.5)│ ($34.2)│ ($40.3)│ ($46.1)  │ │
+│ │ Gross Pft│  $42.3 │  $59.3 │  $76.0 │  $94.1 │ $113.0   │ │
+│ │  Margin  │   65%  │   68%  │   69%  │   70%  │    71%   │ │
+│ ├──────────┼────────┼────────┼────────┼────────┼──────────┤ │
+│ │ S&M      │ ($32.5)│ ($39.5)│ ($44.1)│ ($47.1)│ ($49.3)  │ │
+│ │  % Rev   │   50%  │   45%  │   40%  │   35%  │    31%   │ │
+│ │ R&D      │ ($16.3)│ ($19.3)│ ($22.0)│ ($24.2)│ ($25.5)  │ │
+│ │  % Rev   │   25%  │   22%  │   20%  │   18%  │    16%   │ │
+│ │ G&A      │  ($6.5)│  ($7.9)│  ($8.8)│  ($9.4)│  ($9.5)  │ │
+│ │  % Rev   │   10%  │    9%  │    8%  │    7%  │     6%   │ │
+│ ├──────────┼────────┼────────┼────────┼────────┼──────────┤ │
+│ │ EBITDA   │ ($13.0)│  ($7.4)│   $1.1 │  $13.4 │  $28.7   │ │
+│ │  Margin  │  (20%) │   (8%) │    1%  │   10%  │    18%   │ │
+│ └──────────┴────────┴────────┴────────┴────────┴──────────┘ │
+│                                                             │
+│ PATH TO PROFITABILITY: EBITDA breakeven in 2026E (Year 2)   │
+│ Key driver: S&M leverage (50% → 31% of revenue)            │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Key Rules:**
+- Revenue at top, EBITDA at bottom
+- Growth rates and margins shown as percentages
+- Negative values in parentheses
+- Key driver highlighted at bottom
+
+---
+
+### Add-on / Synergy Analysis
+```
+┌─────────────────────────────────────────────────────────────┐
+│ ADD-ON ACQUISITION ANALYSIS                       [LOGO]    │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│ TARGET PROFILE                                              │
+│ ┌─────────────────┬─────────────────────────────────────┐   │
+│ │ Revenue         │ $25M                                │   │
+│ │ EBITDA          │ $5M (20% margin)                    │   │
+│ │ Entry Multiple  │ 6.0x EBITDA                         │   │
+│ │ Purchase Price  │ $30M                                │   │
+│ └─────────────────┴─────────────────────────────────────┘   │
+│                                                             │
+│ SYNERGY BREAKDOWN                                           │
+│ ┌──────────────────┬──────────┬──────────┬────────────────┐ │
+│ │ Category         │ Year 1   │ Year 2   │ Full Run-Rate  │ │
+│ ├──────────────────┼──────────┼──────────┼────────────────┤ │
+│ │ Revenue Synergies│   $2M    │   $5M    │     $8M        │ │
+│ │ Cost Synergies   │   $3M    │   $4M    │     $5M        │ │
+│ │ Total Synergies  │   $5M    │   $9M    │    $13M        │ │
+│ ├──────────────────┼──────────┼──────────┼────────────────┤ │
+│ │ Integration Costs│  ($3M)   │  ($1M)   │      —         │ │
+│ │ Net Benefit      │   $2M    │   $8M    │    $13M        │ │
+│ └──────────────────┴──────────┴──────────┴────────────────┘ │
+│                                                             │
+│ PRO FORMA IMPACT                                            │
+│ ┌────────────────┬───────────┬───────────┬────────────────┐ │
+│ │                │Standalone │ + Add-on  │  Pro Forma     │ │
+│ ├────────────────┼───────────┼───────────┼────────────────┤ │
+│ │ Revenue        │  $150M    │   $25M    │    $175M       │ │
+│ │ EBITDA         │   $30M    │   $5M     │     $35M       │ │
+│ │ + Synergies    │     —     │     —     │    +$13M       │ │
+│ │ PF EBITDA      │     —     │     —     │     $48M       │ │
+│ │ PF Multiple    │     —     │     —     │     5.2x       │ │
+│ └────────────────┴───────────┴───────────┴────────────────┘ │
+│                                                             │
+│ Acquisition multiple of 6.0x declines to 2.3x with synergies│
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### Cap Table / Sponsor Economics
+```
+┌─────────────────────────────────────────────────────────────┐
+│ SPONSOR ECONOMICS & CAP TABLE                     [LOGO]    │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│ CAPITALIZATION AT ENTRY                                     │
+│ ┌──────────────────┬────────────┬──────────────────────────┐│
+│ │                  │ Amount ($M)│ % of Total               ││
+│ ├──────────────────┼────────────┼──────────────────────────┤│
+│ │ Sponsor Equity   │    $85     │   87%                    ││
+│ │ Mgmt Rollover    │     $8     │    8%                    ││
+│ │ Mgmt Option Pool │     $5     │    5%  (vesting: 4 yrs) ││
+│ ├──────────────────┼────────────┼──────────────────────────┤│
+│ │ Total Equity     │    $98     │  100%                    ││
+│ └──────────────────┴────────────┴──────────────────────────┘│
+│                                                             │
+│ RETURNS WATERFALL (Base Case: 3.0x MOIC)                    │
+│ ┌──────────────────┬────────────┬─────────┬───────────────┐ │
+│ │ Tier             │ Hurdle     │ Carry   │ Distribution  │ │
+│ ├──────────────────┼────────────┼─────────┼───────────────┤ │
+│ │ Return of Capital│ 1.0x       │   0%    │     $98M      │ │
+│ │ Preferred Return │ 8% IRR     │   0%    │     $39M      │ │
+│ │ GP Catch-up      │ 1.0x→1.25x │  100%   │     $25M      │ │
+│ │ Carried Interest │ >1.25x     │  20%    │     $24M      │ │
+│ ├──────────────────┼────────────┼─────────┼───────────────┤ │
+│ │ Total Proceeds   │            │         │    $294M      │ │
+│ │ LP Net Return    │            │         │    $245M (2.5x)│ │
+│ │ GP Carry         │            │         │     $49M      │ │
+│ └──────────────────┴────────────┴─────────┴───────────────┘ │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### 100-Day Plan / Post-Close
+```
+┌─────────────────────────────────────────────────────────────┐
+│ 100-DAY VALUE CREATION PLAN                       [LOGO]    │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │ Day 1-30           │ Day 31-60         │ Day 61-100  │   │
+│  │ STABILIZE           │ OPTIMIZE          │ ACCELERATE  │   │
+│  ├──────────────────────┼───────────────────┼─────────────┤   │
+│  │                      │                   │             │   │
+│  │ □ Onboard new CFO   │ □ Implement new   │ □ Launch    │   │
+│  │ □ Financial deep-   │   pricing model   │   add-on    │   │
+│  │   dive & true-up    │ □ Renegotiate     │   pipeline  │   │
+│  │ □ Customer retention│   vendor contracts│ □ New market│   │
+│  │   audit             │ □ IT integration  │   expansion │   │
+│  │ □ Management        │   roadmap         │ □ KPI       │   │
+│  │   assessment        │ □ Quick-win cost  │   dashboard │   │
+│  │ □ Board composition │   reductions      │   live      │   │
+│  │                      │                   │             │   │
+│  ├──────────────────────┼───────────────────┼─────────────┤   │
+│  │ EBITDA Impact: —     │ +$2-3M run-rate  │ +$5-8M      │   │
+│  └──────────────────────┴───────────────────┴─────────────┘   │
+│                                                             │
+│ KEY HIRES REQUIRED                                          │
+│ • CFO (Month 1) • VP Sales (Month 2) • Head of CorpDev (3) │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Key Rules:**
+- Three time phases as columns
+- Checklist format for action items
+- EBITDA impact estimated per phase
+- Key hires listed below
+
+---
+
+### Covenant Analysis
+```
+┌─────────────────────────────────────────────────────────────┐
+│ COVENANT ANALYSIS                                 [LOGO]    │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│ FINANCIAL COVENANTS                                         │
+│ ┌──────────────────┬──────────┬──────────┬────────────────┐ │
+│ │ Covenant         │ Limit    │ Actual   │ Headroom       │ │
+│ ├──────────────────┼──────────┼──────────┼────────────────┤ │
+│ │ Max Total Lev.   │  ≤6.5x   │  5.8x    │ ✓ 0.7x cushion│ │
+│ │ Max Senior Lev.  │  ≤5.0x   │  4.5x    │ ✓ 0.5x cushion│ │
+│ │ Min Int. Coverage│  ≥1.5x   │  2.1x    │ ✓ 0.6x above  │ │
+│ │ Min FCCR         │  ≥1.0x   │  1.4x    │ ✓ 0.4x above  │ │
+│ │ Max Capex        │  $15M/yr │  $12M    │ ✓ $3M below   │ │
+│ └──────────────────┴──────────┴──────────┴────────────────┘ │
+│                                                             │
+│ COVENANT STRESS TEST                                        │
+│ ┌──────────────────┬──────────┬──────────┬────────────────┐ │
+│ │ Scenario         │ Lev.     │ Int.Cov. │ Breach?        │ │
+│ ├──────────────────┼──────────┼──────────┼────────────────┤ │
+│ │ Base Case        │  5.8x    │  2.1x    │ No             │ │
+│ │ -10% EBITDA      │  6.4x    │  1.9x    │ No             │ │
+│ │ -20% EBITDA      │  7.2x    │  1.7x    │ YES (Lev.)     │ │
+│ │ -30% EBITDA      │  8.3x    │  1.5x    │ YES (Lev.)     │ │
+│ └──────────────────┴──────────┴──────────┴────────────────┘ │
+│                                                             │
+│ EBITDA can decline ~12% before first covenant is triggered  │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### Quality of Earnings Summary
+```
+┌─────────────────────────────────────────────────────────────┐
+│ QUALITY OF EARNINGS ANALYSIS                      [LOGO]    │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│ EBITDA BRIDGE: REPORTED → ADJUSTED                          │
+│ ┌────────────────────────────────────────────┬────────────┐ │
+│ │                                            │   Amount   │ │
+│ ├────────────────────────────────────────────┼────────────┤ │
+│ │ Reported EBITDA                            │   $42.0M   │ │
+│ ├────────────────────────────────────────────┼────────────┤ │
+│ │ Normalizing Adjustments:                   │            │ │
+│ │  (+) Non-recurring legal costs             │   +$2.1M   │ │
+│ │  (+) One-time restructuring                │   +$1.5M   │ │
+│ │  (+) Below-market lease adjustment         │   +$0.8M   │ │
+│ │  (−) Above-market revenue (one-time)       │   −$1.2M   │ │
+│ │  (−) Aggressive capitalization             │   −$0.9M   │ │
+│ │                                            │            │ │
+│ │  Subtotal Adjustments                      │   +$2.3M   │ │
+│ ├────────────────────────────────────────────┼────────────┤ │
+│ │ Adjusted EBITDA                            │   $44.3M   │ │
+│ │                                            │            │ │
+│ │ Run-Rate Adjustments:                      │            │ │
+│ │  (+) Full-year impact of new contract      │   +$1.8M   │ │
+│ │  (+) Annualized cost savings (in progress) │   +$1.0M   │ │
+│ ├────────────────────────────────────────────┼────────────┤ │
+│ │ Pro Forma Run-Rate EBITDA                  │   $47.1M   │ │
+│ └────────────────────────────────────────────┴────────────┘ │
+│                                                             │
+│ ASSESSMENT: ~5% adjustment gap — within normal range        │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
 ## Color Coding Standards
 
 | Element | Color | Usage |
@@ -483,7 +1009,24 @@
 | Negative/Underperform | Red (#ef4444) | Below benchmark, risks |
 | Highlight/Base Case | Blue (#3b82f6) | Base case, key metrics |
 | Company/Focus | Navy (#1e3a8a) | Headers, company name |
+| Top Quartile | Green (#81C784) | Best-in-class metrics |
+| Bottom Quartile | Red (#FFCDD2) | Below-peer metrics |
+| Invisible (Waterfall) | No Fill | Base series in waterfall charts |
 
 ---
 
+## Slide Count by Deck Type
+
+| Deck Type | Core Slides | Appendix | Total |
+|-----------|-------------|----------|-------|
+| Growth Equity IC | 13 | 3-5 | 16-18 |
+| LBO / Buyout IC | 15-20 | 5-10 | 20-30 |
+| 24-Hour LBO | 8-10 | 2-3 | 10-13 |
+| Institutional Full | 25-30 | 10-15 | 35-45 |
+| Quick Screening | 5-8 | 0-2 | 5-10 |
+
+---
+
+*Version: 2.0 | Last Updated: February 2026*
 *This document provides slide structure templates. For content best practices, see BEST_PRACTICES.md*
+*ASCII diagrams based on BCI 2026 Case Study, Northleaf 2026 Model, and institutional presentations*
