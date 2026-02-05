@@ -586,78 +586,175 @@ def create_precedent_transactions():
 # Template 19: Value Creation Waterfall (MOIC + IRR Bridge)
 # =============================================================================
 def create_value_creation_waterfall():
+    """
+    Creates waterfall charts for MOIC and IRR bridges.
+    Uses stacked column chart technique with 4 series:
+    - Base (invisible) - creates floating effect
+    - Increase (green) - positive contributions
+    - Decrease (red) - negative contributions
+    - Total (navy) - final total bar
+    Based on BCI 2026 Case Study Slide 18 format.
+    """
+    from openpyxl.chart.series import DataPoint
+    from openpyxl.drawing.fill import PatternFillProperties, ColorChoice
+
     wb = Workbook()
     ws = wb.active
     ws.title = "Value_Creation"
 
     ws['B2'] = "VALUE CREATION ANALYSIS"
     ws['B2'].font = TITLE_FONT
-    ws['B3'] = "Base Case | 5-Year Hold"
+    ws['B3'] = "Key Return Drivers | Base Case"
     ws['B3'].font = SUBTITLE_FONT
 
-    # MOIC Bridge
-    ws['B6'] = "MOIC VALUE BRIDGE"
-    ws['B6'].font = WHITE_FONT
-    ws['B6'].fill = NAVY_BLUE
-    ws.merge_cells('B6:E6')
+    # =========================================================================
+    # MOIC BRIDGE DATA (for waterfall chart)
+    # =========================================================================
+    ws['H2'] = "MOIC Bridge Chart Data"
+    ws['H2'].font = HEADER_FONT
 
-    headers = ["Component", "Value ($M)", "Cumulative ($M)", "% Contribution"]
-    for col, header in enumerate(headers, 2):
-        ws.cell(row=7, column=col, value=header)
-    apply_header_style(ws, 7, 2, 5)
+    # Categories and waterfall data structure
+    moic_headers = ["Category", "Base", "Increase", "Decrease", "Total"]
+    for col, header in enumerate(moic_headers, 8):
+        ws.cell(row=3, column=col, value=header)
+    apply_header_style(ws, 3, 8, 12)
 
-    moic_data = [
-        ("Initial Equity Investment", 97, 97, "—"),
-        ("", "", "", ""),
-        ("(+) Revenue Growth", 125, 222, "58%"),
-        ("", "", "", ""),
-        ("(-) Multiple Contraction", -35, 187, "16%"),
-        ("", "", "", ""),
-        ("(-) Debt Paydown Effect", 55, 242, "26%"),
-        ("", "", "", ""),
-        ("Exit Equity Value", 310, 310, "—"),
-        ("", "", "", ""),
-        ("Implied MOIC", "3.2x", "", ""),
+    # Waterfall data: [Category, Base (invisible), Increase (green), Decrease (red), Total (navy)]
+    # Base stacks to create floating effect
+    moic_waterfall = [
+        ("Initial Investment", 0, 97, 0, 0),       # Starting bar
+        ("Revenue Growth", 97, 173, 0, 0),          # +173 from 97
+        ("Multiple Contraction", 270, 0, 45, 0),    # -45 from 270
+        ("Debt Paydown", 225, 65, 0, 0),            # +65 from 225
+        ("Exit Value", 0, 0, 0, 290),               # Final total
     ]
 
-    for row_idx, row_data in enumerate(moic_data, 8):
-        for col_idx, value in enumerate(row_data, 2):
-            cell = ws.cell(row=row_idx, column=col_idx, value=value)
-            if col_idx in [3, 4] and isinstance(value, (int, float)):
-                cell.number_format = '$#,##0'
-            if row_data[0] in ["Initial Equity Investment", "Exit Equity Value", "Implied MOIC"]:
-                cell.font = HEADER_FONT
+    for row_idx, row_data in enumerate(moic_waterfall, 4):
+        for col_idx, value in enumerate(row_data, 8):
+            ws.cell(row=row_idx, column=col_idx, value=value)
 
-    # IRR Bridge
-    ws['B22'] = "IRR VALUE BRIDGE"
-    ws['B22'].font = WHITE_FONT
-    ws['B22'].fill = GREEN_FILL
-    ws.merge_cells('B22:E22')
+    # Create MOIC waterfall chart
+    moic_chart = BarChart()
+    moic_chart.type = "col"
+    moic_chart.grouping = "stacked"
+    moic_chart.overlap = 100
+    moic_chart.title = "MOIC Value Bridge ($M)"
+    moic_chart.y_axis.title = "Value ($M)"
+    moic_chart.legend = None
 
-    for col, header in enumerate(["Component", "IRR Impact", "Cumulative IRR", "% Contribution"], 2):
-        ws.cell(row=23, column=col, value=header)
-    apply_header_style(ws, 23, 2, 5, fill=GREEN_FILL)
+    # Add data series
+    cats = Reference(ws, min_col=8, min_row=4, max_row=8)
+    base_data = Reference(ws, min_col=9, min_row=3, max_row=8)
+    increase_data = Reference(ws, min_col=10, min_row=3, max_row=8)
+    decrease_data = Reference(ws, min_col=11, min_row=3, max_row=8)
+    total_data = Reference(ws, min_col=12, min_row=3, max_row=8)
 
-    irr_data = [
-        ("Base (0% Return)", "0%", "0%", "—"),
-        ("(+) Revenue Growth", "18%", "18%", "69%"),
-        ("(-) Multiple Contraction", "-5%", "13%", "19%"),
-        ("(+) Debt Paydown", "3%", "16%", "12%"),
-        ("", "", "", ""),
-        ("Net IRR", "26%", "26%", "—"),
+    moic_chart.add_data(base_data, titles_from_data=True)
+    moic_chart.add_data(increase_data, titles_from_data=True)
+    moic_chart.add_data(decrease_data, titles_from_data=True)
+    moic_chart.add_data(total_data, titles_from_data=True)
+    moic_chart.set_categories(cats)
+
+    # Style series
+    # Base - invisible (no fill)
+    moic_chart.series[0].graphicalProperties.noFill = True
+    moic_chart.series[0].graphicalProperties.line.noFill = True
+    # Increase - green
+    moic_chart.series[1].graphicalProperties.solidFill = "00A651"
+    # Decrease - red
+    moic_chart.series[2].graphicalProperties.solidFill = "C00000"
+    # Total - navy
+    moic_chart.series[3].graphicalProperties.solidFill = "01395D"
+
+    moic_chart.width = 15
+    moic_chart.height = 10
+    ws.add_chart(moic_chart, "B5")
+
+    # =========================================================================
+    # IRR BRIDGE DATA (for waterfall chart)
+    # =========================================================================
+    ws['H12'] = "IRR Bridge Chart Data"
+    ws['H12'].font = HEADER_FONT
+
+    irr_headers = ["Category", "Base", "Increase", "Decrease", "Total"]
+    for col, header in enumerate(irr_headers, 8):
+        ws.cell(row=13, column=col, value=header)
+    apply_header_style(ws, 13, 8, 12)
+
+    # IRR waterfall data (percentages)
+    irr_waterfall = [
+        ("Base (0%)", 0, 0, 0, 0),
+        ("Revenue Growth", 0, 35, 0, 0),            # +35%
+        ("Multiple Contraction", 35, 0, 14, 0),     # -14%
+        ("Series D Dilution", 21, 0, 1, 0),         # -1%
+        ("Net IRR", 0, 0, 0, 20),                   # Final: 20%
     ]
 
-    for row_idx, row_data in enumerate(irr_data, 24):
-        for col_idx, value in enumerate(row_data, 2):
-            cell = ws.cell(row=row_idx, column=col_idx, value=value)
-            if row_data[0] == "Net IRR":
-                cell.font = HEADER_FONT
+    for row_idx, row_data in enumerate(irr_waterfall, 14):
+        for col_idx, value in enumerate(row_data, 8):
+            ws.cell(row=row_idx, column=col_idx, value=value)
+
+    # Create IRR waterfall chart
+    irr_chart = BarChart()
+    irr_chart.type = "col"
+    irr_chart.grouping = "stacked"
+    irr_chart.overlap = 100
+    irr_chart.title = "IRR Attribution Bridge (%)"
+    irr_chart.y_axis.title = "IRR (%)"
+    irr_chart.legend = None
+
+    cats2 = Reference(ws, min_col=8, min_row=14, max_row=18)
+    base_data2 = Reference(ws, min_col=9, min_row=13, max_row=18)
+    increase_data2 = Reference(ws, min_col=10, min_row=13, max_row=18)
+    decrease_data2 = Reference(ws, min_col=11, min_row=13, max_row=18)
+    total_data2 = Reference(ws, min_col=12, min_row=13, max_row=18)
+
+    irr_chart.add_data(base_data2, titles_from_data=True)
+    irr_chart.add_data(increase_data2, titles_from_data=True)
+    irr_chart.add_data(decrease_data2, titles_from_data=True)
+    irr_chart.add_data(total_data2, titles_from_data=True)
+    irr_chart.set_categories(cats2)
+
+    # Style series
+    irr_chart.series[0].graphicalProperties.noFill = True
+    irr_chart.series[0].graphicalProperties.line.noFill = True
+    irr_chart.series[1].graphicalProperties.solidFill = "00A651"  # Green
+    irr_chart.series[2].graphicalProperties.solidFill = "C00000"  # Red
+    irr_chart.series[3].graphicalProperties.solidFill = "01395D"  # Navy
+
+    irr_chart.width = 15
+    irr_chart.height = 10
+    ws.add_chart(irr_chart, "B22")
+
+    # =========================================================================
+    # SUMMARY TABLE
+    # =========================================================================
+    ws['H22'] = "Summary"
+    ws['H22'].font = HEADER_FONT
+
+    summary_data = [
+        ("Metric", "Value"),
+        ("Entry Equity", "$97M"),
+        ("Exit Equity", "$290M"),
+        ("Implied MOIC", "3.0x"),
+        ("Net IRR", "20%"),
+        ("Hold Period", "5 years"),
+    ]
+
+    for row_idx, (label, value) in enumerate(summary_data, 23):
+        ws.cell(row=row_idx, column=8, value=label)
+        ws.cell(row=row_idx, column=9, value=value)
+        if row_idx == 23:
+            ws.cell(row=row_idx, column=8).fill = NAVY_BLUE
+            ws.cell(row=row_idx, column=8).font = WHITE_FONT
+            ws.cell(row=row_idx, column=9).fill = NAVY_BLUE
+            ws.cell(row=row_idx, column=9).font = WHITE_FONT
 
     # Target check
-    ws['B32'] = "Target IRR (20%)"
-    ws['C32'] = "Met"
-    ws['C32'].fill = TOP_QUARTILE
-    ws['C32'].font = HEADER_FONT
+    ws['H30'] = "Target IRR (20%)"
+    ws['I30'] = "Met"
+    ws['I30'].fill = TOP_QUARTILE
+    ws['I30'].font = HEADER_FONT
 
     auto_column_width(ws)
     wb.save(OUTPUT_DIR / "19_value_creation_waterfall.xlsx")
