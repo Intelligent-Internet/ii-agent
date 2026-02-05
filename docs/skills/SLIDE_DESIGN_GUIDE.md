@@ -1223,6 +1223,12 @@ LIGHT_GRAY = RGBColor(240, 240, 240) # #F0F0F0
 
 ---
 
+## Related Documentation
+
+- **[EXCEL_BACKUP_REFERENCE.md](./EXCEL_BACKUP_REFERENCE.md)** - Excel data structures for 18 of these 27 templates, including column definitions, sample data, and chart generation code.
+
+---
+
 *Extracted from institutional-quality IB/PE/IR presentations including IPO mandates, strategic rationales, investor day materials, and corporate profiles.*
 
 *Last Updated: 2026-02-04*

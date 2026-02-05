@@ -100,7 +100,8 @@ Use the [SKILL_TEMPLATE.md](./SKILL_TEMPLATE.md) when creating new skills. It in
 
 Also see:
 - [ORCHESTRATION_TEMPLATE.md](./ORCHESTRATION_TEMPLATE.md) - For multi-phase orchestrated skills
-- [SLIDE_DESIGN_GUIDE.md](./SLIDE_DESIGN_GUIDE.md) - Professional slide templates and design patterns
+- [SLIDE_DESIGN_GUIDE.md](./SLIDE_DESIGN_GUIDE.md) - Professional slide templates and design patterns (27 templates)
+- [EXCEL_BACKUP_REFERENCE.md](./EXCEL_BACKUP_REFERENCE.md) - Excel data structures for 18 slide templates
 - [../SELF_IMPROVEMENT.md](../SELF_IMPROVEMENT.md) - For learning and improvement workflows
 
 ---
