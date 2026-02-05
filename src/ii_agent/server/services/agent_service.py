@@ -38,6 +38,13 @@ from ii_tool.utils import load_tools_from_mcp
 from ii_tool.tools.manager import get_common_tools
 from ii_agent.sub_agent.codex import CodexAgent
 
+# Bridge: connect ii_skills domain logic as agent tools
+try:
+    from ii_skills.bridge import get_skill_tools
+    _has_skill_bridge = True
+except ImportError:
+    _has_skill_bridge = False
+
 
 logger = logging.getLogger(__name__)
 
@@ -333,6 +340,26 @@ class AgentService:
                     logger.warning(
                         f"Codex health check failed with status {response.status_code}"
                     )
+
+        # ==============================================================
+        ### Register II-Skills as Agent Tools (Bridge Layer)
+        # ==============================================================
+        if _has_skill_bridge:
+            try:
+                workspace_path = (
+                    workspace_manager.root.absolute().as_posix()
+                    if workspace_manager
+                    else None
+                )
+                skill_tools = get_skill_tools(workspace_path=workspace_path)
+                if skill_tools:
+                    tool_manager.register_tools(skill_tools)
+                    skill_names = [t.name for t in skill_tools]
+                    logger.info(
+                        f"Registered {len(skill_tools)} skill tools: {skill_names}"
+                    )
+            except Exception as e:
+                logger.warning(f"Failed to load skill tools: {e}", exc_info=True)
 
         # ==============================================================
         ### Register All Other Sandbox And MCP Tools
