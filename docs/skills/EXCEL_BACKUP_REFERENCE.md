@@ -4,28 +4,36 @@ This document maps each PowerPoint slide template to its corresponding Excel bac
 
 ---
 
+## Template Files Location
+
+**Path:** `src/ii_skills/shared/excel_templates/`
+
+All 18 Excel template files with sample data and charts are available at the path above.
+
+---
+
 ## Templates WITH Excel Backups Required (18 of 27)
 
-| Template # | Name | Excel Required | Primary Data Type |
-|------------|------|----------------|-------------------|
-| 3 | Peer Benchmarking | **Yes** | Bar chart data |
-| 4 | Comps Table | **Yes** | Trading comps matrix |
-| 5 | Time Series | **Yes** | Date + value series |
-| 6 | Before/After | **Yes** | KPI comparison |
-| 7 | Sources & Uses | **Yes** | Transaction structure |
-| 8 | Scenario Analysis | **Yes** | Low/Mid/High matrix |
-| 9 | Horizontal Bar + Pie | **Yes** | Rankings + categories |
-| 10 | Gantt Chart | **Yes** | Milestones + durations |
-| 11 | Heat Map | **Yes** | Performance matrix |
-| 12 | Portfolio Valuations | **Yes** | Investment returns |
-| 14 | Debt Benchmarking | **Yes** | Capital structure |
-| 16 | 4-Quadrant Achievement | **Yes** | KPI targets vs actuals |
-| 17 | Track Record CAGR | **Yes** | Historical metrics |
-| 19 | Exit Strategy Grid | **Yes** | Exit returns data |
-| 22 | Debt Maturity Profile | **Yes** | Debt schedule |
-| 23 | Value Creation Bridge | **Yes** | Waterfall components |
-| 25 | Deal Showcase Grid | **Yes** | Transaction metrics |
-| 27 | Cost of Capital Spectrum | **Yes** | Funding cost ranges |
+| Template # | Name | Template File | Primary Data Type |
+|------------|------|---------------|-------------------|
+| 3 | Peer Benchmarking | [`03_peer_benchmarking.xlsx`](../../src/ii_skills/shared/excel_templates/03_peer_benchmarking.xlsx) | Bar chart data |
+| 4 | Comps Table | [`04_comps_table.xlsx`](../../src/ii_skills/shared/excel_templates/04_comps_table.xlsx) | Trading comps matrix |
+| 5 | Time Series | [`05_time_series.xlsx`](../../src/ii_skills/shared/excel_templates/05_time_series.xlsx) | Date + value series |
+| 6 | Before/After | [`06_before_after.xlsx`](../../src/ii_skills/shared/excel_templates/06_before_after.xlsx) | KPI comparison |
+| 7 | Sources & Uses | [`07_sources_uses.xlsx`](../../src/ii_skills/shared/excel_templates/07_sources_uses.xlsx) | Transaction structure |
+| 8 | Scenario Analysis | [`08_scenario_analysis.xlsx`](../../src/ii_skills/shared/excel_templates/08_scenario_analysis.xlsx) | Low/Mid/High matrix |
+| 9 | Horizontal Bar + Pie | [`09_horizontal_bar_pie.xlsx`](../../src/ii_skills/shared/excel_templates/09_horizontal_bar_pie.xlsx) | Rankings + categories |
+| 10 | Gantt Chart | [`10_gantt_chart.xlsx`](../../src/ii_skills/shared/excel_templates/10_gantt_chart.xlsx) | Milestones + durations |
+| 11 | Heat Map | [`11_heat_map.xlsx`](../../src/ii_skills/shared/excel_templates/11_heat_map.xlsx) | Performance matrix |
+| 12 | Portfolio Valuations | [`12_portfolio_valuations.xlsx`](../../src/ii_skills/shared/excel_templates/12_portfolio_valuations.xlsx) | Investment returns |
+| 14 | Debt Benchmarking | [`14_debt_benchmarking.xlsx`](../../src/ii_skills/shared/excel_templates/14_debt_benchmarking.xlsx) | Capital structure |
+| 16 | 4-Quadrant Achievement | [`16_achievement_summary.xlsx`](../../src/ii_skills/shared/excel_templates/16_achievement_summary.xlsx) | KPI targets vs actuals |
+| 17 | Track Record CAGR | [`17_track_record.xlsx`](../../src/ii_skills/shared/excel_templates/17_track_record.xlsx) | Historical metrics |
+| 19 | Exit Strategy Grid | [`19_exit_summary.xlsx`](../../src/ii_skills/shared/excel_templates/19_exit_summary.xlsx) | Exit returns data |
+| 22 | Debt Maturity Profile | [`22_debt_maturity.xlsx`](../../src/ii_skills/shared/excel_templates/22_debt_maturity.xlsx) | Debt schedule |
+| 23 | Value Creation Bridge | [`23_value_bridge.xlsx`](../../src/ii_skills/shared/excel_templates/23_value_bridge.xlsx) | Waterfall components |
+| 25 | Deal Showcase Grid | [`25_deal_showcase.xlsx`](../../src/ii_skills/shared/excel_templates/25_deal_showcase.xlsx) | Transaction metrics |
+| 27 | Cost of Capital Spectrum | [`27_cost_of_capital.xlsx`](../../src/ii_skills/shared/excel_templates/27_cost_of_capital.xlsx) | Funding cost ranges |
 
 ---
 
