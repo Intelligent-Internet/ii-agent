@@ -14,6 +14,7 @@ from typing import AsyncIterator, List, Literal, Optional, Dict, Any
 
 import anyio
 import anthropic
+import httpx
 from anthropic.types import (
     TextBlock,
     ToolUseBlock,
@@ -107,9 +108,30 @@ class AnthropicProvider(LLMClient):
             )
         else:
             # Support custom base_url for Anthropic-compatible APIs (e.g., Minimax)
+            # Use explicit httpx.Timeout for better control over streaming timeouts
+            # Extended thinking can have long pauses between chunks
+            stream_timeout = httpx.Timeout(
+                connect=30.0,       # Connection timeout
+                read=600.0,         # Read timeout - 10 minutes for extended thinking
+                write=30.0,         # Write timeout
+                pool=30.0           # Pool timeout
+            )
+
+            # Create custom httpx client with HTTP/1.1 only (no HTTP/2)
+            # and explicit connection limits to avoid connection pooling issues
+            http_client = httpx.AsyncClient(
+                timeout=stream_timeout,
+                http2=False,  # Disable HTTP/2 for more reliable streaming
+                limits=httpx.Limits(
+                    max_keepalive_connections=5,
+                    max_connections=10,
+                    keepalive_expiry=30.0,  # Close idle connections after 30s
+                ),
+            )
+
             client_kwargs = {
                 "api_key": llm_config.api_key.get_secret_value(),
-                "timeout": 60 * 5,
+                "http_client": http_client,
                 "max_retries": 3,
             }
             if llm_config.base_url:
@@ -663,7 +685,6 @@ class AnthropicProvider(LLMClient):
         content_started = False
         current_tool_call_id = None  # Track the current tool call being processed
 
-        logger.info("Starting Anthropic stream...")
         async with self.client.beta.messages.stream(**params, betas=betas) as stream:
             async for event in stream:
                 # Content block start

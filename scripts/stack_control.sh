@@ -17,8 +17,9 @@
 # LIFECYCLE COMMANDS:
 #   start [service]     Start services. No service = start all.
 #   stop [service]      Stop services. No service = stop all.
-#   restart [service]   Restart without rebuilding. No service = restart all.
+#   restart [service]   Recreate container (picks up env changes). No service = restart all.
 #   rebuild [service]   Stop, rebuild image, restart. No service = rebuild all buildable.
+#                       NOTE: For frontend VITE_* changes, use rebuild (baked at build time).
 #   wake [id]           Wake stopped sandbox containers. id = session or sandbox UUID.
 #   cleanup             Remove orphaned sandbox containers (Created/Exited state).
 #
@@ -149,8 +150,8 @@ USAGE:
 COMMANDS:
   start [service]     Start services (all if no service specified)
   stop [service]      Stop services (all if no service specified)
-  restart [service]   Restart without rebuilding
-  rebuild [service]   Rebuild from source and restart
+  restart [service]   Recreate container (picks up env changes, no rebuild)
+  rebuild [service]   Rebuild from source and restart (required for VITE_* changes)
   wake [id]           Wake stopped sandbox (session ID, sandbox ID, or 'all')
   cleanup             Remove orphaned sandbox containers (Created/Exited)
   status              Show running services and URLs
@@ -669,15 +670,15 @@ cmd_restart() {
 
     # If a specific service was requested, just restart that one
     if [[ -n "$TARGET_SERVICE" ]]; then
-        log_info "Restarting $TARGET_SERVICE (keeping existing image)..."
-        compose restart "$TARGET_SERVICE"
+        log_info "Restarting $TARGET_SERVICE (recreating container to pick up env changes)..."
+        compose up -d --force-recreate "$TARGET_SERVICE"
         log_success "$TARGET_SERVICE restarted"
         show_service_url "$TARGET_SERVICE"
         return
     fi
 
     # Restart all services
-    log_info "Restarting all services (keeping existing images)..."
+    log_info "Restarting all services (recreating containers to pick up env changes)..."
     cmd_stop
     echo ""
     cmd_start
@@ -863,22 +864,22 @@ cmd_logs() {
 _resync_sandbox_ports() {
     local sandbox_port
     sandbox_port=$(get_env_value SANDBOX_SERVER_PORT 8100)
-    
+
     log_info "Syncing port allocations with sandbox-server..."
-    
+
     # Try the rescan endpoint (returns 400 in cloud mode, which is fine)
     local response
     response=$(curl -fsS -X POST "http://localhost:${sandbox_port}/ports/rescan" 2>&1) && {
         log_success "Port allocations synced"
         return 0
     }
-    
+
     # Check if it's a "not available" error (cloud mode) - that's OK
     if echo "$response" | grep -q "not available"; then
         log_info "Port management not needed (cloud mode)"
         return 0
     fi
-    
+
     # Fallback: restart sandbox-server to trigger startup scan
     log_warn "Rescan endpoint not available, restarting sandbox-server..."
     local sandbox_server_container="${PROJECT_NAME}-sandbox-server-1"
@@ -939,7 +940,7 @@ cmd_wake() {
         done
         echo ""
         log_success "Woke $count sandbox(es)"
-        
+
         # Tell sandbox-server to rescan port allocations
         if [[ "$count" -gt 0 ]]; then
             _resync_sandbox_ports
@@ -1009,7 +1010,7 @@ cmd_wake() {
         if docker ps --filter "name=$container_name" --format "{{.Status}}" | grep -q "Up"; then
             log_success "Sandbox is now running"
             docker ps --filter "name=$container_name" --format "table {{.Names}}\t{{.Status}}"
-            
+
             # Tell sandbox-server to rescan port allocations
             _resync_sandbox_ports
         else
@@ -1058,7 +1059,7 @@ cmd_cleanup() {
         local container_id container_name
         container_id=$(echo "$line" | awk '{print $1}')
         container_name=$(echo "$line" | awk '{print $2}')
-        
+
         if [[ -n "$container_id" ]]; then
             log_info "Removing $container_name..."
             if docker rm "$container_id" &>/dev/null; then
@@ -1072,15 +1073,15 @@ cmd_cleanup() {
 
     echo ""
     log_success "Removed $count orphaned container(s)"
-    
+
     # Tell sandbox-server to clean up its port allocations
     if [[ "$count" -gt 0 ]]; then
         auto_detect_mode
         get_compose_vars
-        
+
         local sandbox_port
         sandbox_port=$(get_env_value SANDBOX_SERVER_PORT 8100)
-        
+
         log_info "Syncing port allocations with sandbox-server..."
         if curl -fsS -X POST "http://localhost:${sandbox_port}/ports/cleanup" &>/dev/null; then
             log_success "Port allocations cleaned"

@@ -563,6 +563,7 @@ class ChatService:
                 # Accumulate parts for this assistant turn
                 run_response: RunResponseOutput = None
                 file_parts = []
+                provider_event_count = 0
                 # Stream LLM response with tools
                 async for event in provider.stream(
                     messages=messages,
@@ -570,26 +571,38 @@ class ChatService:
                     is_code_interpreter_enabled=is_code_interpreter_enabled,
                     session_id=session_id,
                 ):
+                    provider_event_count += 1
                     # Handle COMPLETE event separately (stores response)
                     if event.type == EventType.COMPLETE:
                         run_response = event.response
+                        logger.info(f"Service received COMPLETE event after {provider_event_count} events")
                     else:
                         # Convert event to SSE format and yield
                         sse_event = event.to_sse_event()
                         if sse_event is not None:
                             yield sse_event
 
+                logger.info(f"Provider stream loop exited after {provider_event_count} events, run_response is {'set' if run_response else 'None'}")
+
                 # Yield usage event for this LLM turn
-                if run_response:
-                    yield {
-                        "type": "usage",
-                        "usage": {
-                            "input_tokens": run_response.usage.prompt_tokens,
-                            "output_tokens": run_response.usage.completion_tokens,
-                            "cache_creation_tokens": run_response.usage.cache_write_tokens,
-                            "cache_read_tokens": run_response.usage.cache_read_tokens,
-                        },
-                    }
+                if run_response is None:
+                    logger.warning(
+                        "LLM stream completed without a response. "
+                        "This may indicate a provider error or timeout. "
+                        f"provider_event_count={provider_event_count}"
+                    )
+                    # Skip usage reporting and continue - let the loop handle tool use or end
+                    continue
+
+                yield {
+                    "type": "usage",
+                    "usage": {
+                        "input_tokens": run_response.usage.prompt_tokens,
+                        "output_tokens": run_response.usage.completion_tokens,
+                        "cache_creation_tokens": run_response.usage.cache_write_tokens,
+                        "cache_read_tokens": run_response.usage.cache_read_tokens,
+                    },
+                }
 
                 if run_response.files:
                     file_parts.extend(run_response.files)

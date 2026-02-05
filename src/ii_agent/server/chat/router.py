@@ -273,6 +273,7 @@ async def send_chat_message(
         import time
 
         start_time = time.time()
+        event_count = 0
         logger.info(f"event_generator started for session {session_id}")
 
         try:
@@ -287,6 +288,7 @@ async def send_chat_message(
                     "created_at": session_metadata.created_at,
                 }
                 yield f"event: session\ndata: {json.dumps(session_event)}\n\n"
+                event_count += 1
 
             # Stream response from provider
             async for event in ChatService.stream_chat_response(
@@ -294,6 +296,7 @@ async def send_chat_message(
                 chat_request=request,
                 user_id=str(current_user.id),
             ):
+                event_count += 1
                 event_type = event.get("type")
 
                 # Content events (start/delta/stop)
@@ -409,6 +412,9 @@ async def send_chat_message(
                     }
                     yield f"event: complete\ndata: {json.dumps(complete_event)}\n\n"
 
+            # Stream completed successfully
+            logger.info(f"event_generator completed successfully for session {session_id} after {event_count} events")
+
         except Exception as e:
             logger.error(f"Chat streaming error: {e}", exc_info=True)
             error_event = {
@@ -417,6 +423,9 @@ async def send_chat_message(
                 "code": "streaming_error",
             }
             yield f"event: error\ndata: {json.dumps(error_event)}\n\n"
+        finally:
+            elapsed = time.time() - start_time
+            logger.info(f"event_generator finished for session {session_id}: {event_count} events in {elapsed:.2f}s")
 
     return StreamingResponse(
         event_generator(),

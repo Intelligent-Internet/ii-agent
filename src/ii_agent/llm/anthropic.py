@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import random
 import time
 from typing import Any, Tuple, cast
@@ -59,6 +60,8 @@ from ii_agent.llm.base import (
     ThinkingBlock,
     RedactedThinkingBlock,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class AnthropicDirectClient(LLMClient):
