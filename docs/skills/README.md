@@ -2,11 +2,25 @@
 
 This directory contains documentation for ii-agent skills - modular plugins that extend the agent's capabilities.
 
+For a complete task reference, see [TASK_REFERENCE.md](../../TASK_REFERENCE.md) in the repository root.
+
 ## Available Skills
 
 ### [IB Toolkit](./ib_toolkit/)
 
-Professional investment banking tools for creating presentations and financial models.
+Professional investment banking tools for PE/IB deal analysis, LBO modeling, and IC presentations.
+
+**Modules:** 67 (33 Excel + 34 Slides)
+
+### [IR Toolkit](./ir_toolkit/)
+
+Infrastructure fund investor relations tools for LP communications, fundraising materials, and DDQ responses.
+
+**Modules:** 33 (Excel ↔ Slide pairs)
+
+---
+
+## IB Toolkit Details
 
 | Document | Description |
 |----------|-------------|

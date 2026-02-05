@@ -13,6 +13,8 @@ Personal cloud operations base with specialized skills for investment banking an
 | Build an LBO model | [IB Toolkit - LBO Models](#ib-toolkit---lbo-models) |
 | Create deal slides | [IB Toolkit - Slide Generation](#ib-toolkit---slide-generation) |
 | Full IB capabilities | [IB Toolkit Complete Reference](#ib-toolkit-complete-reference) |
+| LP quarterly update | [IR Toolkit](#ir-toolkit-infrastructure-investor-relations) |
+| Fundraising deck | [IR Toolkit - Case Types](#ir-case-types) |
 | Track portfolio | [Net Worth Newsletter](#networth_newsletter) |
 | Market news | [Market Newsletter](#market_newsletter) |
 | Health metrics | [Health Dashboard](#health_dashboard) |
@@ -167,6 +169,109 @@ Exit: "Create exit readiness assessment"
 
 ---
 
+## IR Toolkit (Infrastructure Investor Relations)
+
+**Location:** `src/ii_skills/ir_toolkit/`
+
+Specialized toolkit for infrastructure fund investor relations - orthogonal to IB/PE deal work.
+
+**Core Principle:** Every Excel analysis has a corresponding PowerPoint slide.
+
+### Key Documentation Files
+
+| Document | Purpose |
+|----------|---------|
+| `CAPABILITIES.md` | **Complete reference of all 33 Excel ↔ Slide pairs** |
+| `CASE_GUIDE.md` | **How to approach IR deliverables by timeframe** |
+| `QUICK_REFERENCE.md` | Request keywords → Module mapping |
+| `PROMPT_LIBRARY.md` | 12 ready-to-use prompts |
+| `references/infra_jargon_metrics.md` | Infrastructure terminology guide |
+
+### IR Case Types
+
+| Case Type | Modules | Use Case |
+|-----------|---------|----------|
+| **LP Update** | 6 | Quarterly LP communications |
+| **Fundraising** | 12 | New fund marketing materials |
+| **DDQ Response** | 3 | Due diligence questionnaire packs |
+| **Annual Meeting** | 12 | AGM presentations |
+| **Crisis Comms** | 4 | Rapid response materials |
+
+### IR Toolkit - Module Categories
+
+**Fund Overview (4 Excel + 4 Slides)**
+| Module | Keywords |
+|--------|----------|
+| Fund Snapshot | "fund overview", "strategy" |
+| Performance Summary | "IRR", "DPI", "TVPI", "returns" |
+| Portfolio Composition | "sector mix", "geography" |
+| Track Record | "historical performance" |
+
+**Cash Flows (3 Excel + 3 Slides)**
+| Module | Keywords |
+|--------|----------|
+| Cash Flow Waterfall | "calls", "distributions" |
+| Distribution Coverage | "coverage ratio" |
+| IRR Bridge | "return attribution" |
+
+**Asset Performance (4 Excel + 4 Slides)**
+| Module | Keywords |
+|--------|----------|
+| Asset KPI Dashboard | "availability", "utilization" |
+| Revenue Quality | "contracted", "merchant" |
+| Capex Tracker | "maintenance", "growth capex" |
+| Contract Summary | "WACL", "counterparty" |
+
+**Valuation (3 Excel + 3 Slides)**
+| Module | Keywords |
+|--------|----------|
+| NAV Roll-forward | "NAV bridge", "drivers" |
+| Sensitivity Analysis | "discount rate", "stress" |
+| Macro Exposure | "inflation", "rates" |
+
+**Risk (2 Excel + 2 Slides)**
+| Module | Keywords |
+|--------|----------|
+| Risk Register | "top risks", "mitigation" |
+| Regulatory Calendar | "reset dates", "RAB" |
+
+**ESG (1 Excel + 1 Slide)**
+| Module | Keywords |
+|--------|----------|
+| ESG Metrics | "emissions", "TRIR", "safety" |
+
+**Fundraising (4 Excel + 4 Slides)**
+| Module | Keywords |
+|--------|----------|
+| LP Pipeline | "funnel", "prospects" |
+| DDQ Tracker | "questions", "status" |
+| Term Sheet | "fees", "carry", "hurdle" |
+| Data Room Checklist | "diligence", "documents" |
+
+### IR Toolkit - Quick Commands
+
+```
+"Generate an LP quarterly update for Q4 2025"
+"Build a fundraising deck for Fund V"
+"Create DDQ response pack"
+"Analyze asset KPIs for the wind portfolio"
+"Build NAV roll-forward with FX impact"
+"Generate leverage and coverage profile"
+```
+
+### Infrastructure-Specific Metrics
+
+| Metric | Definition |
+|--------|------------|
+| **Contracted Revenue %** | Revenue under long-term contracts (target: 70-95%) |
+| **WACL** | Weighted Average Contract Life (years) |
+| **Availability** | Uptime percentage (target: >95%) |
+| **DSCR** | Debt Service Coverage Ratio (target: >1.3x) |
+| **CPI Linkage** | Revenue indexed to inflation |
+| **Rate Base** | Regulated asset value earning allowed return |
+
+---
+
 ## Other Skills
 
 ### networth_newsletter
@@ -262,7 +367,7 @@ python src/ii_skills/health_dashboard/whoop_newsletter.py
 ii-agent/
 ├── src/
 │   └── ii_skills/
-│       ├── ib_toolkit/
+│       ├── ib_toolkit/              # PE/IB deal analysis (67 modules)
 │       │   ├── CAPABILITIES.md      # Full module reference
 │       │   ├── LBO_CASE_GUIDE.md    # Case approach guide
 │       │   ├── QUICK_REFERENCE.md   # Request → Module map
@@ -270,6 +375,16 @@ ii-agent/
 │       │       ├── excel_models/    # Excel generation code
 │       │       ├── case_study/      # Slide generation code
 │       │       └── reference_outputs/ # 30 template files
+│       ├── ir_toolkit/              # Infrastructure IR (33 modules)
+│       │   ├── CAPABILITIES.md      # Full module reference
+│       │   ├── CASE_GUIDE.md        # IR deliverable guide
+│       │   ├── PROMPT_LIBRARY.md    # Ready-to-use prompts
+│       │   └── references/          # Jargon and metrics guide
+│       ├── shared/                  # Common infrastructure
+│       │   ├── event_telemetry.py   # Run tracking
+│       │   ├── task_graph.py        # DAG execution
+│       │   ├── run_budgets.py       # Execution limits
+│       │   └── event_schema.py      # Typed events
 │       ├── networth_newsletter/
 │       ├── market_newsletter/
 │       ├── health_dashboard/
@@ -290,7 +405,12 @@ ii-agent/
 | Value creation | "Show value creation bridge" |
 | Exit planning | "Create exit readiness assessment" |
 | Industry slides | "Generate industry analysis slides" |
-| Full deck | "Create institutional investment deck" |
+| Full deal deck | "Create institutional investment deck" |
+| LP quarterly update | "Generate LP update for Q4" |
+| Fundraising deck | "Build fundraising deck for Fund V" |
+| DDQ response | "Create DDQ response pack" |
+| Asset KPIs | "Analyze asset KPI dashboard" |
+| NAV analysis | "Build NAV roll-forward" |
 | Track portfolio | "Show my net worth breakdown" |
 | Market update | "What's happening in markets today?" |
 | Health check | "What's my HRV trend this week?" |
@@ -299,4 +419,5 @@ ii-agent/
 
 *Base System: ii-agent (github.com/robertodbabaran/ii-agent)*
 *IB Toolkit: 67 modules (33 Excel + 34 Slides)*
+*IR Toolkit: 33 modules (Excel ↔ Slide pairs)*
 *Last Updated: 2026-02-04*
