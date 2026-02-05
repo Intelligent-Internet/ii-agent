@@ -16,6 +16,8 @@ Components:
 - TaskGraph: Reusable task graph executor (ralph-inspired)
 - RunBudgetConfig: Execution budget constraints (ralph-inspired)
 - EventSchema: Public event payload definitions (ralph-inspired)
+- SkillManifest: Structured capability manifests (Goose-inspired)
+- WorkspaceManager: Per-execution agent workspaces (Goose-inspired)
 """
 
 from ii_skills.shared.datastore import DataStore, get_datastore
@@ -131,6 +133,26 @@ from ii_skills.shared.subagent_tracing import (
     SubAgentRecord,
     SubAgentContext,
     traced_subagent,
+)
+
+# Skill Manifest (Goose-inspired plugin SDK)
+from ii_skills.shared.skill_manifest import (
+    SkillManifest,
+    ActionSchema,
+    RiskLevel,
+    PermissionScope,
+    SkillState,
+    HealthStatus,
+    HealthReport,
+    SkillStatus,
+)
+
+# Workspace Manager (Goose-inspired agent workspaces)
+from ii_skills.shared.workspace import (
+    WorkspaceManager,
+    Workspace,
+    WorkspaceManifest,
+    ArtifactRecord,
 )
 
 # Generic phase runner
@@ -261,4 +283,18 @@ __all__ = [
     "RunnerTaskStatus",
     "RunnerPhaseStatus",
     "create_phase",
+    # Skill Manifest (Goose-inspired)
+    "SkillManifest",
+    "ActionSchema",
+    "RiskLevel",
+    "PermissionScope",
+    "SkillState",
+    "HealthStatus",
+    "HealthReport",
+    "SkillStatus",
+    # Workspace Manager (Goose-inspired)
+    "WorkspaceManager",
+    "Workspace",
+    "WorkspaceManifest",
+    "ArtifactRecord",
 ]

@@ -93,5 +93,9 @@ build-backend = "hatchling.build"
 where = ["src"]
 include = ["ii_agent*", "ii_tool*"]
 
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+asyncio_mode = "auto"
+
 [dependency-groups]
 dev = ["pytest-asyncio>=1.0.0"]

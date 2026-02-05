@@ -12,11 +12,17 @@ Usage in agent_service.py:
 """
 
 from .skill_tool import SkillTool
-from .skill_registry import get_skill_tools, get_skill_tool, list_available_skills
+from .skill_registry import (
+    get_skill_tools,
+    get_skill_tool,
+    list_available_skills,
+    shutdown_skill_tools,
+)
 
 __all__ = [
     "SkillTool",
     "get_skill_tools",
     "get_skill_tool",
     "list_available_skills",
+    "shutdown_skill_tools",
 ]

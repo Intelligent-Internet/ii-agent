@@ -5,9 +5,17 @@ This module bridges ii_skills discovery with ii_agent tool registration.
 It imports ii_skills, triggers auto-discovery, and wraps each registered
 skill as a SkillTool that the AgentToolManager can use.
 
+Enhanced with:
+- Lifecycle hooks: on_activate() during registration, on_deactivate() on shutdown
+- Manifest-aware skill listing with health status
+- Optional WorkspaceManager injection for per-execution workspaces
+- Graceful shutdown via shutdown_skill_tools()
+
 Usage:
-    from ii_skills.bridge import get_skill_tools
+    from ii_skills.bridge import get_skill_tools, shutdown_skill_tools
     tools = get_skill_tools()  # Returns list of SkillTool instances
+    # ... use tools ...
+    shutdown_skill_tools(tools)  # Graceful cleanup
 """
 
 import logging
@@ -19,6 +27,7 @@ logger = logging.getLogger(__name__)
 def get_skill_tools(
     config: Optional[Dict] = None,
     workspace_path: Optional[str] = None,
+    workspace_manager=None,
     include: Optional[List[str]] = None,
     exclude: Optional[List[str]] = None,
 ) -> list:
@@ -31,6 +40,7 @@ def get_skill_tools(
     Args:
         config: Optional config dict passed to each skill
         workspace_path: Optional workspace path for output file handling
+        workspace_manager: Optional WorkspaceManager for per-execution workspaces
         include: If set, only include these skill names
         exclude: If set, exclude these skill names
 
@@ -74,8 +84,18 @@ def get_skill_tools(
             # Initialize
             skill.initialize()
 
-            # Wrap as SkillTool
-            tool = SkillTool(skill, workspace_path=workspace_path)
+            # Activate lifecycle
+            try:
+                skill.on_activate()
+            except Exception as e:
+                logger.warning(f"Skill '{skill_name}' on_activate() failed: {e}")
+
+            # Wrap as SkillTool (with optional workspace manager)
+            tool = SkillTool(
+                skill,
+                workspace_path=workspace_path,
+                workspace_manager=workspace_manager,
+            )
             tools.append(tool)
             logger.info(
                 f"Registered skill tool: {tool.name} "
@@ -92,10 +112,28 @@ def get_skill_tools(
     return tools
 
 
+def shutdown_skill_tools(tools: list) -> None:
+    """Gracefully shut down all skill tools.
+
+    Calls on_deactivate() on each underlying skill for cleanup.
+
+    Args:
+        tools: List of SkillTool instances from get_skill_tools()
+    """
+    for tool in tools:
+        try:
+            skill = tool._skill
+            skill.on_deactivate()
+            logger.info(f"Deactivated skill: {skill.name}")
+        except Exception as e:
+            logger.warning(f"Error deactivating skill '{tool.name}': {e}")
+
+
 def get_skill_tool(
     skill_name: str,
     config: Optional[Dict] = None,
     workspace_path: Optional[str] = None,
+    workspace_manager=None,
 ) -> Optional["SkillTool"]:
     """Get a single skill as a SkillTool by name.
 
@@ -103,6 +141,7 @@ def get_skill_tool(
         skill_name: Name of the skill (e.g., 'ib_toolkit')
         config: Optional config dict
         workspace_path: Optional workspace path
+        workspace_manager: Optional WorkspaceManager instance
 
     Returns:
         SkillTool instance or None if skill not found
@@ -110,16 +149,18 @@ def get_skill_tool(
     tools = get_skill_tools(
         config=config,
         workspace_path=workspace_path,
+        workspace_manager=workspace_manager,
         include=[skill_name],
     )
     return tools[0] if tools else None
 
 
 def list_available_skills() -> List[Dict]:
-    """List all registered skills with their metadata.
+    """List all registered skills with manifest summary and health status.
 
     Returns:
-        List of dicts with skill name, version, description, capabilities
+        List of dicts with skill name, version, description, capabilities,
+        manifest info, and health status.
     """
     try:
         import ii_skills
@@ -132,12 +173,33 @@ def list_available_skills() -> List[Dict]:
         name = skill_info["name"]
         skill = get_skill(name)
         if skill:
-            result.append({
+            entry = {
                 **skill_info,
                 "capabilities": skill.get_capabilities(),
                 "capability_count": len(skill.get_capabilities()),
                 "is_ready": skill.is_ready,
                 "config_issues": skill.validate_config(),
-            })
+            }
+
+            # Add manifest summary
+            try:
+                manifest = skill.get_manifest()
+                entry["manifest"] = {
+                    "action_count": len(manifest.actions),
+                    "destructive_actions": manifest.get_destructive_actions(),
+                    "write_actions": manifest.get_write_actions(),
+                    "permissions": [p.value for p in manifest.get_all_permissions()],
+                }
+            except Exception:
+                entry["manifest"] = None
+
+            # Add health status
+            try:
+                health = skill.health_check()
+                entry["health"] = health.to_dict()
+            except Exception:
+                entry["health"] = None
+
+            result.append(entry)
 
     return result
