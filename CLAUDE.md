@@ -286,6 +286,68 @@ Specialized toolkit for infrastructure fund investor relations - orthogonal to I
 
 ---
 
+## Deal & Analysis Support Skills
+
+### deal_memory
+**Location:** `src/ii_skills/deal_memory/`
+
+Persistent deal context across conversations. Wraps existing DealMemory and DataStore infrastructure.
+
+**Capabilities (10 actions):**
+- Store/recall deal notes, decisions, assumptions
+- Store/recall company research and knowledge
+- List active and past deals
+- Search across deal history
+- Store/recall user modeling preferences
+- Export deal context as JSON
+
+**Commands:**
+```
+"Remember this assumption for the Acme deal"
+"What do we know about ACME?"
+"List my active deals"
+"Search deal history for SaaS LBOs"
+"Export all context for the Acme deal"
+```
+
+### output_organizer
+**Location:** `src/ii_skills/output_organizer/`
+
+Auto-organize skill outputs into standardized deal folders.
+
+**Capabilities (7 actions):**
+- Create deal folder structure (LBO, Growth Equity, Add-on, Carve-out templates)
+- Organize outputs by deal (auto-map files to subfolders)
+- Link outputs to deals, search outputs, export deal packages
+
+**Commands:**
+```
+"Create a deal folder for the Acme LBO"
+"Organize all outputs for deal X"
+"What files do we have for the Acme deal?"
+"Export deal package for IC review"
+```
+
+### pdf_extractor
+**Location:** `src/ii_skills/pdf_extractor/`
+
+Extract financial data from CIM PDFs using PyMuPDF + pattern matching.
+
+**Capabilities (6 actions):**
+- Extract all financials (P&L, BS, CF) from CIM PDFs
+- Extract specific statements (income statement, balance sheet)
+- Extract key metrics (margins, growth, leverage)
+- Export extracted data to formatted Excel workbook
+
+**Commands:**
+```
+"Extract financials from this CIM PDF"
+"Pull the income statement from the CIM"
+"Export the extracted data to Excel"
+```
+
+---
+
 ## Other Skills
 
 ### networth_newsletter
@@ -395,7 +457,16 @@ ii-agent/
 │       │   ├── PROMPT_LIBRARY.md    # 24 ready-to-use prompts
 │       │   ├── SLIDE_LAYOUTS.md     # Visual slide templates
 │       │   └── references/          # Jargon and metrics guide
+│       ├── deal_memory/             # Persistent deal context (10 actions)
+│       ├── output_organizer/        # Auto-organize files into deal folders (7 actions)
+│       ├── pdf_extractor/           # Extract financials from CIM PDFs (6 actions)
+│       │   ├── extractor.py         # PyMuPDF text extraction engine
+│       │   ├── patterns.py          # Financial regex patterns
+│       │   └── excel_writer.py      # Formatted Excel output
 │       ├── shared/                  # Common infrastructure
+│       │   ├── memory.py            # MemoryService, DealMemory, ConversationMemory
+│       │   ├── datastore.py         # DataStore (deals, outputs, memories)
+│       │   ├── storage.py           # SkillStorage (GCS uploads)
 │       │   ├── event_telemetry.py   # Run tracking
 │       │   ├── task_graph.py        # DAG execution
 │       │   ├── run_budgets.py       # Execution limits
@@ -437,6 +508,10 @@ ii-agent/
 | DDQ response | "Create DDQ response pack" |
 | Asset KPIs | "Analyze asset KPI dashboard" |
 | NAV analysis | "Build NAV roll-forward" |
+| Remember deal context | "Remember this assumption for the Acme deal" |
+| Recall company facts | "What do we know about ACME?" |
+| Organize deal files | "Create a deal folder for the Acme LBO" |
+| Extract CIM financials | "Extract financials from this CIM PDF" |
 | Track portfolio | "Show my net worth breakdown" |
 | Market update | "What's happening in markets today?" |
 | Health check | "What's my HRV trend this week?" |
@@ -446,4 +521,5 @@ ii-agent/
 *Base System: ii-agent (github.com/robertodbabaran/ii-agent)*
 *IB Toolkit: 67 modules (33 Excel + 34 Slides)*
 *IR Toolkit: 33 modules (Excel ↔ Slide pairs)*
+*Deal Support: deal_memory (10), output_organizer (7), pdf_extractor (6)*
 *Last Updated: 2026-02-04*
