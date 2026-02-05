@@ -61,6 +61,17 @@ class EventType(Enum):
     TASK_RETRYING = "task_retrying"
     TASK_SKIPPED = "task_skipped"
 
+    # Tool execution (new)
+    TOOL_STARTED = "tool_started"
+    TOOL_COMPLETED = "tool_completed"
+    TOOL_FAILED = "tool_failed"
+
+    # Sub-agent lifecycle (new)
+    SUB_AGENT_START = "sub_agent_start"
+    SUB_AGENT_PROGRESS = "sub_agent_progress"
+    SUB_AGENT_COMPLETE = "sub_agent_complete"
+    SUB_AGENT_ERROR = "sub_agent_error"
+
     # Progress
     PROGRESS_UPDATE = "progress_update"
     CHECKPOINT_SAVED = "checkpoint_saved"
@@ -366,6 +377,100 @@ class BudgetExceededPayload(EventPayload):
 
 
 # =============================================================================
+# TOOL EXECUTION EVENTS
+# =============================================================================
+
+@dataclass
+class ToolStartedPayload(EventPayload):
+    """Payload for tool_started events."""
+    event_type: str = field(default=EventType.TOOL_STARTED.value)
+    run_id: str = ""
+    tool_name: str = ""
+    tool_type: str = ""  # e.g., "search", "file", "api"
+    input_summary: Optional[str] = None
+
+
+@dataclass
+class ToolCompletedPayload(EventPayload):
+    """Payload for tool_completed events."""
+    event_type: str = field(default=EventType.TOOL_COMPLETED.value)
+    run_id: str = ""
+    tool_name: str = ""
+    tool_type: str = ""
+    duration_ms: float = 0
+    output_size_bytes: Optional[int] = None
+    output_summary: Optional[str] = None
+
+
+@dataclass
+class ToolFailedPayload(EventPayload):
+    """Payload for tool_failed events with standardized error taxonomy."""
+    event_type: str = field(default=EventType.TOOL_FAILED.value)
+    severity: str = Severity.ERROR.value
+    run_id: str = ""
+    tool_name: str = ""
+    tool_type: str = ""
+    duration_ms: float = 0
+    is_error: bool = True
+    error_type: str = ""  # "timeout", "validation", "runtime", "not_found", "permission", "rate_limit", "network", "unknown"
+    error_message: str = ""
+    will_retry: bool = False
+
+
+# =============================================================================
+# SUB-AGENT EVENTS
+# =============================================================================
+
+@dataclass
+class SubAgentStartPayload(EventPayload):
+    """Payload for sub_agent_start events with parent-child linking."""
+    event_type: str = field(default=EventType.SUB_AGENT_START.value)
+    parent_run_id: str = ""  # Parent run ID for trace stitching
+    child_run_id: str = ""   # This sub-agent's run ID
+    agent_type: str = ""     # e.g., "research", "analysis", "generation"
+    task_description: str = ""
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class SubAgentProgressPayload(EventPayload):
+    """Payload for sub_agent_progress events."""
+    event_type: str = field(default=EventType.SUB_AGENT_PROGRESS.value)
+    parent_run_id: str = ""
+    child_run_id: str = ""
+    agent_type: str = ""
+    progress: float = 0  # 0.0 to 1.0
+    message: Optional[str] = None
+
+
+@dataclass
+class SubAgentCompletePayload(EventPayload):
+    """Payload for sub_agent_complete events with parent-child linking."""
+    event_type: str = field(default=EventType.SUB_AGENT_COMPLETE.value)
+    parent_run_id: str = ""
+    child_run_id: str = ""
+    agent_type: str = ""
+    task_description: str = ""
+    duration_ms: float = 0
+    status: str = "success"  # "success", "failed", "cancelled"
+    result_summary: Optional[str] = None
+
+
+@dataclass
+class SubAgentErrorPayload(EventPayload):
+    """Payload for sub_agent_error events."""
+    event_type: str = field(default=EventType.SUB_AGENT_ERROR.value)
+    severity: str = Severity.ERROR.value
+    parent_run_id: str = ""
+    child_run_id: str = ""
+    agent_type: str = ""
+    task_description: str = ""
+    duration_ms: float = 0
+    error_message: str = ""
+    error_type: str = ""
+
+
+# =============================================================================
 # CUSTOM EVENTS
 # =============================================================================
 
@@ -384,24 +489,39 @@ class CustomEventPayload(EventPayload):
 
 # Registry of payload types by event type
 PAYLOAD_REGISTRY: Dict[str, Type[EventPayload]] = {
+    # Run lifecycle
     EventType.RUN_STARTED.value: RunStartedPayload,
     EventType.RUN_COMPLETED.value: RunCompletedPayload,
     EventType.RUN_FAILED.value: RunFailedPayload,
     EventType.RUN_CANCELLED.value: RunCancelledPayload,
+    # Phase lifecycle
     EventType.PHASE_STARTED.value: PhaseStartedPayload,
     EventType.PHASE_COMPLETED.value: PhaseCompletedPayload,
     EventType.PHASE_FAILED.value: PhaseFailedPayload,
     EventType.PHASE_SKIPPED.value: PhaseSkippedPayload,
+    # Task lifecycle
     EventType.TASK_QUEUED.value: TaskQueuedPayload,
     EventType.TASK_STARTED.value: TaskStartedPayload,
     EventType.TASK_COMPLETED.value: TaskCompletedPayload,
     EventType.TASK_FAILED.value: TaskFailedPayload,
     EventType.TASK_RETRYING.value: TaskRetryingPayload,
     EventType.TASK_SKIPPED.value: TaskSkippedPayload,
+    # Tool execution
+    EventType.TOOL_STARTED.value: ToolStartedPayload,
+    EventType.TOOL_COMPLETED.value: ToolCompletedPayload,
+    EventType.TOOL_FAILED.value: ToolFailedPayload,
+    # Sub-agent lifecycle
+    EventType.SUB_AGENT_START.value: SubAgentStartPayload,
+    EventType.SUB_AGENT_PROGRESS.value: SubAgentProgressPayload,
+    EventType.SUB_AGENT_COMPLETE.value: SubAgentCompletePayload,
+    EventType.SUB_AGENT_ERROR.value: SubAgentErrorPayload,
+    # Progress
     EventType.PROGRESS_UPDATE.value: ProgressUpdatePayload,
     EventType.CHECKPOINT_SAVED.value: CheckpointSavedPayload,
+    # Budget
     EventType.BUDGET_WARNING.value: BudgetWarningPayload,
     EventType.BUDGET_EXCEEDED.value: BudgetExceededPayload,
+    # Custom
     EventType.CUSTOM.value: CustomEventPayload,
 }
 

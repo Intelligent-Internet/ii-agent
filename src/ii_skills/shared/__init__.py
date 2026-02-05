@@ -94,12 +94,56 @@ from ii_skills.shared.event_schema import (
     TaskCompletedPayload,
     TaskFailedPayload,
     ProgressUpdatePayload,
+    # Tool execution events
+    ToolStartedPayload,
+    ToolCompletedPayload,
+    ToolFailedPayload,
+    # Sub-agent events
+    SubAgentStartPayload,
+    SubAgentCompletePayload,
+    SubAgentErrorPayload,
+    # Utilities
     validate_payload,
     create_payload,
     parse_event,
     EventSchemaMapper,
     create_orchestrator_event_mapper,
     SCHEMA_VERSION,
+)
+
+# Tool metrics
+from ii_skills.shared.tool_metrics import (
+    ToolMetrics,
+    ToolErrorType,
+    ToolExecutionRecord,
+    ToolMetricsSummary,
+    ExecutionTracker,
+    get_global_metrics,
+    track_tool_execution,
+)
+
+# Sub-agent tracing
+from ii_skills.shared.subagent_tracing import (
+    SubAgentTracer,
+    SubAgentEvent,
+    SubAgentEventType,
+    SubAgentStatus,
+    SubAgentRecord,
+    SubAgentContext,
+    traced_subagent,
+)
+
+# Generic phase runner
+from ii_skills.shared.phase_runner import (
+    PhaseRunner,
+    PhaseRunnerConfig,
+    PhaseRunnerCallback,
+    ConsolePhaseRunnerCallback,
+    Task as PhaseTask,
+    Phase as RunnerPhase,
+    TaskStatus as RunnerTaskStatus,
+    PhaseStatus as RunnerPhaseStatus,
+    create_phase,
 )
 
 __all__ = [
@@ -179,10 +223,42 @@ __all__ = [
     "TaskCompletedPayload",
     "TaskFailedPayload",
     "ProgressUpdatePayload",
+    "ToolStartedPayload",
+    "ToolCompletedPayload",
+    "ToolFailedPayload",
+    "SubAgentStartPayload",
+    "SubAgentCompletePayload",
+    "SubAgentErrorPayload",
     "validate_payload",
     "create_payload",
     "parse_event",
     "EventSchemaMapper",
     "create_orchestrator_event_mapper",
     "SCHEMA_VERSION",
+    # Tool Metrics
+    "ToolMetrics",
+    "ToolErrorType",
+    "ToolExecutionRecord",
+    "ToolMetricsSummary",
+    "ExecutionTracker",
+    "get_global_metrics",
+    "track_tool_execution",
+    # Sub-agent Tracing
+    "SubAgentTracer",
+    "SubAgentEvent",
+    "SubAgentEventType",
+    "SubAgentStatus",
+    "SubAgentRecord",
+    "SubAgentContext",
+    "traced_subagent",
+    # Phase Runner
+    "PhaseRunner",
+    "PhaseRunnerConfig",
+    "PhaseRunnerCallback",
+    "ConsolePhaseRunnerCallback",
+    "PhaseTask",
+    "RunnerPhase",
+    "RunnerTaskStatus",
+    "RunnerPhaseStatus",
+    "create_phase",
 ]
