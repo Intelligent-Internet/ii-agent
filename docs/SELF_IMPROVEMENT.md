@@ -192,4 +192,108 @@ Use for:
 
 ---
 
+## Workflow Discipline
+
+Guidelines for maintaining quality and consistency during task execution.
+
+### Plan Mode Defaults
+
+For non-trivial tasks, default to planning before execution:
+
+| Task Complexity | Approach |
+|-----------------|----------|
+| **Simple** (single file, clear scope) | Execute directly |
+| **Moderate** (2-5 files, some ambiguity) | Brief mental plan, then execute |
+| **Complex** (multi-file, architectural) | Enter plan mode, get approval, then execute |
+
+**Signs you need plan mode:**
+- Task touches more than 3 files
+- Multiple valid approaches exist
+- Unclear requirements or scope
+- Changes affect system architecture
+- User hasn't specified exact implementation
+
+### Verification Before Completion
+
+Never mark a task complete without verification:
+
+```
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│  Implement  │────▶│   Verify    │────▶│   Report    │
+│   Change    │     │   Result    │     │  Complete   │
+└─────────────┘     └─────────────┘     └─────────────┘
+```
+
+**Verification checklist:**
+- [ ] Code runs without errors
+- [ ] Tests pass (if applicable)
+- [ ] Output matches expected format
+- [ ] No regressions introduced
+- [ ] Files saved and committed (if requested)
+
+**If verification fails:**
+1. Do NOT report task as complete
+2. Fix the issue
+3. Re-verify
+4. Then report completion
+
+### Autonomous Bug-Fixing
+
+When encountering errors during execution:
+
+1. **Don't stop immediately** - Attempt to diagnose and fix
+2. **Try up to 3 fix attempts** before escalating to user
+3. **Log the fix** in `learnings/` if it reveals a pattern
+4. **Only escalate** if:
+   - Root cause is unclear after investigation
+   - Fix requires user decision (e.g., breaking change)
+   - Fix would exceed scope of original task
+
+**Bug-fix workflow:**
+```
+Error Encountered
+       │
+       ▼
+┌─────────────────┐
+│ Diagnose cause  │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐     No      ┌─────────────────┐
+│ Can fix without │────────────▶│ Escalate to     │
+│ user input?     │             │ user            │
+└────────┬────────┘             └─────────────────┘
+         │ Yes
+         ▼
+┌─────────────────┐
+│ Apply fix       │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐     No      ┌─────────────────┐
+│ Fix worked?     │────────────▶│ Try again       │
+│                 │             │ (up to 3x)      │
+└────────┬────────┘             └─────────────────┘
+         │ Yes
+         ▼
+┌─────────────────┐
+│ Continue task   │
+│ Log if pattern  │
+└─────────────────┘
+```
+
+### Quality Gates
+
+Before considering any deliverable complete:
+
+| Deliverable Type | Quality Gate |
+|------------------|--------------|
+| **Code changes** | Runs without error, tests pass |
+| **Excel files** | Opens correctly, formulas work, formatting intact |
+| **PowerPoint** | Opens correctly, no placeholder text, consistent styling |
+| **Documentation** | No TODOs, links work, formatting renders correctly |
+| **Git commits** | Descriptive message, correct files staged, no secrets |
+
+---
+
 *This workflow is part of the Persistent Agent Workspace Best Practices.*
