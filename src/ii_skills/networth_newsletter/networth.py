@@ -543,8 +543,30 @@ def generate_html(data: dict, chart_base64: str = None, analytics_html: str = No
     # Get previous day's data for change
     history = data.get("history", [])
     daily_change_cad = 0
+    weekly_change_cad = None
+    monthly_change_cad = None
+    today_nw = net_worth_cad
+
     if len(history) >= 2:
         daily_change_cad = history[-1]["net_worth_cad"] - history[-2]["net_worth_cad"]
+
+    # Find ~7-day-ago and ~30-day-ago entries
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    week_ago_str = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
+    month_ago_str = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+
+    # Find closest entry on or before the target date
+    def find_closest_entry(target_date: str) -> dict:
+        candidates = [h for h in history if h["date"] <= target_date]
+        return candidates[-1] if candidates else None
+
+    week_entry = find_closest_entry(week_ago_str)
+    month_entry = find_closest_entry(month_ago_str)
+
+    if week_entry and week_entry["date"] != today_str:
+        weekly_change_cad = today_nw - week_entry["net_worth_cad"]
+    if month_entry and month_entry["date"] != today_str:
+        monthly_change_cad = today_nw - month_entry["net_worth_cad"]
 
     html = f"""
 <!DOCTYPE html>
@@ -702,7 +724,20 @@ def generate_html(data: dict, chart_base64: str = None, analytics_html: str = No
         <div class="net-worth-value">{format_currency(net_worth_cad, "CAD")}</div>
         <div class="net-worth-usd">{format_currency(net_worth_usd, "USD")} USD</div>
         <div class="daily-change">
-            Daily Change: {format_change(daily_change_cad)} CAD
+            <div style="display: flex; justify-content: center; gap: 30px; flex-wrap: wrap;">
+                <div>
+                    <span style="color: #6b7280; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Day</span><br>
+                    {format_change(daily_change_cad)} CAD
+                </div>
+                <div>
+                    <span style="color: #6b7280; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Week</span><br>
+                    {format_change(weekly_change_cad) + " CAD" if weekly_change_cad is not None else '<span style="color: #9ca3af;">—</span>'}
+                </div>
+                <div>
+                    <span style="color: #6b7280; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Month</span><br>
+                    {format_change(monthly_change_cad) + " CAD" if monthly_change_cad is not None else '<span style="color: #9ca3af;">—</span>'}
+                </div>
+            </div>
         </div>
         <div class="exchange-rate">USD/CAD: {usd_cad:.4f}</div>
     </div>
