@@ -39,6 +39,21 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+# Import run budgets (optional)
+try:
+    from ii_skills.shared.run_budgets import (
+        RunBudgetConfig,
+        BudgetEnforcer,
+        get_budget_for_timeframe,
+        BUDGET_PROFILES,
+        BudgetProfile,
+    )
+    BUDGETS_AVAILABLE = True
+except ImportError:
+    BUDGETS_AVAILABLE = False
+    RunBudgetConfig = None
+    BudgetEnforcer = None
+
 
 class DealPhase(Enum):
     """Deal analysis phases."""
@@ -183,6 +198,7 @@ class DealOrchestrator:
         output_dir: Optional[str] = None,
         progress_callback: Optional[ProgressCallback] = None,
         max_parallel_tasks: int = 5,
+        budget: Optional['RunBudgetConfig'] = None,
     ):
         """
         Initialize the deal orchestrator.
@@ -193,12 +209,17 @@ class DealOrchestrator:
             output_dir: Output directory for generated files
             progress_callback: Callback for progress updates
             max_parallel_tasks: Maximum tasks to run in parallel
+            budget: Optional run budget configuration (defaults to timeframe-based)
         """
         self.user_id = user_id
         self.session_id = session_id or str(uuid.uuid4())
         self.output_dir = Path(output_dir) if output_dir else Path(__file__).parent / "outputs"
         self.progress = progress_callback or ConsoleProgressCallback()
         self.max_parallel_tasks = max_parallel_tasks
+
+        # Budget configuration (optional, defaults set per timeframe)
+        self._budget_config = budget
+        self._budget_enforcer: Optional['BudgetEnforcer'] = None
 
         # Ensure output directory exists
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -324,6 +345,21 @@ class DealOrchestrator:
                 session_id=self.session_id,
             )
 
+        # Initialize budget enforcer if budgets are available
+        if BUDGETS_AVAILABLE:
+            budget = self._budget_config or get_budget_for_timeframe(timeframe)
+            self._budget_enforcer = BudgetEnforcer(budget)
+            self._budget_enforcer.start()
+            logger.info(f"Budget profile: {budget.profile} (max_tasks={budget.max_tasks}, max_duration={budget.max_duration_minutes}min)")
+
+        # Call run start hook if progress callback supports it
+        if hasattr(self.progress, 'on_deal_start'):
+            await self.progress.on_deal_start(
+                self.state.deal_id,
+                company_name,
+                deal_type,
+            )
+
         # Run phases in order
         phases = [
             DealPhase.DATA_COLLECTION,
@@ -333,16 +369,36 @@ class DealOrchestrator:
             DealPhase.OUTPUT,
         ]
 
-        for phase in phases:
-            # Skip completed phases
-            if phase.value in self.state.completed_phases:
-                logger.info(f"Skipping completed phase: {phase.value}")
-                continue
+        try:
+            for phase in phases:
+                # Check budget before starting phase
+                if self._budget_enforcer and not self._budget_enforcer.can_start_task():
+                    logger.warning(f"Budget exceeded, stopping before phase: {phase.value}")
+                    break
 
-            await self._run_phase(phase, deal_type, timeframe)
+                # Skip completed phases
+                if phase.value in self.state.completed_phases:
+                    logger.info(f"Skipping completed phase: {phase.value}")
+                    continue
 
-            # Checkpoint after each phase
-            await self._save_checkpoint()
+                await self._run_phase(phase, deal_type, timeframe)
+
+                # Checkpoint after each phase
+                await self._save_checkpoint()
+
+                # Check if we should checkpoint based on budget
+                if self._budget_enforcer and self._budget_enforcer.should_checkpoint():
+                    await self._save_checkpoint()
+
+        except Exception as e:
+            logger.error(f"Deal analysis failed: {e}")
+            raise
+
+        finally:
+            # Log budget status
+            if self._budget_enforcer:
+                status = self._budget_enforcer.get_status()
+                logger.info(f"Budget status: {status}")
 
         await self.progress.on_deal_complete(self.state)
         return self.state
@@ -401,6 +457,13 @@ class DealOrchestrator:
 
     async def _run_task(self, task: AnalysisTask):
         """Run a single analysis task."""
+        # Check budget before running
+        if self._budget_enforcer and not self._budget_enforcer.can_start_task():
+            task.status = TaskStatus.SKIPPED
+            task.error = "Budget exceeded"
+            logger.warning(f"Task {task.id} skipped: budget exceeded")
+            return
+
         task.status = TaskStatus.RUNNING
         task.started_at = datetime.now()
         await self.progress.on_task_start(task)
@@ -417,12 +480,20 @@ class DealOrchestrator:
             task.duration_ms = (task.completed_at - task.started_at).total_seconds() * 1000
             await self.progress.on_task_complete(task)
 
+            # Record successful task in budget
+            if self._budget_enforcer:
+                self._budget_enforcer.record_task_complete(success=True)
+
         except Exception as e:
             task.status = TaskStatus.FAILED
             task.error = str(e)
             task.completed_at = datetime.now()
             logger.error(f"Task {task.id} failed: {e}")
             await self.progress.on_task_error(task, str(e))
+
+            # Record failed task in budget
+            if self._budget_enforcer:
+                self._budget_enforcer.record_task_complete(success=False)
 
     # =========================================================================
     # PHASE 0: DATA COLLECTION HANDLERS

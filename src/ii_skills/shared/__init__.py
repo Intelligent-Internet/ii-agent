@@ -12,6 +12,10 @@ Components:
 - MemoryService: Persistent memory across sessions
 - PriceFeedService: Real-time price feeds with caching
 - AlertEngine: Price and portfolio alert rules
+- TelemetryLogger: Run telemetry and event hooks (ralph-inspired)
+- TaskGraph: Reusable task graph executor (ralph-inspired)
+- RunBudgetConfig: Execution budget constraints (ralph-inspired)
+- EventSchema: Public event payload definitions (ralph-inspired)
 """
 
 from ii_skills.shared.datastore import DataStore, get_datastore
@@ -44,6 +48,58 @@ from ii_skills.shared.alerts import (
     create_price_above_alert,
     create_price_change_alert,
     create_portfolio_change_alert,
+)
+
+# Orchestration utilities (ralph-inspired patterns)
+from ii_skills.shared.event_telemetry import (
+    TelemetryLogger,
+    RunContext,
+    TelemetryEvent,
+    RunRecord,
+    RunMetrics,
+    get_telemetry_logger,
+    set_telemetry_logger,
+)
+from ii_skills.shared.task_graph import (
+    TaskGraph,
+    Task,
+    Phase,
+    TaskStatus as GraphTaskStatus,
+    PhaseStatus,
+    TaskResult,
+    TaskGraphExecutor,
+    TaskGraphCallbacks,
+    LoggingCallbacks,
+    ExecutionBudget,
+    create_task_graph,
+)
+from ii_skills.shared.run_budgets import (
+    RunBudgetConfig,
+    BudgetEnforcer,
+    BudgetProfile,
+    get_budget_profile,
+    get_budget_for_timeframe,
+    get_budget_for_skill,
+    create_custom_budget,
+)
+from ii_skills.shared.event_schema import (
+    EventType,
+    EventPayload,
+    RunStartedPayload,
+    RunCompletedPayload,
+    RunFailedPayload,
+    PhaseStartedPayload,
+    PhaseCompletedPayload,
+    TaskStartedPayload,
+    TaskCompletedPayload,
+    TaskFailedPayload,
+    ProgressUpdatePayload,
+    validate_payload,
+    create_payload,
+    parse_event,
+    EventSchemaMapper,
+    create_orchestrator_event_mapper,
+    SCHEMA_VERSION,
 )
 
 __all__ = [
@@ -83,4 +139,50 @@ __all__ = [
     "create_price_above_alert",
     "create_price_change_alert",
     "create_portfolio_change_alert",
+    # Telemetry (ralph-inspired)
+    "TelemetryLogger",
+    "RunContext",
+    "TelemetryEvent",
+    "RunRecord",
+    "RunMetrics",
+    "get_telemetry_logger",
+    "set_telemetry_logger",
+    # Task Graph (ralph-inspired)
+    "TaskGraph",
+    "Task",
+    "Phase",
+    "GraphTaskStatus",
+    "PhaseStatus",
+    "TaskResult",
+    "TaskGraphExecutor",
+    "TaskGraphCallbacks",
+    "LoggingCallbacks",
+    "ExecutionBudget",
+    "create_task_graph",
+    # Run Budgets (ralph-inspired)
+    "RunBudgetConfig",
+    "BudgetEnforcer",
+    "BudgetProfile",
+    "get_budget_profile",
+    "get_budget_for_timeframe",
+    "get_budget_for_skill",
+    "create_custom_budget",
+    # Event Schema (ralph-inspired)
+    "EventType",
+    "EventPayload",
+    "RunStartedPayload",
+    "RunCompletedPayload",
+    "RunFailedPayload",
+    "PhaseStartedPayload",
+    "PhaseCompletedPayload",
+    "TaskStartedPayload",
+    "TaskCompletedPayload",
+    "TaskFailedPayload",
+    "ProgressUpdatePayload",
+    "validate_payload",
+    "create_payload",
+    "parse_event",
+    "EventSchemaMapper",
+    "create_orchestrator_event_mapper",
+    "SCHEMA_VERSION",
 ]
