@@ -72,4 +72,67 @@ __all__ = [
     "generate_ir_deck",
 ]
 
+# Phase 1: Ontology, Evidence, IR Events (guarded imports)
+try:
+    from ii_skills.ir_toolkit.ontology import (
+        InfraOntology,
+        OntologyTagger,
+        SemanticTag,
+        TaggedElement,
+        check_jargon_consistency,
+        check_metric_definitions,
+        ASSET_CLASSES,
+        REVENUE_PROFILES,
+        FINANCING_TERMS,
+        OPERATIONS_TERMS,
+    )
+    __all__.extend([
+        "InfraOntology", "OntologyTagger", "SemanticTag", "TaggedElement",
+        "check_jargon_consistency", "check_metric_definitions",
+        "ASSET_CLASSES", "REVENUE_PROFILES", "FINANCING_TERMS", "OPERATIONS_TERMS",
+    ])
+except ImportError:
+    pass
+
+try:
+    from ii_skills.ir_toolkit.evidence import (
+        ClaimEvidenceTracker,
+        EvidenceNode,
+        Claim,
+        Recommendation,
+        EvidenceQualityReport,
+        ClaimCategory,
+        SourceType,
+        ConflictType,
+        RecommendationPriority,
+    )
+    __all__.extend([
+        "ClaimEvidenceTracker", "EvidenceNode", "Claim", "Recommendation",
+        "EvidenceQualityReport", "ClaimCategory", "SourceType",
+        "ConflictType", "RecommendationPriority",
+    ])
+except ImportError:
+    pass
+
+try:
+    from ii_skills.ir_toolkit.ir_events import (
+        DocExtractedPayload,
+        KPIReconciledPayload,
+        TermRiskFlaggedPayload,
+        IRTelemetryExtensions,
+        register_ir_events,
+        compute_ir_telemetry,
+        DocumentClass,
+        ReconciliationStatus,
+        TermRiskType,
+        NegotiationPriority,
+    )
+    __all__.extend([
+        "DocExtractedPayload", "KPIReconciledPayload", "TermRiskFlaggedPayload",
+        "IRTelemetryExtensions", "register_ir_events", "compute_ir_telemetry",
+        "DocumentClass", "ReconciliationStatus", "TermRiskType", "NegotiationPriority",
+    ])
+except ImportError:
+    pass
+
 __version__ = "1.0.0"

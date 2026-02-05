@@ -112,6 +112,11 @@ class IRState:
     updated_at: datetime = field(default_factory=datetime.now)
     user_id: Optional[str] = None
 
+    # Phase 1: Ontology & Evidence (opt-in)
+    ontology_tags: Dict[str, List[Dict]] = field(default_factory=dict)
+    evidence_tracker_data: Optional[Dict] = None
+    evidence_qa_results: Optional[Dict] = None
+
 
 class IRProgressCallback:
     """Callback interface for progress updates."""
@@ -238,6 +243,8 @@ class IRToolkit:
         user_id: str,
         output_dir: Optional[str] = None,
         progress_callback: Optional[IRProgressCallback] = None,
+        enable_ontology: bool = False,
+        enable_evidence: bool = False,
     ):
         """
         Initialize the IR toolkit.
@@ -246,6 +253,8 @@ class IRToolkit:
             user_id: User ID for tracking
             output_dir: Output directory for generated files
             progress_callback: Callback for progress updates
+            enable_ontology: Enable ontology tagging (Phase 1)
+            enable_evidence: Enable claim-evidence tracking (Phase 1)
         """
         self.user_id = user_id
         self.output_dir = Path(output_dir) if output_dir else Path(__file__).parent / "outputs"
@@ -253,6 +262,24 @@ class IRToolkit:
 
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.state: Optional[IRState] = None
+
+        # Phase 1: Ontology & Evidence (opt-in)
+        self._ontology_tagger = None
+        self._evidence_tracker = None
+
+        if enable_ontology:
+            try:
+                from ii_skills.ir_toolkit.ontology import OntologyTagger
+                self._ontology_tagger = OntologyTagger()
+            except ImportError:
+                logger.warning("Ontology module not available, skipping ontology tagging")
+
+        if enable_evidence:
+            try:
+                from ii_skills.ir_toolkit.evidence import ClaimEvidenceTracker
+                self._evidence_tracker = ClaimEvidenceTracker()
+            except ImportError:
+                logger.warning("Evidence module not available, skipping evidence tracking")
 
     def _get_modules_for_case(self, case_type: IRCaseType) -> List[IRModule]:
         """Get modules based on case type."""
@@ -395,11 +422,37 @@ class IRToolkit:
     async def _run_analysis(self, module: IRModule) -> Dict:
         """Run analysis for a module."""
         # Placeholder - would run actual analysis
-        return {
+        result = {
             "module_id": module.id,
             "analysis_complete": True,
             "infra_nuance": module.infra_nuance,
         }
+
+        # Phase 1: Ontology tagging (opt-in)
+        if self._ontology_tagger and self.state:
+            tagged_elements = []
+            # Tag module description and infra_nuance
+            tagged_elements.append(
+                self._ontology_tagger.tag_text(module.description, element_id=f"{module.id}.description")
+            )
+            tagged_elements.append(
+                self._ontology_tagger.tag_text(module.infra_nuance, element_id=f"{module.id}.infra_nuance")
+            )
+            # Tag relevant state data
+            if self.state.fund_data:
+                tagged_elements.extend(
+                    self._ontology_tagger.tag_data_dict(self.state.fund_data, prefix=f"{module.id}.fund")
+                )
+            if self.state.asset_data:
+                tagged_elements.extend(
+                    self._ontology_tagger.tag_data_dict(self.state.asset_data, prefix=f"{module.id}.asset")
+                )
+            # Store tagged elements (only those with tags)
+            self.state.ontology_tags[module.id] = [
+                e.to_dict() for e in tagged_elements if e.tags
+            ]
+
+        return result
 
     async def _generate_excel(self, module: IRModule) -> Dict:
         """Generate Excel output for a module."""
@@ -437,13 +490,71 @@ class IRToolkit:
         excel_exists = module.id in self.state.excel_outputs
         slide_exists = module.id in self.state.slide_outputs
 
-        return {
+        result = {
             "module_id": module.id,
             "excel_exists": excel_exists,
             "slide_exists": slide_exists,
             "paired": excel_exists and slide_exists,
             "qa_passed": excel_exists and slide_exists,
         }
+
+        # Phase 1: Ontology jargon QA (opt-in)
+        if self._ontology_tagger and self.state:
+            stored_tags = self.state.ontology_tags.get(module.id, [])
+            if stored_tags:
+                try:
+                    from ii_skills.ir_toolkit.ontology import (
+                        check_jargon_consistency, TaggedElement, SemanticTag,
+                    )
+                    # Reconstruct TaggedElements from stored dicts
+                    elements = []
+                    for td in stored_tags:
+                        elem = TaggedElement(
+                            element_id=td["element_id"],
+                            element_type=td["element_type"],
+                            content=td["content"],
+                            tags=[SemanticTag(**t) for t in td.get("tags", [])],
+                        )
+                        elements.append(elem)
+                    jargon_result = check_jargon_consistency(elements)
+                    result["jargon_qa"] = {
+                        "passed": jargon_result.passed,
+                        "undefined_jargon": jargon_result.undefined_jargon_count,
+                        "inconsistent_usage": jargon_result.inconsistent_usage_count,
+                    }
+                except ImportError:
+                    pass
+
+        # Phase 1: Evidence QA (opt-in, runs once on last module)
+        if self._evidence_tracker and self.state:
+            # Run evidence validation on the last QA module
+            modules = list(self.state.modules.values())
+            if module.id == modules[-1].id:
+                report = self._evidence_tracker.validate(
+                    current_period=self.state.reporting_period
+                )
+                self.state.evidence_tracker_data = self._evidence_tracker.to_dict()
+                self.state.evidence_qa_results = {
+                    "passed": report.passed,
+                    "total_claims": report.total_claims,
+                    "cited_claims": report.cited_claims,
+                    "uncited_claims": report.uncited_claims,
+                    "evidence_coverage_ratio": report.evidence_coverage_ratio,
+                    "low_confidence_claim_count": report.low_confidence_claim_count,
+                    "stale_evidence_count": report.stale_evidence_count,
+                    "rule_results": [
+                        {
+                            "rule": r.rule,
+                            "enforcement": r.enforcement,
+                            "passed": r.passed,
+                            "metric_name": r.metric_name,
+                            "metric_value": r.metric_value,
+                        }
+                        for r in report.rule_results
+                    ],
+                }
+
+        return result
 
     # Convenience methods for common case types
     async def generate_lp_update(

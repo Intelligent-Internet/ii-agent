@@ -127,6 +127,22 @@ class TelemetryIRProgressCallback(IRProgressCallback):
             "slide_files": list(state.slide_outputs.values()),
         }
 
+        # Phase 1: Inject IR telemetry extensions if evidence QA ran
+        if state.evidence_qa_results:
+            try:
+                from ii_skills.ir_toolkit.ir_events import IRTelemetryExtensions
+                ir_ext = IRTelemetryExtensions(
+                    evidence_coverage_ratio=state.evidence_qa_results.get("evidence_coverage_ratio", 0.0),
+                    uncited_claim_count=state.evidence_qa_results.get("uncited_claims", 0),
+                    total_evidence_nodes=state.evidence_qa_results.get("cited_claims", 0),
+                    low_confidence_claim_count=state.evidence_qa_results.get("low_confidence_claim_count", 0),
+                )
+                ir_telemetry = {}
+                ir_ext.inject_into_custom_metrics(ir_telemetry)
+                self.run_record.outputs["ir_telemetry"] = ir_telemetry
+            except ImportError:
+                pass
+
         # Save via telemetry
         if SHARED_INFRA_AVAILABLE:
             await self.telemetry.on_run_end(self.run_record)
@@ -146,8 +162,14 @@ class BudgetAwareIRToolkit(IRToolkit):
         output_dir: Optional[str] = None,
         progress_callback: Optional[IRProgressCallback] = None,
         budget_config: Optional["RunBudgetConfig"] = None,
+        enable_ontology: bool = False,
+        enable_evidence: bool = False,
     ):
-        super().__init__(user_id, output_dir, progress_callback)
+        super().__init__(
+            user_id, output_dir, progress_callback,
+            enable_ontology=enable_ontology,
+            enable_evidence=enable_evidence,
+        )
 
         self.budget_config = budget_config
         self.budget_enforcer: Optional["BudgetEnforcer"] = None
@@ -181,6 +203,8 @@ async def run_ir_case_with_telemetry(
     user_id: str = "default",
     output_dir: Optional[str] = None,
     budget_profile: str = "standard",
+    enable_ontology: bool = False,
+    enable_evidence: bool = False,
     **kwargs,
 ) -> IRState:
     """
@@ -240,6 +264,8 @@ async def run_ir_case_with_telemetry(
         output_dir=str(output_path),
         progress_callback=progress_callback,
         budget_config=budget_config,
+        enable_ontology=enable_ontology,
+        enable_evidence=enable_evidence,
     )
 
     # Run case
