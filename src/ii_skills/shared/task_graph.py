@@ -424,6 +424,7 @@ class TaskGraphExecutor:
         budget: Optional[ExecutionBudget] = None,
         callbacks: Optional[TaskGraphCallbacks] = None,
         context: Optional[Dict[str, Any]] = None,
+        checkpoint_manager=None,
     ):
         """
         Initialize executor.
@@ -433,20 +434,30 @@ class TaskGraphExecutor:
             budget: Optional execution budget constraints
             callbacks: Optional progress callbacks
             context: Optional context passed to task handlers
+            checkpoint_manager: Optional CheckpointManager for save/restore
         """
         self.graph = graph
         self.budget = budget or ExecutionBudget()
         self.callbacks = callbacks or LoggingCallbacks()
         self.context = context or {}
+        self._checkpoint_manager = checkpoint_manager
 
         self._results: Dict[str, TaskResult] = {}
         self._completed_ids: Set[str] = set()
         self._started_at: Optional[datetime] = None
         self._cancelled = False
 
-    async def run_all(self) -> Dict[str, TaskResult]:
+    async def run_all(
+        self,
+        resume_from: Optional[str] = None,
+    ) -> Dict[str, TaskResult]:
         """
         Execute the entire task graph.
+
+        Args:
+            resume_from: Optional run_id to resume from a checkpoint.
+                         When provided, loads the checkpoint and skips
+                         already-completed phases/tasks.
 
         Returns dict mapping task IDs to results.
         """
@@ -455,11 +466,30 @@ class TaskGraphExecutor:
         if errors:
             raise ValueError(f"Invalid task graph: {errors}")
 
-        # Reset state
-        self.graph.reset()
-        self._results.clear()
-        self._completed_ids.clear()
-        self._started_at = datetime.now(timezone.utc)
+        # Handle resume from checkpoint
+        if resume_from and self._checkpoint_manager:
+            checkpoint = self._checkpoint_manager.load(resume_from)
+            if checkpoint:
+                # Don't fully reset — restore from checkpoint
+                self._started_at = datetime.now(timezone.utc)
+                self._checkpoint_manager.restore(self, checkpoint)
+                logger.info(
+                    f"Resuming from checkpoint: "
+                    f"{len(checkpoint.completed_phases)} phases, "
+                    f"{len(checkpoint.completed_tasks)} tasks already done"
+                )
+            else:
+                logger.warning(f"No checkpoint found for run_id={resume_from}, starting fresh")
+                self.graph.reset()
+                self._results.clear()
+                self._completed_ids.clear()
+                self._started_at = datetime.now(timezone.utc)
+        else:
+            # Fresh start
+            self.graph.reset()
+            self._results.clear()
+            self._completed_ids.clear()
+            self._started_at = datetime.now(timezone.utc)
 
         await self.callbacks.on_graph_start(self.graph)
 
@@ -470,6 +500,11 @@ class TaskGraphExecutor:
                     break
 
                 phase = self.graph.phases[phase_id]
+
+                # Skip already-completed phases (from checkpoint restore)
+                if phase.status == PhaseStatus.COMPLETED:
+                    logger.info(f"Skipping completed phase: {phase.name}")
+                    continue
 
                 # Check phase dependencies
                 if not self._can_start_phase(phase):
@@ -482,6 +517,14 @@ class TaskGraphExecutor:
                     continue
 
                 await self._run_phase(phase)
+
+                # Auto-checkpoint after each phase
+                if self._checkpoint_manager and phase.status == PhaseStatus.COMPLETED:
+                    try:
+                        run_id = resume_from or self.graph.name
+                        self._checkpoint_manager.save(self, run_id=run_id)
+                    except Exception as e:
+                        logger.warning(f"Auto-checkpoint failed: {e}")
 
                 # Check if we should continue
                 if phase.status == PhaseStatus.FAILED and not phase.skip_on_failure:

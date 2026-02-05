@@ -155,6 +155,43 @@ from ii_skills.shared.workspace import (
     ArtifactRecord,
 )
 
+# Trace Formatter (Operator UX)
+from ii_skills.shared.trace_formatter import (
+    TraceFormatter,
+    CostReport,
+    LLMUsage,
+    format_duration,
+    format_bytes,
+    format_cost,
+    format_percent,
+)
+
+# Checkpoint Manager (DAG Checkpoint/Resume)
+from ii_skills.shared.checkpoint import (
+    CheckpointManager,
+    Checkpoint,
+)
+
+# DataStore Governance
+from ii_skills.shared.datastore_governance import (
+    QueryContext,
+    AuditLogger,
+    PermissionGuard,
+)
+
+# Session Capture (Replay)
+from ii_skills.shared.session_capture import (
+    SessionRecord,
+    CapturedToolCall,
+)
+
+# Regression Runner (Eval Harness)
+from ii_skills.shared.regression import (
+    RegressionRunner,
+    BaselineSnapshot,
+    DiffReport,
+)
+
 # Generic phase runner
 from ii_skills.shared.phase_runner import (
     PhaseRunner,
@@ -297,4 +334,26 @@ __all__ = [
     "Workspace",
     "WorkspaceManifest",
     "ArtifactRecord",
+    # Trace Formatter (Operator UX)
+    "TraceFormatter",
+    "CostReport",
+    "LLMUsage",
+    "format_duration",
+    "format_bytes",
+    "format_cost",
+    "format_percent",
+    # Checkpoint Manager (DAG Checkpoint/Resume)
+    "CheckpointManager",
+    "Checkpoint",
+    # DataStore Governance
+    "QueryContext",
+    "AuditLogger",
+    "PermissionGuard",
+    # Session Capture (Replay)
+    "SessionRecord",
+    "CapturedToolCall",
+    # Regression Runner (Eval Harness)
+    "RegressionRunner",
+    "BaselineSnapshot",
+    "DiffReport",
 ]

@@ -39,6 +39,10 @@ class DataStore:
     Provides both sync and async interfaces for database operations.
     Wraps the ii-agent database infrastructure for skills use.
 
+    Supports optional governance via QueryContext parameter on public methods.
+    When a QueryContext is provided, operations are checked against
+    PermissionGuard and logged via AuditLogger.
+
     Usage:
         from ii_skills.shared import get_datastore
 
@@ -54,12 +58,28 @@ class DataStore:
 
         # Output operations
         await store.save_output(user_id="...", skill_name="ib_toolkit", ...)
+
+        # With governance (optional):
+        from ii_skills.shared.datastore_governance import QueryContext
+        ctx = QueryContext(source_skill="ib_toolkit", reason="deal_analysis")
+        holdings = await store.get_holdings(user_id="...", query_context=ctx)
     """
 
-    def __init__(self):
-        """Initialize the DataStore."""
+    def __init__(
+        self,
+        permission_guard=None,
+        audit_logger=None,
+    ):
+        """Initialize the DataStore.
+
+        Args:
+            permission_guard: Optional PermissionGuard for access control.
+            audit_logger: Optional AuditLogger for access logging.
+        """
         self._db_available = False
         self._storage_available = False
+        self._permission_guard = permission_guard
+        self._audit_logger = audit_logger
         self._check_availability()
 
     def _check_availability(self):
@@ -83,6 +103,44 @@ class DataStore:
         """Check if datastore is connected to database."""
         return self._db_available
 
+    def _check_governance(
+        self,
+        query_context,
+        operation: str,
+        entity_type: str,
+    ) -> None:
+        """Check governance constraints if a query_context is provided.
+
+        Args:
+            query_context: Optional QueryContext from caller.
+            operation: The operation type (read, write, create, delete).
+            entity_type: The data entity type.
+
+        Raises:
+            PermissionError: If the operation is denied.
+        """
+        if query_context is None:
+            return
+
+        # Permission check
+        if self._permission_guard:
+            self._permission_guard.require(query_context, operation, entity_type)
+
+    def _log_governance(
+        self,
+        query_context,
+        operation: str,
+        entity_type: str,
+        result_count: int = 0,
+    ) -> None:
+        """Log access via AuditLogger if governance is active."""
+        if query_context is None or self._audit_logger is None:
+            return
+
+        self._audit_logger.log_access(
+            query_context, operation, entity_type, result_count=result_count,
+        )
+
     # =========================================================================
     # PORTFOLIO HOLDINGS
     # =========================================================================
@@ -93,6 +151,7 @@ class DataStore:
         account_name: Optional[str] = None,
         asset_type: Optional[str] = None,
         active_only: bool = True,
+        query_context=None,
     ) -> List[Dict[str, Any]]:
         """
         Get portfolio holdings for a user.
@@ -106,6 +165,8 @@ class DataStore:
         Returns:
             List of holding dictionaries
         """
+        self._check_governance(query_context, "read", "portfolio_holdings")
+
         if not self._db_available:
             return []
 
@@ -126,7 +187,7 @@ class DataStore:
             result = await db.execute(query)
             holdings = result.scalars().all()
 
-            return [
+            result_list = [
                 {
                     "id": h.id,
                     "symbol": h.symbol,
@@ -146,6 +207,9 @@ class DataStore:
                 for h in holdings
             ]
 
+            self._log_governance(query_context, "read", "portfolio_holdings", len(result_list))
+            return result_list
+
     async def upsert_holding(
         self,
         user_id: str,
@@ -160,6 +224,7 @@ class DataStore:
         asset_name: Optional[str] = None,
         notes: Optional[str] = None,
         metadata: Optional[Dict] = None,
+        query_context=None,
     ) -> str:
         """
         Insert or update a portfolio holding.
@@ -167,6 +232,8 @@ class DataStore:
         Returns:
             Holding ID
         """
+        self._check_governance(query_context, "write", "portfolio_holdings")
+
         if not self._db_available:
             raise RuntimeError("Database not available")
 
@@ -294,6 +361,7 @@ class DataStore:
         self,
         symbol: str,
         source: Optional[str] = None,
+        query_context=None,
     ) -> Optional[Dict[str, Any]]:
         """
         Get the latest price for a symbol.
@@ -301,10 +369,13 @@ class DataStore:
         Args:
             symbol: Asset symbol
             source: Specific source (optional, returns most recent if not specified)
+            query_context: Optional QueryContext for governance.
 
         Returns:
             Price dictionary or None
         """
+        self._check_governance(query_context, "read", "market_prices")
+
         if not self._db_available:
             return None
 
@@ -595,6 +666,7 @@ class DataStore:
         company_symbol: Optional[str] = None,
         metadata: Optional[Dict] = None,
         tags: Optional[List[str]] = None,
+        query_context=None,
     ) -> str:
         """
         Save a skill output record.
@@ -602,6 +674,8 @@ class DataStore:
         Returns:
             Output record ID
         """
+        self._check_governance(query_context, "create", "skill_outputs")
+
         if not self._db_available:
             raise RuntimeError("Database not available")
 
@@ -690,8 +764,11 @@ class DataStore:
         deal_type: Optional[str] = None,
         enterprise_value: Optional[float] = None,
         entry_multiple: Optional[float] = None,
+        query_context=None,
     ) -> str:
         """Create a new deal analysis record."""
+        self._check_governance(query_context, "create", "deal_analyses")
+
         if not self._db_available:
             raise RuntimeError("Database not available")
 
@@ -827,6 +904,7 @@ class DataStore:
         memory_type: str,
         memory_key: str,
         content: Dict[str, Any],
+        query_context=None,
     ) -> str:
         """
         Store a memory for a skill.
@@ -837,10 +915,13 @@ class DataStore:
             memory_type: Type of memory (preference, fact, pattern, feedback)
             memory_key: Unique key within the type
             content: Content to remember (JSON serializable)
+            query_context: Optional QueryContext for governance.
 
         Returns:
             Memory record ID
         """
+        self._check_governance(query_context, "write", "skill_memories")
+
         if not self._db_available:
             raise RuntimeError("Database not available")
 
@@ -885,6 +966,7 @@ class DataStore:
         skill_name: str,
         memory_type: Optional[str] = None,
         memory_key: Optional[str] = None,
+        query_context=None,
     ) -> List[Dict[str, Any]]:
         """
         Recall memories for a skill.
@@ -894,10 +976,13 @@ class DataStore:
             skill_name: Name of the skill
             memory_type: Filter by type (optional)
             memory_key: Specific key to recall (optional)
+            query_context: Optional QueryContext for governance.
 
         Returns:
             List of memory dictionaries
         """
+        self._check_governance(query_context, "read", "skill_memories")
+
         if not self._db_available:
             return []
 

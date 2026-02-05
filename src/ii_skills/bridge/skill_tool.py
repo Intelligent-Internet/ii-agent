@@ -325,16 +325,39 @@ class SkillTool(BaseTool):
         self, action: str, params: Dict[str, Any]
     ) -> ToolResult:
         """Execute within a workspace context."""
+        import time
+
         with self._workspace_manager.create(
             skill_name=self._skill.name,
             action=action,
             params=params,
         ) as workspace:
+            # Log tool call start to workspace events for session capture
+            workspace.log_event("tool_call_start", {
+                "sequence_index": self._skill._action_count,
+                "tool_name": f"skill_{self._skill.name}",
+                "action": action,
+                "params": params,
+            })
+
+            start_time = time.monotonic()
+
             # Inject workspace as underscore-prefixed kwarg
             result = self._skill.execute(action, _workspace=workspace, **params)
 
+            duration_ms = (time.monotonic() - start_time) * 1000
+
             # Track action on skill
             self._track_action(action)
+
+            # Log tool call completion
+            workspace.log_event("tool_call_complete", {
+                "sequence_index": self._skill._action_count - 1,
+                "tool_name": f"skill_{self._skill.name}",
+                "action": action,
+                "duration_ms": round(duration_ms, 2),
+                "is_error": False,
+            })
 
             # Auto-detect and register output artifacts
             if isinstance(result, dict):
