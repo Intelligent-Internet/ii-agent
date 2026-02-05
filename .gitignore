@@ -1,6 +1,9 @@
 trace_logs/
 
-# Credentials directory (never commit)
+# ============================================================
+# TIER 1 — Personal Vault (credentials & personal data)
+# See PROTECTED_RESOURCES.md for full governance rules
+# ============================================================
 Config/
 **/config.py
 !**/config.py.example
@@ -8,11 +11,15 @@ Config/
 !package*.json
 !tsconfig.json
 !setting_mcp.json
-
-# Skill output files
+**/whoop_tokens.json
 **/networth_history.json
 **/*.log
-**/whoop_tokens.json
+
+# ============================================================
+# TIER 3 — Case Workspaces (generated output, not committed)
+# ============================================================
+output/cases/*
+!output/cases/.gitkeep
 
 docker/.stack.env
 docker/.stack.env.sh

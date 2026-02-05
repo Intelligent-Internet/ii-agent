@@ -25,6 +25,41 @@ Personal cloud operations base with specialized skills for investment banking an
 
 ---
 
+## File Governance (MANDATORY)
+
+**All file operations MUST follow the three-tier protection model defined in `PROTECTED_RESOURCES.md`.**
+
+### Tier 1 — Personal Vault (STOP — ask user before any edit)
+- **Credentials & personal financial data** stored at `Desktop\RJ\II-Agent Credentials\`
+- Repo `config.py` files are disposable mirrors auto-restored by runner scripts
+- Net worth holdings, API keys, OAuth tokens — NEVER committed to git
+- **Only modify when the user explicitly requests it**
+
+### Tier 2 — Canonical Reference Templates (STOP — ask user before any edit)
+- Reference output templates (`templates/reference_outputs/`, `shared/excel_templates/`)
+- Excel model infrastructure (`excel_modules.py`, `formula_builder.py`)
+- All IB/IR toolkit documentation (`docs/skills/ib_toolkit/`, `docs/skills/ir_toolkit/`)
+- Capability docs, prompt libraries, slide templates, sector playbooks
+- **READ for patterns and standards. NEVER write during case work.**
+- **Only modify when the user explicitly says "update the [resource]" or "add this to the templates"**
+
+### Tier 3 — Case Workspaces (PROCEED — active working area)
+- Location: `output/cases/<date>_<case-name>/`
+- When user starts a new case → create a dedicated case folder
+- ALL generated Excel models, slide decks, and notes go in the case folder
+- Reference Tier 2 templates for structure, write output to Tier 3
+- Standard structure: `excel/`, `slides/`, `notes/`, `data/`, `deliverables/`
+
+### Decision Rule
+| File Location | Action |
+|---|---|
+| Tier 1 (vault / credentials / personal data) | **STOP** — ask user |
+| Tier 2 (canonical templates / reference docs) | **STOP** — ask user |
+| Tier 3 (case workspace under `output/cases/`) | **PROCEED** |
+| New file not in any tier | **PROCEED with caution** |
+
+---
+
 ## IB Toolkit
 
 **Location:** `src/ii_skills/ib_toolkit/`
