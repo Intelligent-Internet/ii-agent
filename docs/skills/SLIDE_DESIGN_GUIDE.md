@@ -719,6 +719,485 @@ The green bar at the bottom should:
 
 ---
 
+## Infrastructure Investor Day Templates
+
+*Additional patterns extracted from Brookfield Infrastructure Partners (BIP) investor day presentations (2021-2025).*
+
+### Template 15: Mission Statement / Strategic Focus
+
+**Use for:** Opening thesis, fund strategy, investment philosophy
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                                                   [LOGO]    │
+│                                                             │
+│                                                             │
+│                                                             │
+│          Our mission is to own highly                       │
+│          contracted and regulated businesses                │
+│          that generate long-term, consistent                │
+│          growth with minimal variability                    │
+│                                                             │
+│          If executed well, this will lead to                │
+│          annual FFO per unit growth of 10%+                 │
+│                                                             │
+│                                                             │
+│                                                             │
+│                                                     PAGE #  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Key Rules:**
+- Centered, large text (24-28pt)
+- Minimal design, maximum impact
+- Key metric highlighted
+- Clean white space
+
+**Pattern:** BIP Mission Statement (2025 Investor Day, Slide 4)
+
+---
+
+### Template 16: 4-Quadrant Achievement Summary
+
+**Use for:** Year in review, strategic accomplishments, quarterly highlights
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  2025 has been an excellent year for [Company]    [LOGO]    │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  ┌─────────────────┐      ┌─────────────────┐               │
+│  │    Executed     │      │    Delivered    │               │
+│  │    strategic    │      │     record      │               │
+│  │   priorities    │      │financial results│               │
+│  └─────────────────┘      └─────────────────┘               │
+│                                                             │
+│  ┌─────────────────┐      ┌─────────────────┐               │
+│  │  Maintained a   │      │    Advanced     │               │
+│  │ strong balance  │      │  several ESG    │               │
+│  │     sheet       │      │   priorities    │               │
+│  └─────────────────┘      └─────────────────┘               │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Key Rules:**
+- Four boxes in 2x2 grid
+- Brief, punchy text (3-5 words each)
+- Consistent box sizing
+- No data overload
+
+**Pattern:** BIP Year in Review (2021, 2022 Investor Days)
+
+---
+
+### Template 17: Track Record Line Chart with CAGR
+
+**Use for:** Historical FFO growth, distribution history, performance trends
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Long-term track record for cash flow growth      [LOGO]    │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│                                          14%        $3.32   │
+│                                                    ╱        │
+│                                         FFO per   ╱         │
+│                                          unit   ╱           │
+│                                          CAGR ╱             │
+│                                              ╱              │
+│                                            ╱                │
+│                                          ╱                  │
+│                                        ╱                    │
+│                              ╱────────╱                     │
+│                    ╱────────╱                               │
+│  $0.42  ──────────╱                                         │
+│  ─────────────────────────────────────────────────────────  │
+│  2009   2011   2013   2015   2017   2019   2021   2023  2025│
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Key Rules:**
+- CAGR annotation prominently displayed
+- Start and end values labeled
+- Clean timeline axis
+- Single metric focus per chart
+
+**Pattern:** BIP FFO per Unit Track Record (Multiple Investor Days)
+
+---
+
+### Template 18: 3-Pillar Strategy Flow
+
+**Use for:** Business strategy, investment approach, value creation framework
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Our full-cycle business strategy entails:        [LOGO]    │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌──────────────┐ │
+│  │                 │  │                 │  │              │ │
+│  │   Deploy        │  │  Crystalize     │  │  Maintain a  │ │
+│  │   capital at    │→→│  value through  │→→│    strong    │ │
+│  │   or above      │  │    capital      │  │  financial   │ │
+│  │   12-15%        │  │   recycling     │  │   position   │ │
+│  │   target        │  │                 │  │              │ │
+│  │   returns       │  │                 │  │              │ │
+│  │                 │  │                 │  │              │ │
+│  └─────────────────┘  └─────────────────┘  └──────────────┘ │
+│                                                             │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Key Rules:**
+- Three equal-width boxes
+- Arrow connectors showing flow
+- Brief descriptive text
+- Consistent visual weight
+
+**Pattern:** BIP Strategy Framework (2025 Investor Day, Slide 5)
+
+---
+
+### Template 19: Exit Strategy Summary Grid
+
+**Use for:** Asset sales recap, capital recycling summary, realized returns
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  This year's exits generated strong results       [LOGO]    │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  ┌─────────────────────────────────────────────────────────┐│
+│  │ Transaction   │Exit Strategy│Proceeds│ IRR  │   MoC    ││
+│  ├───────────────┼─────────────┼────────┼──────┼──────────┤│
+│  │ [Logo] Deal A │ Full exit   │  $480M │  17% │   3.6x   ││
+│  │ [Logo] Deal B │ Partial sale│  $430M │  19% │   7.5x   ││
+│  │ [Logo] Deal C │ Partial sale│  $390M │  18% │   2.9x   ││
+│  │ [Logo] Deal D │Staged exit  │  $580M │  22% │   3.8x   ││
+│  │ [Logo] Deal E │Public market│  $620M │  25% │   1.6x   ││
+│  ├───────────────┼─────────────┼────────┼──────┼──────────┤│
+│  │ TOTAL         │   Various   │ ~$2.8B │ ~20% │   4.0x   ││
+│  └───────────────┴─────────────┴────────┴──────┴──────────┘│
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Key Rules:**
+- Company/deal logos in first column
+- Exit strategy type indicated
+- IRR and MoC for each exit
+- Total/average row at bottom
+
+**Pattern:** BIP Capital Recycling (2025 Investor Day, Slide 52)
+
+---
+
+### Template 20: Investment Checklist / Rules Alignment
+
+**Use for:** Investment criteria validation, deal screening, due diligence summary
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Checks all the boxes for a value-based investment [LOGO]   │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  Attractive entry point           ~10x run-rate EBITDA      │
+│  ──────────────────────────────────────────────────────     │
+│  Quick payback period             Less than eight years     │
+│  ──────────────────────────────────────────────────────     │
+│  Robust cash yield                13% going-in FFO yield    │
+│                                   16%+ run-rate FFO yield   │
+│  ──────────────────────────────────────────────────────     │
+│  Conservative capital structure   Investment-grade balance  │
+│  ──────────────────────────────────────────────────────     │
+│  Large-scale transaction          ~$2.5 billion investment  │
+│  ──────────────────────────────────────────────────────     │
+│  Customer quality                 97% from IG customers     │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Key Rules:**
+- Criteria on left, validation on right
+- Horizontal dividers between rows
+- Quantified evidence for each criterion
+- Clean two-column layout
+
+**Pattern:** BIP Investment Criteria (2021 Investor Day, IPL Analysis)
+
+---
+
+### Template 21: Macro Themes / Super Cycle Drivers
+
+**Use for:** Market tailwinds, sector thesis, thematic overview
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  The infrastructure super-cycle is playing out    [LOGO]    │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  ┌───────────┐  ┌───────────┐  ┌───────────┐  ┌───────────┐│
+│  │  [Icon]   │  │  [Icon]   │  │  [Icon]   │  │  [Icon]   ││
+│  │           │  │           │  │           │  │           ││
+│  │Sovereign &│  │   Data    │  │ Midstream │  │ Transport ││
+│  │ corporate │  │ infra in  │  │  sector   │  │  assets   ││
+│  │   debt    │  │ need of   │  │ requires  │  │ critically││
+│  │  rising   │  │ upgrade   │  │  capital  │  │bottleneck ││
+│  │           │  │           │  │           │  │           ││
+│  │• Govt debt│  │• 30% data │  │• Scarcity │  │• Minimal  ││
+│  │  rising   │  │  growth   │  │  value    │  │  capacity ││
+│  │• $1.2T US │  │• 100-year │  │• Net zero │  │• Travel   ││
+│  │  infra    │  │  upgrade  │  │  support  │  │  hindered ││
+│  │  plan     │  │  cycle    │  │           │  │           ││
+│  └───────────┘  └───────────┘  └───────────┘  └───────────┘│
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Key Rules:**
+- 4 equal columns with icons
+- Theme title in bold
+- 2-3 supporting bullet points each
+- Consistent visual treatment
+
+**Pattern:** BIP Super Cycle (2022 Investor Day, Slide 17)
+
+---
+
+### Template 22: Debt Maturity Profile
+
+**Use for:** Refinancing schedule, maturity wall, credit analysis
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Strong Financial Position                        [LOGO]    │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  Recourse Debt Summary                                      │
+│  Outstanding:        ~$4.2 billion                          │
+│  Average Rate:       5.0%                                   │
+│  Average Term:       14 Years                               │
+│                                                             │
+│                               ┌───┐                         │
+│                               │   │                         │
+│                               │   │ $2.5B                   │
+│                               │   │                         │
+│  ┌───┐ ┌───┐ ┌───┐ ┌───┐     │   │                         │
+│  │$0.3│ │$0.5│ │$0.5│ │$0.4│     │   │                         │
+│  └───┘ └───┘ └───┘ └───┘     └───┘                         │
+│  2026  2027  2028  2029  2030  Beyond                       │
+│                                                             │
+│  ~$3B           90%              90%                        │
+│  Corporate   Non-recourse     Fixed-rate                    │
+│  liquidity       debt            debt                       │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Key Rules:**
+- Bar chart showing maturities by year
+- Key metrics summarized above
+- "Beyond" bucket for long-dated debt
+- Supporting metrics in boxes below
+
+**Pattern:** BIP Financial Position (Corporate Profile, Slide 14)
+
+---
+
+### Template 23: Value Creation Bridge / FFO Growth Drivers
+
+**Use for:** Organic growth attribution, return decomposition, performance drivers
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Illustrative Organic Value Creation: FFO Growth  [LOGO]    │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  ┌───────┐   ┌───────┐   ┌───────┐       ┌───────────────┐ │
+│  │       │   │       │   │       │       │               │ │
+│  │ 3-4%  │ + │ 1-2%  │ + │ 2-3%  │   =   │     6-9%      │ │
+│  │       │   │       │   │       │       │               │ │
+│  │       │   │       │   │       │       │ Organic Growth│ │
+│  └───────┘   └───────┘   └───────┘       └───────────────┘ │
+│  Inflation      GDP      Reinvested                         │
+│                          Capital                            │
+│                                                             │
+│                                                             │
+│  ┌─────────────────────────────────────────────────────────┐│
+│  │                 10%+                                    ││
+│  │            FFO per unit                                 ││
+│  │           growth target                                 ││
+│  └─────────────────────────────────────────────────────────┘│
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Key Rules:**
+- Additive components with + signs
+- Result box larger/highlighted
+- Labels below each component
+- Target metric prominently displayed
+
+**Pattern:** BIP Organic Growth (Corporate Profile, Slide 16)
+
+---
+
+### Template 24: Platform / Business Unit Overview
+
+**Use for:** Segment overview, business unit summary, portfolio composition
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Essential Infrastructure Diversified Across Sectors [LOGO] │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│    Utilities         Transport        Midstream      Data   │
+│   ┌─────────┐       ┌─────────┐      ┌─────────┐  ┌───────┐│
+│   │   25%   │       │   37%   │      │   22%   │  │  16%  ││
+│   │   FFO   │       │   FFO   │      │   FFO   │  │  FFO  ││
+│   └─────────┘       └─────────┘      └─────────┘  └───────┘│
+│                                                             │
+│   8%  17%            12% 19%           [pie]       6%  10% │
+│   [pie chart]        6%  [pie]                     [pie]   │
+│                                                             │
+│  ───────────────────────────────────────────────────────── │
+│  Regulated           Rail              Energy      Data    │
+│  Transmission        Diversified       Transport   Transmit│
+│  Commercial &        Terminals         Storage &   Data    │
+│  Residential         Toll Roads        Processing  Storage │
+│  Distribution                                              │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Key Rules:**
+- 4 sectors with % of FFO
+- Mini pie charts showing sub-segment mix
+- Sector labels and descriptions below
+- Consistent visual hierarchy
+
+**Pattern:** BIP Asset Classes (Corporate Profile, Slide 6)
+
+---
+
+### Template 25: Deal Showcase Grid
+
+**Use for:** Recent transactions, deployment summary, acquisition highlights
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Over $22 billion of marquee transactions this year [LOGO]  │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  Sector:    Midstream      Data        Transport   Utilities│
+│  Type:      Value-based    Platform    Partnership Carve-out│
+│                                                             │
+│  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────────────┐ │
+│  │ [Logo]  │  │ [Logo]  │  │ [Logo]  │  │     [Logo]      │ │
+│  │         │  │         │  │         │  │                 │ │
+│  │ Deal A  │  │ Deal B  │  │ Deal C  │  │     Deal D      │ │
+│  │         │  │         │  │         │  │                 │ │
+│  │EV: $9.1B│  │EV: $6.9B│  │EV: $5.3B│  │   EV: $1.0B     │ │
+│  │Jul 2025 │  │Sep 2025 │  │Q1 2026  │  │   Q4 2025       │ │
+│  └─────────┘  └─────────┘  └─────────┘  └─────────────────┘ │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Key Rules:**
+- Sector and deal type labels above
+- Company logos prominently displayed
+- Enterprise value for each
+- Closing date/status
+
+**Pattern:** BIP Marquee Transactions (2025 Investor Day, Slide 37)
+
+---
+
+### Template 26: Investment Perimeter Evolution
+
+**Use for:** Capability expansion, opportunity set growth, strategy evolution
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Evolution of our investment opportunity set      [LOGO]    │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│         10 Years Ago        5 Years Ago         Today       │
+│  ┌───────────────────┬───────────────────┬─────────────────┐│
+│  │Transport          │Transport          │Transport        ││
+│  │ • Ports           │ • Ports           │ • Ports         ││
+│  │ • Toll roads      │ • Toll roads      │ • Toll roads    ││
+│  │ • Rail            │ • Rail            │ • Rail          ││
+│  │                   │                   │ • Container     ││
+│  │                   │                   │ • Railcar       ││
+│  ├───────────────────┼───────────────────┼─────────────────┤│
+│  │Midstream          │Midstream          │Midstream        ││
+│  │ • Gas pipelines   │ • Gas pipelines   │ • Gas pipelines ││
+│  │                   │ • LNG             │ • LNG           ││
+│  │                   │ • Liquids         │ • Liquids       ││
+│  │                   │                   │ • Industrial gas││
+│  ├───────────────────┼───────────────────┼─────────────────┤│
+│  │Data               │Data               │Data             ││
+│  │ • Towers          │ • Towers          │ • Towers        ││
+│  │                   │ • Colocation DCs  │ • AI/Hyperscale ││
+│  │                   │ • FTTH            │ • Semiconductor ││
+│  │                   │                   │ • Bulk fiber    ││
+│  └───────────────────┴───────────────────┴─────────────────┘│
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Key Rules:**
+- Three time periods as columns
+- Sectors as rows
+- Show capability additions over time
+- New items highlighted or in different color
+
+**Pattern:** BIP Investment Perimeter (2025 Investor Day, Slide 33)
+
+---
+
+### Template 27: Cost of Capital Spectrum
+
+**Use for:** Funding strategy, capital sources comparison, financing options
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Asset sales provide an accretive source of capital [LOGO]  │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│                          9-11%                              │
+│                     Target cost of                          │
+│                       asset sales                           │
+│                           │                                 │
+│  Lowest                   ▼                        Highest  │
+│   Cost ─────────────────────────────────────────────  Cost  │
+│                                                             │
+│    ~4%           ~6%                          12-15%+       │
+│  Corporate    Preferred                       Common        │
+│    debt        equity                         equity        │
+│                                                             │
+│  Limited by                                                 │
+│  BBB+ ratings                                               │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Key Rules:**
+- Horizontal spectrum from low to high cost
+- Asset sale cost positioned on spectrum
+- Labels for each funding type
+- Constraints noted (e.g., rating limits)
+
+**Pattern:** BIP Cost of Capital (2025 Investor Day, Slide 58)
+
+---
+
 ## Implementation Notes
 
 ### For python-pptx Code
@@ -744,6 +1223,9 @@ LIGHT_GRAY = RGBColor(240, 240, 240) # #F0F0F0
 
 ---
 
-*Extracted from TD Securities presentations: Florence Strategic Rationale (2022), Northview Acquisition Disposition (2025), Spring Living IPO Mandate (2025), and PropelR Investor Presentation (2025)*
+*Extracted from:*
+- *TD Securities: Florence Strategic Rationale (2022), Northview Acquisition Disposition (2025), Spring Living IPO Mandate (2025)*
+- *PropelR Investor Presentation (2025)*
+- *Brookfield Infrastructure Partners: Investor Day Presentations (2021-2025), Corporate Profile (2026)*
 
 *Last Updated: 2026-02-04*

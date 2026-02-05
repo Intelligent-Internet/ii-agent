@@ -5,11 +5,13 @@
 
 ## What Happened
 
-Analyzed 25+ slides from user's Historical Work folder to extract professional IB/IR slide design patterns:
+Analyzed 25+ slides from user's Historical Work folder and Infrastructure Sample Slides to extract professional IB/IR slide design patterns:
 - TD Securities: Florence Strategic Rationale (2022)
 - TD Securities: Northview Acquisition Disposition (2025)
 - TD Securities: Spring Living IPO Mandate (2025)
 - PropelR Investor Presentation (2025)
+- Brookfield Infrastructure Partners: Investor Day Presentations (2021-2025)
+- Brookfield Infrastructure Partners: Corporate Profile (2026)
 
 ## What Was Learned
 
@@ -21,24 +23,20 @@ Analyzed 25+ slides from user's Historical Work folder to extract professional I
 4. **Scenario Tables**: Low/Mid/High columns, color-coded headers
 5. **Source Citations**: Always at bottom with footnotes
 
-### 14 Slide Templates Identified
+### 27 Slide Templates Identified
 
-| Template | Use Case |
-|----------|----------|
-| Executive Summary | Opening slides, recommendations |
-| Numbered Key Points | Investment highlights, thesis pillars |
-| Peer Benchmarking | Valuation multiples, metrics |
-| Comps Table | Trading comps with subject row highlighted |
-| Time Series | Historical performance, multiple lines |
-| Before/After | Value creation, renovations |
-| Sources & Uses | Transaction structure, IPO analysis |
-| Scenario Analysis | Disposition, strategic alternatives |
-| Horizontal Bar + Pie | Rankings, geographic exposure |
-| Gantt Chart | Transaction timeline, project phases |
-| Heat Map | Performance matrix, annual returns |
-| Portfolio Valuations | Fund investments, exit forecasts |
-| Geographic Map | Property locations, market presence |
-| Debt Benchmarking | Capital structure comparison |
+**TD Securities / Deal-Focused (Templates 1-14):**
+- Executive Summary, Numbered Key Points, Peer Benchmarking
+- Comps Table, Time Series, Before/After, Sources & Uses
+- Scenario Analysis, Horizontal Bar + Pie, Gantt Chart
+- Heat Map, Portfolio Valuations, Geographic Map, Debt Benchmarking
+
+**Infrastructure Investor Day (Templates 15-27):**
+- Mission Statement, 4-Quadrant Achievement, Track Record CAGR
+- 3-Pillar Strategy Flow, Exit Strategy Grid, Investment Checklist
+- Macro Themes Grid, Debt Maturity Profile, Value Creation Bridge
+- Platform Overview, Deal Showcase Grid, Investment Perimeter
+- Cost of Capital Spectrum
 
 ### Color Palette (TD Securities Style)
 
