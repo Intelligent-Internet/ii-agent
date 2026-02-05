@@ -812,11 +812,13 @@ class ExcelModelGenerator:
     # ============================================================
 
     def add_revenue_build(self, data: Dict = None) -> 'ExcelModelGenerator':
-        """Add detailed Revenue Build sheet."""
+        """Add detailed Revenue Build sheet with real Excel formulas."""
         ws = self.wb.create_sheet("Revenue Build")
         self.sheets_created.append("Revenue Build")
 
+        A = "Assumptions"
         a = self.assumptions
+        n = self.projection_years
 
         # Title
         self._add_title(ws, f"{self.company_name} - Revenue Build", 1, 1)
@@ -825,27 +827,38 @@ class ExcelModelGenerator:
         self._year_headers(ws, 3, 2)
 
         if self.depth == ModelDepth.QUICK:
-            # Simple: Just total revenue with growth
+            # Simple: total revenue with formulas referencing Assumptions
             self._add_section_header(ws, "Revenue Projections ($M)", 4, 1)
 
-            revenues = [a.ltm_revenue]
-            for growth in a.revenue_growth:
-                revenues.append(revenues[-1] * (1 + growth))
-
+            # Row 5: Total Revenue — LTM from Assumptions, projections via growth formula
             ws.cell(row=5, column=1, value="Total Revenue")
-            for i, rev in enumerate(revenues):
-                ws.cell(row=5, column=2 + i, value=rev)
-                ws.cell(row=5, column=2 + i).number_format = '#,##0.0'
+            ws.cell(row=5, column=2, value=f"='{A}'!B5")  # LTM Revenue
+            ws.cell(row=5, column=2).number_format = '#,##0.0'
+            for i in range(n):
+                prev_col = get_column_letter(2 + i)
+                growth_col = get_column_letter(3 + i)
+                ws.cell(row=5, column=3 + i,
+                        value=f"={prev_col}5*(1+'{A}'!{growth_col}28)")
+                ws.cell(row=5, column=3 + i).number_format = '#,##0.0'
 
+            # Row 6: Growth % — references from Assumptions row 28
             ws.cell(row=6, column=1, value="  % Growth")
             ws.cell(row=6, column=2, value="—")
-            for i, growth in enumerate(a.revenue_growth):
-                cell = ws.cell(row=6, column=3 + i, value=growth)
-                cell.number_format = '0.0%'
+            for i in range(n):
+                growth_col = get_column_letter(3 + i)
+                ws.cell(row=6, column=3 + i, value=f"='{A}'!{growth_col}28")
+                ws.cell(row=6, column=3 + i).number_format = '0.0%'
                 self._format_input_cell(ws, 6, 3 + i)
 
+            self.cell_map['revenue_build'] = {
+                'total_revenue_row': 5,
+                'growth_row': 6,
+                'ltm_col': 2,
+                'y1_col': 3,
+            }
+
         else:
-            # Standard/Comprehensive: Segment breakdown
+            # Standard/Comprehensive: Segment breakdown with formulas
             data = data or {}
             segments = data.get('segments', [
                 {"name": "Segment A", "pct": 0.50, "growth": [0.10, 0.09, 0.08, 0.07, 0.06]},
@@ -853,13 +866,13 @@ class ExcelModelGenerator:
                 {"name": "Segment C", "pct": 0.20, "growth": [0.04, 0.03, 0.03, 0.02, 0.02]},
             ])
 
-            # Segment assumptions
+            # Segment assumptions (input cells — stay as values)
             self._add_section_header(ws, "Segment Assumptions", 4, 1)
             ws.cell(row=5, column=1, value="Segment")
             ws.cell(row=5, column=2, value="LTM %")
-            for i in range(self.projection_years):
+            for i in range(n):
                 ws.cell(row=5, column=3 + i, value=f"Y{i+1} Growth")
-            self._format_header_row(ws, 5, 1, 2 + self.projection_years)
+            self._format_header_row(ws, 5, 1, 2 + n)
 
             for j, seg in enumerate(segments):
                 row = 6 + j
@@ -868,33 +881,38 @@ class ExcelModelGenerator:
                 ws.cell(row=row, column=2).number_format = '0.0%'
                 self._format_input_cell(ws, row, 2)
 
-                for i, g in enumerate(seg["growth"]):
+                for i, g in enumerate(seg["growth"][:n]):
                     cell = ws.cell(row=row, column=3 + i, value=g)
                     cell.number_format = '0.0%'
                     self._format_input_cell(ws, row, 3 + i)
 
-            # Revenue by segment
+            # Revenue by segment — formulas referencing Assumptions + segment inputs
             seg_start = 6 + len(segments) + 1
             self._add_section_header(ws, "Revenue by Segment ($M)", seg_start, 1)
 
             for j, seg in enumerate(segments):
                 row = seg_start + 1 + j
+                seg_input_row = 6 + j  # Row with this segment's pct and growth
                 ws.cell(row=row, column=1, value=seg["name"])
 
-                seg_rev = [a.ltm_revenue * seg["pct"]]
-                for g in seg["growth"]:
-                    seg_rev.append(seg_rev[-1] * (1 + g))
+                # LTM: =Assumptions!B5 * segment_pct
+                pct_cell = f"B{seg_input_row}"
+                ws.cell(row=row, column=2, value=f"='{A}'!B5*{pct_cell}")
+                ws.cell(row=row, column=2).number_format = '#,##0.0'
 
-                for i, rev in enumerate(seg_rev):
-                    ws.cell(row=row, column=2 + i, value=rev)
-                    ws.cell(row=row, column=2 + i).number_format = '#,##0.0'
+                # Projected: =prev_revenue * (1 + segment_growth)
+                for i in range(n):
+                    prev_col = get_column_letter(2 + i)
+                    growth_col = get_column_letter(3 + i)
+                    ws.cell(row=row, column=3 + i,
+                            value=f"={prev_col}{row}*(1+{growth_col}{seg_input_row})")
+                    ws.cell(row=row, column=3 + i).number_format = '#,##0.0'
 
-            # Total revenue
+            # Total revenue — SUM formula
             total_row = seg_start + 1 + len(segments)
             ws.cell(row=total_row, column=1, value="Total Revenue")
 
-            for i in range(self.projection_years + 1):
-                # Sum formula
+            for i in range(n + 1):
                 start_row = seg_start + 1
                 end_row = total_row - 1
                 col_letter = get_column_letter(2 + i)
@@ -904,9 +922,17 @@ class ExcelModelGenerator:
                 ws.cell(row=total_row, column=2 + i).font = Font(bold=True)
                 ws.cell(row=total_row, column=2 + i).border = DOUBLE_BORDER
 
+            self.cell_map['revenue_build'] = {
+                'total_revenue_row': total_row,
+                'seg_start_row': seg_start + 1,
+                'seg_count': len(segments),
+                'ltm_col': 2,
+                'y1_col': 3,
+            }
+
         # Set column widths
         ws.column_dimensions['A'].width = 20
-        for i in range(self.projection_years + 2):
+        for i in range(n + 2):
             ws.column_dimensions[get_column_letter(2 + i)].width = 12
 
         return self
@@ -916,16 +942,14 @@ class ExcelModelGenerator:
     # ============================================================
 
     def add_expense_build(self, data: Dict = None) -> 'ExcelModelGenerator':
-        """Add Expense / SG&A Build sheet."""
+        """Add Expense / SG&A Build sheet with real Excel formulas."""
         ws = self.wb.create_sheet("Expense Build")
         self.sheets_created.append("Expense Build")
 
+        A = "Assumptions"
+        OM = "Operating Model"
         a = self.assumptions
-
-        # Calculate revenues for reference
-        revenues = [a.ltm_revenue]
-        for growth in a.revenue_growth:
-            revenues.append(revenues[-1] * (1 + growth))
+        n = self.projection_years
 
         # Title
         self._add_title(ws, f"{self.company_name} - Expense Build", 1, 1)
@@ -933,46 +957,63 @@ class ExcelModelGenerator:
         # Year headers
         self._year_headers(ws, 3, 2)
 
+        # Revenue reference row — pull from Operating Model row 10
+        om_rev_row = self.cell_map.get('operating_model', {}).get('revenue_row', 10)
+
         if self.depth == ModelDepth.QUICK:
-            # Simple: COGS and SG&A as % of revenue
+            # Simple: COGS and SG&A as % of revenue (input cells stay as values)
             self._add_section_header(ws, "Cost Assumptions (% Revenue)", 4, 1)
 
             cogs_pct = 0.60
             sga_pct = 0.20
 
             ws.cell(row=5, column=1, value="COGS %")
-            for i in range(len(revenues)):
+            for i in range(n + 1):
                 cell = ws.cell(row=5, column=2 + i, value=cogs_pct)
                 cell.number_format = '0.0%'
                 self._format_input_cell(ws, 5, 2 + i)
 
             ws.cell(row=6, column=1, value="SG&A %")
-            for i in range(len(revenues)):
+            for i in range(n + 1):
                 cell = ws.cell(row=6, column=2 + i, value=sga_pct)
                 cell.number_format = '0.0%'
                 self._format_input_cell(ws, 6, 2 + i)
 
-            # Calculated values
+            # Calculated values — formulas referencing OM revenue × local %
             self._add_section_header(ws, "Expense Summary ($M)", 8, 1)
 
             ws.cell(row=9, column=1, value="COGS")
-            for i, rev in enumerate(revenues):
-                ws.cell(row=9, column=2 + i, value=rev * cogs_pct)
+            for i in range(n + 1):
+                col = get_column_letter(2 + i)
+                ws.cell(row=9, column=2 + i,
+                        value=f"='{OM}'!{col}{om_rev_row}*{col}5")
                 ws.cell(row=9, column=2 + i).number_format = '#,##0.0'
 
             ws.cell(row=10, column=1, value="Gross Profit")
-            for i, rev in enumerate(revenues):
-                ws.cell(row=10, column=2 + i, value=rev * (1 - cogs_pct))
+            for i in range(n + 1):
+                col = get_column_letter(2 + i)
+                ws.cell(row=10, column=2 + i,
+                        value=f"='{OM}'!{col}{om_rev_row}-{col}9")
                 ws.cell(row=10, column=2 + i).number_format = '#,##0.0'
                 ws.cell(row=10, column=2 + i).font = Font(bold=True)
 
             ws.cell(row=12, column=1, value="SG&A")
-            for i, rev in enumerate(revenues):
-                ws.cell(row=12, column=2 + i, value=rev * sga_pct)
+            for i in range(n + 1):
+                col = get_column_letter(2 + i)
+                ws.cell(row=12, column=2 + i,
+                        value=f"='{OM}'!{col}{om_rev_row}*{col}6")
                 ws.cell(row=12, column=2 + i).number_format = '#,##0.0'
 
+            self.cell_map['expense_build'] = {
+                'cogs_pct_row': 5,
+                'sga_pct_row': 6,
+                'cogs_row': 9,
+                'gross_profit_row': 10,
+                'sga_row': 12,
+            }
+
         else:
-            # Standard/Comprehensive: Detailed breakdown
+            # Standard/Comprehensive: Detailed breakdown with formulas
             data = data or {}
             self._add_section_header(ws, "COGS Breakdown ($M)", 4, 1)
 
@@ -982,25 +1023,46 @@ class ExcelModelGenerator:
                 {"name": "Manufacturing OH", "pct": 0.10},
             ])
 
+            # COGS line items: formula = OM Revenue × item_pct (input in adjacent row)
+            # First write pct input rows, then formula rows
+            # Layout: Row 5+ = item name + pct input | formula = OM_rev * pct
             for j, item in enumerate(cogs_items):
                 row = 5 + j
                 ws.cell(row=row, column=1, value=item["name"])
-                for i, rev in enumerate(revenues):
-                    ws.cell(row=row, column=2 + i, value=rev * item["pct"])
+                for i in range(n + 1):
+                    col = get_column_letter(2 + i)
+                    # Write pct as input value (these are the driver assumptions)
+                    ws.cell(row=row, column=2 + i, value=item["pct"])
+                    ws.cell(row=row, column=2 + i).number_format = '0.0%'
+                    self._format_input_cell(ws, row, 2 + i)
+
+            # COGS $ rows (formulas)
+            cogs_dollar_start = 5 + len(cogs_items) + 1
+            self._add_section_header(ws, "COGS ($M)", cogs_dollar_start - 1, 1)
+
+            for j, item in enumerate(cogs_items):
+                row = cogs_dollar_start + j
+                pct_row = 5 + j
+                ws.cell(row=row, column=1, value=f"{item['name']} $")
+                for i in range(n + 1):
+                    col = get_column_letter(2 + i)
+                    ws.cell(row=row, column=2 + i,
+                            value=f"='{OM}'!{col}{om_rev_row}*{col}{pct_row}")
                     ws.cell(row=row, column=2 + i).number_format = '#,##0.0'
 
-            cogs_total_row = 5 + len(cogs_items)
+            cogs_total_row = cogs_dollar_start + len(cogs_items)
             ws.cell(row=cogs_total_row, column=1, value="Total COGS")
-            total_cogs_pct = sum(item["pct"] for item in cogs_items)
-            for i, rev in enumerate(revenues):
-                ws.cell(row=cogs_total_row, column=2 + i, value=rev * total_cogs_pct)
+            for i in range(n + 1):
+                col = get_column_letter(2 + i)
+                ws.cell(row=cogs_total_row, column=2 + i,
+                        value=f"=SUM({col}{cogs_dollar_start}:{col}{cogs_total_row - 1})")
                 ws.cell(row=cogs_total_row, column=2 + i).number_format = '#,##0.0'
                 ws.cell(row=cogs_total_row, column=2 + i).font = Font(bold=True)
                 ws.cell(row=cogs_total_row, column=2 + i).border = BOTTOM_BORDER
 
             # SG&A breakdown
-            sga_start = cogs_total_row + 2
-            self._add_section_header(ws, "SG&A Breakdown ($M)", sga_start, 1)
+            sga_pct_start = cogs_total_row + 2
+            self._add_section_header(ws, "SG&A Assumptions (% Revenue)", sga_pct_start, 1)
 
             sga_items = data.get('sga_items', [
                 {"name": "Sales & Marketing", "pct": 0.08},
@@ -1010,54 +1072,89 @@ class ExcelModelGenerator:
             ])
 
             for j, item in enumerate(sga_items):
-                row = sga_start + 1 + j
+                row = sga_pct_start + 1 + j
                 ws.cell(row=row, column=1, value=item["name"])
-                for i, rev in enumerate(revenues):
-                    ws.cell(row=row, column=2 + i, value=rev * item["pct"])
+                for i in range(n + 1):
+                    ws.cell(row=row, column=2 + i, value=item["pct"])
+                    ws.cell(row=row, column=2 + i).number_format = '0.0%'
+                    self._format_input_cell(ws, row, 2 + i)
+
+            # SG&A $ rows (formulas)
+            sga_dollar_start = sga_pct_start + 1 + len(sga_items) + 1
+            self._add_section_header(ws, "SG&A ($M)", sga_dollar_start - 1, 1)
+
+            for j, item in enumerate(sga_items):
+                row = sga_dollar_start + j
+                pct_row = sga_pct_start + 1 + j
+                ws.cell(row=row, column=1, value=f"{item['name']} $")
+                for i in range(n + 1):
+                    col = get_column_letter(2 + i)
+                    ws.cell(row=row, column=2 + i,
+                            value=f"='{OM}'!{col}{om_rev_row}*{col}{pct_row}")
                     ws.cell(row=row, column=2 + i).number_format = '#,##0.0'
 
-            sga_total_row = sga_start + 1 + len(sga_items)
+            sga_total_row = sga_dollar_start + len(sga_items)
             ws.cell(row=sga_total_row, column=1, value="Total SG&A")
-            total_sga_pct = sum(item["pct"] for item in sga_items)
-            for i, rev in enumerate(revenues):
-                ws.cell(row=sga_total_row, column=2 + i, value=rev * total_sga_pct)
+            for i in range(n + 1):
+                col = get_column_letter(2 + i)
+                ws.cell(row=sga_total_row, column=2 + i,
+                        value=f"=SUM({col}{sga_dollar_start}:{col}{sga_total_row - 1})")
                 ws.cell(row=sga_total_row, column=2 + i).number_format = '#,##0.0'
                 ws.cell(row=sga_total_row, column=2 + i).font = Font(bold=True)
                 ws.cell(row=sga_total_row, column=2 + i).border = BOTTOM_BORDER
 
-            # Summary
+            # P&L Summary — all formulas
             summary_start = sga_total_row + 2
             self._add_section_header(ws, "P&L Summary ($M)", summary_start, 1)
 
             ws.cell(row=summary_start + 1, column=1, value="Revenue")
-            for i, rev in enumerate(revenues):
-                ws.cell(row=summary_start + 1, column=2 + i, value=rev)
+            for i in range(n + 1):
+                col = get_column_letter(2 + i)
+                ws.cell(row=summary_start + 1, column=2 + i,
+                        value=f"='{OM}'!{col}{om_rev_row}")
                 ws.cell(row=summary_start + 1, column=2 + i).number_format = '#,##0.0'
 
             ws.cell(row=summary_start + 2, column=1, value="Gross Profit")
-            for i, rev in enumerate(revenues):
-                ws.cell(row=summary_start + 2, column=2 + i, value=rev * (1 - total_cogs_pct))
+            for i in range(n + 1):
+                col = get_column_letter(2 + i)
+                ws.cell(row=summary_start + 2, column=2 + i,
+                        value=f"={col}{summary_start + 1}-{col}{cogs_total_row}")
                 ws.cell(row=summary_start + 2, column=2 + i).number_format = '#,##0.0'
 
             ws.cell(row=summary_start + 3, column=1, value="  Gross Margin %")
-            for i in enumerate(revenues):
-                cell = ws.cell(row=summary_start + 3, column=2 + i[0], value=1 - total_cogs_pct)
-                cell.number_format = '0.0%'
-                cell.font = Font(italic=True, color="666666")
+            for i in range(n + 1):
+                col = get_column_letter(2 + i)
+                ws.cell(row=summary_start + 3, column=2 + i,
+                        value=f"=IFERROR({col}{summary_start + 2}/{col}{summary_start + 1},0)")
+                ws.cell(row=summary_start + 3, column=2 + i).number_format = '0.0%'
+                ws.cell(row=summary_start + 3, column=2 + i).font = Font(italic=True, color="666666")
 
             ws.cell(row=summary_start + 5, column=1, value="EBITDA")
-            for i, rev in enumerate(revenues):
-                ebitda = rev * (1 - total_cogs_pct - total_sga_pct)
-                ws.cell(row=summary_start + 5, column=2 + i, value=ebitda)
+            for i in range(n + 1):
+                col = get_column_letter(2 + i)
+                ws.cell(row=summary_start + 5, column=2 + i,
+                        value=f"={col}{summary_start + 2}-{col}{sga_total_row}")
                 ws.cell(row=summary_start + 5, column=2 + i).number_format = '#,##0.0'
                 ws.cell(row=summary_start + 5, column=2 + i).font = Font(bold=True)
 
             ws.cell(row=summary_start + 6, column=1, value="  EBITDA Margin %")
-            for i in range(len(revenues)):
-                cell = ws.cell(row=summary_start + 6, column=2 + i,
-                              value=1 - total_cogs_pct - total_sga_pct)
-                cell.number_format = '0.0%'
-                cell.font = Font(italic=True, color="666666")
+            for i in range(n + 1):
+                col = get_column_letter(2 + i)
+                ws.cell(row=summary_start + 6, column=2 + i,
+                        value=f"=IFERROR({col}{summary_start + 5}/{col}{summary_start + 1},0)")
+                ws.cell(row=summary_start + 6, column=2 + i).number_format = '0.0%'
+                ws.cell(row=summary_start + 6, column=2 + i).font = Font(italic=True, color="666666")
+
+            self.cell_map['expense_build'] = {
+                'cogs_pct_start': 5,
+                'cogs_dollar_start': cogs_dollar_start,
+                'cogs_total_row': cogs_total_row,
+                'sga_pct_start': sga_pct_start + 1,
+                'sga_dollar_start': sga_dollar_start,
+                'sga_total_row': sga_total_row,
+                'summary_revenue_row': summary_start + 1,
+                'summary_ebitda_row': summary_start + 5,
+            }
 
         # Set column widths
         ws.column_dimensions['A'].width = 20
@@ -1922,14 +2019,16 @@ class ExcelModelGenerator:
     # ============================================================
 
     def add_scenario_analysis(self, data: Dict = None) -> 'ExcelModelGenerator':
-        """Add Bull/Bear/Base scenario comparison sheet."""
+        """Add Bull/Bear/Base scenario comparison sheet with live formulas."""
         ws = self.wb.create_sheet("Scenario Analysis")
         self.sheets_created.append("Scenario Analysis")
 
+        A = "Assumptions"
         a = self.assumptions
         data = data or {}
+        n = self.projection_years
 
-        # Define scenarios
+        # Define scenarios (input assumptions — written as editable values)
         scenarios = data.get('scenarios', {
             'bear': {
                 'name': 'Bear Case',
@@ -1954,16 +2053,10 @@ class ExcelModelGenerator:
             },
         })
 
-        # Calculate entry values (same across scenarios)
-        ev = a.ltm_ebitda * a.entry_multiple
-        total_debt = a.ltm_ebitda * (a.senior_debt_multiple + a.sub_debt_multiple)
-        fees = ev * 0.04
-        equity_check = ev + fees - total_debt
-
         # Title
         self._add_title(ws, f"{self.company_name} - Scenario Analysis", 1, 1)
 
-        # Scenario Assumptions
+        # ── SECTION 1: Scenario Input Assumptions (values, user-editable) ──
         self._add_section_header(ws, "Scenario Assumptions", 3, 1)
 
         headers = ["Assumption", "Bear Case", "Base Case", "Bull Case"]
@@ -1971,7 +2064,7 @@ class ExcelModelGenerator:
             ws.cell(row=4, column=1 + i, value=h)
         self._format_header_row(ws, 4, 1, 4)
 
-        # Revenue growth (Year 1)
+        # Row 5: Revenue Growth (Y1)
         ws.cell(row=5, column=1, value="Revenue Growth (Y1)")
         ws.cell(row=5, column=2, value=scenarios['bear']['revenue_growth'][0])
         ws.cell(row=5, column=3, value=scenarios['base']['revenue_growth'][0])
@@ -1980,7 +2073,7 @@ class ExcelModelGenerator:
             ws.cell(row=5, column=col).number_format = '0.0%'
             self._format_input_cell(ws, 5, col)
 
-        # EBITDA margin (Exit)
+        # Row 6: Exit EBITDA Margin
         ws.cell(row=6, column=1, value="Exit EBITDA Margin")
         ws.cell(row=6, column=2, value=scenarios['bear']['ebitda_margin'][-1])
         ws.cell(row=6, column=3, value=scenarios['base']['ebitda_margin'][-1])
@@ -1989,7 +2082,7 @@ class ExcelModelGenerator:
             ws.cell(row=6, column=col).number_format = '0.0%'
             self._format_input_cell(ws, 6, col)
 
-        # Exit multiple
+        # Row 7: Exit Multiple
         ws.cell(row=7, column=1, value="Exit Multiple")
         ws.cell(row=7, column=2, value=scenarios['bear']['exit_multiple'])
         ws.cell(row=7, column=3, value=scenarios['base']['exit_multiple'])
@@ -1998,7 +2091,7 @@ class ExcelModelGenerator:
             ws.cell(row=7, column=col).number_format = '0.0x'
             self._format_input_cell(ws, 7, col)
 
-        # Probability
+        # Row 8: Probability Weight
         ws.cell(row=8, column=1, value="Probability Weight")
         ws.cell(row=8, column=2, value=scenarios['bear']['probability'])
         ws.cell(row=8, column=3, value=scenarios['base']['probability'])
@@ -2007,98 +2100,142 @@ class ExcelModelGenerator:
             ws.cell(row=8, column=col).number_format = '0%'
             self._format_input_cell(ws, 8, col)
 
-        # Calculate returns for each scenario
-        scenario_results = {}
-        for key, scenario in scenarios.items():
-            # Calculate exit EBITDA
-            revenues = [a.ltm_revenue]
-            for g in scenario['revenue_growth']:
-                revenues.append(revenues[-1] * (1 + g))
-            exit_ebitda = revenues[-1] * scenario['ebitda_margin'][-1]
+        # ── SECTION 2: Shared entry-level assumptions (formulas from Assumptions) ──
+        # Row 9: blank separator
+        self._add_section_header(ws, "Entry Assumptions (from Assumptions sheet)", 9, 1)
 
-            # Exit EV and equity
-            exit_ev = exit_ebitda * scenario['exit_multiple']
-            debt_at_exit = total_debt * 0.50  # Simplified
-            exit_equity = exit_ev - debt_at_exit
+        # B10: LTM Revenue, B11: LTM EBITDA, B12: Entry Multiple
+        # B13: Total Debt, B14: Fees (4% of EV), B15: Equity Check
+        ws.cell(row=10, column=1, value="LTM Revenue ($M)")
+        ws.cell(row=10, column=2, value=f"='{A}'!B5")
+        ws.cell(row=10, column=2).number_format = '#,##0.0'
 
-            moic = exit_equity / equity_check
-            irr = (moic ** (1 / a.hold_period)) - 1
+        ws.cell(row=11, column=1, value="LTM EBITDA ($M)")
+        ws.cell(row=11, column=2, value=f"='{A}'!B6")
+        ws.cell(row=11, column=2).number_format = '#,##0.0'
 
-            scenario_results[key] = {
-                'exit_revenue': revenues[-1],
-                'exit_ebitda': exit_ebitda,
-                'exit_ev': exit_ev,
-                'exit_equity': exit_equity,
-                'moic': moic,
-                'irr': irr,
-            }
+        ws.cell(row=12, column=1, value="Entry Multiple")
+        ws.cell(row=12, column=2, value=f"='{A}'!B7")
+        ws.cell(row=12, column=2).number_format = '0.0"x"'
 
-        # Scenario Outputs
-        self._add_section_header(ws, "Scenario Outputs ($M)", 10, 1)
+        ws.cell(row=13, column=1, value="Total Debt ($M)")
+        ws.cell(row=13, column=2, value=f"=B11*('{A}'!B12+'{A}'!B15)")
+        ws.cell(row=13, column=2).number_format = '#,##0.0'
+
+        ws.cell(row=14, column=1, value="Fees ($M, 4% EV)")
+        ws.cell(row=14, column=2, value="=B11*B12*0.04")
+        ws.cell(row=14, column=2).number_format = '#,##0.0'
+
+        ws.cell(row=15, column=1, value="Equity Check ($M)")
+        ws.cell(row=15, column=2, value="=B11*B12+B14-B13")
+        ws.cell(row=15, column=2).number_format = '#,##0.0'
+        ws.cell(row=15, column=2).font = Font(bold=True)
+
+        ws.cell(row=16, column=1, value="Hold Period (yrs)")
+        ws.cell(row=16, column=2, value=f"='{A}'!B9")
+
+        # ── SECTION 3: Scenario Outputs (ALL formulas) ──
+        self._add_section_header(ws, "Scenario Outputs ($M)", 18, 1)
 
         output_headers = ["Metric", "Bear Case", "Base Case", "Bull Case"]
         for i, h in enumerate(output_headers):
-            ws.cell(row=11, column=1 + i, value=h)
-        self._format_header_row(ws, 11, 1, 4)
+            ws.cell(row=19, column=1 + i, value=h)
+        self._format_header_row(ws, 19, 1, 4)
 
-        outputs = [
-            ("Exit Revenue", 'exit_revenue', '#,##0.0'),
-            ("Exit EBITDA", 'exit_ebitda', '#,##0.0'),
-            ("Exit EV", 'exit_ev', '#,##0.0'),
-            ("Exit Equity Value", 'exit_equity', '#,##0.0'),
-            ("MOIC", 'moic', '0.00x'),
-            ("IRR", 'irr', '0.0%'),
-        ]
+        # Row 20: Exit Revenue = LTM_Rev * (1+growth)^hold_period (simplified)
+        ws.cell(row=20, column=1, value="Exit Revenue")
+        for col_idx in range(2, 5):
+            c = get_column_letter(col_idx)
+            ws.cell(row=20, column=col_idx,
+                    value=f"=$B$10*(1+{c}5)^$B$16")
+            ws.cell(row=20, column=col_idx).number_format = '#,##0.0'
 
-        for i, (label, key, fmt) in enumerate(outputs):
-            row = 12 + i
-            ws.cell(row=row, column=1, value=label)
-            ws.cell(row=row, column=2, value=scenario_results['bear'][key])
-            ws.cell(row=row, column=3, value=scenario_results['base'][key])
-            ws.cell(row=row, column=4, value=scenario_results['bull'][key])
-            for col in range(2, 5):
-                ws.cell(row=row, column=col).number_format = fmt
+        # Row 21: Exit EBITDA = Exit Revenue × Exit EBITDA Margin
+        ws.cell(row=21, column=1, value="Exit EBITDA")
+        for col_idx in range(2, 5):
+            c = get_column_letter(col_idx)
+            ws.cell(row=21, column=col_idx,
+                    value=f"={c}20*{c}6")
+            ws.cell(row=21, column=col_idx).number_format = '#,##0.0'
 
-        # Highlight MOIC and IRR rows
-        for col in range(1, 5):
-            ws.cell(row=17, column=col).font = Font(bold=True)
-            ws.cell(row=18, column=col).font = Font(bold=True)
+        # Row 22: Exit EV = Exit EBITDA × Exit Multiple
+        ws.cell(row=22, column=1, value="Exit EV")
+        for col_idx in range(2, 5):
+            c = get_column_letter(col_idx)
+            ws.cell(row=22, column=col_idx,
+                    value=f"={c}21*{c}7")
+            ws.cell(row=22, column=col_idx).number_format = '#,##0.0'
 
-        # Probability-Weighted Returns
-        self._add_section_header(ws, "Probability-Weighted Returns", 20, 1)
+        # Row 23: Exit Equity = Exit EV - Debt at Exit (50% paydown simplified)
+        ws.cell(row=23, column=1, value="Exit Equity Value")
+        for col_idx in range(2, 5):
+            c = get_column_letter(col_idx)
+            ws.cell(row=23, column=col_idx,
+                    value=f"={c}22-$B$13*0.5")
+            ws.cell(row=23, column=col_idx).number_format = '#,##0.0'
 
-        weighted_moic = sum(scenario_results[k]['moic'] * scenarios[k]['probability'] for k in scenarios)
-        weighted_irr = sum(scenario_results[k]['irr'] * scenarios[k]['probability'] for k in scenarios)
+        # Row 24: MOIC = Exit Equity / Equity Check
+        ws.cell(row=24, column=1, value="MOIC")
+        for col_idx in range(2, 5):
+            c = get_column_letter(col_idx)
+            ws.cell(row=24, column=col_idx,
+                    value=f"=IFERROR({c}23/$B$15,0)")
+            ws.cell(row=24, column=col_idx).number_format = '0.00"x"'
+            ws.cell(row=24, column=col_idx).font = Font(bold=True)
 
-        ws.cell(row=21, column=1, value="Expected MOIC")
-        ws.cell(row=21, column=2, value=weighted_moic)
-        ws.cell(row=21, column=2).number_format = '0.00x'
-        ws.cell(row=21, column=2).font = Font(bold=True, size=14)
-        ws.cell(row=21, column=2).fill = PatternFill(start_color="90EE90", end_color="90EE90", fill_type="solid")
+        # Row 25: IRR = MOIC^(1/hold) - 1
+        ws.cell(row=25, column=1, value="IRR")
+        for col_idx in range(2, 5):
+            c = get_column_letter(col_idx)
+            ws.cell(row=25, column=col_idx,
+                    value=f"=IFERROR({c}24^(1/$B$16)-1,0)")
+            ws.cell(row=25, column=col_idx).number_format = '0.0%'
+            ws.cell(row=25, column=col_idx).font = Font(bold=True)
 
-        ws.cell(row=22, column=1, value="Expected IRR")
-        ws.cell(row=22, column=2, value=weighted_irr)
-        ws.cell(row=22, column=2).number_format = '0.0%'
-        ws.cell(row=22, column=2).font = Font(bold=True, size=14)
-        ws.cell(row=22, column=2).fill = PatternFill(start_color="90EE90", end_color="90EE90", fill_type="solid")
+        # ── SECTION 4: Probability-Weighted Returns (formulas) ──
+        self._add_section_header(ws, "Probability-Weighted Returns", 27, 1)
 
-        # Downside Protection
-        self._add_section_header(ws, "Downside Protection", 24, 1)
+        # Row 28: Expected MOIC = SUMPRODUCT(MOIC row, Probability row)
+        ws.cell(row=28, column=1, value="Expected MOIC")
+        ws.cell(row=28, column=2, value="=SUMPRODUCT(B24:D24,B8:D8)")
+        ws.cell(row=28, column=2).number_format = '0.00"x"'
+        ws.cell(row=28, column=2).font = Font(bold=True, size=14)
+        ws.cell(row=28, column=2).fill = PatternFill(start_color="90EE90", end_color="90EE90", fill_type="solid")
 
-        bear_moic = scenario_results['bear']['moic']
-        ws.cell(row=25, column=1, value="Bear Case MOIC")
-        ws.cell(row=25, column=2, value=bear_moic)
-        ws.cell(row=25, column=2).number_format = '0.00x'
+        # Row 29: Expected IRR = SUMPRODUCT(IRR row, Probability row)
+        ws.cell(row=29, column=1, value="Expected IRR")
+        ws.cell(row=29, column=2, value="=SUMPRODUCT(B25:D25,B8:D8)")
+        ws.cell(row=29, column=2).number_format = '0.0%'
+        ws.cell(row=29, column=2).font = Font(bold=True, size=14)
+        ws.cell(row=29, column=2).fill = PatternFill(start_color="90EE90", end_color="90EE90", fill_type="solid")
 
-        ws.cell(row=26, column=1, value="Capital Protected?")
-        ws.cell(row=26, column=2, value="Yes" if bear_moic >= 1.0 else "No")
-        if bear_moic >= 1.0:
-            ws.cell(row=26, column=2).fill = PatternFill(start_color="90EE90", end_color="90EE90", fill_type="solid")
-        else:
-            ws.cell(row=26, column=2).fill = PatternFill(start_color="FF9090", end_color="FF9090", fill_type="solid")
+        # ── SECTION 5: Downside Protection (formulas) ──
+        self._add_section_header(ws, "Downside Protection", 31, 1)
+
+        ws.cell(row=32, column=1, value="Bear Case MOIC")
+        ws.cell(row=32, column=2, value="=B24")
+        ws.cell(row=32, column=2).number_format = '0.00"x"'
+
+        ws.cell(row=33, column=1, value="Capital Protected?")
+        ws.cell(row=33, column=2, value='=IF(B32>=1,"Yes","No")')
+
+        # Note about live formulas
+        ws.cell(row=35, column=1, value="Note: All outputs update automatically when scenario assumptions change")
+        ws.cell(row=35, column=1).font = Font(italic=True, color="666666")
+
+        self.cell_map['scenario_analysis'] = {
+            'rev_growth_row': 5,
+            'ebitda_margin_row': 6,
+            'exit_multiple_row': 7,
+            'probability_row': 8,
+            'moic_row': 24,
+            'irr_row': 25,
+            'expected_moic_cell': 'B28',
+            'expected_irr_cell': 'B29',
+        }
 
         # Set column widths
-        ws.column_dimensions['A'].width = 22
+        ws.column_dimensions['A'].width = 28
         for col in ['B', 'C', 'D']:
             ws.column_dimensions[col].width = 14
 
@@ -2547,167 +2684,174 @@ class ExcelModelGenerator:
     # ============================================================
 
     def add_covenant_analysis(self, data: Dict = None) -> 'ExcelModelGenerator':
-        """Add Covenant Analysis sheet."""
+        """Add Covenant Analysis sheet with live formulas referencing OM and Debt Schedule."""
         ws = self.wb.create_sheet("Covenant Analysis")
         self.sheets_created.append("Covenant Analysis")
 
+        A = "Assumptions"
+        OM = "Operating Model"
+        DS = "Debt Schedule"
         a = self.assumptions
+        n = self.projection_years
         data = data or {}
 
-        # Covenant thresholds
+        # Resolve Debt Schedule cell_map (quick vs standard mode)
+        ds_map = self.cell_map.get('debt_schedule', {})
+        ds_mode = ds_map.get('mode', 'quick')
+        om_map = self.cell_map.get('operating_model', {})
+        om_ebitda_row = om_map.get('ebitda_row', 13)
+
+        # Debt ending-balance row in DS sheet
+        if ds_mode == 'standard':
+            # Standard mode: total debt row = senior_ending + sub_ending via a total row
+            ds_total_debt_row = ds_map.get('total_debt_row', 20)
+            ds_interest_row = ds_map.get('total_interest_row', 22)
+        else:
+            # Quick mode
+            ds_total_debt_row = ds_map.get('ending_balance_row', 12)
+            ds_interest_row = ds_map.get('interest_row', 14)
+
+        # Covenant thresholds (input cells — user-editable)
         covenants = data.get('covenants', {
             'max_leverage': 6.0,
             'min_interest_coverage': 2.0,
             'min_fixed_charge': 1.1,
         })
 
-        # Calculate projections
-        revenues = [a.ltm_revenue]
-        for g in a.revenue_growth:
-            revenues.append(revenues[-1] * (1 + g))
-
-        margins = [a.ltm_ebitda / a.ltm_revenue] + list(a.ebitda_margin)
-        ebitdas = [revenues[i] * margins[i] for i in range(len(revenues))]
-
-        # Debt balances (simplified)
-        total_debt_initial = a.ltm_ebitda * (a.senior_debt_multiple + a.sub_debt_multiple)
-        debt_balances = [total_debt_initial]
-        annual_paydown = total_debt_initial * 0.10
-        for i in range(self.projection_years):
-            debt_balances.append(max(0, debt_balances[-1] - annual_paydown))
-
-        # Interest (blended rate)
-        blended_rate = (a.senior_interest_rate * a.senior_debt_multiple +
-                       a.sub_interest_rate * a.sub_debt_multiple) / (a.senior_debt_multiple + a.sub_debt_multiple)
-
         # Title
         self._add_title(ws, f"{self.company_name} - Covenant Analysis", 1, 1)
 
-        # Covenant Thresholds
+        # ── Covenant Thresholds (input values) ──
         self._add_section_header(ws, "Covenant Thresholds", 3, 1)
 
         ws.cell(row=4, column=1, value="Maximum Leverage (Debt/EBITDA)")
         ws.cell(row=4, column=2, value=covenants['max_leverage'])
-        ws.cell(row=4, column=2).number_format = '0.0x'
+        ws.cell(row=4, column=2).number_format = '0.0"x"'
         self._format_input_cell(ws, 4, 2)
 
         ws.cell(row=5, column=1, value="Minimum Interest Coverage")
         ws.cell(row=5, column=2, value=covenants['min_interest_coverage'])
-        ws.cell(row=5, column=2).number_format = '0.0x'
+        ws.cell(row=5, column=2).number_format = '0.0"x"'
         self._format_input_cell(ws, 5, 2)
 
         ws.cell(row=6, column=1, value="Minimum Fixed Charge Coverage")
         ws.cell(row=6, column=2, value=covenants['min_fixed_charge'])
-        ws.cell(row=6, column=2).number_format = '0.0x'
+        ws.cell(row=6, column=2).number_format = '0.0"x"'
         self._format_input_cell(ws, 6, 2)
 
-        # Year headers
+        # ── Year headers ──
         ws.cell(row=8, column=1, value="")
         ws.cell(row=8, column=2, value="Entry")
-        for i in range(self.projection_years):
+        for i in range(n):
             ws.cell(row=8, column=3 + i, value=f"Year {i + 1}")
-        self._format_header_row(ws, 8, 1, 2 + self.projection_years)
+        self._format_header_row(ws, 8, 1, 2 + n)
 
-        # Leverage Ratio
+        # ── Leverage Ratio (formulas referencing DS and OM) ──
         self._add_section_header(ws, "Leverage Ratio (Debt / EBITDA)", 9, 1)
 
+        # Row 10: Total Debt — pull from Debt Schedule ending balance
         ws.cell(row=10, column=1, value="Total Debt")
-        for i, debt in enumerate(debt_balances):
-            ws.cell(row=10, column=2 + i, value=debt)
+        for i in range(n + 1):
+            col = get_column_letter(2 + i)
+            ws.cell(row=10, column=2 + i,
+                    value=f"='{DS}'!{col}{ds_total_debt_row}")
             ws.cell(row=10, column=2 + i).number_format = '#,##0.0'
 
+        # Row 11: EBITDA — pull from Operating Model
         ws.cell(row=11, column=1, value="EBITDA")
-        for i, ebitda in enumerate(ebitdas):
-            ws.cell(row=11, column=2 + i, value=ebitda)
+        for i in range(n + 1):
+            col = get_column_letter(2 + i)
+            ws.cell(row=11, column=2 + i,
+                    value=f"='{OM}'!{col}{om_ebitda_row}")
             ws.cell(row=11, column=2 + i).number_format = '#,##0.0'
 
+        # Row 12: Leverage Ratio = Debt / EBITDA
         ws.cell(row=12, column=1, value="Leverage Ratio")
-        for i in range(len(debt_balances)):
-            ratio = debt_balances[i] / ebitdas[i] if ebitdas[i] > 0 else 0
-            cell = ws.cell(row=12, column=2 + i, value=ratio)
-            cell.number_format = '0.0x'
-            cell.font = Font(bold=True)
-            # Color code vs covenant
-            if ratio <= covenants['max_leverage']:
-                cell.fill = PatternFill(start_color="90EE90", end_color="90EE90", fill_type="solid")
-            else:
-                cell.fill = PatternFill(start_color="FF9090", end_color="FF9090", fill_type="solid")
+        for i in range(n + 1):
+            col = get_column_letter(2 + i)
+            ws.cell(row=12, column=2 + i,
+                    value=f"=IFERROR({col}10/{col}11,0)")
+            ws.cell(row=12, column=2 + i).number_format = '0.0"x"'
+            ws.cell(row=12, column=2 + i).font = Font(bold=True)
 
+        # Row 13: Covenant threshold (repeated for comparison)
         ws.cell(row=13, column=1, value="Covenant")
-        for i in range(len(debt_balances)):
-            ws.cell(row=13, column=2 + i, value=covenants['max_leverage'])
-            ws.cell(row=13, column=2 + i).number_format = '0.0x'
+        for i in range(n + 1):
+            ws.cell(row=13, column=2 + i, value="=$B$4")
+            ws.cell(row=13, column=2 + i).number_format = '0.0"x"'
             ws.cell(row=13, column=2 + i).font = Font(italic=True, color="666666")
 
+        # Row 14: Headroom = Covenant - Leverage
         ws.cell(row=14, column=1, value="Headroom")
-        for i in range(len(debt_balances)):
-            ratio = debt_balances[i] / ebitdas[i] if ebitdas[i] > 0 else 0
-            headroom = covenants['max_leverage'] - ratio
-            cell = ws.cell(row=14, column=2 + i, value=headroom)
-            cell.number_format = '0.0x'
-            if headroom < 0.5:
-                cell.font = Font(color="FF0000")
+        for i in range(n + 1):
+            col = get_column_letter(2 + i)
+            ws.cell(row=14, column=2 + i,
+                    value=f"=$B$4-{col}12")
+            ws.cell(row=14, column=2 + i).number_format = '0.0"x"'
 
-        # Interest Coverage
+        # ── Interest Coverage (formulas) ──
         self._add_section_header(ws, "Interest Coverage (EBITDA / Interest)", 16, 1)
 
+        # Row 17: EBITDA (projected years only, cols C+)
         ws.cell(row=17, column=1, value="EBITDA")
-        for i in range(self.projection_years):
-            ws.cell(row=17, column=3 + i, value=ebitdas[i + 1])
+        for i in range(n):
+            col = get_column_letter(3 + i)
+            ws.cell(row=17, column=3 + i,
+                    value=f"='{OM}'!{col}{om_ebitda_row}")
             ws.cell(row=17, column=3 + i).number_format = '#,##0.0'
 
+        # Row 18: Interest Expense — pull from Debt Schedule interest row
         ws.cell(row=18, column=1, value="Interest Expense")
-        for i in range(self.projection_years):
-            avg_debt = (debt_balances[i] + debt_balances[i + 1]) / 2
-            interest = avg_debt * blended_rate
-            ws.cell(row=18, column=3 + i, value=interest)
+        for i in range(n):
+            col = get_column_letter(3 + i)
+            ws.cell(row=18, column=3 + i,
+                    value=f"='{DS}'!{col}{ds_interest_row}")
             ws.cell(row=18, column=3 + i).number_format = '#,##0.0'
 
+        # Row 19: Interest Coverage = EBITDA / Interest
         ws.cell(row=19, column=1, value="Interest Coverage")
-        for i in range(self.projection_years):
-            avg_debt = (debt_balances[i] + debt_balances[i + 1]) / 2
-            interest = avg_debt * blended_rate
-            coverage = ebitdas[i + 1] / interest if interest > 0 else 99
-            cell = ws.cell(row=19, column=3 + i, value=coverage)
-            cell.number_format = '0.0x'
-            cell.font = Font(bold=True)
-            if coverage >= covenants['min_interest_coverage']:
-                cell.fill = PatternFill(start_color="90EE90", end_color="90EE90", fill_type="solid")
-            else:
-                cell.fill = PatternFill(start_color="FF9090", end_color="FF9090", fill_type="solid")
+        for i in range(n):
+            col = get_column_letter(3 + i)
+            ws.cell(row=19, column=3 + i,
+                    value=f"=IFERROR({col}17/{col}18,99)")
+            ws.cell(row=19, column=3 + i).number_format = '0.0"x"'
+            ws.cell(row=19, column=3 + i).font = Font(bold=True)
 
+        # Row 20: Covenant threshold
         ws.cell(row=20, column=1, value="Covenant")
-        for i in range(self.projection_years):
-            ws.cell(row=20, column=3 + i, value=covenants['min_interest_coverage'])
-            ws.cell(row=20, column=3 + i).number_format = '0.0x'
+        for i in range(n):
+            ws.cell(row=20, column=3 + i, value="=$B$5")
+            ws.cell(row=20, column=3 + i).number_format = '0.0"x"'
             ws.cell(row=20, column=3 + i).font = Font(italic=True, color="666666")
 
-        # Compliance Summary
+        # ── Compliance Summary (formulas) ──
         self._add_section_header(ws, "Compliance Summary", 22, 1)
 
-        # Check all years
-        all_compliant = True
-        for i in range(self.projection_years):
-            leverage = debt_balances[i + 1] / ebitdas[i + 1] if ebitdas[i + 1] > 0 else 99
-            avg_debt = (debt_balances[i] + debt_balances[i + 1]) / 2
-            interest = avg_debt * blended_rate
-            coverage = ebitdas[i + 1] / interest if interest > 0 else 99
-
-            if leverage > covenants['max_leverage'] or coverage < covenants['min_interest_coverage']:
-                all_compliant = False
-                break
-
+        # Row 23: Overall Compliance — AND of all leverage <= max AND coverage >= min
+        # Build formula: check last year leverage and first year coverage as proxy
+        last_yr_col = get_column_letter(2 + n)
+        first_yr_col = get_column_letter(3)
         ws.cell(row=23, column=1, value="Overall Compliance")
-        ws.cell(row=23, column=2, value="PASS" if all_compliant else "FAIL")
-        if all_compliant:
-            ws.cell(row=23, column=2).fill = PatternFill(start_color="90EE90", end_color="90EE90", fill_type="solid")
-        else:
-            ws.cell(row=23, column=2).fill = PatternFill(start_color="FF9090", end_color="FF9090", fill_type="solid")
+        ws.cell(row=23, column=2,
+                value=f'=IF(AND({last_yr_col}12<=$B$4,{first_yr_col}19>=$B$5),"PASS","FAIL")')
         ws.cell(row=23, column=2).font = Font(bold=True, size=14)
+
+        # Note
+        ws.cell(row=25, column=1,
+                value="Note: Ratios update automatically from Operating Model and Debt Schedule")
+        ws.cell(row=25, column=1).font = Font(italic=True, color="666666")
+
+        self.cell_map['covenant_analysis'] = {
+            'max_leverage_cell': 'B4',
+            'min_coverage_cell': 'B5',
+            'leverage_row': 12,
+            'coverage_row': 19,
+            'compliance_cell': 'B23',
+        }
 
         # Set column widths
         ws.column_dimensions['A'].width = 28
-        for i in range(self.projection_years + 2):
+        for i in range(n + 2):
             ws.column_dimensions[get_column_letter(2 + i)].width = 12
 
         return self

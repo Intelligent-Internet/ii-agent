@@ -213,6 +213,13 @@ from ii_skills.shared.progress import (
     ProgressEvent,
 )
 
+# Case Workflow Orchestrator
+from ii_skills.shared.case_orchestrator import (
+    CaseWorkflowOrchestrator,
+    CaseResult,
+    TIMEFRAME_CONFIG,
+)
+
 # Generic phase runner
 from ii_skills.shared.phase_runner import (
     PhaseRunner,
@@ -389,4 +396,8 @@ __all__ = [
     "ProgressReporter",
     "ProgressCallbacks",
     "ProgressEvent",
+    # Case Workflow Orchestrator
+    "CaseWorkflowOrchestrator",
+    "CaseResult",
+    "TIMEFRAME_CONFIG",
 ]
