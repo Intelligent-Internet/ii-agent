@@ -89,5 +89,20 @@ For interview case studies, follow the [Case Intake Protocol](./ib_toolkit/CASE_
 
 ---
 
+## Creating New Skills
+
+Use the [SKILL_TEMPLATE.md](./SKILL_TEMPLATE.md) when creating new skills. It includes:
+
+- Standard folder structure
+- SKILL.md documentation template
+- Configuration patterns
+- Integration checklist
+
+Also see:
+- [ORCHESTRATION_TEMPLATE.md](./ORCHESTRATION_TEMPLATE.md) - For multi-phase orchestrated skills
+- [../SELF_IMPROVEMENT.md](../SELF_IMPROVEMENT.md) - For learning and improvement workflows
+
+---
+
 *Documentation migrated from Claire Agent System*
 *Sources: BCI Growth Equity (2026), Northleaf PE (2025), Buyside Agent Resources*
