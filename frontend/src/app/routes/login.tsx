@@ -31,9 +31,36 @@ type IiAuthPayload = {
     expires_in?: number
 }
 
+const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || ''
+
+// Separate component for Google login button to safely use the hook
+function GoogleLoginButton({ onSuccess, onError }: {
+    onSuccess: (code: string) => Promise<void>,
+    onError: (error: unknown) => void
+}) {
+    const googleLogin = useGoogleLogin({
+        flow: 'auth-code',
+        onSuccess: async (codeResponse) => {
+            await onSuccess(codeResponse.code)
+        },
+        onError: onError
+    })
+
+    return (
+        <Button
+            size="xl"
+            onClick={() => googleLogin()}
+            className="w-full bg-white text-black font-semibold shadow-btn"
+        >
+            <Icon name="google" className="size-[22px]" />
+            Continue with Google Account
+        </Button>
+    )
+}
+
 export function LoginPage() {
     const navigate = useNavigate()
-    const { loginWithAuthCode } = useAuth()
+    const { loginWithAuthCode, loginWithPassword } = useAuth()
     const dispatch = useAppDispatch()
 
     const form = useForm<z.infer<typeof FormSchema>>({
@@ -44,31 +71,29 @@ export function LoginPage() {
         }
     })
 
-    const googleLogin = useGoogleLogin({
-        flow: 'auth-code',
-        onSuccess: async (codeResponse) => {
-            try {
-                await loginWithAuthCode(codeResponse.code)
-                navigate('/')
-            } catch (error: unknown) {
-                const apiError = error as {
-                    response: { data: { detail: string } }
-                }
-                const errorMessage =
-                    typeof apiError?.response?.data?.detail === 'string'
-                        ? apiError.response.data.detail
-                        : 'Login failed. Please try again.'
-                if (errorMessage?.includes('beta')) {
-                    toast.info(errorMessage)
-                } else {
-                    toast.error(errorMessage)
-                }
+    const handleGoogleSuccess = useCallback(async (code: string) => {
+        try {
+            await loginWithAuthCode(code)
+            navigate('/')
+        } catch (error: unknown) {
+            const apiError = error as {
+                response: { data: { detail: string } }
             }
-        },
-        onError: (errorResponse) => {
-            console.log('Login Failed:', errorResponse)
+            const errorMessage =
+                typeof apiError?.response?.data?.detail === 'string'
+                    ? apiError.response.data.detail
+                    : 'Login failed. Please try again.'
+            if (errorMessage?.includes('beta')) {
+                toast.info(errorMessage)
+            } else {
+                toast.error(errorMessage)
+            }
         }
-    })
+    }, [loginWithAuthCode, navigate])
+
+    const handleGoogleError = useCallback((errorResponse: unknown) => {
+        console.log('Login Failed:', errorResponse)
+    }, [])
 
     const apiBaseUrl = useMemo(
         () => import.meta.env.VITE_API_URL || 'http://localhost:8000',
@@ -196,10 +221,22 @@ export function LoginPage() {
     }, [apiBaseUrl])
 
     const onSubmit = async (data: z.infer<typeof FormSchema>) => {
-        console.log(data)
+        try {
+            await loginWithPassword(data.email, data.password)
+            navigate('/')
+        } catch (error: unknown) {
+            const apiError = error as {
+                response?: { data?: { detail?: string } }
+            }
+            const errorMessage =
+                typeof apiError?.response?.data?.detail === 'string'
+                    ? apiError.response.data.detail
+                    : 'Login failed. Please try again.'
+            toast.error(errorMessage)
+        }
     }
 
-    const hideSigninWithPassword = true
+    const hideSigninWithPassword = false
 
     return (
         <div className="flex flex-col items-center justify-center w-full h-full">
@@ -302,14 +339,12 @@ export function LoginPage() {
                         <p className="flex-1 dark:bg-white/[0.31] h-[1px]"></p>
                     </div>
                 </div>
-                <Button
-                    size="xl"
-                    onClick={() => googleLogin()}
-                    className="w-full bg-white text-black font-semibold shadow-btn"
-                >
-                    <Icon name="google" className="size-[22px]" />
-                    Continue with Google Account
-                </Button>
+                {googleClientId && (
+                    <GoogleLoginButton
+                        onSuccess={handleGoogleSuccess}
+                        onError={handleGoogleError}
+                    />
+                )}
                 <Button
                     size="xl"
                     onClick={loginWithII}

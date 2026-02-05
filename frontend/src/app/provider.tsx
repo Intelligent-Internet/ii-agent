@@ -10,22 +10,30 @@ import { AuthProvider } from '@/contexts/auth-context'
 export default function AppProvider({ children }: { children: ReactNode }) {
     const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || ''
 
+    const content = (
+        <AuthProvider>
+            <ThemeProvider
+                attribute="class"
+                defaultTheme="dark"
+                enableSystem
+            >
+                <TerminalProvider>
+                    <TooltipProvider>{children}</TooltipProvider>
+                </TerminalProvider>
+            </ThemeProvider>
+        </AuthProvider>
+    )
+
     return (
         <Suspense fallback={<>Loading...</>}>
             <ErrorBoundary FallbackComponent={AppErrorPage}>
-                <GoogleOAuthProvider clientId={googleClientId}>
-                    <AuthProvider>
-                        <ThemeProvider
-                            attribute="class"
-                            defaultTheme="dark"
-                            enableSystem
-                        >
-                            <TerminalProvider>
-                                <TooltipProvider>{children}</TooltipProvider>
-                            </TerminalProvider>
-                        </ThemeProvider>
-                    </AuthProvider>
-                </GoogleOAuthProvider>
+                {googleClientId ? (
+                    <GoogleOAuthProvider clientId={googleClientId}>
+                        {content}
+                    </GoogleOAuthProvider>
+                ) : (
+                    content
+                )}
             </ErrorBoundary>
         </Suspense>
     )

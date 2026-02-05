@@ -20,6 +20,7 @@ interface AuthContextType {
     user: User | null
     isAuthenticated: boolean
     loginWithAuthCode: (authCode: string) => Promise<void>
+    loginWithPassword: (email: string, password: string) => Promise<void>
     logout: () => void
     isLoading: boolean
 }
@@ -121,6 +122,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
     }
 
+    const loginWithPassword = async (email: string, password: string) => {
+        try {
+            const res = await authService.loginWithPassword(email, password)
+
+            localStorage.setItem(ACCESS_TOKEN, res.access_token)
+            window.dispatchEvent(new CustomEvent('auth-token-set'))
+
+            const userRes = await authService.getCurrentUser()
+            dispatch(setUser(userRes))
+            await fetchAvailableModels()
+            dispatch(fetchWishlist())
+        } catch (error) {
+            console.error('Error handling password login:', error)
+            throw error
+        }
+    }
+
     const logout = () => {
         localStorage.removeItem(ACCESS_TOKEN)
         dispatch(clearUser())
@@ -134,6 +152,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         isAuthenticated,
         loginWithAuthCode,
+        loginWithPassword,
         logout,
         isLoading
     }

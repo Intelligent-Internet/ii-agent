@@ -26,11 +26,13 @@ from ii_agent.server.api.deps import DBSession
 from ii_agent.server.api.deps import CurrentUser
 from ii_agent.server.models.auth import (
     TokenResponse,
+    LoginRequest,
 )
 from ii_agent.server.auth.jwt_handler import jwt_handler
 from ii_agent.core.config.ii_agent_config import config
 from ii_agent.server.models.users import UserPublic
 from ii_agent.server.auth.api_key_utils import generate_prefixed_api_key
+from ii_agent.server.auth.password import verify_password
 
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -530,6 +532,49 @@ async def google_callback(
     )
 
     refresh_token = jwt_handler.create_refresh_token(user_id=str(user_stored.id))
+
+    return TokenResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        expires_in=jwt_handler.access_token_expire_minutes * 60,
+    )
+
+
+@router.post("/login", response_model=TokenResponse)
+async def login_with_password(body: LoginRequest, db: DBSession):
+    """Authenticate with email and password."""
+    email = body.email.strip().lower()
+
+    result = await db.execute(select(User).where(func.lower(User.email) == email))
+    user = result.scalar_one_or_none()
+
+    if not user or not user.password_hash:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or password",
+        )
+
+    if not verify_password(body.password, user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or password",
+        )
+
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account is disabled",
+        )
+
+    user.last_login_at = datetime.now(timezone.utc)
+    await db.commit()
+
+    access_token = jwt_handler.create_access_token(
+        user_id=str(user.id),
+        email=str(user.email),
+        role=str(user.role),
+    )
+    refresh_token = jwt_handler.create_refresh_token(user_id=str(user.id))
 
     return TokenResponse(
         access_token=access_token,

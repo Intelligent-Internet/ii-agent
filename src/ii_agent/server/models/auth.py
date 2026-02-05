@@ -1,7 +1,7 @@
 """Authentication Pydantic models."""
 
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 
 
 class TokenResponse(BaseModel):
@@ -22,3 +22,10 @@ class TokenPayload(BaseModel):
     type: str = "access"  # or "refresh"
     exp: datetime
     iat: datetime
+
+
+class LoginRequest(BaseModel):
+    """Model for email/password login request."""
+
+    email: EmailStr
+    password: str

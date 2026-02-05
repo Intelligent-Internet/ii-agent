@@ -17,6 +17,17 @@ class AuthService {
         return response.data
     }
 
+    async loginWithPassword(
+        email: string,
+        password: string
+    ): Promise<GoogleAuthResponse> {
+        const response = await axiosInstance.post<GoogleAuthResponse>(
+            '/auth/login',
+            { email, password }
+        )
+        return response.data
+    }
+
     async logout(): Promise<void> {
         await axiosInstance.post('/api/auth/logout')
     }
