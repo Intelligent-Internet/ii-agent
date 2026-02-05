@@ -100,6 +100,7 @@ Use the [SKILL_TEMPLATE.md](./SKILL_TEMPLATE.md) when creating new skills. It in
 
 Also see:
 - [ORCHESTRATION_TEMPLATE.md](./ORCHESTRATION_TEMPLATE.md) - For multi-phase orchestrated skills
+- [SLIDE_DESIGN_GUIDE.md](./SLIDE_DESIGN_GUIDE.md) - Professional slide templates and design patterns
 - [../SELF_IMPROVEMENT.md](../SELF_IMPROVEMENT.md) - For learning and improvement workflows
 
 ---

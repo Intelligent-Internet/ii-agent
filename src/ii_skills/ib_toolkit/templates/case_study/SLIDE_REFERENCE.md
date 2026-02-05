@@ -205,10 +205,45 @@ C:\Users\user\ii-agent\src\ii_skills\ib_toolkit\templates\case_study\
 ## Output Styling
 
 All slides match Roberto's BCI/Northleaf case study style:
-- **Dimensions:** 10" x 7.5"
+- **Dimensions:** 13.333" x 7.5" (16:9 widescreen)
 - **Font:** Arial throughout
-- **Primary Color:** #00365B (dark navy)
-- **Title:** 16pt bold at (0.3", 0.2")
-- **Subtitle:** 11pt at (0.3", 0.6")
-- **Page Number:** Bottom right (9.0", 7.0")
-- **Source:** Bottom left (0.3", 7.0")
+- **Primary Color:** #00A651 (TD Green) or #00365B (dark navy)
+- **Title:** 28pt bold at top
+- **Header Bar:** Gray (#4A4A4A) with white text
+- **Key Takeaway:** Green bar at bottom with italic white text
+- **Source:** Bottom left (8pt gray)
+- **Slide Number:** Bottom right
+
+---
+
+## Professional Slide Templates
+
+For comprehensive design guidance, see:
+**[docs/skills/SLIDE_DESIGN_GUIDE.md](../../../../docs/skills/SLIDE_DESIGN_GUIDE.md)**
+
+This guide includes 14 professional slide templates extracted from TD Securities presentations:
+
+| Template | Use For |
+|----------|---------|
+| Executive Summary | Opening slides, recommendations |
+| Numbered Key Points | Investment highlights, thesis pillars |
+| Peer Benchmarking | Valuation multiples, metrics comparison |
+| Comps Table | Trading comps, peer analysis |
+| Time Series | Historical performance, trends |
+| Before/After | Value creation, renovations |
+| Sources & Uses | Transaction structure, IPO analysis |
+| Scenario Analysis | Disposition analysis, strategic alternatives |
+| Horizontal Bar + Pie | Rankings, geographic exposure |
+| Gantt Chart | Transaction timeline, project phases |
+| Heat Map | Performance matrix, scoring |
+| Portfolio Valuations | Fund investments, exit forecasts |
+| Geographic Map | Property locations, market presence |
+| Debt Benchmarking | Capital structure comparison |
+
+### Key Design Patterns
+
+1. **Key Takeaway Bar**: Green bar at bottom with italic text summarizing the slide's insight
+2. **Subject Highlighting**: Subject company/fund always in green, peers in gray
+3. **Header Bars**: Gray with white text to separate sections
+4. **Data Tables**: Low/Mid/High scenarios in columns, color-coded headers
+5. **Source Citations**: Always include source and footnotes at bottom

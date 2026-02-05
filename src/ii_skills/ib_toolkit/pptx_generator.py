@@ -2,11 +2,16 @@
 """
 Investment Banking PowerPoint Generator
 Creates professional presentations for industry research, company profiles, and pitch books.
+
+Design patterns extracted from institutional presentations:
+- TD Securities (Florence, Northview, Spring Living)
+- PropelR Investor Presentation
+
+See: docs/skills/SLIDE_DESIGN_GUIDE.md for complete template reference.
 """
 
 from pptx import Presentation
 from pptx.util import Inches, Pt
-from pptx.util import Pt
 from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
 from pptx.enum.shapes import MSO_SHAPE
 from pptx.oxml.xmlchemy import OxmlElement
@@ -14,11 +19,24 @@ from pptx.oxml.ns import qn
 from pptx.dml.color import RGBColor as RgbColor
 import os
 from datetime import datetime
+from typing import List, Dict, Optional, Any
 
 from config import (
     OUTPUT_DIR, COLORS, DEFAULT_FONT,
     TITLE_FONT_SIZE, SUBTITLE_FONT_SIZE, BODY_FONT_SIZE
 )
+
+# Professional color palette (TD Securities style)
+COLORS_PROFESSIONAL = {
+    "primary": "00A651",      # TD Green
+    "secondary": "006341",    # Dark Green
+    "header_gray": "4A4A4A",  # Dark gray for headers
+    "light_gray": "F0F0F0",   # Light gray backgrounds
+    "text": "333333",         # Body text
+    "negative": "C00000",     # Red for negative values
+    "highlight": "FF0000",    # Red for highlight boxes
+    "white": "FFFFFF",
+}
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 OUTPUT_PATH = os.path.join(SCRIPT_DIR, OUTPUT_DIR)
@@ -179,6 +197,492 @@ class IBPresentation:
         p.font.size = Pt(8)
         p.font.color.rgb = hex_to_rgb("9ca3af")
         p.alignment = PP_ALIGN.RIGHT
+
+    def _add_key_takeaway_bar(self, slide, text: str):
+        """Add green key takeaway bar at bottom of slide (TD Securities style)."""
+        # Green background bar
+        bar = slide.shapes.add_shape(
+            MSO_SHAPE.RECTANGLE, Inches(0), Inches(6.5),
+            Inches(13.333), Inches(0.6)
+        )
+        bar.fill.solid()
+        bar.fill.fore_color.rgb = hex_to_rgb(COLORS_PROFESSIONAL["primary"])
+        bar.line.fill.background()
+
+        # Takeaway text (italic, white)
+        text_box = slide.shapes.add_textbox(
+            Inches(0.5), Inches(6.55), Inches(12.33), Inches(0.5)
+        )
+        frame = text_box.text_frame
+        p = frame.paragraphs[0]
+        p.text = text
+        p.font.name = DEFAULT_FONT
+        p.font.size = Pt(12)
+        p.font.italic = True
+        p.font.color.rgb = RgbColor(255, 255, 255)
+        p.alignment = PP_ALIGN.CENTER
+        return bar
+
+    def _add_header_bar(self, slide, text: str, subtitle: str = None, top: float = 0.9):
+        """Add gray header bar with white text (TD Securities style)."""
+        # Gray header bar
+        bar = slide.shapes.add_shape(
+            MSO_SHAPE.RECTANGLE, Inches(0.5), Inches(top),
+            Inches(12.33), Inches(0.4)
+        )
+        bar.fill.solid()
+        bar.fill.fore_color.rgb = hex_to_rgb(COLORS_PROFESSIONAL["header_gray"])
+        bar.line.fill.background()
+
+        # Header text
+        text_content = text
+        if subtitle:
+            text_content = f"{text} | {subtitle}"
+        text_box = slide.shapes.add_textbox(
+            Inches(0.6), Inches(top + 0.05), Inches(12), Inches(0.35)
+        )
+        frame = text_box.text_frame
+        p = frame.paragraphs[0]
+        p.text = text_content
+        p.font.name = DEFAULT_FONT
+        p.font.size = Pt(11)
+        p.font.bold = True
+        p.font.color.rgb = RgbColor(255, 255, 255)
+        return bar
+
+    def _add_source_citation(self, slide, source_text: str, footnotes: List[str] = None):
+        """Add source citation and footnotes (TD Securities style)."""
+        y_pos = 7.1
+
+        # Source line
+        source_box = slide.shapes.add_textbox(
+            Inches(0.5), Inches(y_pos), Inches(6), Inches(0.2)
+        )
+        frame = source_box.text_frame
+        p = frame.paragraphs[0]
+        p.text = f"Source: {source_text}"
+        p.font.name = DEFAULT_FONT
+        p.font.size = Pt(8)
+        p.font.color.rgb = hex_to_rgb("666666")
+
+        # Footnotes
+        if footnotes:
+            for i, note in enumerate(footnotes, 1):
+                y_pos += 0.15
+                note_box = slide.shapes.add_textbox(
+                    Inches(0.5), Inches(y_pos), Inches(12), Inches(0.15)
+                )
+                frame = note_box.text_frame
+                p = frame.paragraphs[0]
+                p.text = f"{i}. {note}"
+                p.font.name = DEFAULT_FONT
+                p.font.size = Pt(7)
+                p.font.color.rgb = hex_to_rgb("666666")
+
+    def add_peer_benchmarking_slide(
+        self,
+        title: str,
+        metric_name: str,
+        peers: List[Dict[str, Any]],  # [{"name": str, "value": float, "is_subject": bool}]
+        takeaway: str = None,
+        source: str = "Company filings"
+    ):
+        """
+        Add peer benchmarking bar chart slide (TD Securities style).
+
+        Peers highlighted in gray, subject company in green.
+        Values shown above bars, company names below.
+        """
+        slide = self._add_slide()
+        self._add_title_shape(slide, title)
+        self._add_header_bar(slide, metric_name, datetime.now().strftime("%B %Y"))
+
+        # Sort peers by value descending
+        sorted_peers = sorted(peers, key=lambda x: x.get("value", 0), reverse=True)
+
+        # Calculate bar positions
+        num_peers = len(sorted_peers)
+        bar_width = min(1.2, 11.0 / num_peers)
+        total_width = bar_width * num_peers
+        start_x = (13.333 - total_width) / 2
+
+        max_value = max(p.get("value", 0) for p in sorted_peers) or 1
+        max_bar_height = 3.5
+
+        for i, peer in enumerate(sorted_peers):
+            x = start_x + (i * bar_width)
+            value = peer.get("value", 0)
+            bar_height = (value / max_value) * max_bar_height
+            y = 5.0 - bar_height  # Bottom aligned at y=5.0
+
+            # Bar
+            bar = slide.shapes.add_shape(
+                MSO_SHAPE.RECTANGLE, Inches(x + 0.1), Inches(y),
+                Inches(bar_width - 0.2), Inches(bar_height)
+            )
+            bar.fill.solid()
+            if peer.get("is_subject", False):
+                bar.fill.fore_color.rgb = hex_to_rgb(COLORS_PROFESSIONAL["primary"])
+            else:
+                bar.fill.fore_color.rgb = hex_to_rgb("808080")  # Gray
+            bar.line.fill.background()
+
+            # Value label above bar
+            val_box = slide.shapes.add_textbox(
+                Inches(x), Inches(y - 0.35), Inches(bar_width), Inches(0.3)
+            )
+            frame = val_box.text_frame
+            p = frame.paragraphs[0]
+            # Format value (handle multiples vs percentages)
+            if isinstance(value, float) and value < 100:
+                p.text = f"{value:.1f}x" if "x" not in str(value) else str(value)
+            else:
+                p.text = f"{value:.1f}%"
+            p.font.name = DEFAULT_FONT
+            p.font.size = Pt(10)
+            p.font.bold = True
+            p.alignment = PP_ALIGN.CENTER
+
+            # Company name below bar
+            name_box = slide.shapes.add_textbox(
+                Inches(x), Inches(5.1), Inches(bar_width), Inches(0.6)
+            )
+            frame = name_box.text_frame
+            frame.word_wrap = True
+            p = frame.paragraphs[0]
+            p.text = peer.get("name", f"Peer {i+1}")
+            p.font.name = DEFAULT_FONT
+            p.font.size = Pt(8)
+            p.alignment = PP_ALIGN.CENTER
+
+        if takeaway:
+            self._add_key_takeaway_bar(slide, takeaway)
+
+        self._add_source_citation(slide, source)
+        return slide
+
+    def add_comps_table_slide(
+        self,
+        title: str,
+        headers: List[str],
+        data: List[List[Any]],  # Each row: [company, ...metrics], subject row marked
+        subject_row_index: int = None,
+        takeaway: str = None,
+        source: str = "Company filings"
+    ):
+        """
+        Add comprehensive comps table slide with subject row highlighted.
+
+        Subject company row gets green background highlighting.
+        Supports peer average row at bottom.
+        """
+        slide = self._add_slide()
+        self._add_title_shape(slide, title)
+
+        # Header bar
+        self._add_header_bar(slide, "Peer Comparison")
+
+        # Build table
+        rows = len(data) + 1  # +1 for header
+        cols = len(headers)
+        table = slide.shapes.add_table(
+            rows, cols, Inches(0.5), Inches(1.4),
+            Inches(12.33), Inches(rows * 0.4)
+        ).table
+
+        # Set column widths
+        col_widths = [Inches(2.0)] + [Inches((10.33) / (cols - 1))] * (cols - 1)
+        for i, width in enumerate(col_widths[:cols]):
+            table.columns[i].width = width
+
+        # Header row
+        for col_idx, header in enumerate(headers):
+            cell = table.cell(0, col_idx)
+            cell.text = str(header)
+            for p in cell.text_frame.paragraphs:
+                p.font.name = DEFAULT_FONT
+                p.font.size = Pt(9)
+                p.font.bold = True
+                p.font.color.rgb = RgbColor(255, 255, 255)
+                p.alignment = PP_ALIGN.CENTER
+            set_cell_fill(cell, COLORS_PROFESSIONAL["header_gray"])
+            cell.vertical_anchor = MSO_ANCHOR.MIDDLE
+
+        # Data rows
+        for row_idx, row_data in enumerate(data):
+            is_subject = (subject_row_index is not None and row_idx == subject_row_index)
+            for col_idx, value in enumerate(row_data):
+                cell = table.cell(row_idx + 1, col_idx)
+                cell.text = str(value)
+                for p in cell.text_frame.paragraphs:
+                    p.font.name = DEFAULT_FONT
+                    p.font.size = Pt(9)
+                    p.alignment = PP_ALIGN.CENTER if col_idx > 0 else PP_ALIGN.LEFT
+                    if is_subject:
+                        p.font.bold = True
+
+                if is_subject:
+                    set_cell_fill(cell, COLORS_PROFESSIONAL["primary"])
+                    for p in cell.text_frame.paragraphs:
+                        p.font.color.rgb = RgbColor(255, 255, 255)
+
+                cell.vertical_anchor = MSO_ANCHOR.MIDDLE
+
+        if takeaway:
+            self._add_key_takeaway_bar(slide, takeaway)
+
+        self._add_source_citation(slide, source)
+        return slide
+
+    def add_sources_uses_slide(
+        self,
+        title: str,
+        sources: List[Dict[str, Any]],  # [{"item": str, "low": val, "mid": val, "high": val}]
+        uses: List[Dict[str, Any]],
+        valuation_summary: Dict[str, Any] = None,
+        takeaway: str = None
+    ):
+        """
+        Add Sources & Uses / Transaction Summary slide (TD Securities style).
+
+        Multiple scenario columns (Low/Mid/High), valuation summary on left.
+        """
+        slide = self._add_slide()
+        self._add_title_shape(slide, title)
+
+        # Valuation summary table (left side)
+        if valuation_summary:
+            self._add_header_bar(slide, "Valuation Summary", top=0.9)
+            val_data = [["Metric", "Low", "Mid", "High"]]
+            for metric, values in valuation_summary.items():
+                if isinstance(values, dict):
+                    val_data.append([metric, values.get("low", ""), values.get("mid", ""), values.get("high", "")])
+                else:
+                    val_data.append([metric, values, "", ""])
+            self._add_table(slide, val_data, 0.5, 1.4, 5.8, row_height=0.35)
+
+        # Sources & Uses (right side)
+        su_left = 6.8 if valuation_summary else 0.5
+        su_width = 6.0 if valuation_summary else 12.33
+
+        # Sources header
+        sources_y = 0.9 if not valuation_summary else 1.4
+        sources_header = slide.shapes.add_shape(
+            MSO_SHAPE.RECTANGLE, Inches(su_left), Inches(sources_y),
+            Inches(su_width), Inches(0.35)
+        )
+        sources_header.fill.solid()
+        sources_header.fill.fore_color.rgb = hex_to_rgb(COLORS_PROFESSIONAL["primary"])
+        sources_header.line.fill.background()
+
+        # Sources header text
+        sh_text = slide.shapes.add_textbox(
+            Inches(su_left + 0.1), Inches(sources_y + 0.05),
+            Inches(su_width - 0.2), Inches(0.3)
+        )
+        p = sh_text.text_frame.paragraphs[0]
+        p.text = "Sources & Uses"
+        p.font.name = DEFAULT_FONT
+        p.font.size = Pt(11)
+        p.font.bold = True
+        p.font.color.rgb = RgbColor(255, 255, 255)
+
+        # Sources table
+        sources_data = [["Sources", "Low", "Mid", "High"]]
+        for s in sources:
+            sources_data.append([s["item"], s.get("low", ""), s.get("mid", ""), s.get("high", "")])
+        sources_data.append(["Total Sources",
+                            sum(s.get("low", 0) for s in sources if isinstance(s.get("low"), (int, float))),
+                            sum(s.get("mid", 0) for s in sources if isinstance(s.get("mid"), (int, float))),
+                            sum(s.get("high", 0) for s in sources if isinstance(s.get("high"), (int, float)))])
+
+        self._add_table(slide, sources_data, su_left, sources_y + 0.4, su_width, row_height=0.3)
+
+        # Uses table
+        uses_y = sources_y + 0.4 + (len(sources_data) * 0.3) + 0.2
+        uses_data = [["Uses", "Low", "Mid", "High"]]
+        for u in uses:
+            uses_data.append([u["item"], u.get("low", ""), u.get("mid", ""), u.get("high", "")])
+        uses_data.append(["Total Uses",
+                         sum(u.get("low", 0) for u in uses if isinstance(u.get("low"), (int, float))),
+                         sum(u.get("mid", 0) for u in uses if isinstance(u.get("mid"), (int, float))),
+                         sum(u.get("high", 0) for u in uses if isinstance(u.get("high"), (int, float)))])
+
+        self._add_table(slide, uses_data, su_left, uses_y, su_width, row_height=0.3)
+
+        if takeaway:
+            self._add_key_takeaway_bar(slide, takeaway)
+
+        self._add_source_citation(slide, "Management, Company filings")
+        return slide
+
+    def add_numbered_highlights_slide(
+        self,
+        number: int,
+        title: str,
+        narrative_points: List[str],
+        charts_data: List[Dict] = None,  # [{type: "bar", data: [...]}]
+        takeaway: str = None
+    ):
+        """
+        Add numbered key point slide (TD Securities style).
+
+        Number in box before title, narrative on left, charts on bottom.
+        """
+        slide = self._add_slide()
+
+        # Number box
+        num_box = slide.shapes.add_shape(
+            MSO_SHAPE.ROUNDED_RECTANGLE, Inches(0.3), Inches(0.3),
+            Inches(0.5), Inches(0.5)
+        )
+        num_box.fill.solid()
+        num_box.fill.fore_color.rgb = hex_to_rgb(COLORS_PROFESSIONAL["primary"])
+        num_box.line.fill.background()
+
+        # Number text
+        num_text = slide.shapes.add_textbox(Inches(0.3), Inches(0.35), Inches(0.5), Inches(0.4))
+        p = num_text.text_frame.paragraphs[0]
+        p.text = str(number)
+        p.font.name = DEFAULT_FONT
+        p.font.size = Pt(20)
+        p.font.bold = True
+        p.font.color.rgb = RgbColor(255, 255, 255)
+        p.alignment = PP_ALIGN.CENTER
+
+        # Title (after number)
+        self._add_title_shape(slide, title, top=0.35)
+        # Adjust title position to account for number box
+        for shape in slide.shapes:
+            if hasattr(shape, 'text_frame'):
+                if shape.text_frame.paragraphs[0].text == title:
+                    shape.left = Inches(0.9)
+                    break
+
+        # Narrative points
+        self._add_bullet_points(slide, narrative_points, 0.5, 1.0, 12.33, 3.0)
+
+        # Charts area (if provided)
+        if charts_data:
+            chart_width = 12.33 / len(charts_data)
+            for i, chart in enumerate(charts_data):
+                x = 0.5 + (i * chart_width)
+                # Placeholder for chart - actual chart generation would go here
+                chart_box = slide.shapes.add_shape(
+                    MSO_SHAPE.RECTANGLE, Inches(x), Inches(4.2),
+                    Inches(chart_width - 0.3), Inches(2.0)
+                )
+                chart_box.fill.solid()
+                chart_box.fill.fore_color.rgb = hex_to_rgb(COLORS_PROFESSIONAL["light_gray"])
+                chart_box.line.color.rgb = hex_to_rgb("CCCCCC")
+
+                # Chart title
+                ct_box = slide.shapes.add_textbox(Inches(x), Inches(4.0), Inches(chart_width - 0.3), Inches(0.3))
+                p = ct_box.text_frame.paragraphs[0]
+                p.text = chart.get("title", f"Chart {i+1}")
+                p.font.name = DEFAULT_FONT
+                p.font.size = Pt(10)
+                p.font.bold = True
+
+        if takeaway:
+            self._add_key_takeaway_bar(slide, takeaway)
+
+        self._add_footer(slide)
+        return slide
+
+    def add_before_after_slide(
+        self,
+        title: str,
+        kpi_grid: List[Dict],  # [{"label": str, "value": str}]
+        case_study_name: str,
+        before_after_metrics: List[Dict],  # [{"metric": str, "before": val, "after": val, "change": str}]
+        takeaway: str = None
+    ):
+        """
+        Add Before/After comparison slide (TD Securities style).
+
+        KPI grid on top-right, case study with data table at bottom.
+        """
+        slide = self._add_slide()
+        self._add_title_shape(slide, title)
+
+        # KPI Grid (2x2 colored boxes)
+        kpi_start_x = 7.5
+        kpi_start_y = 1.0
+        kpi_width = 2.5
+        kpi_height = 1.0
+
+        colors = [COLORS_PROFESSIONAL["primary"], COLORS_PROFESSIONAL["secondary"],
+                  COLORS_PROFESSIONAL["header_gray"], COLORS_PROFESSIONAL["primary"]]
+
+        for i, kpi in enumerate(kpi_grid[:4]):
+            row = i // 2
+            col = i % 2
+            x = kpi_start_x + (col * kpi_width)
+            y = kpi_start_y + (row * kpi_height)
+
+            box = slide.shapes.add_shape(
+                MSO_SHAPE.RECTANGLE, Inches(x), Inches(y),
+                Inches(kpi_width - 0.1), Inches(kpi_height - 0.1)
+            )
+            box.fill.solid()
+            box.fill.fore_color.rgb = hex_to_rgb(colors[i % len(colors)])
+            box.line.fill.background()
+
+            # Label
+            label_box = slide.shapes.add_textbox(Inches(x + 0.1), Inches(y + 0.1), Inches(kpi_width - 0.3), Inches(0.3))
+            p = label_box.text_frame.paragraphs[0]
+            p.text = kpi.get("label", "")
+            p.font.name = DEFAULT_FONT
+            p.font.size = Pt(10)
+            p.font.color.rgb = RgbColor(255, 255, 255)
+            p.alignment = PP_ALIGN.CENTER
+
+            # Value
+            val_box = slide.shapes.add_textbox(Inches(x + 0.1), Inches(y + 0.4), Inches(kpi_width - 0.3), Inches(0.5))
+            p = val_box.text_frame.paragraphs[0]
+            p.text = str(kpi.get("value", ""))
+            p.font.name = DEFAULT_FONT
+            p.font.size = Pt(18)
+            p.font.bold = True
+            p.font.color.rgb = RgbColor(255, 255, 255)
+            p.alignment = PP_ALIGN.CENTER
+
+        # Case Study header
+        cs_header = slide.shapes.add_shape(
+            MSO_SHAPE.RECTANGLE, Inches(0.5), Inches(3.5),
+            Inches(12.33), Inches(0.35)
+        )
+        cs_header.fill.solid()
+        cs_header.fill.fore_color.rgb = hex_to_rgb(COLORS_PROFESSIONAL["header_gray"])
+        cs_header.line.fill.background()
+
+        cs_text = slide.shapes.add_textbox(Inches(0.6), Inches(3.55), Inches(12), Inches(0.3))
+        p = cs_text.text_frame.paragraphs[0]
+        p.text = f"Case Study: {case_study_name}"
+        p.font.name = DEFAULT_FONT
+        p.font.size = Pt(11)
+        p.font.bold = True
+        p.font.color.rgb = RgbColor(255, 255, 255)
+
+        # Before/After table
+        ba_data = [["Metric", "Before", "After", "Gain $", "Gain %"]]
+        for m in before_after_metrics:
+            ba_data.append([
+                m.get("metric", ""),
+                m.get("before", ""),
+                m.get("after", ""),
+                m.get("gain_dollar", ""),
+                m.get("gain_pct", "")
+            ])
+
+        self._add_table(slide, ba_data, 5.5, 4.0, 7.3, row_height=0.4)
+
+        if takeaway:
+            self._add_key_takeaway_bar(slide, takeaway)
+
+        self._add_footer(slide)
+        return slide
 
     def add_cover_slide(self, title: str, subtitle: str = "",
                         prepared_for: str = "", date: str = None):

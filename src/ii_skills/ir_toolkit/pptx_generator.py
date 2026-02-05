@@ -5,15 +5,33 @@ Generates slides paired with Excel modules for infrastructure IR deliverables.
 Each Excel module has a corresponding slide with headline and key takeaways.
 
 Core Principle: Every Excel analysis has a matching PowerPoint slide.
+
+Design patterns extracted from institutional presentations:
+- TD Securities (Florence, Northview, Spring Living)
+- PropelR Investor Presentation
+
+See: docs/skills/SLIDE_DESIGN_GUIDE.md for complete template reference.
 """
 
 import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, Optional, List
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
+
+# Professional color palette (aligned with IB toolkit)
+COLORS_IR = {
+    "primary": "1F4E79",      # Dark Blue (infrastructure theme)
+    "accent": "00A651",       # Green for positive metrics
+    "header_gray": "4A4A4A",  # Dark gray for headers
+    "light_gray": "F5F5F5",   # Light gray backgrounds
+    "text": "333333",         # Body text
+    "negative": "C00000",     # Red for negative values
+    "highlight": "FF6B35",    # Orange for highlights
+    "white": "FFFFFF",
+}
 
 try:
     from pptx import Presentation
@@ -36,6 +54,8 @@ class SlideSpec:
     data_table: Optional[Dict] = None
     chart_type: Optional[str] = None
     footer_note: Optional[str] = None
+    layout_type: str = "standard"  # standard, benchmarking, waterfall, comparison, matrix
+    infra_metrics: List[str] = field(default_factory=list)  # Key infrastructure metrics to highlight
 
 
 # Slide specifications by module
@@ -421,6 +441,351 @@ Note: Install python-pptx to generate actual slides.
 """
         output_path.write_text(content)
         return str(output_path)
+
+    def _add_key_takeaway_bar(self, slide, text: str):
+        """Add key takeaway bar at bottom of slide (professional style)."""
+        from pptx.enum.shapes import MSO_SHAPE
+
+        # Blue background bar (infrastructure theme)
+        bar = slide.shapes.add_shape(
+            MSO_SHAPE.RECTANGLE, Inches(0), Inches(6.5),
+            Inches(13.333), Inches(0.6)
+        )
+        bar.fill.solid()
+        self._set_rgb_color(bar.fill, COLORS_IR["primary"])
+        bar.line.fill.background()
+
+        # Takeaway text (italic, white)
+        text_box = slide.shapes.add_textbox(
+            Inches(0.5), Inches(6.55), Inches(12.33), Inches(0.5)
+        )
+        frame = text_box.text_frame
+        p = frame.paragraphs[0]
+        p.text = text
+        p.font.size = Pt(12)
+        p.font.italic = True
+        self._set_font_color(p, "FFFFFF")
+        p.alignment = PP_ALIGN.CENTER
+        return bar
+
+    def _add_header_bar(self, slide, text: str, subtitle: str = None, top: float = 0.9):
+        """Add gray header bar with white text."""
+        from pptx.enum.shapes import MSO_SHAPE
+
+        bar = slide.shapes.add_shape(
+            MSO_SHAPE.RECTANGLE, Inches(0.5), Inches(top),
+            Inches(12.33), Inches(0.4)
+        )
+        bar.fill.solid()
+        self._set_rgb_color(bar.fill, COLORS_IR["header_gray"])
+        bar.line.fill.background()
+
+        text_content = text
+        if subtitle:
+            text_content = f"{text} | {subtitle}"
+        text_box = slide.shapes.add_textbox(
+            Inches(0.6), Inches(top + 0.05), Inches(12), Inches(0.35)
+        )
+        frame = text_box.text_frame
+        p = frame.paragraphs[0]
+        p.text = text_content
+        p.font.size = Pt(11)
+        p.font.bold = True
+        self._set_font_color(p, "FFFFFF")
+        return bar
+
+    def _add_source_citation(self, slide, source_text: str, footnotes: List[str] = None):
+        """Add source citation and footnotes."""
+        y_pos = 7.1
+
+        source_box = slide.shapes.add_textbox(
+            Inches(0.5), Inches(y_pos), Inches(6), Inches(0.2)
+        )
+        frame = source_box.text_frame
+        p = frame.paragraphs[0]
+        p.text = f"Source: {source_text}"
+        p.font.size = Pt(8)
+        self._set_font_color(p, "666666")
+
+        if footnotes:
+            for i, note in enumerate(footnotes, 1):
+                y_pos += 0.15
+                note_box = slide.shapes.add_textbox(
+                    Inches(0.5), Inches(y_pos), Inches(12), Inches(0.15)
+                )
+                frame = note_box.text_frame
+                p = frame.paragraphs[0]
+                p.text = f"{i}. {note}"
+                p.font.size = Pt(7)
+                self._set_font_color(p, "666666")
+
+    def add_performance_benchmarking_slide(
+        self,
+        prs: "Presentation",
+        title: str,
+        metric_name: str,
+        funds: List[Dict[str, Any]],  # [{"name": str, "value": float, "is_subject": bool}]
+        takeaway: str = None,
+        source: str = "Fund data"
+    ):
+        """
+        Add fund performance benchmarking slide.
+
+        Subject fund highlighted, peers in gray, values above bars.
+        """
+        from pptx.enum.shapes import MSO_SHAPE
+
+        blank_layout = prs.slide_layouts[6]
+        slide = prs.slides.add_slide(blank_layout)
+
+        # Title
+        title_box = slide.shapes.add_textbox(Inches(0.5), Inches(0.3), Inches(12), Inches(0.6))
+        p = title_box.text_frame.paragraphs[0]
+        p.text = title
+        p.font.size = Pt(28)
+        p.font.bold = True
+        self._set_font_color(p, COLORS_IR["primary"])
+
+        # Header bar
+        self._add_header_bar(slide, metric_name, datetime.now().strftime("%B %Y"))
+
+        # Sort funds by value descending
+        sorted_funds = sorted(funds, key=lambda x: x.get("value", 0), reverse=True)
+
+        num_funds = len(sorted_funds)
+        bar_width = min(1.2, 11.0 / num_funds)
+        total_width = bar_width * num_funds
+        start_x = (13.333 - total_width) / 2
+
+        max_value = max(f.get("value", 0) for f in sorted_funds) or 1
+        max_bar_height = 3.5
+
+        for i, fund in enumerate(sorted_funds):
+            x = start_x + (i * bar_width)
+            value = fund.get("value", 0)
+            bar_height = (value / max_value) * max_bar_height
+            y = 5.0 - bar_height
+
+            bar = slide.shapes.add_shape(
+                MSO_SHAPE.RECTANGLE, Inches(x + 0.1), Inches(y),
+                Inches(bar_width - 0.2), Inches(bar_height)
+            )
+            bar.fill.solid()
+            if fund.get("is_subject", False):
+                self._set_rgb_color(bar.fill, COLORS_IR["accent"])
+            else:
+                self._set_rgb_color(bar.fill, "808080")
+            bar.line.fill.background()
+
+            # Value label
+            val_box = slide.shapes.add_textbox(
+                Inches(x), Inches(y - 0.35), Inches(bar_width), Inches(0.3)
+            )
+            p = val_box.text_frame.paragraphs[0]
+            p.text = f"{value:.1f}%"
+            p.font.size = Pt(10)
+            p.font.bold = True
+            p.alignment = PP_ALIGN.CENTER
+
+            # Fund name
+            name_box = slide.shapes.add_textbox(
+                Inches(x), Inches(5.1), Inches(bar_width), Inches(0.6)
+            )
+            frame = name_box.text_frame
+            frame.word_wrap = True
+            p = frame.paragraphs[0]
+            p.text = fund.get("name", f"Fund {i+1}")
+            p.font.size = Pt(8)
+            p.alignment = PP_ALIGN.CENTER
+
+        if takeaway:
+            self._add_key_takeaway_bar(slide, takeaway)
+
+        self._add_source_citation(slide, source)
+        return slide
+
+    def add_kpi_dashboard_slide(
+        self,
+        prs: "Presentation",
+        title: str,
+        kpis: List[Dict[str, Any]],  # [{"metric": str, "value": str, "target": str, "status": str}]
+        takeaway: str = None
+    ):
+        """
+        Add asset KPI dashboard slide with traffic light status indicators.
+        """
+        from pptx.enum.shapes import MSO_SHAPE
+
+        blank_layout = prs.slide_layouts[6]
+        slide = prs.slides.add_slide(blank_layout)
+
+        # Title
+        title_box = slide.shapes.add_textbox(Inches(0.5), Inches(0.3), Inches(12), Inches(0.6))
+        p = title_box.text_frame.paragraphs[0]
+        p.text = title
+        p.font.size = Pt(28)
+        p.font.bold = True
+        self._set_font_color(p, COLORS_IR["primary"])
+
+        # KPI cards (4 columns layout)
+        cols = 4
+        rows = (len(kpis) + cols - 1) // cols
+        card_width = 2.8
+        card_height = 1.5
+        start_x = 0.8
+        start_y = 1.2
+
+        status_colors = {
+            "green": COLORS_IR["accent"],
+            "yellow": "FFA500",
+            "red": COLORS_IR["negative"],
+        }
+
+        for i, kpi in enumerate(kpis):
+            col = i % cols
+            row = i // cols
+            x = start_x + (col * (card_width + 0.3))
+            y = start_y + (row * (card_height + 0.2))
+
+            # Card background
+            card = slide.shapes.add_shape(
+                MSO_SHAPE.ROUNDED_RECTANGLE, Inches(x), Inches(y),
+                Inches(card_width), Inches(card_height)
+            )
+            card.fill.solid()
+            self._set_rgb_color(card.fill, COLORS_IR["light_gray"])
+
+            # Status indicator (small colored bar on top)
+            status = kpi.get("status", "green")
+            indicator = slide.shapes.add_shape(
+                MSO_SHAPE.RECTANGLE, Inches(x), Inches(y),
+                Inches(card_width), Inches(0.1)
+            )
+            indicator.fill.solid()
+            self._set_rgb_color(indicator.fill, status_colors.get(status, COLORS_IR["accent"]))
+            indicator.line.fill.background()
+
+            # Metric name
+            name_box = slide.shapes.add_textbox(
+                Inches(x + 0.1), Inches(y + 0.2), Inches(card_width - 0.2), Inches(0.4)
+            )
+            p = name_box.text_frame.paragraphs[0]
+            p.text = kpi.get("metric", "")
+            p.font.size = Pt(10)
+            p.font.bold = True
+            self._set_font_color(p, COLORS_IR["primary"])
+
+            # Value (large)
+            val_box = slide.shapes.add_textbox(
+                Inches(x + 0.1), Inches(y + 0.5), Inches(card_width - 0.2), Inches(0.6)
+            )
+            p = val_box.text_frame.paragraphs[0]
+            p.text = str(kpi.get("value", ""))
+            p.font.size = Pt(24)
+            p.font.bold = True
+            self._set_font_color(p, COLORS_IR["text"])
+
+            # Target
+            target_box = slide.shapes.add_textbox(
+                Inches(x + 0.1), Inches(y + 1.1), Inches(card_width - 0.2), Inches(0.3)
+            )
+            p = target_box.text_frame.paragraphs[0]
+            p.text = f"Target: {kpi.get('target', 'N/A')}"
+            p.font.size = Pt(9)
+            self._set_font_color(p, "666666")
+
+        if takeaway:
+            self._add_key_takeaway_bar(slide, takeaway)
+
+        return slide
+
+    def add_waterfall_slide(
+        self,
+        prs: "Presentation",
+        title: str,
+        waterfall_items: List[Dict[str, Any]],  # [{"label": str, "value": float, "is_total": bool}]
+        takeaway: str = None,
+        source: str = "Fund data"
+    ):
+        """
+        Add waterfall chart slide for NAV roll-forward or cash flow analysis.
+        """
+        from pptx.enum.shapes import MSO_SHAPE
+
+        blank_layout = prs.slide_layouts[6]
+        slide = prs.slides.add_slide(blank_layout)
+
+        # Title
+        title_box = slide.shapes.add_textbox(Inches(0.5), Inches(0.3), Inches(12), Inches(0.6))
+        p = title_box.text_frame.paragraphs[0]
+        p.text = title
+        p.font.size = Pt(28)
+        p.font.bold = True
+        self._set_font_color(p, COLORS_IR["primary"])
+
+        # Waterfall chart (simplified bar representation)
+        num_items = len(waterfall_items)
+        bar_width = min(1.5, 11.0 / num_items)
+        start_x = 1.0
+        base_y = 5.5
+        scale = 100  # pixels per unit
+
+        running_total = 0
+        for i, item in enumerate(waterfall_items):
+            x = start_x + (i * bar_width)
+            value = item.get("value", 0)
+            is_total = item.get("is_total", False)
+
+            if is_total:
+                bar_height = abs(value) / 10  # Scale for display
+                y = base_y - bar_height
+                color = COLORS_IR["primary"]
+            elif value >= 0:
+                bar_height = value / 10
+                y = base_y - bar_height - (running_total / 10)
+                color = COLORS_IR["accent"]
+                running_total += value
+            else:
+                bar_height = abs(value) / 10
+                y = base_y - (running_total / 10)
+                color = COLORS_IR["negative"]
+                running_total += value
+
+            bar = slide.shapes.add_shape(
+                MSO_SHAPE.RECTANGLE, Inches(x + 0.1), Inches(max(1.5, y)),
+                Inches(bar_width - 0.2), Inches(min(4.0, bar_height))
+            )
+            bar.fill.solid()
+            self._set_rgb_color(bar.fill, color)
+            bar.line.fill.background()
+
+            # Value label
+            val_box = slide.shapes.add_textbox(
+                Inches(x), Inches(max(1.2, y - 0.3)), Inches(bar_width), Inches(0.25)
+            )
+            p = val_box.text_frame.paragraphs[0]
+            prefix = "+" if value > 0 and not is_total else ""
+            p.text = f"{prefix}${abs(value):.1f}m"
+            p.font.size = Pt(9)
+            p.font.bold = True
+            p.alignment = PP_ALIGN.CENTER
+
+            # Label
+            label_box = slide.shapes.add_textbox(
+                Inches(x), Inches(5.6), Inches(bar_width), Inches(0.5)
+            )
+            frame = label_box.text_frame
+            frame.word_wrap = True
+            p = frame.paragraphs[0]
+            p.text = item.get("label", "")
+            p.font.size = Pt(8)
+            p.alignment = PP_ALIGN.CENTER
+
+        if takeaway:
+            self._add_key_takeaway_bar(slide, takeaway)
+
+        self._add_source_citation(slide, source)
+        return slide
 
 
 async def generate_ir_deck(
