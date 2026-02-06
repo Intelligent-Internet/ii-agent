@@ -19,6 +19,7 @@ Personal cloud operations base with specialized skills for investment banking an
 | Prep for IC presentation | `docs/skills/ib_toolkit/IC_PRESENTATION_PLAYBOOK.md` |
 | LP quarterly update | [IR Toolkit](#ir-toolkit-infrastructure-investor-relations) |
 | Fundraising deck | [IR Toolkit - Case Types](#ir-case-types) |
+| Prep for interview | [Spaced Repetition](#spaced_repetition) |
 | Track portfolio | [Net Worth Newsletter](#networth_newsletter) |
 | Market news | [Market Newsletter](#market_newsletter) |
 | Health metrics | [Health Dashboard](#health_dashboard) |
@@ -398,6 +399,33 @@ Extract financial data from CIM PDFs using PyMuPDF + pattern matching.
 "Export the extracted data to Excel"
 ```
 
+### spaced_repetition
+**Location:** `src/ii_skills/spaced_repetition/`
+
+Generate, manage, and export Anki-ready flashcard decks for interview prep.
+
+**Capabilities (8 actions):**
+- Generate cards from 8 prompt templates (interview prep, technical finance, behavioral, sector-specific, case study, market knowledge, custom notes)
+- Create/manage decks per interview
+- Export to TSV (Anki import), markdown Q&A, markdown table
+- Search across all decks
+- Generate study plans based on exam date
+
+**No pre-built decks** — create decks per-interview using prompts.
+
+**Prompt Templates:** `P01_interview_prep`, `P02_general_knowledge`, `P03_technical_finance`, `P04_sector_specific`, `P05_behavioral`, `P06_market_knowledge`, `P07_case_study`, `P08_custom_notes`
+
+**Commands:**
+```
+"Generate flashcards for my BCI interview on LBO mechanics"
+"Create a deck for the Acme case study"
+"Export my interview deck to Anki TSV"
+"Search my cards for EBITDA"
+"Build a study plan for my March 15 interview"
+```
+
+**Docs:** `SKILL.md` (full reference), `QUICK_REFERENCE.md` (prompt-to-use-case mapping)
+
 ---
 
 ## Other Skills
@@ -517,6 +545,10 @@ ii-agent/
 │       │   ├── extractor.py         # PyMuPDF text extraction engine
 │       │   ├── patterns.py          # Financial regex patterns
 │       │   └── excel_writer.py      # Formatted Excel output
+│       ├── spaced_repetition/        # Anki flashcard generation (8 actions)
+│       │   ├── prompts/             # 8 prompt templates (P01-P08)
+│       │   ├── decks/               # Generated decks (per interview)
+│       │   └── output/              # Exported TSV/markdown files
 │       ├── shared/                  # Common infrastructure
 │       │   ├── memory.py            # MemoryService, DealMemory, ConversationMemory
 │       │   ├── datastore.py         # DataStore (deals, outputs, memories)
@@ -566,6 +598,9 @@ ii-agent/
 | Recall company facts | "What do we know about ACME?" |
 | Organize deal files | "Create a deal folder for the Acme LBO" |
 | Extract CIM financials | "Extract financials from this CIM PDF" |
+| Prep interview flashcards | "Generate flashcards for my interview on LBO" |
+| Export deck to Anki | "Export my interview deck to TSV" |
+| Study plan | "Build a study plan for my March 15 interview" |
 | Track portfolio | "Show my net worth breakdown" |
 | Market update | "What's happening in markets today?" |
 | Health check | "What's my HRV trend this week?" |
@@ -575,5 +610,5 @@ ii-agent/
 *Base System: ii-agent (github.com/robertodbabaran/ii-agent)*
 *IB Toolkit: 67 modules (33 Excel + 34 Slides)*
 *IR Toolkit: 33 modules (Excel ↔ Slide pairs)*
-*Deal Support: deal_memory (10), output_organizer (7), pdf_extractor (6)*
+*Deal Support: deal_memory (10), output_organizer (7), pdf_extractor (6), spaced_repetition (8)*
 *Last Updated: 2026-02-05*
