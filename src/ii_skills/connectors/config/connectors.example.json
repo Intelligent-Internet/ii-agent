@@ -1,0 +1,40 @@
+{
+  "connectors": {
+    "chat": {
+      "provider": "slack",
+      "mcp_server": "slack-mcp-server",
+      "config": {
+        "workspace": "mycompany",
+        "token_env": "SLACK_BOT_TOKEN"
+      }
+    },
+    "email": {
+      "provider": "gmail",
+      "mcp_server": "gmail-mcp-server",
+      "config": {
+        "credentials_env": "GMAIL_CREDENTIALS_PATH"
+      }
+    },
+    "calendar": {
+      "provider": "google_calendar",
+      "mcp_server": "gcal-mcp-server",
+      "config": {
+        "credentials_env": "GCAL_CREDENTIALS_PATH"
+      }
+    },
+    "knowledge_base": {
+      "provider": "notion",
+      "mcp_server": "notion-mcp-server",
+      "config": {
+        "token_env": "NOTION_TOKEN"
+      }
+    },
+    "project_tracker": {
+      "provider": "linear",
+      "mcp_server": "linear-mcp-server",
+      "config": {
+        "token_env": "LINEAR_API_KEY"
+      }
+    }
+  }
+}
