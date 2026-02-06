@@ -4,7 +4,7 @@ trace_logs/
 # TIER 1 — Personal Vault (credentials & personal data)
 # See PROTECTED_RESOURCES.md for full governance rules
 # ============================================================
-Config/
+/Config/
 **/config.py
 !**/config.py.example
 *.json
@@ -221,5 +221,12 @@ output/
 
 # local only scripts
 start_tool_server.sh
-Memory/
+/Memory/
 outputs/
+
+# ============================================================
+# Productivity layer (personal data, not committed)
+# ============================================================
+TASKS.md
+/memory/
+.mcp.json

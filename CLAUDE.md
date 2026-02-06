@@ -611,4 +611,51 @@ ii-agent/
 *IB Toolkit: 67 modules (33 Excel + 34 Slides)*
 *IR Toolkit: 33 modules (Excel ↔ Slide pairs)*
 *Deal Support: deal_memory (10), output_organizer (7), pdf_extractor (6), spaced_repetition (8)*
-*Last Updated: 2026-02-05*
+*Productivity: memory (14), task_management (12), connectors (16), productivity (5)*
+*Last Updated: 2026-02-06*
+
+---
+
+## Productivity Layer
+
+**New Skills:**
+
+| Skill | Location | Actions |
+|-------|----------|---------|
+| **memory** | `src/ii_skills/memory/` | 14 actions — Two-tier workplace memory |
+| **task_management** | `src/ii_skills/task_management/` | 12 actions — TASKS.md tracking |
+| **connectors** | `src/ii_skills/connectors/` | 16 actions — MCP connector layer |
+| **productivity** | `src/ii_skills/productivity/` | 5 actions — /start, /update workflows |
+
+**Architecture:**
+- `shared/memory_tiers.py` — TieredMemoryStore engine (hot cache + deep file storage)
+- `connectors/registry.py` — ConnectorRegistry maps categories to MCP servers
+- `connectors/adapters/base.py` — Abstract adapters for chat, email, calendar, KB, tracker
+- `productivity/workflows/` — Orchestrator workflows calling across skills via `get_skill()`
+- `task_management/dashboard/dashboard.html` — Kanban board (standalone HTML)
+
+**Quick Commands:**
+
+| Command | What it does |
+|---------|-------------|
+| "Start my productivity workspace" | Initialize TASKS.md + memory + dashboard |
+| "What's on my plate?" | Show active tasks and overdue items |
+| "Add a task: Send proposal to Todd by Friday" | Add task with context and due date |
+| "Done with the proposal" | Complete task, move to Done |
+| "Who is Todd?" | Tiered memory lookup |
+| "Remember that PSR means Pipeline Status Report" | Add to glossary |
+| "Update my tasks" | Triage stale items, sync from trackers |
+| "Deep update" | Comprehensive scan of email/calendar/chat |
+| "Daily brief" | Morning briefing with tasks + memory + connectors |
+| "Weekly review" | Summary of completed tasks and memory growth |
+
+**Dashboard:**
+```bash
+# Open Kanban board (drag-and-drop task management)
+start src/ii_skills/task_management/dashboard/dashboard.html
+```
+
+**Configuration:**
+- `.mcp.json` at workspace root configures external connectors (gitignored)
+- See `src/ii_skills/connectors/config/connectors.example.json` for template
+- No new Python dependencies — all skills use stdlib only
