@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tasks — Kanban Board</title>
+<style>
+  :root {
+    --bg: #f3f4f6; --card-bg: #ffffff; --border: #e5e7eb;
+    --text: #1f2937; --muted: #6b7280; --accent: #3b82f6;
+    --green: #22c55e; --amber: #f59e0b; --purple: #8b5cf6; --slate: #94a3b8;
+    --red: #ef4444; --shadow: 0 1px 3px rgba(0,0,0,.1);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+         background: var(--bg); color: var(--text); min-height: 100vh; }
+
+  /* Header */
+  .header { background: var(--card-bg); border-bottom: 1px solid var(--border);
+            padding: 12px 24px; display: flex; align-items: center; gap: 16px;
+            box-shadow: var(--shadow); position: sticky; top: 0; z-index: 10; }
+  .header h1 { font-size: 18px; font-weight: 600; }
+  .header .actions { margin-left: auto; display: flex; gap: 8px; }
+  .btn { padding: 6px 14px; border-radius: 6px; border: 1px solid var(--border);
+         background: var(--card-bg); cursor: pointer; font-size: 13px; color: var(--text); }
+  .btn:hover { background: var(--bg); }
+  .btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .btn-primary:hover { opacity: .9; }
+  .status { font-size: 12px; color: var(--muted); }
+
+  /* Board */
+  .board { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;
+           padding: 20px 24px; min-height: calc(100vh - 56px); align-items: start; }
+
+  /* Columns */
+  .column { background: var(--card-bg); border-radius: 10px; border: 1px solid var(--border);
+            box-shadow: var(--shadow); overflow: hidden; }
+  .col-header { padding: 12px 16px; font-weight: 600; font-size: 14px;
+                border-bottom: 1px solid var(--border); display: flex;
+                align-items: center; gap: 8px; }
+  .col-header .count { background: var(--bg); border-radius: 10px;
+                       padding: 1px 8px; font-size: 12px; color: var(--muted); }
+  .col-active .col-header { border-top: 3px solid var(--accent); }
+  .col-waiting .col-header { border-top: 3px solid var(--amber); }
+  .col-someday .col-header { border-top: 3px solid var(--purple); }
+  .col-done .col-header { border-top: 3px solid var(--green); }
+  .col-body { padding: 8px; min-height: 120px; }
+  .col-body.drag-over { background: #eff6ff; }
+
+  /* Task Cards */
+  .task { background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px;
+          padding: 10px 12px; margin-bottom: 8px; cursor: grab; font-size: 13px;
+          transition: box-shadow .15s, transform .15s; }
+  .task:hover { box-shadow: 0 2px 8px rgba(0,0,0,.12); }
+  .task.dragging { opacity: .5; transform: rotate(2deg); }
+  .task .title { font-weight: 600; margin-bottom: 4px; }
+  .task .context { color: var(--muted); font-size: 12px; }
+  .task .meta { display: flex; gap: 8px; margin-top: 6px; font-size: 11px; }
+  .task .meta .due { color: var(--red); font-weight: 500; }
+  .task .meta .for-whom { color: var(--accent); }
+  .task.completed .title { text-decoration: line-through; color: var(--muted); }
+  .task .delete-btn { float: right; background: none; border: none; cursor: pointer;
+                      color: var(--muted); font-size: 14px; padding: 0 2px; }
+  .task .delete-btn:hover { color: var(--red); }
+
+  /* Add task form */
+  .add-form { padding: 8px; }
+  .add-form input { width: 100%; padding: 8px 10px; border-radius: 6px;
+                    border: 1px solid var(--border); font-size: 13px; }
+  .add-form input:focus { outline: none; border-color: var(--accent); }
+
+  /* Modal overlay */
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.4);
+                   z-index: 100; justify-content: center; align-items: center; }
+  .modal-overlay.open { display: flex; }
+  .modal { background: var(--card-bg); border-radius: 12px; padding: 24px;
+           width: 420px; max-width: 90vw; box-shadow: 0 20px 60px rgba(0,0,0,.3); }
+  .modal h2 { margin-bottom: 16px; font-size: 16px; }
+  .modal label { display: block; font-size: 13px; font-weight: 500; margin: 10px 0 4px; }
+  .modal input, .modal select { width: 100%; padding: 8px 10px; border-radius: 6px;
+                                 border: 1px solid var(--border); font-size: 13px; }
+  .modal .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+
+  @media (max-width: 900px) { .board { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 560px) { .board { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Tasks</h1>
+  <span class="status" id="status">No file loaded</span>
+  <div class="actions">
+    <button class="btn" id="btn-load" title="Open TASKS.md">Open File</button>
+    <button class="btn" id="btn-save" title="Save to TASKS.md">Save</button>
+    <button class="btn btn-primary" id="btn-add" title="Add new task">+ Add Task</button>
+  </div>
+</div>
+
+<div class="board">
+  <div class="column col-active" data-section="active">
+    <div class="col-header">Active <span class="count" id="count-active">0</span></div>
+    <div class="col-body" data-section="active"></div>
+  </div>
+  <div class="column col-waiting" data-section="waiting_on">
+    <div class="col-header">Waiting On <span class="count" id="count-waiting_on">0</span></div>
+    <div class="col-body" data-section="waiting_on"></div>
+  </div>
+  <div class="column col-someday" data-section="someday">
+    <div class="col-header">Someday <span class="count" id="count-someday">0</span></div>
+    <div class="col-body" data-section="someday"></div>
+  </div>
+  <div class="column col-done" data-section="done">
+    <div class="col-header">Done <span class="count" id="count-done">0</span></div>
+    <div class="col-body" data-section="done"></div>
+  </div>
+</div>
+
+<!-- Add Task Modal -->
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <h2>Add Task</h2>
+    <label for="m-title">Title</label>
+    <input id="m-title" placeholder="Task title" autofocus>
+    <label for="m-context">Context</label>
+    <input id="m-context" placeholder="Additional context">
+    <label for="m-for">For whom</label>
+    <input id="m-for" placeholder="e.g. Todd">
+    <label for="m-due">Due date</label>
+    <input id="m-due" type="date">
+    <label for="m-section">Section</label>
+    <select id="m-section">
+      <option value="active">Active</option>
+      <option value="waiting_on">Waiting On</option>
+      <option value="someday">Someday</option>
+    </select>
+    <div class="modal-actions">
+      <button class="btn" id="modal-cancel">Cancel</button>
+      <button class="btn btn-primary" id="modal-save">Add</button>
+    </div>
+  </div>
+</div>
+
+<input type="file" id="file-input" accept=".md" style="display:none">
+
+<script>
+/* ================================================================
+   TASKS.md Kanban Dashboard — Pure vanilla JS, no dependencies.
+   Parses TASKS.md markdown, renders Kanban cards, supports
+   drag-and-drop between columns, and saves back to markdown.
+   ================================================================ */
+
+const SECTIONS = ['active', 'waiting_on', 'someday', 'done'];
+const SECTION_NAMES = { active: 'Active', waiting_on: 'Waiting On', someday: 'Someday', done: 'Done' };
+let tasks = { active: [], waiting_on: [], someday: [], done: [] };
+let fileHandle = null;
+
+// ------------------------------------------------------------------
+// Markdown Parser
+// ------------------------------------------------------------------
+
+function parseMarkdown(text) {
+  const result = { active: [], waiting_on: [], someday: [], done: [] };
+  let currentSection = null;
+  let currentTask = null;
+
+  for (const line of text.split('\n')) {
+    const sectionMatch = line.match(/^## (.+)$/);
+    if (sectionMatch) {
+      const name = sectionMatch[1].trim().toLowerCase().replace(/\s+/g, '_');
+      currentSection = SECTIONS.includes(name) ? name : mapSection(sectionMatch[1].trim());
+      currentTask = null;
+      continue;
+    }
+    if (!currentSection) continue;
+
+    const taskMatch = line.match(/^- \[([ xX])\] (.+)$/);
+    if (taskMatch) {
+      const completed = taskMatch[1].toLowerCase() === 'x';
+      const task = parseTaskLine(taskMatch[2], completed, currentSection);
+      result[currentSection].push(task);
+      currentTask = task;
+      continue;
+    }
+
+    const subMatch = line.match(/^  - (.+)$/);
+    if (subMatch && currentTask) {
+      currentTask.sub_items.push(subMatch[1]);
+    }
+  }
+  return result;
+}
+
+function mapSection(name) {
+  const n = name.toLowerCase();
+  if (n.includes('active')) return 'active';
+  if (n.includes('waiting')) return 'waiting_on';
+  if (n.includes('someday')) return 'someday';
+  if (n.includes('done') || n.includes('completed')) return 'done';
+  return 'active';
+}
+
+function parseTaskLine(text, completed, section) {
+  let title = text, context = '', forWhom = null, dueDate = null, completedDate = null;
+
+  // Bold title
+  const boldMatch = text.match(/\*\*(.+?)\*\*/);
+  if (boldMatch) {
+    title = boldMatch[1];
+    let rest = text.slice(boldMatch.index + boldMatch[0].length).trim();
+    if (rest.startsWith('- ') || rest.startsWith('\u2014 ')) rest = rest.slice(2).trim();
+    context = rest;
+  }
+
+  // Strikethrough (done tasks)
+  const strikeMatch = text.match(/~~(.+?)~~/);
+  if (strikeMatch && completed) {
+    title = strikeMatch[1];
+    context = text.slice(strikeMatch.index + strikeMatch[0].length).trim();
+  }
+
+  // Completed date
+  const dateMatch = text.match(/\((\d{4}-\d{2}-\d{2})\)\s*$/);
+  if (dateMatch) {
+    completedDate = dateMatch[1];
+    context = context.replace(dateMatch[0], '').trim();
+  }
+
+  // Due date
+  const dueMatch = context.match(/due\s+(\d{4}-\d{2}-\d{2}|\d{2}\/\d{2})/);
+  if (dueMatch) dueDate = dueMatch[1];
+
+  // For whom
+  const forMatch = context.match(/for\s+(\w+)/);
+  if (forMatch) forWhom = forMatch[1];
+
+  return { title, context, forWhom, dueDate, completed, completedDate, section, sub_items: [],
+           id: 't_' + Math.random().toString(36).slice(2, 9) };
+}
+
+// ------------------------------------------------------------------
+// Markdown Renderer
+// ------------------------------------------------------------------
+
+function renderMarkdown(data) {
+  let lines = ['# Tasks', ''];
+  for (const section of SECTIONS) {
+    lines.push(`## ${SECTION_NAMES[section]}`);
+    const items = data[section] || [];
+    if (!items.length) { lines.push(''); continue; }
+    for (const t of items) {
+      const check = t.completed ? '[x]' : '[ ]';
+      let text;
+      if (t.completed) {
+        text = `~~${t.title}~~`;
+      } else {
+        text = `**${t.title}**`;
+      }
+      let parts = [text];
+      if (t.context) {
+        parts.push(t.context);
+      } else {
+        let cp = [];
+        if (t.forWhom) cp.push('for ' + t.forWhom);
+        if (t.dueDate) cp.push('due ' + t.dueDate);
+        if (cp.length) parts.push(cp.join(', '));
+      }
+      if (t.completedDate) parts.push(`(${t.completedDate})`);
+      const line = parts.length === 1 ? parts[0] : parts[0] + ' - ' + parts.slice(1).join(' ');
+      lines.push(`- ${check} ${line}`);
+      for (const sub of (t.sub_items || [])) lines.push(`  - ${sub}`);
+    }
+    lines.push('');
+  }
+  return lines.join('\n') + '\n';
+}
+
+// ------------------------------------------------------------------
+// DOM Rendering
+// ------------------------------------------------------------------
+
+function render() {
+  for (const section of SECTIONS) {
+    const body = document.querySelector(`.col-body[data-section="${section}"]`);
+    const count = document.getElementById(`count-${section}`);
+    const items = tasks[section] || [];
+    count.textContent = items.length;
+    body.innerHTML = '';
+    for (const task of items) {
+      body.appendChild(createCard(task, section));
+    }
+  }
+}
+
+function createCard(task, section) {
+  const card = document.createElement('div');
+  card.className = 'task' + (task.completed ? ' completed' : '');
+  card.draggable = true;
+  card.dataset.id = task.id;
+  card.dataset.section = section;
+
+  let html = `<button class="delete-btn" title="Delete">&times;</button>`;
+  html += `<div class="title">${esc(task.title)}</div>`;
+  if (task.context) html += `<div class="context">${esc(task.context)}</div>`;
+  let meta = '';
+  if (task.dueDate) meta += `<span class="due">due ${esc(task.dueDate)}</span>`;
+  if (task.forWhom) meta += `<span class="for-whom">for ${esc(task.forWhom)}</span>`;
+  if (task.completedDate) meta += `<span>${esc(task.completedDate)}</span>`;
+  if (meta) html += `<div class="meta">${meta}</div>`;
+
+  card.innerHTML = html;
+
+  // Delete handler
+  card.querySelector('.delete-btn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (confirm(`Delete "${task.title}"?`)) {
+      tasks[section] = tasks[section].filter(t => t.id !== task.id);
+      render();
+      setStatus('Unsaved changes');
+    }
+  });
+
+  // Double-click to complete/uncomplete
+  card.addEventListener('dblclick', () => {
+    if (section === 'done') {
+      // Uncomplete — move back to active
+      task.completed = false;
+      task.completedDate = null;
+      task.section = 'active';
+      tasks.done = tasks.done.filter(t => t.id !== task.id);
+      tasks.active.push(task);
+    } else {
+      // Complete
+      task.completed = true;
+      task.completedDate = new Date().toISOString().slice(0, 10);
+      task.section = 'done';
+      tasks[section] = tasks[section].filter(t => t.id !== task.id);
+      tasks.done.unshift(task);
+    }
+    render();
+    setStatus('Unsaved changes');
+  });
+
+  // Drag start
+  card.addEventListener('dragstart', (e) => {
+    card.classList.add('dragging');
+    e.dataTransfer.setData('text/plain', JSON.stringify({ id: task.id, from: section }));
+    e.dataTransfer.effectAllowed = 'move';
+  });
+  card.addEventListener('dragend', () => card.classList.remove('dragging'));
+
+  return card;
+}
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+
+// ------------------------------------------------------------------
+// Drag & Drop
+// ------------------------------------------------------------------
+
+document.querySelectorAll('.col-body').forEach(col => {
+  col.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; col.classList.add('drag-over'); });
+  col.addEventListener('dragleave', () => col.classList.remove('drag-over'));
+  col.addEventListener('drop', (e) => {
+    e.preventDefault();
+    col.classList.remove('drag-over');
+    const data = JSON.parse(e.dataTransfer.getData('text/plain'));
+    const toSection = col.dataset.section;
+    if (data.from === toSection) return;
+
+    const task = tasks[data.from].find(t => t.id === data.id);
+    if (!task) return;
+
+    tasks[data.from] = tasks[data.from].filter(t => t.id !== data.id);
+    task.section = toSection;
+    if (toSection === 'done' && !task.completed) {
+      task.completed = true;
+      task.completedDate = new Date().toISOString().slice(0, 10);
+    } else if (toSection !== 'done' && task.completed) {
+      task.completed = false;
+      task.completedDate = null;
+    }
+    tasks[toSection].push(task);
+    render();
+    setStatus('Unsaved changes');
+  });
+});
+
+// ------------------------------------------------------------------
+// File I/O
+// ------------------------------------------------------------------
+
+document.getElementById('btn-load').addEventListener('click', async () => {
+  if ('showOpenFilePicker' in window) {
+    try {
+      [fileHandle] = await window.showOpenFilePicker({
+        types: [{ description: 'Markdown', accept: { 'text/markdown': ['.md'] } }],
+      });
+      const file = await fileHandle.getFile();
+      const text = await file.text();
+      tasks = parseMarkdown(text);
+      render();
+      setStatus(`Loaded: ${file.name}`);
+    } catch (e) { if (e.name !== 'AbortError') console.error(e); }
+  } else {
+    document.getElementById('file-input').click();
+  }
+});
+
+document.getElementById('file-input').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => { tasks = parseMarkdown(reader.result); render(); setStatus(`Loaded: ${file.name}`); };
+  reader.readAsText(file);
+});
+
+document.getElementById('btn-save').addEventListener('click', async () => {
+  const md = renderMarkdown(tasks);
+  if (fileHandle) {
+    try {
+      const writable = await fileHandle.createWritable();
+      await writable.write(md);
+      await writable.close();
+      setStatus('Saved!');
+      return;
+    } catch (e) { console.warn('File System Access write failed, falling back to download', e); }
+  }
+  // Fallback: download
+  const blob = new Blob([md], { type: 'text/markdown' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'TASKS.md';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  setStatus('Downloaded TASKS.md');
+});
+
+// ------------------------------------------------------------------
+// Add Task Modal
+// ------------------------------------------------------------------
+
+const modal = document.getElementById('modal');
+document.getElementById('btn-add').addEventListener('click', () => { modal.classList.add('open'); document.getElementById('m-title').focus(); });
+document.getElementById('modal-cancel').addEventListener('click', () => modal.classList.remove('open'));
+modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.remove('open'); });
+
+document.getElementById('modal-save').addEventListener('click', () => {
+  const title = document.getElementById('m-title').value.trim();
+  if (!title) return;
+  const section = document.getElementById('m-section').value;
+  const task = {
+    title,
+    context: document.getElementById('m-context').value.trim(),
+    forWhom: document.getElementById('m-for').value.trim() || null,
+    dueDate: document.getElementById('m-due').value || null,
+    completed: false, completedDate: null, section, sub_items: [],
+    id: 't_' + Math.random().toString(36).slice(2, 9),
+  };
+  tasks[section].push(task);
+  render();
+  setStatus('Unsaved changes');
+  modal.classList.remove('open');
+  // Reset form
+  ['m-title','m-context','m-for','m-due'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('m-section').value = 'active';
+});
+
+// Enter key in modal
+document.getElementById('m-title').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') document.getElementById('modal-save').click();
+});
+
+function setStatus(msg) { document.getElementById('status').textContent = msg; }
+
+// ------------------------------------------------------------------
+// Init: Try to load from localStorage draft
+// ------------------------------------------------------------------
+const draft = localStorage.getItem('tasks_draft');
+if (draft) {
+  try {
+    tasks = JSON.parse(draft);
+    render();
+    setStatus('Restored from draft — open file to sync');
+  } catch(e) { /* ignore */ }
+}
+
+// Auto-save draft to localStorage on changes
+const observer = new MutationObserver(() => {
+  localStorage.setItem('tasks_draft', JSON.stringify(tasks));
+});
+observer.observe(document.querySelector('.board'), { childList: true, subtree: true });
+</script>
+</body>
+</html>
