@@ -18,6 +18,57 @@ from ii_agent.llm.base import (
     ImageBlock,
 )
 
+def _sanitize_schema_for_gemini(schema: Any) -> Any:
+    """Recursively strip JSON Schema keys that the Gemini API rejects.
+
+    Pydantic V2 emits fields like ``exclusiveMinimum``, ``const``, and
+    ``anyOf`` that fall outside the OpenAPI subset Gemini accepts.  This
+    helper converts them into equivalent constructs Gemini understands.
+    """
+    if isinstance(schema, list):
+        return [_sanitize_schema_for_gemini(item) for item in schema]
+    if not isinstance(schema, dict):
+        return schema
+
+    result = {}
+    for key, value in schema.items():
+        # Drop keys Gemini does not recognise at all
+        if key in ("$schema", "additionalProperties", "title", "default", "examples"):
+            continue
+
+        # exclusiveMinimum N  →  minimum (N+1 for ints, N otherwise)
+        if key == "exclusiveMinimum":
+            result["minimum"] = value + 1 if isinstance(value, int) else value
+            continue
+
+        # exclusiveMaximum N  →  maximum (N-1 for ints, N otherwise)
+        if key == "exclusiveMaximum":
+            result["maximum"] = value - 1 if isinstance(value, int) else value
+            continue
+
+        # const "x"  →  enum ["x"]
+        if key == "const":
+            result["enum"] = [value]
+            continue
+
+        # anyOf [{type: T}, {type: "null"}]  →  just the non-null branch
+        # (Pydantic uses this pattern for Optional fields)
+        if key == "anyOf":
+            non_null = [
+                s for s in value
+                if not (isinstance(s, dict) and s.get("type") == "null")
+            ]
+            if len(non_null) == 1:
+                result.update(_sanitize_schema_for_gemini(non_null[0]))
+            else:
+                result[key] = _sanitize_schema_for_gemini(value)
+            continue
+
+        result[key] = _sanitize_schema_for_gemini(value)
+
+    return result
+
+
 def generate_tool_call_id() -> str:
     """Generate a unique ID for a tool call.
     
@@ -104,7 +155,7 @@ class GeminiDirectClient(LLMClient):
             {
                 "name": tool.name,
                 "description": tool.description,
-                "parameters": tool.input_schema,
+                "parameters": _sanitize_schema_for_gemini(tool.input_schema),
             }
             for tool in tools
         ]
