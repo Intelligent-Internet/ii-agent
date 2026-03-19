@@ -1,7 +1,7 @@
 <div align="center">
   <img src="assets/ii.png" width="200"/>
 
-# II Agent
+# II-Agent
 
 [![GitHub stars](https://img.shields.io/github/stars/Intelligent-Internet/ii-agent?style=social)](https://github.com/Intelligent-Internet/ii-agent/stargazers)
 [![Discord Follow](https://dcbadge.limes.pink/api/server/yDWPsshPHB?style=flat)](https://discord.gg/yDWPsshPHB)
