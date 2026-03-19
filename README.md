@@ -14,7 +14,7 @@
 
 II-Agent is an open-source intelligent assistant designed to streamline and enhance workflows across multiple domains. It represents a significant advancement in how we interact with technology—shifting from passive tools to intelligent systems capable of independently executing complex tasks.
 
-II-Agent Chat also feature within II-Agent that lets you work across multiple models and tools in one place. The web-hosted version comes with Gemini 3, Sonnet 4.5, and GPT-5 ready to use out of the box. You can connect your own API keys, switch models within a single thread, and use them alongside Claude Skills, GPT-5 Code Interpreter, and text file search.
+II-Agent Chat is also a feature within II-Agent that lets you work across multiple models and tools in one place. The web-hosted version comes with Gemini 3, Sonnet 4.5, and GPT-5 ready to use out of the box. You can connect your own API keys, switch models within a single thread, and use them alongside Claude Skills, GPT-5 Code Interpreter, and text file search.
 
 
 ### Discord Join US
