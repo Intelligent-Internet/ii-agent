@@ -4,6 +4,16 @@ import { IModel } from '@/typings/settings'
 export const PROVIDER_MODELS: { [key: string]: IModel[] } = {
     anthropic: [
         {
+            id: 'claude-opus-4-6',
+            model: 'claude-opus-4-6',
+            api_type: 'anthropic'
+        },
+        {
+            id: 'claude-sonnet-4-6',
+            model: 'claude-sonnet-4-6',
+            api_type: 'anthropic'
+        },
+        {
             id: 'claude-sonnet-4-5-20250929',
             model: 'claude-sonnet-4-5-20250929',
             api_type: 'anthropic'

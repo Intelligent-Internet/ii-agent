@@ -32,6 +32,8 @@ Use this runbook whenever you need to spin up the full II-Agent Docker stack (Po
    - Drop the `--build` flag after the first boot to reuse images.
    - Stop the stack with `docker compose -f docker/docker-compose.stack.yaml down`.
 
+> **Local-only mode (no cloud services):** If you don't need E2B, ngrok, or GCS you can run entirely with Docker sandboxes. See the [Local Docker Sandbox](./local-docker-sandbox.md) guide and use `docker-compose.local-only.yaml` instead.
+
 ## Required variables overview
 
 | Section | Key variables | Why they matter |
@@ -43,7 +45,7 @@ Use this runbook whenever you need to spin up the full II-Agent Docker stack (Po
 | Storage | `SLIDE_ASSETS_PROJECT_ID`, `SLIDE_ASSETS_BUCKET_NAME`, `FILE_UPLOAD_*`, `AVATAR_*`, `CUSTOM_DOMAIN` | Buckets that persist agent-generated assets. |
 | Backend sandbox | `SANDBOX_TEMPLATE_ID`, `TIME_TIL_CLEAN_UP` | Define how on-demand sandboxes are provisioned and reclaimed. |
 | Tool server | `STORAGE_CONFIG__GCS_*` | Buckets used by the tool server baseline. |
-| Sandbox server | `E2B_API_KEY`, `E2B_TEMPLATE_ID` | Credentials for the hosted sandbox provider. |
+| Sandbox server | `E2B_API_KEY`, `E2B_TEMPLATE_ID` | Credentials for the hosted sandbox provider (not needed for local-only Docker mode). |
 | Core infra | `POSTGRES_*`, `DATABASE_URL`, `SANDBOX_DB_*`, `REDIS_PORT`, `BACKEND_PORT`, `FRONTEND_PORT`, `SANDBOX_SERVER_PORT`, `TOOL_SERVER_PORT`, `NGROK_METRICS_PORT`, `MCP_PORT` | Databases and host port mappings that every service relies on. |
 
 The required guide links to the detailed setup pages for each section (frontend env, tunnels, host paths, etc.). Keep it open while editing `.stack.env`.

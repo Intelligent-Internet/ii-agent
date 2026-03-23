@@ -21,6 +21,7 @@ import {
     selectIsSandboxIframeAwake,
     selectIsMobileChatVisible,
     selectResultUrl,
+    selectSandboxStatus,
     setSelectedFeature,
     setIsMobileChatVisible,
     useAppDispatch,
@@ -32,7 +33,6 @@ import AgentResult from '@/components/agent/agent-result'
 import AgentPopoverDone from '@/components/agent/agent-popover-done'
 import { useSocketIOContext } from '@/contexts/websocket-context'
 import AwakeMeUpScreen from '@/components/agent/awake-me-up-screen'
-import { isE2bLink } from '@/lib/utils'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import Sidebar from '@/components/sidebar'
 import AgentTabMobile, {
@@ -51,6 +51,7 @@ function AgentPageContent() {
     const vscodeUrl = useAppSelector(selectVscodeUrl)
     const selectedBuildStep = useAppSelector(selectSelectedBuildStep)
     const isSandboxIframeAwake = useAppSelector(selectIsSandboxIframeAwake)
+    const sandboxStatus = useAppSelector(selectSandboxStatus)
     const [sessionData, setSessionData] = useState<ISession>()
     const [sessionError, setSessionError] = useState<string | null>(null)
     const [iframeKey, setIframeKey] = useState(0)
@@ -290,8 +291,7 @@ function AgentPageContent() {
                                 <div
                                     className={`h-full ${activeTab === TAB.CODE ? '' : 'hidden'}`}
                                 >
-                                    {vscodeUrl &&
-                                    isE2bLink(vscodeUrl) &&
+                                    {sandboxStatus === 'paused' &&
                                     !isSandboxIframeAwake &&
                                     !isRunning &&
                                     !isShareMode ? (

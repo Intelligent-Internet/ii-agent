@@ -205,6 +205,8 @@ class UserQueryHandler(CommandHandler):
 
             if agent_responses.is_interrupted:
                 status = RunStatus.ABORTED
+            elif agent_responses.is_error:
+                status = RunStatus.FAILED
             else:
                 status = RunStatus.COMPLETED
 
@@ -324,6 +326,10 @@ class UserQueryHandler(CommandHandler):
         # Create workspace for this session
         workspace_path = Path(config.workspace_path).resolve()
 
+        # Note: 'chat' agent_type is normalized to 'general' by the Pydantic
+        # validator in InitAgentContent and QueryCommandContent models.
+        # This allows sessions created via /v1/chat API to be seamlessly
+        # resumed via Socket.IO agent mode.
         init_content = InitAgentContent(
             model_id=query_command.model_id,
             tool_args=query_command.tool_args,
@@ -342,13 +348,14 @@ class UserQueryHandler(CommandHandler):
             session=session, source=init_content.source, model_id=init_content.model_id
         )
         # Create agent controller
+        # Use init_content.agent_type which has been normalized (e.g., 'chat' -> 'general')
         agent_controller = await agent_service.create_agent(
             agent_task=agent_task,
             llm_config=llm_config,
             sandbox=sandbox,
             workspace_manager=workspace_manager,
             event_stream=self.event_stream,
-            agent_type=session.agent_type or AgentType.GENERAL,
+            agent_type=init_content.agent_type,
             tool_args=init_content.tool_args,
             metadata=init_content.metadata,
         )

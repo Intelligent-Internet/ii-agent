@@ -9,8 +9,10 @@ from ii_agent.llm.base import (
     AssistantContentBlock,
     GeneralContentBlock,
     LLMMessages,
+    RedactedThinkingBlock,
     TextPrompt,
     TextResult,
+    ThinkingBlock,
     ToolCall,
     ToolFormattedResult,
     ImageBlock,
@@ -100,6 +102,21 @@ class State(BaseModel):
 
         return cleaned_turns
 
+    @staticmethod
+    def _sanitize_thinking_blocks(
+        message_turns: list[list[GeneralContentBlock]],
+    ) -> list[list[GeneralContentBlock]]:
+        """Ensure no assistant turn ends with a ThinkingBlock.
+
+        Claude's API rejects histories where an assistant message's final
+        block is ``thinking``.  If such a turn is found, append a
+        placeholder ``TextResult`` so the conversation can continue.
+        """
+        for turn in message_turns:
+            if turn and isinstance(turn[-1], (ThinkingBlock, RedactedThinkingBlock)):
+                turn.append(TextResult(text="(continued)"))
+        return message_turns
+
     def restore_from_session(self, session_id: str, file_store: BaseStorage):
         """Restores the message history from the file store."""
         try:
@@ -110,7 +127,9 @@ class State(BaseModel):
 
             # Use Pydantic's model_validate to restore the entire state
             restored_state = State.model_validate(state_dict)
-            self.message_lists = restored_state.message_lists
+            self.message_lists = self._sanitize_thinking_blocks(
+                restored_state.message_lists
+            )
             self.last_user_prompt_index = restored_state.last_user_prompt_index
         except FileNotFoundError:
             raise FileNotFoundError(
@@ -122,6 +141,9 @@ class State(BaseModel):
         filename = get_conversation_agent_state_path(session_id)
 
         try:
+            # Sanitize before saving so corrupted ThinkingBlock-trailing turns
+            # never get persisted (defense-in-depth).
+            self.message_lists = self._sanitize_thinking_blocks(self.message_lists)
             # Use Pydantic's model_dump to serialize the entire state
             json_data = json.dumps(self.model_dump(), indent=2, ensure_ascii=False)
             content = io.BytesIO(json_data.encode('utf-8'))

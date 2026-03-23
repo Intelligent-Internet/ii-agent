@@ -256,6 +256,19 @@ class AnthropicDirectClient(LLMClient):
                 }
             )
 
+        # Safety net: ensure no assistant message ends with a thinking block.
+        # The Claude API rejects such messages with a 400 error.
+        for msg in anthropic_messages:
+            if msg["role"] == "assistant" and msg["content"]:
+                last_block = msg["content"][-1]
+                block_type = getattr(last_block, "type", None) or (
+                    last_block.get("type") if isinstance(last_block, dict) else None
+                )
+                if block_type in ("thinking", "redacted_thinking"):
+                    msg["content"].append(
+                        AnthropicTextBlock(type="text", text="(continued)")
+                    )
+
         # Turn tool_choice into Anthropic tool_choice format
         if tool_choice is None:
             tool_choice_param = Anthropic_NOT_GIVEN
@@ -560,6 +573,19 @@ class AnthropicDirectClient(LLMClient):
                 }
             )
 
+        # Safety net: ensure no assistant message ends with a thinking block.
+        # The Claude API rejects such messages with a 400 error.
+        for msg in anthropic_messages:
+            if msg["role"] == "assistant" and msg["content"]:
+                last_block = msg["content"][-1]
+                block_type = getattr(last_block, "type", None) or (
+                    last_block.get("type") if isinstance(last_block, dict) else None
+                )
+                if block_type in ("thinking", "redacted_thinking"):
+                    msg["content"].append(
+                        AnthropicTextBlock(type="text", text="(continued)")
+                    )
+
         # When prefix=True, Anthropic requires that final assistant content not end with trailing whitespace
         if prefix and anthropic_messages and anthropic_messages[-1]["role"] == "assistant":
             content_list = anthropic_messages[-1]["content"]
@@ -579,6 +605,14 @@ class AnthropicDirectClient(LLMClient):
                         # Preserve cache_control if it was set
                         if hasattr(last_content, "cache_control") and last_content.cache_control:
                             content_list[-1].cache_control = last_content.cache_control
+
+        # Safety net: if conversation ends with assistant message and prefix is not
+        # enabled, the API will reject with "prefill" error.  Append a synthetic
+        # user continuation so the request succeeds.
+        if not prefix and anthropic_messages and anthropic_messages[-1]["role"] == "assistant":
+            anthropic_messages.append(
+                {"role": "user", "content": [AnthropicTextBlock(type="text", text="Continue.")]}
+            )
 
         # Turn tool_choice into Anthropic tool_choice format
         if tool_choice is None:

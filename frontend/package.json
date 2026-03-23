@@ -12,6 +12,8 @@
         "dev": "vite",
         "build": "tsc && vite build",
         "preview": "vite preview",
+        "test": "vitest run",
+        "test:watch": "vitest",
         "tauri": "tauri",
         "prepare": "husky",
         "lint": "eslint . --report-unused-disable-directives --max-warnings 0",
@@ -121,6 +123,7 @@
         "typescript": "^5.8.3",
         "typescript-eslint": "^8.31.1",
         "vite": "^6.3.4",
-        "vite-plugin-svgr": "^4.3.0"
+        "vite-plugin-svgr": "^4.3.0",
+        "vitest": "^4.1.0"
     }
 }

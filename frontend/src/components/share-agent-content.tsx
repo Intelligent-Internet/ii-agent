@@ -28,7 +28,7 @@ import {
 import { BUILD_STEP, ISession, TAB } from '@/typings/agent'
 import AgentResult from '@/components/agent/agent-result'
 import AgentPopoverDone from '@/components/agent/agent-popover-done'
-import { isE2bLink } from '@/lib/utils'
+import { isSandboxLink } from '@/lib/utils'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import AgentTabMobile, {
     type ChatOption as MobileChatOption
@@ -234,7 +234,7 @@ export function ShareAgentContent() {
                                 <div
                                     className={`h-full ${activeTab === TAB.CODE ? '' : 'hidden'}`}
                                 >
-                                    {vscodeUrl && isE2bLink(vscodeUrl) && (
+                                    {vscodeUrl && isSandboxLink(vscodeUrl) && (
                                         <iframe
                                             key={iframeKey}
                                             src={vscodeUrl}

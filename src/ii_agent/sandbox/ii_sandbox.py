@@ -1,5 +1,6 @@
 from typing import IO, AsyncIterator, Literal, Optional
 
+from ii_agent.core.client_host import client_host_var
 from ii_sandbox_server.client.client import SandboxClient
 
 
@@ -41,9 +42,19 @@ class IISandbox:
 
         Args:
             port: Port to expose
-            external: If True, return host-accessible URL (for browser access)
+            external: If True, return host-accessible URL (for browser access).
+                     The hostname is taken from the current request's client_host_var
+                     so the URL is routable from whichever machine made the request.
         """
         url = await self.client.expose_port(self.sandbox_id, port, external)
+        if external:
+            client_host = client_host_var.get()
+            if client_host != "localhost":
+                # Replace localhost / 127.0.0.1 with the caller's host so the
+                # returned URL works from the browser that initiated this request.
+                url = url.replace("localhost", client_host).replace(
+                    "127.0.0.1", client_host
+                )
         return url
 
     async def schedule_timeout(self, timeout_seconds: int):

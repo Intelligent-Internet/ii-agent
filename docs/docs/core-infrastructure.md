@@ -52,6 +52,12 @@ Variables: `BACKEND_PORT`, `FRONTEND_PORT`, `SANDBOX_SERVER_PORT`, `TOOL_SERVER_
 - Map each to an open host port. The defaults (8000/3000/9000/etc.) usually work.
 - When a collision happens, bump the conflicting port and update any URLs or CLIs that pointed to the old value (e.g., `VITE_API_URL`).
 
+## Docker sandbox port pool
+
+When running in local Docker mode (`SANDBOX_PROVIDER=docker`), the sandbox server dynamically maps container ports to the host from the range **30000-30999**. Each sandbox reserves 6 host ports (MCP, code-server, noVNC, and spares), allowing approximately 166 concurrent sandboxes.
+
+The frontend automatically rewrites `localhost` URLs to the browser's hostname so sandbox services remain accessible when the UI is accessed from a different machine on the LAN.
+
 ## Validation checklist
 
 1. Run `./scripts/run_stack.sh --build` and ensure Docker does **not** report binding conflicts.

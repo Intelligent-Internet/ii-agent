@@ -1,5 +1,6 @@
 """Handler for sandbox_status command."""
 
+import logging
 from typing import Dict, Any
 
 from ii_agent.core.event import EventType, RealtimeEvent
@@ -10,6 +11,9 @@ from ii_agent.server.socket.command.command_handler import (
     CommandHandler,
     UserCommandType,
 )
+
+logger = logging.getLogger(__name__)
+
 
 class SandboxStatusHandler(CommandHandler):
     """Handler for sandbox status command."""
@@ -32,7 +36,11 @@ class SandboxStatusHandler(CommandHandler):
         vscode_url = None
         if sandbox:
             status = await sandbox.status
-            vscode_url = await sandbox.expose_port(config.vscode_port, external=True)
+            if status == "running":
+                try:
+                    vscode_url = await sandbox.expose_port(config.vscode_port, external=True)
+                except Exception as e:
+                    logger.warning(f"Failed to expose port for session {session_info.id}: {e}")
             del sandbox
         await self.send_event(
             RealtimeEvent(

@@ -8,7 +8,7 @@ from ii_agent.sandbox.ii_sandbox import IISandbox
 
 # Ports available in Docker local sandbox mode (must match docker.py DEFAULT_EXPOSED_PORTS)
 # Excludes internal ports (MCP 6060, code-server 9000)
-DOCKER_AVAILABLE_PORTS = [3000, 5173, 8080]
+DOCKER_AVAILABLE_PORTS = [3000, 5173, 6080, 8080]
 
 
 class IISandboxToSandboxInterfaceAdapter(SandboxInterface):

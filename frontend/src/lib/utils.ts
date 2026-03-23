@@ -21,6 +21,19 @@ export const getFirstCharacters = (str: string) => {
         .join('')
 }
 
+/**
+ * Rewrite localhost URLs to use the current browser hostname when accessed
+ * from a non-localhost host (e.g. LAN IP). This ensures sandbox port URLs
+ * are reachable from the user's machine.
+ */
+export const rewriteLocalhostUrl = (url: string): string => {
+    const browserHost = window.location.hostname
+    if (browserHost && browserHost !== 'localhost' && browserHost !== '127.0.0.1') {
+        return url.replace(/\/\/localhost(:\d+)/, `//${browserHost}$1`)
+    }
+    return url
+}
+
 export const extractUrls = (markdown: string) => {
     const urlRegex = /\[.*?\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s)]+)/g
 
@@ -35,7 +48,7 @@ export const extractUrls = (markdown: string) => {
                 .replace(/[*_]+$/g, '')
                 .replace(/[.,)]+$/g, '')
                 .replace(/[*_.,!?`)+]+$/g, '')
-            urls.push(url)
+            urls.push(rewriteLocalhostUrl(url))
         }
     }
 
@@ -71,12 +84,41 @@ export const formatDuration = (milliseconds: number): string => {
     return `${seconds}s`
 }
 
-export const isE2bLink = (url: string): boolean => {
+/**
+ * Check if a URL points to a sandbox (E2B cloud or local Docker).
+ *
+ * E2B:   https://<id>.e2b.dev/...
+ * Local: http://localhost:<port>/... or http://<private-ip>:<port>/...
+ */
+export const isSandboxLink = (url: string): boolean => {
     try {
         const parsed = new URL(url)
-        return (
-            parsed.hostname.includes('e2b') || parsed.hostname.includes('e2b-')
-        )
+        const host = parsed.hostname
+
+        // E2B cloud sandbox
+        if (host.includes('e2b')) return true
+
+        // Local Docker sandbox (localhost or private IP with a mapped port)
+        if (
+            (host === 'localhost' || host === '127.0.0.1' || /^(10|172\.(1[6-9]|2\d|3[01])|192\.168)\./.test(host)) &&
+            parsed.port !== ''
+        ) {
+            return true
+        }
+
+        return false
+    } catch {
+        return false
+    }
+}
+
+/**
+ * E2B-specific URL check. Use for matching URLs extracted from free text
+ * where localhost URLs could be false positives.
+ */
+export const isE2bLink = (url: string): boolean => {
+    try {
+        return new URL(url).hostname.includes('e2b')
     } catch {
         return false
     }

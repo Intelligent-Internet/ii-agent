@@ -14,6 +14,23 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch, MagicMock
 import sys
+import importlib
+
+
+def _reload_logger():
+    """Reload ii_tool.integrations.logger and refresh ii_tool.logger bindings.
+
+    Several tests need to ``importlib.reload`` the logger module to pick up
+    changed environment variables.  If ``ii_tool.logger`` was already imported
+    (which happens when other test files transitively load it), we must also
+    reload the re-export module so that the ``is``-identity check in
+    ``TestModuleReexport.test_reexport_same_as_original`` still holds.
+    """
+    import ii_tool.integrations.logger as logger_module
+    importlib.reload(logger_module)
+    if "ii_tool.logger" in sys.modules:
+        importlib.reload(sys.modules["ii_tool.logger"])
+    return logger_module
 
 
 # =============================================================================
@@ -33,10 +50,7 @@ class TestLogFilePath:
                 del env_copy["II_TOOL_LOG_FILE"]
             
             with patch.dict(os.environ, env_copy, clear=True):
-                # Force reimport
-                import importlib
-                import ii_tool.integrations.logger as logger_module
-                importlib.reload(logger_module)
+                logger_module = _reload_logger()
                 
                 assert str(logger_module.LOG_FILE_PATH) == "/app/log/sandbox.log"
 
@@ -44,9 +58,8 @@ class TestLogFilePath:
         """LOG_FILE_PATH can be set via II_TOOL_LOG_FILE env var."""
         custom_path = "/custom/path/test.log"
         with patch.dict(os.environ, {"II_TOOL_LOG_FILE": custom_path}):
-            import importlib
+            _reload_logger()
             import ii_tool.integrations.logger as logger_module
-            importlib.reload(logger_module)
             
             assert str(logger_module.LOG_FILE_PATH) == custom_path
 
@@ -163,9 +176,7 @@ class TestFileHandler:
             log_path = os.path.join(tmpdir, "test.log")
             
             with patch.dict(os.environ, {"II_TOOL_LOG_FILE": log_path}):
-                import importlib
-                import ii_tool.integrations.logger as logger_module
-                importlib.reload(logger_module)
+                logger_module = _reload_logger()
                 
                 logger = logger_module.get_logger("test_file_handler_valid")
                 
@@ -182,9 +193,7 @@ class TestFileHandler:
             log_path = os.path.join(tmpdir, "subdir", "nested", "test.log")
             
             with patch.dict(os.environ, {"II_TOOL_LOG_FILE": log_path}):
-                import importlib
-                import ii_tool.integrations.logger as logger_module
-                importlib.reload(logger_module)
+                logger_module = _reload_logger()
                 
                 logger = logger_module.get_logger("test_creates_dirs")
                 
@@ -240,9 +249,7 @@ class TestLoggerIntegration:
             log_path = os.path.join(tmpdir, "integration.log")
             
             with patch.dict(os.environ, {"II_TOOL_LOG_FILE": log_path}):
-                import importlib
-                import ii_tool.integrations.logger as logger_module
-                importlib.reload(logger_module)
+                logger_module = _reload_logger()
                 
                 logger = logger_module.get_logger("integration_test")
                 logger.info("Test message")

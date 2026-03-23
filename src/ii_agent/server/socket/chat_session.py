@@ -5,7 +5,7 @@ from typing import Optional, TYPE_CHECKING
 
 from ii_agent.controller.agent_controller import AgentController
 from ii_agent.core.config.llm_config import LLMConfig
-from ii_agent.core.event import RealtimeEvent, EventType
+from ii_agent.core.event import AgentStatus, RealtimeEvent, EventType
 from ii_agent.core.event_stream import AsyncEventStream, EventStream
 from ii_agent.core.config.ii_agent_config import IIAgentConfig
 from ii_agent.server.models.messages import QueryCommandContent
@@ -155,6 +155,13 @@ class ChatSessionContext:
                     type=EventType.ERROR,
                     session_id=self.session_info.id,
                     content={"message": f"Error running agent: {error_msg}"},
+                )
+            )
+            await self.event_stream.publish(
+                RealtimeEvent(
+                    type=EventType.STATUS_UPDATE,
+                    session_id=self.session_info.id,
+                    content={"status": AgentStatus.READY},
                 )
             )
             return ToolResult(llm_content=[], is_error=True)

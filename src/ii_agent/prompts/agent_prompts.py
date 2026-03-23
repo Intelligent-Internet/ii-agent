@@ -9,6 +9,15 @@ from ii_agent.server.slides import template_service
 from ii_agent.db.manager import get_db_session_local
 
 
+def _normalize_agent_type(value: Any) -> AgentType:
+    """Normalize agent_type, converting 'chat' to AgentType.GENERAL."""
+    if isinstance(value, AgentType):
+        return value
+    if isinstance(value, str):
+        return AgentType.GENERAL if value == "chat" else AgentType(value)
+    raise ValueError(f"Invalid agent_type: {value}")
+
+
 def get_base_prompt_template() -> str:
     """Get the base prompt template shared by all agent types."""
     return """\
@@ -151,6 +160,7 @@ async def get_specialized_instructions(
     agent_type: AgentType, metadata: Optional[Dict[str, Any]] = None
 ) -> str:
     """Get specialized instructions for each agent type."""
+    agent_type = _normalize_agent_type(agent_type)
 
     instructions = {
         AgentType.MEDIA: """
@@ -411,6 +421,8 @@ async def get_system_prompt_for_agent_type(
     metadata: Optional[Dict[str, Any]] = None,
 ) -> str:
     """Generate a system prompt for a specific agent type."""
+    agent_type = _normalize_agent_type(agent_type)
+
     if agent_type == AgentType.CODEX:
         return get_system_prompt(
             workspace_path=workspace_path,

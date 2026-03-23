@@ -79,8 +79,11 @@ The Docker stack only works when **every** mandatory variable in `docker/.stack.
 
 | Variable | Status | Notes |
 | --- | --- | --- |
-| `E2B_API_KEY` | ✅ | API key issued by e2b. |
-| `E2B_TEMPLATE_ID` | ✅ | Template ID for sandbox provisioning. |
+| `SANDBOX_PROVIDER` | ☑️ | `e2b` (cloud, default) or `docker`/`local` (local Docker containers). |
+| `E2B_API_KEY` | ☑️ | API key issued by e2b (not needed for local Docker mode). |
+| `E2B_TEMPLATE_ID` | ☑️ | Template ID for e2b sandbox provisioning (not needed for local Docker mode). |
+| `SANDBOX_DOCKER_IMAGE` | ☑️ | Docker image for local sandboxes (default `ii-agent-sandbox:latest`). |
+| `LOCAL_MODE` | ☑️ | Enable local-mode features such as orphan cleanup. |
 
 ## Core infrastructure [`/docs/required-environment-variables/core-infra`](/docs/required-environment-variables/core-infra)
 

@@ -170,7 +170,14 @@ class SandboxController:
         if str(sandbox_data.status) == "paused":
             return await self._resume_sandbox(sandbox_id)
         elif str(sandbox_data.status) == "running":
-            return await self._connect_sandbox(sandbox_id)
+            try:
+                return await self._connect_sandbox(sandbox_id)
+            except SandboxNotInitializedError:
+                # Container stopped unexpectedly (e.g., system restart) while DB still says "running"
+                logger.warning(
+                    f"Sandbox {sandbox_id} marked as running but container is not available, attempting resume"
+                )
+                return await self._resume_sandbox(sandbox_id)
         else:
             raise SandboxNotInitializedError(
                 f"Sandbox {sandbox_id} is not paused or running"

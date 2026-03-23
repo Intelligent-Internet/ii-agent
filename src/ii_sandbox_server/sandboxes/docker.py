@@ -49,12 +49,14 @@ CONTAINER_STARTUP_TIMEOUT = 120  # Increased from 60s - sandbox startup can be s
 # Well-known container ports for sandbox services
 MCP_SERVER_PORT = 6060
 CODE_SERVER_PORT = 9000
+NOVNC_PORT = 6080
 
 # Common dev server ports to pre-allocate
 # These are mapped to host ports from the port pool on container creation
 DEFAULT_EXPOSED_PORTS = [
     MCP_SERVER_PORT,   # MCP server (required)
     CODE_SERVER_PORT,  # Code server (required)
+    NOVNC_PORT,        # noVNC web viewer (browser-based VNC)
     3000,   # React, Next.js, Express
     5173,   # Vite
     8080,   # General HTTP
@@ -337,6 +339,7 @@ class DockerSandbox(BaseSandbox):
         service_names = {
             MCP_SERVER_PORT: "mcp_server",
             CODE_SERVER_PORT: "code_server",
+            NOVNC_PORT: "novnc",
             3000: "dev_server",
             5173: "vite",
             8080: "http",
@@ -523,8 +526,14 @@ class DockerSandbox(BaseSandbox):
         except NotFound:
             raise SandboxNotFoundException(provider_sandbox_id)
 
-        # Extract all port mappings from running container
+        # Verify container is actually running (may be exited after system restart)
         container.reload()
+        if container.status != "running":
+            raise SandboxNotInitializedError(
+                f"Sandbox container not running: {sandbox_id or provider_sandbox_id}"
+            )
+
+        # Extract all port mappings from running container
         ports = container.attrs.get("NetworkSettings", {}).get("Ports", {})
 
         # Build port_mappings dict from container's actual port bindings
@@ -659,7 +668,11 @@ class DockerSandbox(BaseSandbox):
             await cls.delete(provider_sandbox_id, config, queue, sandbox_id)
         elif queue:
             # Use the queue for delayed deletion
-            await queue.schedule_deletion(sandbox_id, timeout_seconds)
+            await queue.schedule_message(
+                sandbox_id=sandbox_id,
+                action="delete",
+                delay_seconds=timeout_seconds,
+            )
         else:
             # Fallback: create an async task for timeout
             async def delayed_delete():

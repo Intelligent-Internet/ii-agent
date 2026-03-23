@@ -25,27 +25,34 @@ ii-agent supports multiple deployment models through a pluggable sandbox provide
 │                                                                  │
 │   Browser ──▶ Frontend (:1420)                                  │
 │                   │                                              │
-│                   ▼                                              │
-│              Backend (:8000)                                     │
+│                   ▼ Socket.IO (WebSocket)                        │
+│              Backend (:8000) ◀──▶ Redis (session mgr)           │
 │                   │                                              │
 │         ┌────────┴────────┐                                     │
 │         ▼                 ▼                                      │
 │   Sandbox-Server    Tool-Server                                 │
 │      (:8100)          (:1236)                                   │
 │         │                                                        │
-│         │ Docker API                                            │
-│         ▼                                                        │
+│         │ Docker API + PortPoolManager                          │
+│         ▼              (host ports 30000-30999)                  │
 │   ┌─────────────────────────────────────────┐                   │
 │   │     Ephemeral Sandbox Containers        │                   │
-│   │  ┌─────────┐ ┌─────────┐ ┌─────────┐   │                   │
-│   │  │Sandbox 1│ │Sandbox 2│ │   ...   │   │                   │
-│   │  └─────────┘ └─────────┘ └─────────┘   │                   │
+│   │  ┌─────────────────────────────────┐    │                   │
+│   │  │ Sandbox                          │    │                   │
+│   │  │  Xvfb (:99) + x11vnc (:5900)   │    │                   │
+│   │  │  noVNC (:6080)                  │    │                   │
+│   │  │  MCP Server (:6060)             │    │                   │
+│   │  │  code-server (:9000)            │    │                   │
+│   │  └─────────────────────────────────┘    │                   │
+│   │  ┌─────────┐ ┌─────────┐                │                   │
+│   │  │Sandbox 2│ │   ...   │                │                   │
+│   │  └─────────┘ └─────────┘                │                   │
 │   └─────────────────────────────────────────┘                   │
 │                                                                  │
-│   ┌──────────┐  ┌───────┐  ┌────────────────┐                  │
-│   │ Postgres │  │ Redis │  │ Your MCP Server│                  │
-│   │  (:5433) │  │(:6379)│  │    (:6060)     │                  │
-│   └──────────┘  └───────┘  └────────────────┘                  │
+│   ┌──────────┐  ┌───────┐                                       │
+│   │ Postgres │  │ Redis │                                       │
+│   │  (:5433) │  │(:6379)│                                       │
+│   └──────────┘  └───────┘                                       │
 │                                                                  │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -68,9 +75,12 @@ ii-agent supports multiple deployment models through a pluggable sandbox provide
 - ✅ Command execution in isolated containers
 - ✅ Resource limits (memory, CPU, PIDs)
 - ✅ Basic capability dropping
-- ✅ **Orphan cleanup** - Automatic removal of sandboxes when sessions are deleted
-- ✅ **Local storage** - Files stored locally instead of cloud storage (GCS)
-- ✅ **Port pool management** - Dynamic port allocation (30000-30999) for sandbox services
+- ✅ **Orphan cleanup** — Automatic removal of sandboxes with no active session (5-minute grace period, runs every 300s)
+- ✅ **Local storage** — Files stored locally instead of cloud storage (GCS)
+- ✅ **Port pool management** — Dynamic host-port allocation (default 30000–30999, configurable via `SANDBOX_PORT_RANGE_START`/`SANDBOX_PORT_RANGE_END`). Thread-safe with startup scanning to reclaim ports from existing containers.
+- ✅ **noVNC browser handoff** — User interaction for CAPTCHAs/login via browser-based VNC viewer (noVNC :6080 → x11vnc :5900 → Xvfb :99 inside sandbox)
+- ✅ **Socket.IO real-time transport** — Backend ↔ Browser communication over WebSocket with Redis-backed session manager (`AsyncRedisManager`) for horizontal scaling. Configured with `ping_timeout=300s`, `ping_interval=30s`, 10 MB max buffer.
+- ✅ **Conversation state resilience** — Defense-in-depth sanitization of LLM thinking blocks on restore, runtime, save, and API call boundaries to prevent stuck sessions from corrupted state.
 
 ### Known Limitations
 
@@ -82,17 +92,19 @@ ii-agent supports multiple deployment models through a pluggable sandbox provide
 ### Quick Start
 
 ```bash
-# Build sandbox image
-docker build -t ii-agent-sandbox:latest -f e2b.Dockerfile .
-
 # Configure
 cp docker/.stack.env.local.example docker/.stack.env.local
 # Edit: add JWT_SECRET_KEY and LLM API key
 
-# Run
-docker compose -f docker/docker-compose.local-only.yaml \
-  --env-file docker/.stack.env.local up -d
+# Build sandbox image + start all services
+scripts/stack_control.sh --local build
+scripts/stack_control.sh --local start
+
+# Or equivalently, rebuild a single service:
+scripts/stack_control.sh --local rebuild backend
 ```
+
+> `scripts/stack_control.sh` is the preferred interface. It wraps `docker compose` with the correct env-file, compose files, and build context. Run it without arguments to see the full command reference.
 
 ---
 

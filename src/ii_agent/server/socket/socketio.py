@@ -3,6 +3,7 @@ import uuid
 from typing import Any, Dict, Set
 
 import socketio
+from ii_agent.core.client_host import client_host_var
 from ii_agent.core.event import AgentStatus, EventType
 from ii_agent.db.agent import AgentRunTask, RunStatus
 from ii_agent.db.manager import get_db_session_local
@@ -103,6 +104,21 @@ class SocketIOManager:
         except Exception as e:
             logger.error(f"Failed to check and cleanup session {session_uuid}: {e}")
 
+    def _extract_client_host(self, environ: Dict[str, Any]) -> str:
+        """Extract the client-facing hostname from a Socket.IO ASGI environ dict.
+
+        Checks X-Forwarded-Host (for reverse proxies) then Host, returning only
+        the hostname part (strips any :port suffix).
+        """
+        raw = (
+            environ.get("HTTP_X_FORWARDED_HOST")
+            or environ.get("HTTP_HOST")
+            or ""
+        )
+        # Keep only the hostname, drop port (e.g. "192.168.2.2:8000" → "192.168.2.2")
+        host = raw.split(":")[0].strip()
+        return host or "localhost"
+
     async def _require_session(self, data: Dict[str, Any]) -> SessionInfo | None:
         session_uuid_str = data.get("session_uuid")
         if not session_uuid_str:
@@ -127,6 +143,12 @@ class SocketIOManager:
             return
         message_type = data.get("type")
         content = data.get("content", {})
+
+        # Set the client host for this request so expose_port() returns URLs
+        # that are routable from the caller's machine, not just localhost.
+        session_data = await self.sio.get_session(sid)
+        client_host_var.set(session_data.get("client_host", "localhost"))
+
         try:
             logger.debug("Start processing message of type: %s", message_type)
             handler = self.command_factory.get_handler_by_string(message_type)
@@ -205,6 +227,8 @@ class SocketIOManager:
 
         if running_task:
             await self._emit_status_update(str(session_info.id), AgentStatus.RUNNING)
+        else:
+            await self._emit_status_update(str(sid), AgentStatus.READY)
 
     async def connect(self, sid, environ, auth):
         """Handle Socket.IO client connection."""
@@ -234,6 +258,7 @@ class SocketIOManager:
                         "user_id": user_id,
                         "session_uuid": session_uuid_str,
                         "authenticated": True,
+                        "client_host": self._extract_client_host(environ),
                     },
                 )
                 self.sid_sesion_map[sid] = session_uuid_str

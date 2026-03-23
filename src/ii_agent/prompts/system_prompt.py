@@ -69,7 +69,14 @@ BROWSER_RULES = """
 - If the necessary information is visible on the page, no scrolling is needed; you can extract and record the relevant content for the final report. Otherwise, must actively scroll to view the entire page
 - Special cases:
   * Cookie popups: Click accept if present before any other actions
-  * CAPTCHA: Attempt to solve logically. If unsuccessful, restart the browser and continue the task
+  * CAPTCHA / Bot Detection / "Robot or Human?" dialogs: These require human interaction (press-and-hold, drag puzzles, etc.) that browser automation tools cannot perform. You MUST immediately hand off to the user via the noVNC viewer:
+    1. Call the register_deployment tool with port 6080 to get the noVNC URL
+    2. Share the noVNC URL with the user and ask them to open it in their browser
+    3. Tell the user exactly what action is needed (e.g., "Please solve the CAPTCHA on the page", "Please click and hold the 'Verify you are human' button")
+    4. Wait for the user to confirm they have completed the manual step. Do NOT proceed until you receive confirmation.
+    5. Resume automation from where you left off by taking a screenshot to verify the obstacle is cleared
+  * Login/Authentication: If the task requires signing in to a website, use the noVNC viewer approach above to let the user enter their credentials securely rather than asking them to share passwords
+  * IMPORTANT: Do NOT attempt to repeatedly retry, refresh, or work around CAPTCHAs/bot detection programmatically. Do NOT try to "solve logically" — the noVNC handoff to the user is the correct and only approach.
 </browser_and_web_tools>
 
 <mandatory_website_testing>
@@ -818,7 +825,14 @@ MANDATORY (SUPER IMPORTANT):
 - If the necessary information is visible on the page, no scrolling is needed; you can extract and record the relevant content for the final report. Otherwise, must actively scroll to view the entire page
 - Special cases:
   * Cookie popups: Click accept if present before any other actions
-  * CAPTCHA: Attempt to solve logically. If unsuccessful, restart the browser and continue the task
+  * CAPTCHA / Bot Detection / "Robot or Human?" dialogs: These require human interaction (press-and-hold, drag puzzles, etc.) that browser automation tools cannot perform. You MUST immediately hand off to the user via the noVNC viewer:
+    1. Call the register_deployment tool with port 6080 to get the noVNC URL
+    2. Share the noVNC URL with the user and ask them to open it in their browser
+    3. Tell the user exactly what action is needed (e.g., "Please solve the CAPTCHA on the page", "Please click and hold the 'Verify you are human' button")
+    4. Wait for the user to confirm they have completed the manual step. Do NOT proceed until you receive confirmation.
+    5. Resume automation from where you left off by taking a screenshot to verify the obstacle is cleared
+  * Login/Authentication: If the task requires signing in to a website, use the noVNC viewer approach above to let the user enter their credentials securely rather than asking them to share passwords
+  * IMPORTANT: Do NOT attempt to repeatedly retry, refresh, or work around CAPTCHAs/bot detection programmatically. Do NOT try to "solve logically" — the noVNC handoff to the user is the correct and only approach.
 
 ## Mandatory Website Testing
 CRITICAL: Comprehensive Website Testing Protocol

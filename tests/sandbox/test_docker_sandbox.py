@@ -12,6 +12,10 @@ from ii_sandbox_server.sandboxes.docker import (
     DockerSandbox,
     ALLOWED_WORKSPACE_BASES,
     DANGEROUS_PATTERNS,
+    DEFAULT_EXPOSED_PORTS,
+    MCP_SERVER_PORT,
+    CODE_SERVER_PORT,
+    NOVNC_PORT,
 )
 
 
@@ -455,6 +459,59 @@ class TestDockerSandboxPortRegistration:
         assert port_set.allocations[6060].service_name == "mcp_server"
         assert port_set.allocations[9000].service_name == "code_server"
         assert port_set.allocations[3000].service_name is None
+
+
+class TestDockerSandboxNoVNCPort:
+    """Tests for noVNC port constant and DEFAULT_EXPOSED_PORTS configuration."""
+
+    def test_novnc_port_value(self):
+        """Test that NOVNC_PORT is set to 6080."""
+        assert NOVNC_PORT == 6080
+
+    def test_novnc_port_in_default_exposed_ports(self):
+        """Test that noVNC port is included in DEFAULT_EXPOSED_PORTS."""
+        assert NOVNC_PORT in DEFAULT_EXPOSED_PORTS
+
+    def test_default_exposed_ports_includes_all_required(self):
+        """Test that DEFAULT_EXPOSED_PORTS includes MCP, code-server, and noVNC."""
+        assert MCP_SERVER_PORT in DEFAULT_EXPOSED_PORTS
+        assert CODE_SERVER_PORT in DEFAULT_EXPOSED_PORTS
+        assert NOVNC_PORT in DEFAULT_EXPOSED_PORTS
+
+    def test_default_exposed_ports_count(self):
+        """Test the expected number of default exposed ports."""
+        # MCP (6060), code-server (9000), noVNC (6080), React (3000), Vite (5173), HTTP (8080)
+        assert len(DEFAULT_EXPOSED_PORTS) == 6
+
+    def test_novnc_port_mapping_in_sandbox(self):
+        """Test that a sandbox with noVNC port mapping stores it correctly."""
+        mock_container = MagicMock()
+        mock_container.status = "running"
+
+        sandbox = DockerSandbox(
+            container=mock_container,
+            sandbox_id="test-vnc-123",
+            queue=None,
+            port_mappings={6060: 30000, 9000: 30001, 6080: 30002, 3000: 30003},
+        )
+
+        assert sandbox._port_mappings[NOVNC_PORT] == 30002
+
+    @pytest.mark.asyncio
+    async def test_expose_novnc_port_external(self):
+        """Test that exposing noVNC port externally returns correct URL."""
+        mock_container = MagicMock()
+        mock_container.status = "running"
+
+        sandbox = DockerSandbox(
+            container=mock_container,
+            sandbox_id="test-vnc-456",
+            queue=None,
+            port_mappings={6060: 30000, 9000: 30001, 6080: 30002},
+        )
+
+        url = await sandbox.expose_port(NOVNC_PORT, external=True)
+        assert url == "http://localhost:30002"
 
 
 class TestDockerSandboxVolumeCleanup:

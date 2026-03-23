@@ -24,8 +24,10 @@ class TestStorageConfig:
 
     def test_default_local_storage_path(self):
         """Test default local storage path."""
-        config = StorageConfig()
-        assert config.local_storage_path == "/.ii_agent/storage"
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("LOCAL_STORAGE_PATH", None)
+            config = StorageConfig()
+            assert config.local_storage_path == "/.ii_agent/storage"
 
     def test_gcs_config_without_credentials_raises(self):
         """Test that GCS config without credentials raises error."""

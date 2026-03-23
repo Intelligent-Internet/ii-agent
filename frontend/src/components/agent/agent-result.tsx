@@ -8,6 +8,7 @@ import {
     selectIsSandboxIframeAwake,
     selectMessages,
     selectResultUrl,
+    selectSandboxStatus,
     useAppSelector
 } from '@/state'
 import { TAB, TOOL } from '@/typings/agent'
@@ -15,7 +16,6 @@ import SlidesResult from './slides-result'
 import { Icon } from '../ui/icon'
 import AwakeMeUpScreen from './awake-me-up-screen'
 import { useLocation, useParams } from 'react-router'
-import { isE2bLink } from '@/lib/utils'
 
 interface AgentResultProps {
     className?: string
@@ -32,6 +32,7 @@ const AgentResult = ({ className }: AgentResultProps) => {
     const resultUrl = useAppSelector(selectResultUrl)
     const activeTab = useAppSelector(selectActiveTab)
     const isSandboxIframeAwake = useAppSelector(selectIsSandboxIframeAwake)
+    const sandboxStatus = useAppSelector(selectSandboxStatus)
     const messages = useAppSelector(selectMessages)
     const isRunning = useAppSelector(selectIsLoading)
     const isShareMode = useMemo(
@@ -111,12 +112,12 @@ const AgentResult = ({ className }: AgentResultProps) => {
 
     const shouldShowAwakeScreen = useMemo(() => {
         return (
-            isE2bLink(resultUrl) &&
+            sandboxStatus === 'paused' &&
             !isSandboxIframeAwake &&
             !isRunning &&
             !isShareMode
         )
-    }, [resultUrl, isSandboxIframeAwake, isRunning, isShareMode])
+    }, [sandboxStatus, isSandboxIframeAwake, isRunning, isShareMode])
 
     // Extract slide data from SlideWrite and SlideEdit messages
     const slideContent = useMemo(() => {
@@ -183,8 +184,6 @@ const AgentResult = ({ className }: AgentResultProps) => {
         )
     }
 
-    if (!resultUrl) return null
-
     if (shouldShowAwakeScreen)
         return (
             <AwakeMeUpScreen
@@ -192,6 +191,8 @@ const AgentResult = ({ className }: AgentResultProps) => {
                 onAwakeClick={handleAwakeClick}
             />
         )
+
+    if (!resultUrl) return null
 
     return (
         <div

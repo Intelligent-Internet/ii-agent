@@ -27,9 +27,10 @@ PURPOSE:
 REQUIRED PORTS (you MUST use one of these):
 - 3000: Frontend dev servers (React, Next.js, Express)
 - 5173: Vite development server
+- 6080: noVNC web viewer (use this to let the user handle CAPTCHAs, logins, or other manual browser interactions)
 - 8080: General HTTP server (recommended for file serving)
 For serving files to users: python3 -m http.server 8080
-Other ports will NOT work. Always use 3000, 5173, or 8080.
+Other ports will NOT work. Always use 3000, 5173, 6080, or 8080.
 {_DESCRIPTION_RETURNS}"""
 
 # Description for cloud mode (any port, public URLs)

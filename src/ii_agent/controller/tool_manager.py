@@ -1,4 +1,5 @@
 import asyncio
+from typing import Callable, Coroutine
 
 from attr import dataclass
 from pydantic import BaseModel
@@ -8,6 +9,14 @@ from ii_tool.tools.base import BaseTool, ToolResult
 
 
 MAX_TOOL_CONCURRENCY = 10
+
+# Default timeout for individual tool execution (seconds).
+# Browser ops typically finish in <10s; long-running tools (bash compilation)
+# can override via a `timeout` attribute on the tool class.
+DEFAULT_TOOL_EXECUTION_TIMEOUT = 120
+
+# How often to poll for agent interruption during tool execution (seconds).
+INTERRUPT_POLL_INTERVAL = 2
 
 
 class ToolCallParameters(BaseModel):
@@ -120,7 +129,27 @@ class AgentToolManager:
 
         logger.debug(f"Running tool: {tool_name}")
         logger.debug(f"Tool input: {tool_input}")
-        tool_result = await llm_tool.execute(tool_input)
+
+        # Use per-tool timeout if defined, otherwise the global default.
+        timeout = getattr(llm_tool, 'timeout', DEFAULT_TOOL_EXECUTION_TIMEOUT)
+
+        try:
+            tool_result = await asyncio.wait_for(
+                llm_tool.execute(tool_input),
+                timeout=timeout,
+            )
+        except asyncio.TimeoutError:
+            timeout_msg = (
+                f"Tool '{tool_name}' timed out after {timeout}s. "
+                f"The operation was cancelled but the browser is still running. "
+                f"Use browser_wait to take a fresh screenshot and assess current state."
+            )
+            logger.warning(timeout_msg)
+            return ToolResult(
+                llm_content=timeout_msg,
+                user_display_content=f"Tool '{tool_name}' timed out after {timeout}s",
+                is_error=True,
+            )
 
         user_display_content = tool_result.user_display_content
 
@@ -134,13 +163,19 @@ class AgentToolManager:
         return tool_result
 
     async def run_tools_batch(
-        self, tool_calls: List[ToolCallParameters]
+        self,
+        tool_calls: List[ToolCallParameters],
+        interrupt_check: Optional[Callable[[], Coroutine[Any, Any, bool]]] = None,
     ) -> List[ToolResult]:
         """
         Execute multiple tools either concurrently or serially based on their read-only status.
 
         Args:
             tool_calls: List of tool call parameters
+            interrupt_check: Optional async callable that returns True if the agent
+                has been interrupted (e.g. user pressed cancel). When provided,
+                the interrupt is polled during tool execution so that long-running
+                tools can be cancelled without waiting for the full timeout.
 
         Returns:
             List of tool results in the same order as input tool_calls
@@ -149,8 +184,10 @@ class AgentToolManager:
             return []
 
         if len(tool_calls) == 1:
-            # Single tool - just execute normally
-            result = await self.run_tool(tool_calls[0])
+            # Single tool - execute with interrupt monitoring if available
+            result = await self._run_tool_with_interrupt(
+                tool_calls[0], interrupt_check
+            )
             return [result]
 
         # Determine execution strategy based on read-only status
@@ -161,7 +198,9 @@ class AgentToolManager:
             logger.info(
                 f"Running {len(tool_calls)} tools serially (contains non-read-only tools)"
             )
-            return await self._run_tools_serially(tool_calls)
+            return await self._run_tools_serially(
+                tool_calls, interrupt_check
+            )
 
     async def _run_tools_concurrently(
         self, tool_calls: List[ToolCallParameters]
@@ -203,14 +242,75 @@ class AgentToolManager:
 
         return final_results
 
+    async def _run_tool_with_interrupt(
+        self,
+        tool_call: ToolCallParameters,
+        interrupt_check: Optional[Callable[[], Coroutine[Any, Any, bool]]] = None,
+    ) -> ToolResult:
+        """Execute a single tool while polling for interruption.
+
+        The tool execution runs as an asyncio task.  If *interrupt_check* is
+        provided it is polled every ``INTERRUPT_POLL_INTERVAL`` seconds.  When
+        an interruption is detected the task is cancelled and an interrupted
+        ToolResult is returned immediately.
+        """
+        task = asyncio.create_task(self.run_tool(tool_call))
+
+        if interrupt_check is None:
+            return await task
+
+        while not task.done():
+            try:
+                # Wait a short interval, then poll for interruption
+                return await asyncio.wait_for(
+                    asyncio.shield(task), timeout=INTERRUPT_POLL_INTERVAL
+                )
+            except asyncio.TimeoutError:
+                # Task still running – check for interruption
+                try:
+                    if await interrupt_check():
+                        logger.info(
+                            f"Interruption detected during tool '{tool_call.tool_name}', cancelling"
+                        )
+                        task.cancel()
+                        try:
+                            await task
+                        except (asyncio.CancelledError, Exception):
+                            pass
+                        return ToolResult(
+                            llm_content="Tool execution was interrupted by user.",
+                            user_display_content="Tool execution interrupted",
+                            is_interrupted=True,
+                        )
+                except Exception as exc:
+                    logger.warning(f"Interrupt check failed: {exc}")
+
+        return task.result()
+
     async def _run_tools_serially(
-        self, tool_calls: List[ToolCallParameters]
+        self,
+        tool_calls: List[ToolCallParameters],
+        interrupt_check: Optional[Callable[[], Coroutine[Any, Any, bool]]] = None,
     ) -> List[ToolResult]:
         """Execute tools serially and return results in order."""
         results = []
         for tool_call in tool_calls:
             try:
-                result = await self.run_tool(tool_call)
+                result = await self._run_tool_with_interrupt(
+                    tool_call, interrupt_check
+                )
+                if result.is_interrupted:
+                    results.append(result)
+                    # Fill remaining tools with interrupt results
+                    for remaining in tool_calls[len(results):]:
+                        results.append(
+                            ToolResult(
+                                llm_content="Tool execution was interrupted by user.",
+                                user_display_content="Tool execution interrupted",
+                                is_interrupted=True,
+                            )
+                        )
+                    break
                 results.append(result)
             except Exception as e:
                 error_msg = f"Error executing tool {tool_call.tool_name}: {str(e)}"

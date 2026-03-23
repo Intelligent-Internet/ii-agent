@@ -40,6 +40,7 @@ This creates an image with:
 - Node.js 24 with npm/yarn/pnpm
 - Playwright with Chromium for web automation
 - code-server (VS Code in browser)
+- noVNC + x11vnc for browser-based VNC access (user handoff for CAPTCHAs/login)
 - Bun runtime
 - tmux for session management
 
@@ -101,6 +102,7 @@ docker compose -f docker/docker-compose.local-only.yaml \
 │       │            │    │  │Sandbox 1│  │Sandbox 2│  ...  │   │
 │       │            │    │  │ Python  │  │ Node.js │       │   │
 │       │            │    │  │Playwright│ │code-svr │       │   │
+│       │            │    │  │ noVNC   │  │ noVNC   │       │   │
 │       │            │    │  └─────────┘  └─────────┘       │   │
 │       │            │    └──────────────────────────────────┘   │
 │       │            │                                            │
@@ -183,16 +185,48 @@ When using local storage:
 
 ### Port Management
 
-Docker sandboxes expose internal ports (MCP server, code-server, dev servers) to the host. The sandbox server manages a **port pool** to prevent conflicts:
+Docker sandboxes expose internal ports (MCP server, code-server, noVNC, dev servers) to the host. The sandbox server manages a **port pool** to prevent conflicts:
 
 - **Default range**: 30000-30999 (1000 ports)
-- **Per sandbox**: 5 ports allocated (MCP:6060, code-server:9000, plus dev ports 3000, 5173, 8080)
-- **Capacity**: ~200 concurrent sandboxes with default settings
+- **Per sandbox**: 6 ports allocated (MCP:6060, code-server:9000, noVNC:6080, plus dev ports 3000, 5173, 8080)
+- **Capacity**: ~166 concurrent sandboxes with default settings
 
 **API Endpoints** (for monitoring):
 - `GET /ports/stats` - Pool statistics (allocated, free, sandboxes)
 - `GET /ports/allocations` - List all current port allocations
 - `POST /ports/cleanup` - Force cleanup of orphaned allocations
+
+### noVNC Browser Handoff
+
+Each sandbox container runs a **noVNC** web viewer (port 6080) that provides browser-based access to the sandbox's virtual display. This enables a **human-in-the-loop** workflow:
+
+1. The agent automates a browser task using Playwright
+2. The agent hits a barrier it can't handle (CAPTCHA, login page, 2FA prompt)
+3. The agent calls `expose_port(sandbox_id, 6080, external=True)` to get a noVNC URL
+4. The agent shares the URL with the user
+5. The user opens the URL in their browser and interacts directly with the sandbox's Chromium instance
+6. The user tells the agent they're done
+7. The agent resumes automation
+
+**Architecture:**
+
+```
+Agent (Playwright MCP) → Chromium → Xvfb :99 ← x11vnc :5900 ← websockify :6080 ← User's browser
+```
+
+The virtual display was always running (for Playwright's headed mode). x11vnc + noVNC simply provide a window into it. Both the agent and user can interact with the browser simultaneously (x11vnc runs with `-shared`).
+
+**Manual access** (for debugging — find the host-mapped port):
+
+```bash
+# Find the noVNC port for a sandbox
+curl -s http://localhost:8100/ports/allocations | jq '.[] | select(.service_name == "novnc")'
+
+# Or check Docker port mapping directly
+docker port ii-sandbox-<sandbox-id-prefix> 6080
+```
+
+Then open `http://localhost:<host-port>/vnc.html` in your browser.
 
 ### Resource Limits
 

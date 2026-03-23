@@ -30,6 +30,7 @@ interface AgentState {
     }[]
     resultUrl: string
     isSandboxIframeAwake: boolean
+    sandboxStatus: string
     pendingQuery: PendingQuery | null
     fullstackProjectInitialized: boolean
     published: string | null
@@ -45,6 +46,7 @@ const initialState: AgentState = {
     plans: [],
     resultUrl: '',
     isSandboxIframeAwake: false,
+    sandboxStatus: '',
     pendingQuery: null,
     fullstackProjectInitialized: false,
     published: null
@@ -88,6 +90,9 @@ const agentSlice = createSlice({
         setSandboxIframeAwake: (state, action: PayloadAction<boolean>) => {
             state.isSandboxIframeAwake = action.payload
         },
+        setSandboxStatus: (state, action: PayloadAction<string>) => {
+            state.sandboxStatus = action.payload
+        },
         setPendingQuery: (state, action: PayloadAction<PendingQuery | null>) => {
             state.pendingQuery = action.payload
         },
@@ -112,6 +117,7 @@ export const {
     setSelectedBuildStep,
     setResultUrl,
     setSandboxIframeAwake,
+    setSandboxStatus,
     setPendingQuery,
     setFullstackProjectInitialized,
     setPublished
@@ -135,6 +141,8 @@ export const selectResultUrl = (state: { agent: AgentState }) =>
     state.agent.resultUrl
 export const selectIsSandboxIframeAwake = (state: { agent: AgentState }) =>
     state.agent.isSandboxIframeAwake
+export const selectSandboxStatus = (state: { agent: AgentState }) =>
+    state.agent.sandboxStatus
 export const selectPendingQuery = (state: { agent: AgentState }) =>
     state.agent.pendingQuery
 export const selectFullstackProjectInitialized = (

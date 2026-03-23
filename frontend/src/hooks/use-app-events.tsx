@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 import { toast } from 'sonner'
 
-import { extractUrls, isE2bLink } from '@/lib/utils'
+import { extractUrls, isE2bLink, rewriteLocalhostUrl } from '@/lib/utils'
 import {
     requestAction,
     setActiveFile,
@@ -20,6 +20,7 @@ import {
     setResultUrl,
     setStopped,
     setSandboxIframeAwake,
+    setSandboxStatus,
     setFullstackProjectInitialized,
     setPublished
 } from '@/state/slice/agent'
@@ -161,7 +162,7 @@ export function useAppEvents() {
                     }
                     const vscode_url = data.content.vscode_url as string
                     if (vscode_url) {
-                        dispatch(setVscodeUrl(vscode_url))
+                        dispatch(setVscodeUrl(rewriteLocalhostUrl(vscode_url)))
                     }
                     break
                 }
@@ -252,13 +253,15 @@ export function useAppEvents() {
                 }
 
                 case AgentEvent.SANDBOX_STATUS: {
+                    const status = data.content.status as string
                     if (!ignoreClickAction) {
-                        const isAwake = data.content.status === 'running'
+                        const isAwake = status === 'running'
                         dispatch(setSandboxIframeAwake(isAwake))
+                        dispatch(setSandboxStatus(status ?? ''))
                     }
                     const vscode_url = data.content.vscode_url as string
                     if (vscode_url) {
-                        dispatch(setVscodeUrl(vscode_url))
+                        dispatch(setVscodeUrl(rewriteLocalhostUrl(vscode_url)))
                     }
                     break
                 }

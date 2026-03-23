@@ -7,6 +7,7 @@ import {
     setIsMobileChatVisible,
     setResultUrl,
     setSandboxIframeAwake,
+    setSandboxStatus,
     setSelectedFeature,
     useAppDispatch
 } from '@/state'
@@ -43,6 +44,7 @@ export function useNavigationLeaveSession() {
             dispatch(setActiveTab(TAB.BUILD))
             dispatch(setIsMobileChatVisible(true))
             dispatch(setSandboxIframeAwake(false))
+            dispatch(setSandboxStatus(''))
             dispatch(setActiveSessionId(null))
             dispatch(setSelectedFeature(AGENT_TYPE.GENERAL))
         } else if (isLeavingChatPage) {

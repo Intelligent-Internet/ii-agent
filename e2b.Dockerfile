@@ -58,6 +58,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
   unzip \
   libmagic1 \
   xvfb \
+  x11vnc \
+  novnc \
   pandoc \
   weasyprint \
   libpq-dev \

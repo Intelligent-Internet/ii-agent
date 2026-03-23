@@ -20,6 +20,7 @@ from ii_agent.db.agent import RunStatus
 from ii_agent.llm.base import (
     TextResult,
     AssistantContentBlock,
+    RedactedThinkingBlock,
     ThinkingBlock,
     TextPrompt,
 )
@@ -167,6 +168,14 @@ Read each image individually as you work on the corresponding content."""
             if len(model_response) == 0:
                 model_response = [TextResult(text=COMPLETE_MESSAGE)]
 
+            # Ensure assistant message never ends with a ThinkingBlock
+            # or RedactedThinkingBlock, which would cause a 400 error on
+            # the next Claude API call.
+            if model_response and isinstance(
+                model_response[-1], (ThinkingBlock, RedactedThinkingBlock)
+            ):
+                model_response.append(TextResult(text=COMPLETE_MESSAGE))
+
             # Add the raw response to the canonical history
             self.history.add_assistant_turn(
                 cast(list[AssistantContentBlock], model_response)
@@ -271,11 +280,13 @@ Read each image individually as you work on the corresponding content."""
             denied_tool_calls = []
             alternative_instructions = []
 
+            failed_tool_calls = []
             for tool_call in pending_tool_calls:
                 try:
                     tool = self.tool_manager.get_tool(tool_call.tool_name)
                 except ValueError as e:
                     logger.warning(f"Tool lookup failed: {str(e)}")
+                    failed_tool_calls.append(tool_call)
                     continue
 
                 await self.event_stream.publish(
@@ -292,6 +303,18 @@ Read each image individually as you work on the corresponding content."""
                     )
                 )
                 approved_tool_calls.append(tool_call)
+
+            # Handle failed tool lookups - add error results so history stays consistent
+            if failed_tool_calls:
+                for tool_call in failed_tool_calls:
+                    error_msg = f"Tool '{tool_call.tool_name}' is not available. Choose a different approach or use available tools."
+                    await self.add_tool_call_result(
+                        tool_call,
+                        ToolResult(
+                            llm_content=error_msg,
+                            user_display_content=error_msg,
+                        ),
+                    )
 
             # Handle denied tools
             if denied_tool_calls:
@@ -312,7 +335,8 @@ Read each image individually as you work on the corresponding content."""
             # Execute approved tools in batch
             if approved_tool_calls:
                 tool_results = await self.tool_manager.run_tools_batch(
-                    approved_tool_calls
+                    approved_tool_calls,
+                    interrupt_check=self.is_interrupted,
                 )
 
                 for tool_call, tool_result in zip(approved_tool_calls, tool_results):
@@ -350,6 +374,18 @@ Read each image individually as you work on the corresponding content."""
                                 llm_content="Task completed",
                                 user_display_content="Task completed",
                             )
+
+                # Check if any tool was interrupted during execution
+                if any(
+                    isinstance(r, ToolResult) and r.is_interrupted
+                    for r in tool_results
+                ):
+                    await self.add_fake_assistant_turn(TOOL_CALL_INTERRUPT_FAKE_MODEL_RSP)
+                    return ToolResult(
+                        llm_content=TOOL_RESULT_INTERRUPT_MESSAGE,
+                        user_display_content=TOOL_RESULT_INTERRUPT_MESSAGE,
+                        is_interrupted=True,
+                    )
 
             # If all tools were denied and we have alternative instructions, add them to history
             if not approved_tool_calls and alternative_instructions:

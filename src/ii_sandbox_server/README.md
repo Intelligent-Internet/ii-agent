@@ -33,6 +33,26 @@ Environment variables:
 - `REDIS_URL` - Redis URL (default: redis://localhost:6379)
 - `MCP_PORT` - MCP port in sandboxes (default: 5173)
 
+### Sandbox Container Services
+
+Each Docker sandbox container runs the following services:
+
+| Service | Port | Description |
+|---------|------|-------------|
+| MCP Server | 6060 | Model Context Protocol server for agent tool calls |
+| code-server | 9000 | VS Code in the browser |
+| noVNC | 6080 | Browser-based VNC viewer for user interaction handoff |
+| x11vnc | 5900 | VNC server connected to the Xvfb virtual display (internal) |
+| Xvfb | :99 | Virtual framebuffer for headed Chromium |
+
+#### noVNC Browser Handoff
+
+When the agent encounters situations requiring human interaction (CAPTCHAs, login pages,
+authentication prompts), it can expose the noVNC port and share a URL with the user.
+The user opens the URL in their browser to see and interact with the sandbox's virtual
+display, then tells the agent to resume automation. This allows secure credential entry
+without sharing passwords with the agent.
+
 ## Running the Server
 
 1. Install dependencies:

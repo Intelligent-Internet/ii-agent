@@ -1,8 +1,35 @@
 from typing import Dict, List, Any, Literal, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from ii_agent.config.agent_types import AgentType
 from ii_agent.core.storage.models.settings import Settings
+
+
+def normalize_agent_type(value: Any) -> AgentType:
+    """
+    Normalize agent_type values to valid AgentType enum values.
+    
+    The database stores 'chat' for sessions created via the /v1/chat API,
+    which is used for frontend routing (different UI for chat vs agent sessions).
+    However, 'chat' is not a valid AgentType enum value for agent initialization.
+    
+    This function converts 'chat' to 'general' so that chat sessions can be
+    seamlessly resumed via Socket.IO agent mode with general agent capabilities.
+    
+    Args:
+        value: The agent_type value to normalize (string or AgentType)
+        
+    Returns:
+        A valid AgentType enum value
+    """
+    if isinstance(value, AgentType):
+        return value
+    if isinstance(value, str):
+        # Normalize 'chat' to 'general' for compatibility
+        if value == "chat":
+            return AgentType.GENERAL
+        return AgentType(value)
+    raise ValueError(f"Invalid agent_type: {value}")
 
 
 class WebSocketMessage(BaseModel):
@@ -88,6 +115,12 @@ class InitAgentContent(BaseModel):
         None  # Optional metadata (e.g., template_id for slides)
     )
 
+    @field_validator("agent_type", mode="before")
+    @classmethod
+    def validate_agent_type(cls, v: Any) -> AgentType:
+        """Normalize agent_type, converting 'chat' to 'general'."""
+        return normalize_agent_type(v)
+
 
 class QueryCommandContent(BaseModel):
     """Model for query command content that combines init_agent and query parameters."""
@@ -105,6 +138,12 @@ class QueryCommandContent(BaseModel):
     text: str = ""
     resume: bool = False
     files: List[str] = []
+
+    @field_validator("agent_type", mode="before")
+    @classmethod
+    def validate_agent_type(cls, v: Any) -> AgentType:
+        """Normalize agent_type, converting 'chat' to 'general'."""
+        return normalize_agent_type(v)
 
     class Config:
         """Pydantic configuration."""

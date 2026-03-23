@@ -20,7 +20,9 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-DEFAULT_TIMEOUT = 1800  # 5 minutes
+DEFAULT_TIMEOUT = 300  # 5 minutes – reduced from 1800s; the tool_manager
+# applies its own shorter timeout (120s) first; this acts as a hard backstop
+# in case asyncio cancellation cannot propagate into the MCP HTTP call.
 
 # Image extensions for detection
 IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.tiff', '.svg'}

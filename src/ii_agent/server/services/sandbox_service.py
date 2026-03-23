@@ -44,7 +44,11 @@ class SandboxService:
                 str(existing_session.user_id),
             )
             await sandbox.connect()
-            await self.reset_tool_server(sandbox)
+            await self.reset_tool_server(
+                sandbox,
+                session_uuid=session_uuid,
+                user_id=str(existing_session.user_id),
+            )
             return sandbox
 
         # Create new sandbox
@@ -180,14 +184,34 @@ class SandboxService:
         sandbox = await self.get_sandbox_by_session(session_uuid)
         return await sandbox.run_cmd(command, background=background)
 
-    async def reset_tool_server(self, sandbox: IISandbox):
+    async def reset_tool_server(
+        self,
+        sandbox: IISandbox,
+        session_uuid: uuid.UUID | None = None,
+        user_id: str | None = None,
+    ):
         mcp_port = self.config.mcp_port
         try:
             sandbox_url = await sandbox.expose_port(mcp_port)
+
+            # Build credentials so the MCP server accepts tool registration
+            user_api_key = None
+            if user_id:
+                user_api_key = await APIKeys.get_active_api_key_for_user(user_id)
+            if not user_api_key:
+                user_api_key = "dev-mode-api-key"
+
+            credential = {
+                "session_id": str(session_uuid) if session_uuid else "unknown",
+                "user_api_key": user_api_key,
+            }
+
             async with MCPClient(sandbox_url) as client:
+                await client.set_credential(credential)
                 await client.set_tool_server_url(self.config.tool_server_url)
             return True
-        except:
+        except Exception as e:
+            logger.warning("reset_tool_server failed for sandbox %s: %s", sandbox.sandbox_id, e)
             return False
 
     async def pre_configure_mcp_server(self, sandbox: IISandbox, credential: Dict):

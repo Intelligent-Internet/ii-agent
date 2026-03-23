@@ -189,10 +189,7 @@ dist
 agent_logs.txt
 workspace/
 tmp/
-data/file_store
-data/workspace
-data/logs
-data/events.db
+data/
 output/
 
 .vscode/

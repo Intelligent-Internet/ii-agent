@@ -447,6 +447,37 @@ show_service_url() {
     esac
 }
 
+# Gracefully interrupt running agent tasks before stopping the backend.
+# Prevents tasks from getting stuck in 'running' status after a restart.
+_drain_running_tasks() {
+    local postgres_container="${PROJECT_NAME}-postgres-1"
+    local db_name db_user
+
+    if [[ "$USE_LOCAL_MODE" == true ]]; then
+        db_name="iiagentdev"
+        db_user="iiagent"
+    else
+        db_name=$(get_env_value POSTGRES_DB "iiagent")
+        db_user=$(get_env_value POSTGRES_USER "iiagent")
+    fi
+
+    # Skip if postgres isn't running
+    if ! docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^${postgres_container}$"; then
+        return 0
+    fi
+
+    local running_count
+    running_count=$(docker exec -i "$postgres_container" psql -U "$db_user" -d "$db_name" -t -A -c \
+        "SELECT COUNT(*) FROM agent_run_tasks WHERE status = 'running';" 2>/dev/null || echo "0")
+    running_count=$(echo "$running_count" | tr -d '[:space:]')
+
+    if [[ "$running_count" -gt 0 ]]; then
+        log_warn "Found $running_count running task(s) — marking as system_interrupted before shutdown"
+        docker exec -i "$postgres_container" psql -U "$db_user" -d "$db_name" -t -A -c \
+            "UPDATE agent_run_tasks SET status = 'system_interrupted', updated_at = NOW() WHERE status = 'running' RETURNING id;" 2>/dev/null || true
+    fi
+}
+
 # Check if a service is valid
 is_valid_service() {
     local service=$1
@@ -643,11 +674,18 @@ cmd_stop() {
 
     # If a specific service was requested, just stop that one
     if [[ -n "$TARGET_SERVICE" ]]; then
+        # Drain running tasks before stopping the backend
+        if [[ "$TARGET_SERVICE" == "backend" ]]; then
+            _drain_running_tasks
+        fi
         log_info "Stopping $TARGET_SERVICE..."
         compose stop "$TARGET_SERVICE"
         log_success "$TARGET_SERVICE stopped"
         return
     fi
+
+    # Drain running tasks before stopping all services
+    _drain_running_tasks
 
     # Stop all services
     log_info "Stopping ii-agent ($mode_name mode)..."
@@ -715,6 +753,10 @@ cmd_rebuild() {
             log_info "Rebuilding $service..."
         fi
 
+        # Drain running tasks before stopping the backend
+        if [[ "$service" == "backend" ]]; then
+            _drain_running_tasks
+        fi
         compose stop "$service" || true
         compose build $cache_arg "$service"
         compose up -d "$service"
@@ -734,6 +776,9 @@ cmd_rebuild() {
     log_info "Buildable services: $BUILDABLE_SERVICES"
     log_info "(postgres and redis use pre-built images, skipping)"
     echo ""
+
+    # Drain running tasks before stopping the backend
+    _drain_running_tasks
 
     # Stop all buildable services first
     log_info "Stopping buildable services..."

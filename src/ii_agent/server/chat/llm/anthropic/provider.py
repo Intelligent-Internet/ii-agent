@@ -409,10 +409,19 @@ class AnthropicProvider(LLMClient):
             and len(container_config["skills"]) > 0
         )
 
+        # Determine max_tokens - must be > thinking.budget_tokens when extended thinking is enabled
+        thinking_tokens = self.llm_config.thinking_tokens or 0
+        if thinking_tokens >= 1024:
+            # When thinking is enabled, max_tokens must exceed budget_tokens
+            # Add buffer for actual response content
+            max_tokens = thinking_tokens + 8192
+        else:
+            max_tokens = 8192
+
         params = {
             "model": self.model_name,
             "messages": anthropic_messages,
-            "max_tokens": 8192,
+            "max_tokens": max_tokens,
         }
 
         if has_skills:
