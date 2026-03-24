@@ -62,7 +62,7 @@ dependencies = [
   "redis>=5.0.0",
   "pypdf>=6.1.1",
   "apscheduler>=3.11.0",
-  "litellm>=1.63.14",
+  "litellm>=1.63.14,<=1.82.6",
   "anthropic[vertex]>=0.72.0",
   "langchain-text-splitters>=1.0.0",
   "google-auth-oauthlib>=1.2.3",
