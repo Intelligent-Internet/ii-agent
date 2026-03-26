@@ -17,3 +17,15 @@ class WorkSpaceMode(Enum):
 
     def __str__(self):
         return self.value
+
+
+# MiniMax model constants
+MINIMAX_API_BASE_URL = "https://api.minimax.io/v1"
+MINIMAX_DEFAULT_MODEL = "MiniMax-M2.7"
+
+
+def is_minimax_family(model_name: str) -> bool:
+    """Check if a model belongs to the MiniMax family."""
+    if not model_name:
+        return False
+    return "minimax" in model_name.lower()
