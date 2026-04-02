@@ -20,7 +20,7 @@ Whether you're a solo developer, a research team, or an enterprise building inte
 
 ## Demo
 
-[![II-Agent Demo](https://img.youtube.com/vi/sKIVHGf8HPM/maxresdefault.jpg)](https://www.youtube.com/watch?v=sKIVHGf8HPM)
+https://github.com/user-attachments/assets/430425c4-2352-4101-9fdb-46bdfc63d26a
 
 ## Key Features
 
@@ -150,4 +150,4 @@ make stack-logs       # Tail all logs
 
 For more details, refer to our [official guide](https://intelligent-internet.github.io/ii-agent-prod/)
 
-[![Installation Guide](https://img.youtube.com/vi/wPpeJMbdGi4/maxresdefault.jpg)](https://www.youtube.com/watch?v=wPpeJMbdGi4)
+https://github.com/user-attachments/assets/d1fa7cde-06cc-4103-bed0-d4ad5e640de4
