@@ -19,7 +19,7 @@ Whether you're a solo developer, a research team, or an enterprise building inte
 
 [**Try the web app**](https://agent.ii.inc/) | [**Join our Discord**](https://discord.gg/yDWPsshPHB)
 
-## Demo
+## Introduction
 
 https://github.com/user-attachments/assets/430425c4-2352-4101-9fdb-46bdfc63d26a
 
