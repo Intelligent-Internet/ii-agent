@@ -77,7 +77,7 @@ make setup
 #    Edit .env and set at least one LLM provider:
 
 #    Option A: Inline JSON in .env
-#    MODEL_CONFIGS='[{"model_id":"claude-sonnet-4-20250514","provider":"Anthropic","api_key":"sk-ant-...","display_name":"Claude Sonnet 4","is_default":true}]'
+#    MODEL_CONFIGS='[{"model_id":"claude-sonnet-4-6","provider":"Anthropic","api_key":"sk-ant-...","display_name":"Claude Sonnet 4","is_default":true}]'
 
 #    Option B: YAML config file
 #    Copy model_configs.example.yaml to model_configs.yaml, fill in your keys,
