@@ -1,5 +1,6 @@
 <div align="center">
-  <img src="assets/ii.png" width="200"/>
+<img width="1200" height="630" alt="ii-agent-banner" src="https://github.com/user-attachments/assets/7b61e0c0-0d98-495f-a126-6f1b92990631" />
+
 
 # II Agent
 
