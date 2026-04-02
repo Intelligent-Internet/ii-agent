@@ -20,7 +20,7 @@ Whether you're a solo developer, a research team, or an enterprise building inte
 
 ## Demo
 
-<https://github.com/user-attachments/assets/2707b106-f37d-41a8-beff-8802b1c9b186>
+[![II-Agent Demo](https://img.youtube.com/vi/sKIVHGf8HPM/maxresdefault.jpg)](https://www.youtube.com/watch?v=sKIVHGf8HPM)
 
 ## Key Features
 
