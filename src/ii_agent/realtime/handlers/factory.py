@@ -38,6 +38,8 @@ from ii_agent.realtime.handlers.design_get_state import DesignGetStateHandler
 from ii_agent.realtime.handlers.design_save_state import DesignSaveStateHandler
 from ii_agent.realtime.handlers.design_sync_state import DesignSyncStateHandler
 from ii_agent.realtime.handlers.slide_deck_sync_state import SlideDeckSyncStateHandler
+from ii_agent.realtime.handlers.cowork_query import CoworkQueryHandler
+from ii_agent.realtime.handlers.cowork_continue_run import CoworkContinueRunHandler
 
 
 class CommandHandlerFactory:
@@ -62,6 +64,7 @@ class CommandHandlerFactory:
 
         self._handlers = {
             CommandType.QUERY: query_handler,
+            CommandType.COWORK_QUERY: CoworkQueryHandler(pubsub=ps, container=ct),
             CommandType.PLAN: PlanHandler(pubsub=ps, container=ct),
             CommandType.SANDBOX_STATUS: SandboxStatusHandler(pubsub=ps, container=ct),
             CommandType.AWAKE_SANDBOX: AwakeSandboxHandler(pubsub=ps, container=ct),
@@ -69,6 +72,7 @@ class CommandHandlerFactory:
             CommandType.PING: PingHandler(pubsub=ps, container=ct),
             CommandType.CANCEL: CancelHandler(pubsub=ps, container=ct),
             CommandType.CONTINUE_RUN: ContinueRunHandler(pubsub=ps, container=ct),
+            CommandType.COWORK_CONTINUE_RUN: CoworkContinueRunHandler(pubsub=ps, container=ct),
             CommandType.ENHANCE_PROMPT: EnhancePromptHandler(pubsub=ps, container=ct),
             CommandType.PUBLISH_PROJECT: PublishProjectHandler(pubsub=ps, container=ct),
             CommandType.PUBLISH_CLOUD_RUN: CloudRunPublishHandler(pubsub=ps, container=ct),

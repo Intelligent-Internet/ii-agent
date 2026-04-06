@@ -16,3 +16,4 @@ class AppKind(StrEnum):
 
     AGENT = "agent"
     CHAT = "chat"
+    COWORK = "cowork"

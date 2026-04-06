@@ -10,6 +10,7 @@ from urllib.parse import urlparse, urlencode
 import httpx
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
+from pydantic import BaseModel
 from fastapi_sso.sso.google import GoogleSSO
 from itsdangerous import URLSafeSerializer, BadSignature
 
@@ -356,6 +357,28 @@ async def google_login(settings: SettingsDep):
             params={"prompt": "consent", "access_type": "offline"}
         )
 
+@router.get("/oauth/google/desktop/login-url")
+async def google_desktop_login_url(desktop_state: str):
+    """Return the Google OAuth URL as JSON (no redirect).
+
+    The desktop frontend fetches this, then redirects the browser itself
+    so the user never sees a backend URL in the address bar.
+    """
+    settings = get_settings()
+    google_sso = GoogleSSO(
+        settings.oauth.google_client_id or "",
+        settings.oauth.google_client_secret or "",
+        redirect_uri=settings.oauth.google_redirect_uri,
+    )
+    state_serializer = URLSafeSerializer(settings.oauth.session_secret_key, salt="desktop-google")
+    custom_state = state_serializer.dumps({"desktop_state": desktop_state})
+
+    async with google_sso:
+        url = await google_sso.get_login_url(
+            params={"prompt": "consent", "access_type": "offline"},
+            state=custom_state,
+        )
+    return {"url": url}
 
 @router.get("/oauth/google/callback")
 async def google_callback(
@@ -444,11 +467,63 @@ async def google_callback(
         str(user_stored.role),
     )
 
+    # Check if this was a desktop app login (desktop_state encoded in OAuth state).
+    desktop_state_value: Optional[str] = None
+    raw_state = request.query_params.get("state")
+    if raw_state:
+        try:
+            ds_serializer = URLSafeSerializer(settings.oauth.session_secret_key, salt="desktop-google")
+            decoded = ds_serializer.loads(raw_state)
+            if isinstance(decoded, dict):
+                desktop_state_value = decoded.get("desktop_state")
+        except BadSignature:
+            pass
+
+    if desktop_state_value:
+        from ii_agent.core.redis.client import get_redis_client
+        redis_client = get_redis_client()
+
+        token_payload = {
+            "access_token": token_payload["access_token"],
+            "refresh_token": token_payload["refresh_token"],
+            "token_type": "bearer",
+            "expires_in": token_payload["expires_in"],
+        }
+        await redis_client.setex(
+            f"desktop_auth:{desktop_state_value}", 300, json.dumps(token_payload)
+        )
+        # Redirect to frontend — show "login successful" message.
+        # The desktop app is polling and will pick up the token automatically.
+        frontend_origin = settings.ii_frontend_url if settings.ii_frontend_url else "http://localhost:1420"
+        return RedirectResponse(
+            url=f"{frontend_origin}/login?desktop_auth=success",
+            status_code=302,
+        )
+
     return TokenResponse(
         access_token=token_payload["access_token"],
         refresh_token=token_payload["refresh_token"],
         expires_in=token_payload["expires_in"],
     )
+
+@router.get("/oauth/google/poll")
+async def google_poll(state: str):
+    """Poll for desktop auth token.
+
+    The desktop app calls this endpoint with the ``state`` it generated
+    before opening the system browser.  Returns the token payload once
+    the user completes login, or 202 while still waiting.
+    """
+    from ii_agent.core.redis.client import get_redis_client
+    redis_client = get_redis_client()
+
+    data = await redis_client.get(f"desktop_auth:{state}")
+    if not data:
+        return {"status": "pending"}
+
+    # Delete after first successful read so the token can't be replayed.
+    await redis_client.delete(f"desktop_auth:{state}")
+    return json.loads(data)
 
 
 @router.get("/me", response_model=UserPublic)
@@ -469,3 +544,26 @@ async def reader_user_me(
         subscription_current_period_end=current_user.subscription_current_period_end,
         language=str(current_user.language or "en"),
     )
+
+class UpdatePreferencesRequest(BaseModel):
+    has_memory: Optional[bool] = None
+
+
+@router.patch("/me/preferences")
+async def update_user_preferences(
+    current_user: CurrentUser,
+    db: DBSession,
+    body: UpdatePreferencesRequest,
+) -> dict[str, Any]:
+    """Update user preference settings (memory, personalization)."""
+    import copy
+
+    metadata = copy.deepcopy(current_user.user_metadata) if isinstance(current_user.user_metadata, dict) else {}
+    old_prefs = metadata.get("preferences", {})
+    updates = body.model_dump(exclude_none=True)
+    metadata["preferences"] = {**old_prefs, **updates}
+
+    current_user.user_metadata = metadata
+    await db.commit()
+
+    return {"message": "Preferences updated successfully", "preferences": metadata.get("preferences", {})}

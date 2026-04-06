@@ -25,6 +25,7 @@ class CommandType(StrEnum):
 
     INIT_AGENT = "init_agent"
     QUERY = "query"
+    COWORK_QUERY = "cowork_query"
     PLAN = "plan"
     WORKSPACE_INFO = "workspace_info"
     AWAKE_SANDBOX = "awake_sandbox"
@@ -32,6 +33,7 @@ class CommandType(StrEnum):
     PING = "ping"
     CANCEL = "cancel"
     CONTINUE_RUN = "continue_run"
+    COWORK_CONTINUE_RUN = "cowork_continue_run"
     ENHANCE_PROMPT = "enhance_prompt"
     PUBLISH_PROJECT = "publish"
     PUBLISH_CLOUD_RUN = "publish_cloud_run"
@@ -254,6 +256,27 @@ class ContinueRunContent(BaseModel):
     user_input: dict[str, str] = {}
 
 
+class CoworkQueryCommandContent(BaseCommandQuery):
+    """Payload for the ``cowork_query`` command."""
+
+    command: Literal[CommandType.COWORK_QUERY] = CommandType.COWORK_QUERY
+    system_prompt: str | None = None
+    tool_names: list[str] | None = None
+    skill_names: list[str] | None = None
+    agent_config: dict[str, Any] | None = None
+    desktop_capabilities: dict[str, Any] | None = None
+
+
+class CoworkContinueRunContent(BaseModel):
+    """Payload for cowork_continue_run command."""
+
+    command: Literal[CommandType.COWORK_CONTINUE_RUN] = CommandType.COWORK_CONTINUE_RUN
+    run_id: str
+    confirmed: bool
+    user_input: dict[str, str] = {}
+    external_tool_results: list[dict[str, Any]] | None = None
+
+
 # ---------------------------------------------------------------------------
 # Publish / deploy content models
 # ---------------------------------------------------------------------------
@@ -425,11 +448,13 @@ class SlideDeckSyncStateContent(BaseModel):
 CommandContent = Annotated[
     Union[
         QueryCommandContent,
+        CoworkQueryCommandContent,
         PlanCommandContent,
         InitAgentContent,
         EnhancePromptContent,
         StartForkContent,
         ContinueRunContent,
+        CoworkContinueRunContent,
         PublishProjectContent,
         CloudRunPublishContent,
         SaveEnvContent,
