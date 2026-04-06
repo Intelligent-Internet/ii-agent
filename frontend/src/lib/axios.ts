@@ -1,5 +1,5 @@
-import { ACCESS_TOKEN } from '@/constants/auth'
 import axios from 'axios'
+import { clearAccessToken, getStoredAccessToken } from '@/utils/auth-token'
 
 const axiosInstance = axios.create({
     baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000',
@@ -10,7 +10,7 @@ const axiosInstance = axios.create({
 
 axiosInstance.interceptors.request.use(
     (config) => {
-        const token = localStorage.getItem(ACCESS_TOKEN)
+        const token = getStoredAccessToken()
         if (token) {
             config.headers.Authorization = `Bearer ${token}`
         }
@@ -30,10 +30,11 @@ axiosInstance.interceptors.response.use(
             // Only logout if it's NOT a connector-specific endpoint
             // Connector endpoints return 401 when the connector token is invalid,
             // not when the user session is invalid
-            const isConnectorEndpoint = error.config?.url?.includes('/v1/connectors/')
+            const isConnectorEndpoint =
+                error.config?.url?.includes('/connectors/')
 
             if (!isConnectorEndpoint) {
-                localStorage.removeItem(ACCESS_TOKEN)
+                clearAccessToken()
                 // Don't redirect to login if we're on a share route
                 if (!window.location.pathname.startsWith('/share/')) {
                     window.location.href = '/login'

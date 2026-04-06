@@ -5,6 +5,7 @@ import {
     useState,
     type KeyboardEvent as ReactKeyboardEvent
 } from 'react'
+import { useNavigate } from 'react-router'
 
 import { Icon } from '@/components/ui/icon'
 import {
@@ -36,6 +37,11 @@ import { MiniTool } from '@/constants/media-tools'
 import { MediaTemplateExplorer } from './media/media-template-explorer'
 import SwitchLanguage from './switch-language'
 import LearnMore from './learn-more'
+import {
+    COWORK_ROUTE,
+    isAgenticQuestionMode
+} from '@/utils/question-mode'
+import { isTauri } from '@/utils/is-tauri'
 
 interface HomeMobileProps {
     currentQuestion: string
@@ -177,6 +183,7 @@ const HomeMobile = ({
 }: HomeMobileProps) => {
     const { t } = useTranslation()
     const dispatch = useAppDispatch()
+    const navigate = useNavigate()
     const questionMode = useAppSelector(selectQuestionMode)
     const selectedModel = useAppSelector(selectSelectedModel)
     const availableModels = useAppSelector(selectAvailableModels)
@@ -210,6 +217,11 @@ const HomeMobile = ({
         () => questionMode === QUESTION_MODE.CHAT,
         [questionMode]
     )
+    const isAgenticMode = useMemo(
+        () => isAgenticQuestionMode(questionMode),
+        [questionMode]
+    )
+    const featureMode = isChatMode ? QUESTION_MODE.CHAT : QUESTION_MODE.AGENT
 
     const selectedSuggestionType = useMemo(() => {
         if (
@@ -220,14 +232,14 @@ const HomeMobile = ({
         }
 
         if (
-            questionMode === QUESTION_MODE.AGENT &&
+            isAgenticMode &&
             selectedFeature !== AGENT_TYPE.GENERAL
         ) {
             return selectedFeature
         }
 
         return null
-    }, [chatMediaPreference.enabled, questionMode, selectedFeature])
+    }, [chatMediaPreference.enabled, isAgenticMode, questionMode, selectedFeature])
 
     const suggestionsToRender = useMemo(() => {
         if (!selectedSuggestionType) return []
@@ -263,6 +275,16 @@ const HomeMobile = ({
     const handleSwitchToChatMode = () => {
         dispatch(setSelectedFeature(AGENT_TYPE.GENERAL))
         dispatch(setQuestionMode(QUESTION_MODE.CHAT))
+    }
+
+    const handleSwitchToAgentMode = () => {
+        clearMediaPreference()
+        dispatch(setQuestionMode(QUESTION_MODE.AGENT))
+    }
+
+    const handleSwitchToCowork = () => {
+        clearMediaPreference()
+        navigate(COWORK_ROUTE)
     }
 
     const handleMediaTemplateSelect = (template: MediaTemplate | undefined) => {
@@ -381,11 +403,9 @@ const HomeMobile = ({
                     </button>
                     <button
                         type="button"
-                        onClick={() =>
-                            dispatch(setQuestionMode(QUESTION_MODE.AGENT))
-                        }
+                        onClick={handleSwitchToAgentMode}
                         className={`flex flex-1 items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition ${
-                            !isChatMode
+                            questionMode === QUESTION_MODE.AGENT
                                 ? 'bg-firefly dark:bg-sky-blue-2 text-sky-blue-2 dark:text-black'
                                 : ''
                         }`}
@@ -393,13 +413,34 @@ const HomeMobile = ({
                         <Icon
                             name="agent"
                             className={`size-4 ${
-                                !isChatMode
+                                questionMode === QUESTION_MODE.AGENT
                                     ? 'fill-sky-blue-2 dark:fill-black'
                                     : 'fill-black dark:fill-white'
                             }`}
                         />
                         {t('question.mode.agent')}
                     </button>
+                    {isTauri && (
+                        <button
+                            type="button"
+                            onClick={handleSwitchToCowork}
+                            className={`flex flex-1 items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition ${
+                                questionMode === QUESTION_MODE.COWORK
+                                    ? 'bg-firefly dark:bg-sky-blue-2 text-sky-blue-2 dark:text-black'
+                                    : ''
+                            }`}
+                        >
+                            <Icon
+                                name="messages"
+                                className={`size-4 ${
+                                    questionMode === QUESTION_MODE.COWORK
+                                        ? 'fill-sky-blue-2 dark:fill-black'
+                                        : 'fill-black dark:fill-white'
+                                }`}
+                            />
+                            II-Cowork
+                        </button>
+                    )}
                 </div>
 
                 <div className="space-y-5 mt-6">
@@ -426,7 +467,7 @@ const HomeMobile = ({
                         <div
                             className={clsx('grid grid-cols-2 gap-3', {
                                 hidden:
-                                    (questionMode === QUESTION_MODE.AGENT &&
+                                    (isAgenticMode &&
                                         selectedFeature !==
                                             AGENT_TYPE.GENERAL) ||
                                     (questionMode === QUESTION_MODE.CHAT &&
@@ -439,7 +480,7 @@ const HomeMobile = ({
                                     className={clsx(
                                         `flex-1 flex gap-2 items-center flex-col justify-between rounded-xl bg-sky-blue dark:bg-sky-blue-2/10 p-3`,
                                         {
-                                            hidden: tile.mode !== questionMode
+                                            hidden: tile.mode !== featureMode
                                         }
                                     )}
                                     onClick={() => handleSelectFeature(tile)}

@@ -20,6 +20,7 @@ import SkillSetting from './skill-setting'
 import { selectQuestionMode, useAppSelector } from '@/state'
 import { QUESTION_MODE } from '@/typings'
 import { useTranslation } from 'react-i18next'
+import { isAgenticQuestionMode } from '@/utils/question-mode'
 
 enum TABS {
     MODEL = 'model',
@@ -37,6 +38,7 @@ const AgentSetting = ({ isOpen, onOpenChange }: AgentSettingProps) => {
     const [activeTab, setActiveTab] = useState(TABS.MODEL)
     const [isSkillsHelpOpen, setIsSkillsHelpOpen] = useState(false)
     const questionMode = useAppSelector(selectQuestionMode)
+    const isAgenticMode = isAgenticQuestionMode(questionMode)
 
     const skillExamples = t('agentSetting.skillSetting.help.examples.items', {
         returnObjects: true
@@ -61,7 +63,7 @@ const AgentSetting = ({ isOpen, onOpenChange }: AgentSettingProps) => {
                                 />
                             </SheetClose>
                             <p className="text-2xl font-semibold">
-                                {questionMode === QUESTION_MODE.AGENT
+                                {isAgenticMode
                                     ? t('agentSetting.title.agent')
                                     : t('agentSetting.title.chat')}
                             </p>

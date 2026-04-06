@@ -49,6 +49,7 @@ import { useMediaModels } from '@/hooks/use-media-models'
 import { useChat } from '@/hooks/use-chat-query'
 import SessionTitle from './session-title'
 import { getSessionDisplayName } from '@/utils/session-title'
+import { isAgenticQuestionMode } from '@/utils/question-mode'
 
 interface ChatHeaderProps {
     sessionData?: ISession
@@ -203,7 +204,7 @@ const ChatHeader = ({
                         </button>
                     </TooltipTrigger>
                     <TooltipContent>
-                        {questionMode === QUESTION_MODE.AGENT
+                        {isAgenticQuestionMode(questionMode)
                             ? t('agent.settings')
                             : t('agent.chatSettings')}
                     </TooltipContent>

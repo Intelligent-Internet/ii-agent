@@ -22,6 +22,9 @@
   "plugins": {
     "process": {
       "active": true
+    },
+    "shell": {
+      "open": true
     }
   },
   "app": {
@@ -33,7 +36,7 @@
         "title": "II Agent",
         "width": 1000,
         "height": 600,
-        "dragDropEnabled": false
+        "dragDropEnabled": true
       }
     ]
   }

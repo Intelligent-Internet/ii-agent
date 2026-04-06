@@ -11,14 +11,14 @@ import type {
     ReservationHistoryResponse,
     SessionUsageDetailResponse
 } from '@/typings/user'
-import { ACCESS_TOKEN } from '@/constants/auth'
+import { getStoredAccessToken, clearAccessToken } from '@/utils/auth-token'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
 const baseQuery = fetchBaseQuery({
     baseUrl: `${API_URL}/v1`,
     prepareHeaders: (headers) => {
-        const token = localStorage.getItem(ACCESS_TOKEN)
+        const token = getStoredAccessToken()
         if (token) {
             headers.set('Authorization', `Bearer ${token}`)
         }
@@ -34,7 +34,7 @@ const baseQueryWithReauth: BaseQueryFn<
 > = async (args, api, extraOptions) => {
     const result = await baseQuery(args, api, extraOptions)
     if (result.error && result.error.status === 401) {
-        localStorage.removeItem(ACCESS_TOKEN)
+        clearAccessToken()
         // Don't redirect to login if we're on a share route
         if (!window.location.pathname.startsWith('/share/')) {
             window.location.href = '/login'

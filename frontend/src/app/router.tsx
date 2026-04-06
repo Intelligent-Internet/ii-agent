@@ -307,6 +307,19 @@ const createAppRouter = () =>
                     }
                 },
                 {
+                    path: 'cowork',
+                    async lazy() {
+                        const { Component } = await import('@/app/routes/cowork')
+                        return {
+                            Component: () => (
+                                <ProtectedRoute>
+                                    <Component />
+                                </ProtectedRoute>
+                            )
+                        }
+                    }
+                },
+                {
                     path: ':sessionId',
                     async lazy() {
                         const { Component } = await import('@/app/routes/agent')

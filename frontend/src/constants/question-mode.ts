@@ -7,6 +7,11 @@ export const QUESTION_MODES = [
         type: QUESTION_MODE.AGENT
     },
     {
+        icon: 'messages',
+        name: 'II-Cowork',
+        type: QUESTION_MODE.COWORK
+    },
+    {
         icon: 'chat',
         name: 'Chat Mode',
         type: QUESTION_MODE.CHAT

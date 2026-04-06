@@ -1,4 +1,3 @@
-import { ACCESS_TOKEN } from '@/constants/auth'
 import { authService } from '@/services/auth.service'
 import { settingsService } from '@/services/settings.service'
 import {
@@ -16,6 +15,11 @@ import type { User } from '@/state/slice/user'
 import { fetchWishlist, clearFavorites } from '@/state/slice/favorites'
 import { fetchPins, clearPins } from '@/state/slice/pins'
 import { createContext, useContext, useEffect, ReactNode, useCallback } from 'react'
+import {
+    clearAccessToken,
+    getStoredAccessToken,
+    storeAccessToken
+} from '@/utils/auth-token'
 
 interface AuthContextType {
     user: User | null
@@ -32,7 +36,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { user, isLoading } = useAppSelector((state) => state.user)
 
     // Derive isAuthenticated from the presence of a valid access token
-    const isAuthenticated = !!localStorage.getItem(ACCESS_TOKEN)
+    const isAuthenticated = !!getStoredAccessToken()
 
     const fetchAvailableModels = useCallback(async () => {
         try {
@@ -62,7 +66,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     useEffect(() => {
         const initializeAuth = async () => {
             try {
-                const accessToken = localStorage.getItem(ACCESS_TOKEN)
+                const accessToken = getStoredAccessToken()
 
                 if (accessToken) {
                     try {
@@ -108,9 +112,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             })
 
             // Store the access token immediately to trigger WebSocket connection
-            localStorage.setItem(ACCESS_TOKEN, res.access_token)
-            // Dispatch a custom event to notify WebSocket to connect immediately
-            window.dispatchEvent(new CustomEvent('auth-token-set'))
+            storeAccessToken(res.access_token)
 
             // Get user information using the access token (in parallel with WebSocket connection)
             const userRes = await authService.getCurrentUser()
@@ -126,7 +128,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     const logout = () => {
-        localStorage.removeItem(ACCESS_TOKEN)
+        clearAccessToken()
         dispatch(clearUser())
         dispatch(clearFavorites())
         dispatch(clearPins())

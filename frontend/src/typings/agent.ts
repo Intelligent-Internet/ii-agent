@@ -24,7 +24,8 @@ export enum VIEW_MODE {
 
 export enum QUESTION_MODE {
     AGENT = 'agent',
-    CHAT = 'chat'
+    CHAT = 'chat',
+    COWORK = 'cowork'
 }
 
 export enum BUILD_MODE {
@@ -570,6 +571,7 @@ export interface ISession {
     metadata?: {
         media?: ChatMediaPreference
         fork_info?: ForkInfo
+        question_mode?: QUESTION_MODE
         [key: string]: unknown
     }
 }

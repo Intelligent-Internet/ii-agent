@@ -1,6 +1,6 @@
 import { useGoogleLogin } from '@react-oauth/google'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
-import { Link, useNavigate } from 'react-router'
+import { Link, useNavigate, useSearchParams } from 'react-router'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -11,7 +11,6 @@ import { Button } from '@/components/ui/button'
 import { Icon } from '@/components/ui/icon'
 import { Form, FormControl, FormField, FormItem } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
-import { ACCESS_TOKEN } from '@/constants/auth'
 import { authService } from '@/services/auth.service'
 import { useAppDispatch } from '@/state/store'
 import { setUser } from '@/state/slice/user'
@@ -19,6 +18,10 @@ import { fetchWishlist } from '@/state/slice/favorites'
 import { fetchPins } from '@/state/slice/pins'
 import { toast } from 'sonner'
 import { useIsSageTheme } from '@/hooks/use-is-sage-theme'
+import { storeAccessToken } from '@/utils/auth-token'
+
+const isTauri = !!(window as unknown as { __TAURI_INTERNALS__: unknown })
+    .__TAURI_INTERNALS__
 
 type IiAuthPayload = {
     access_token: string
@@ -30,9 +33,52 @@ type IiAuthPayload = {
 export function LoginPage() {
     const { t } = useTranslation()
     const navigate = useNavigate()
+    const [searchParams] = useSearchParams()
     const { loginWithAuthCode } = useAuth()
     const dispatch = useAppDispatch()
     const isSage = useIsSageTheme()
+
+    const apiBaseUrl = useMemo(
+        () => import.meta.env.VITE_API_URL || 'http://localhost:8000',
+        []
+    )
+
+    // System browser opened this page with desktop_state → fetch Google OAuth URL and redirect
+    const desktopState = searchParams.get('desktop_state')
+    useEffect(() => {
+        if (!desktopState || searchParams.get('desktop_auth')) return
+        authService
+            .getDesktopGoogleLoginUrl(desktopState)
+            .then((url) => {
+                window.location.href = url
+            })
+            .catch((err) => {
+                console.error('Failed to get Google login URL:', err)
+            })
+    }, [desktopState, searchParams])
+
+    if (desktopState && !searchParams.get('desktop_auth')) {
+        return null
+    }
+
+    // Backend redirected back here after Google login completes
+    if (searchParams.get('desktop_auth') === 'success') {
+        return (
+            <div className="flex flex-col items-center justify-center w-full h-full gap-4">
+                <h2 className="text-2xl font-semibold text-firefly dark:text-sky-blue">
+                    {t('auth.loginSuccessful', {
+                        defaultValue: 'Login successful!'
+                    })}
+                </h2>
+                <p className="text-firefly/70 dark:text-sky-blue/70">
+                    {t('auth.closeTabMessage', {
+                        defaultValue:
+                            'You can close this tab and return to the app.'
+                    })}
+                </p>
+            </div>
+        )
+    }
 
     const FormSchema = useMemo(
         () =>
@@ -85,10 +131,6 @@ export function LoginPage() {
         }
     })
 
-    const apiBaseUrl = useMemo(
-        () => import.meta.env.VITE_API_URL || 'http://localhost:8000',
-        []
-    )
     const apiOrigin = useMemo(() => {
         try {
             return new URL(apiBaseUrl).origin
@@ -113,17 +155,24 @@ export function LoginPage() {
             authHandledRef.current = true
 
             try {
-                localStorage.setItem(ACCESS_TOKEN, payload.access_token)
-                window.dispatchEvent(new CustomEvent('auth-token-set'))
+                storeAccessToken(payload.access_token)
 
                 const userRes = await authService.getCurrentUser()
                 dispatch(setUser(userRes))
                 dispatch(fetchWishlist())
                 dispatch(fetchPins())
 
+                // Focus desktop app window after login
+                if (isTauri) {
+                    const { getCurrentWindow } = await import(
+                        '@tauri-apps/api/window'
+                    )
+                    await getCurrentWindow().setFocus()
+                }
+
                 navigate('/')
             } catch (error) {
-                console.error('Failed to finalize II login:', error)
+                console.error('Failed to finalize login:', error)
                 authHandledRef.current = false
             }
         },
@@ -141,7 +190,11 @@ export function LoginPage() {
                 payload?: IiAuthPayload
             }
 
-            if (!data || data.type !== 'ii-auth-success') {
+            if (
+                !data ||
+                (data.type !== 'ii-auth-success' &&
+                    data.type !== 'google-auth-success')
+            ) {
                 return
             }
 
@@ -154,13 +207,19 @@ export function LoginPage() {
 
     useEffect(() => {
         const hash = window.location.hash
-        if (!hash || !hash.includes('ii-auth=')) {
-            return
-        }
+        if (!hash) return
+
+        // Support both II and Google auth hash-fragment fallbacks
+        const authKey = hash.includes('ii-auth=')
+            ? 'ii-auth'
+            : hash.includes('google-auth=')
+              ? 'google-auth'
+              : null
+        if (!authKey) return
 
         const params = new URLSearchParams(hash.slice(1))
-        const encoded = params.get('ii-auth')
-        params.delete('ii-auth')
+        const encoded = params.get(authKey)
+        params.delete(authKey)
 
         const cleanHash = params.toString()
         const cleanUrl = `${window.location.pathname}${window.location.search}${cleanHash ? `#${cleanHash}` : ''}`
@@ -176,9 +235,34 @@ export function LoginPage() {
             ) as IiAuthPayload
             void handleAuthSuccess(payload)
         } catch (error) {
-            console.error('Failed to parse II auth payload from hash:', error)
+            console.error('Failed to parse auth payload from hash:', error)
             authHandledRef.current = false
         }
+    }, [handleAuthSuccess])
+
+    const loginWithGoogleDesktop = useCallback(async () => {
+        authHandledRef.current = false
+
+        const state = crypto.randomUUID()
+        const frontendOrigin =
+            import.meta.env.VITE_FRONTEND_URL || 'http://localhost:1420'
+        const url = `${frontendOrigin}/login?desktop_state=${state}`
+
+        const { open } = await import('@tauri-apps/plugin-shell')
+        await open(url)
+
+        // Poll for token until backend stores it after Google callback
+        const poll = setInterval(async () => {
+            try {
+                const token = await authService.pollDesktopToken(state)
+                if (!token) return
+                clearInterval(poll)
+                void handleAuthSuccess(token)
+            } catch {
+                // keep polling
+            }
+        }, 2000)
+        setTimeout(() => clearInterval(poll), 5 * 60 * 1000)
     }, [handleAuthSuccess])
 
     const loginWithII = useCallback(() => {
@@ -326,7 +410,9 @@ export function LoginPage() {
                 </div>
                 <Button
                     size="xl"
-                    onClick={() => googleLogin()}
+                    onClick={() =>
+                        isTauri ? loginWithGoogleDesktop() : googleLogin()
+                    }
                     className="w-full bg-white text-black font-semibold shadow-btn"
                 >
                     <Icon name="google" className="size-[22px]" />
@@ -345,8 +431,7 @@ export function LoginPage() {
                     {t('auth.continueWithII')}
                 </Button>
                 <p className="text-xs text-center text-firefly/70 dark:text-sky-blue/70 mt-6">
-                    {t('auth.privacyNotice')}{' '}
-                    <br></br>
+                    {t('auth.privacyNotice')} <br></br>
                     <a
                         href="/privacy"
                         className="underline hover:text-firefly dark:hover:text-sky-blue"
