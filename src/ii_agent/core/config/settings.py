@@ -230,6 +230,21 @@ class Settings(BaseSettings):
         description="OAuth Redirect URI for Composio toolkit integration",
     )
 
+    # ========== II-Claw Configuration ==========
+    ii_claw_client_url: str = Field(
+        default="http://localhost:4200"
+    )
+
+    ii_claw_client_api_key: str = Field(
+        default="5c3e2f56de9411068f675ef32ffa12735210b9cbfee2ba521367a3955334a343", # terminal: echo -n "message" | openssl dgst -sha256 -hmac "secretkey"
+        description="API key for authenticating with II-Claw Rust backend (sent as Bearer token)",
+    )
+    
+    ii_claw_webhook_secret: str = Field(
+        default="ii-claw-webhook-secret",
+        description="Secret for verifying incoming webhooks from II-Claw (set to enable webhook verification)",
+    )
+
     # ========== LLM Configuration ==========
 
     researcher_agent_config: Optional[Any] = Field(

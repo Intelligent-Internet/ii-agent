@@ -2543,5 +2543,238 @@
                 "unableToUpdate": "सीक्रेट्स अपडेट करने में असमर्थ"
             }
         }
+    },
+    "iiClaw": {
+        "title": "II-Claw",
+        "version": "II-Claw v0.1.0",
+        "agents": {
+            "title": "एजेंट्स",
+            "subtitle": "बिल्ट-इन एजेंट मोड चुनें या अपना कस्टम एजेंट बनाएं।",
+            "customCard": {
+                "title": "अपना एजेंट कस्टमाइज़ करें",
+                "description": "कस्टम प्रॉम्प्ट, टूल्स और मॉडल के साथ व्यक्तिगत एजेंट बनाएं"
+            },
+            "availableAgents": "उपलब्ध एजेंट्स",
+            "dialog": {
+                "createTitle": "कस्टम एजेंट बनाएं",
+                "editTitle": "एजेंट संपादित करें",
+                "stepOf": "चरण {{current}} / {{total}}",
+                "steps": {
+                    "identity": "पहचान और प्रॉम्प्ट",
+                    "model": "मॉडल चुनें",
+                    "tools": "टूल्स कॉन्फ़िगर करें",
+                    "skills": "स्किल्स और कनेक्टर्स"
+                },
+                "sidebar": {
+                    "title": "आपके एजेंट्स",
+                    "empty": "अभी तक कोई कस्टम एजेंट नहीं",
+                    "emptyHint": "अपना पहला एजेंट बनाएं",
+                    "noTag": "कोई टैग नहीं"
+                },
+                "placeholder": "संपादित करने के लिए एजेंट चुनें, या नया बनाने के लिए + क्लिक करें",
+                "fields": {
+                    "agentName": "एजेंट का नाम",
+                    "tag": "टैग",
+                    "tagPlaceholder": "उदा. research-ai",
+                    "systemPrompt": "सिस्टम प्रॉम्प्ट",
+                    "systemPromptPlaceholder": "एजेंट के लिए कस्टम निर्देश...",
+                    "systemPromptHint": "डिफ़ॉल्ट बेस प्रॉम्प्ट के लिए खाली छोड़ें।",
+                    "llmModel": "LLM मॉडल",
+                    "llmModelDefault": "डिफ़ॉल्ट (सेशन)",
+                    "llmModelHint": "एजेंट के लिए मॉडल चुनें। \"डिफ़ॉल्ट\" सेशन मॉडल का उपयोग करता है।",
+                    "toolsDescription": "इस एजेंट के लिए उपलब्ध टूल्स टॉगल करें।",
+                    "skillMode": "स्किल मोड",
+                    "connectorMode": "कनेक्टर मोड"
+                },
+                "skillModes": {
+                    "default": "डिफ़ॉल्ट",
+                    "customOnly": "केवल कस्टम",
+                    "defaultAndCustom": "डिफ़ॉल्ट + कस्टम"
+                },
+                "connectorModes": {
+                    "default": "डिफ़ॉल्ट",
+                    "customOnly": "केवल कस्टम",
+                    "defaultAndCustom": "डिफ़ॉल्ट + कस्टम"
+                },
+                "buttons": {
+                    "back": "पीछे",
+                    "next": "अगला",
+                    "create": "एजेंट बनाएं",
+                    "update": "एजेंट अपडेट करें",
+                    "saving": "सहेज रहा है...",
+                    "newAgent": "नया एजेंट"
+                },
+                "delete": {
+                    "title": "एजेंट हटाएं?",
+                    "description": "क्या आप वाकई इस एजेंट को हटाना चाहते हैं? यह क्रिया पूर्ववत नहीं की जा सकती।",
+                    "confirm": "हटाएं",
+                    "cancel": "रद्द करें"
+                }
+            },
+            "builtinAgents": {
+                "general": { "name": "सामान्य एजेंट", "description": "डिफ़ॉल्ट बहुउद्देशीय एजेंट" },
+                "fastResearch": { "name": "तेज़ रिसर्च एजेंट", "description": "त्वरित वेब खोज और सारांश" },
+                "deepResearch": { "name": "गहन रिसर्च एजेंट", "description": "उद्धरणों के साथ गहन शोध" },
+                "websiteBuilder": { "name": "वेबसाइट बिल्डर एजेंट", "description": "फुल-स्टैक वेब डेवलपमेंट" },
+                "mobileApp": { "name": "मोबाइल ऐप एजेंट", "description": "React Native मोबाइल डेवलपमेंट" },
+                "media": { "name": "मीडिया एजेंट", "description": "चित्र और वीडियो जनरेशन" },
+                "slide": { "name": "स्लाइड क्रिएटर एजेंट", "description": "प्रस्तुतियाँ बनाएं" },
+                "codex": { "name": "Codex एजेंट", "description": "OpenAI Codex कोड जनरेशन" },
+                "claudeCode": { "name": "Claude Code एजेंट", "description": "Claude स्वायत्त कोडिंग" }
+            }
+        },
+        "channels": {
+            "title": "चैनल",
+            "subtitle": "II-Claw को कई चैनलों पर संवाद करने के लिए मैसेजिंग प्लेटफ़ॉर्म कनेक्ट करें।",
+            "connected": "कनेक्टेड",
+            "status": {
+                "connected": "कनेक्टेड",
+                "disconnected": "डिस्कनेक्टेड"
+            },
+            "configure": "कॉन्फ़िगर करें",
+            "loading": "चैनल लोड हो रहे हैं...",
+            "error": "चैनल लोड नहीं हो सके। क्या बैकएंड चल रहा है?",
+            "setupSteps": "सेटअप चरण",
+            "advanced": "एडवांस्ड",
+            "required": "आवश्यक",
+            "secret": "सीक्रेट",
+            "commaSeparated": "कॉमा से अलग किए गए मान",
+            "saving": "सेव हो रहा है...",
+            "removing": "हटाया जा रहा है...",
+            "disconnect": "डिस्कनेक्ट",
+            "connect": "कनेक्ट",
+            "update": "अपडेट",
+            "agent": "एजेंट",
+            "selectAgent": "एजेंट चुनें",
+            "builtinAgents": "बिल्ट-इन",
+            "customAgents": "कस्टम",
+            "telegram": {
+                "displayName": "Telegram",
+                "description": "Telegram Bot API — लॉन्ग-पोलिंग एडेप्टर",
+                "quickSetup": "@BotFather से अपना बॉट टोकन पेस्ट करें",
+                "setupSteps": ["Telegram पर @BotFather खोलें", "/newbot भेजें और निर्देशों का पालन करें", "नीचे टोकन पेस्ट करें"],
+                "fields": {
+                    "bot_token_env": "बॉट टोकन",
+                    "allowed_users": "अनुमत यूज़र ID",
+                    "default_agent": "डिफ़ॉल्ट एजेंट",
+                    "poll_interval_secs": "पोल अंतराल (सेकंड)"
+                }
+            },
+            "discord": {
+                "displayName": "Discord",
+                "description": "Discord Gateway बॉट एडेप्टर",
+                "quickSetup": "Discord Developer Portal से अपना बॉट टोकन पेस्ट करें",
+                "setupSteps": ["discord.com/developers/applications पर जाएं", "बॉट बनाएं और टोकन कॉपी करें", "नीचे पेस्ट करें"],
+                "fields": {
+                    "bot_token_env": "बॉट टोकन",
+                    "allowed_guilds": "अनुमत गिल्ड ID",
+                    "allowed_users": "अनुमत यूज़र ID",
+                    "default_agent": "डिफ़ॉल्ट एजेंट",
+                    "intents": "इंटेंट्स बिटमास्क"
+                }
+            },
+            "slack": {
+                "displayName": "Slack",
+                "description": "Slack Socket Mode + Events API",
+                "quickSetup": "api.slack.com से अपना App Token और Bot Token पेस्ट करें",
+                "setupSteps": ["api.slack.com/apps पर ऐप बनाएं", "Socket Mode सक्षम करें और App Token कॉपी करें", "OAuth & Permissions से Bot Token कॉपी करें"],
+                "fields": {
+                    "app_token_env": "App Token (xapp-)",
+                    "bot_token_env": "Bot Token (xoxb-)",
+                    "allowed_channels": "अनुमत चैनल ID",
+                    "default_agent": "डिफ़ॉल्ट एजेंट"
+                }
+            }
+        },
+        "cronJobs": {
+            "title": "शेड्यूल्ड टास्क",
+            "subtitle": "स्वचालित कार्य और संदेश शेड्यूल करें।",
+            "active": "सक्रिय",
+            "create": "टास्क बनाएं",
+            "creating": "बना रहे हैं...",
+            "createJob": "शेड्यूल्ड टास्क बनाएं",
+            "createJobDesc": "ट्रिगर और एक्शन के साथ एक शेड्यूल्ड टास्क सेट करें।",
+            "jobName": "टास्क का नाम",
+            "label": "लेबल",
+            "oneShot": "एक बार (सफलता के बाद स्वतः हटाएं)",
+            "oneShotBadge": "एक बार",
+            "schedule": "शेड्यूल",
+            "action": "एक्शन",
+            "history": "इतिहास",
+            "historyDesc": "इस टास्क की हाल की रन हिस्ट्री।",
+            "noHistory": "अभी तक कोई रन नहीं",
+            "noJobs": "कोई शेड्यूल्ड टास्क कॉन्फ़िगर नहीं है",
+            "noJobsHint": "अपना पहला टास्क शेड्यूल करने के लिए \"टास्क बनाएं\" पर क्लिक करें",
+            "delete": "हटाएं",
+            "deleting": "हटा रहे हैं...",
+            "confirmDeleteTitle": "शेड्यूल्ड टास्क हटाएं?",
+            "confirmDeleteDesc": "क्या आप \"{{name}}\" को हटाना चाहते हैं? यह क्रिया वापस नहीं की जा सकती।",
+            "nameRequired": "टास्क का नाम आवश्यक है",
+            "everyValue": "हर",
+            "everyUnit": "इकाई",
+            "units": {
+                "minutes": "मिनट",
+                "hours": "घंटे",
+                "days": "दिन"
+            },
+            "cronPreset": "फ्रीक्वेंसी",
+            "cronExpr": "Cron एक्सप्रेशन",
+            "cronExprHint": "फॉर्मैट: मिनट घंटा दिन महीना सप्ताह-का-दिन",
+            "cronPresets": {
+                "daily_9am": "रोज़ सुबह 9:00 बजे",
+                "daily_midnight": "रोज़ आधी रात",
+                "daily_6pm": "रोज़ शाम 6:00 बजे",
+                "weekdays_9am": "कार्य दिवस सुबह 9:00 बजे",
+                "weekdays_6pm": "कार्य दिवस शाम 6:00 बजे",
+                "weekly_monday": "हर सोमवार सुबह 9:00 बजे",
+                "weekly_friday": "हर शुक्रवार शाम 5:00 बजे",
+                "twice_daily": "दिन में दो बार (सुबह 9 और शाम 6)",
+                "every_6h": "हर 6 घंटे",
+                "monthly_first": "हर महीने की 1 तारीख सुबह 9:00 बजे",
+                "monthly_last_friday": "महीने का आखिरी शुक्रवार शाम 5 बजे",
+                "quarterly": "तिमाही (जनवरी, अप्रैल, जुलाई, अक्टूबर 1)",
+                "custom": "कस्टम एक्सप्रेशन"
+            },
+            "timezone": "टाइमज़ोन",
+            "runAt": "चलाने का समय",
+            "scheduleTypes": {
+                "every": "नियमित",
+                "cron": "Cron",
+                "at": "एक बार"
+            },
+            "actionTypes": {
+                "channel_message": "संदेश भेजें",
+                "assistant_task": "AI टास्क"
+            },
+            "actionFields": {
+                "channelBot": "चैनल / Bot",
+                "recipient": "प्राप्तकर्ता",
+                "message": "संदेश",
+                "agentId": "एजेंट ID",
+                "context": "प्रॉम्प्ट / संदर्भ"
+            },
+            "selectChannelBot": "एक चैनल Bot चुनें...",
+            "noChannelsConfigured": "कोई चैनल कॉन्फ़िगर नहीं है। पहले एक चैनल सेट करें।",
+            "deliverTo": "AI प्रतिक्रिया भेजें",
+            "searchPlaceholder": "टास्क खोजें...",
+            "noMatchingJobs": "आपके फ़िल्टर से कोई टास्क मेल नहीं खाता",
+            "filters": {
+                "enabled": "स्थिति",
+                "schedule": "शेड्यूल",
+                "label": "लेबल",
+                "all": "सभी",
+                "enabledOnly": "सक्रिय",
+                "disabledOnly": "निष्क्रिय",
+                "clear": "फ़िल्टर साफ़ करें"
+            },
+            "edit": "संपादित करें",
+            "editJob": "शेड्यूल्ड टास्क संपादित करें",
+            "editJobDesc": "इस टास्क का शेड्यूल, एक्शन या सेटिंग बदलें।",
+            "save": "बदलाव सहेजें",
+            "saving": "सहेज रहे हैं...",
+            "testJob": "टेस्ट करें",
+            "testResult": "टेस्ट परिणाम",
+            "testing": "टेस्ट हो रहा है..."
+        }
     }
 }

@@ -357,6 +357,32 @@ const Sidebar = ({ className, workspaceInfo }: SidebarButtonProps) => {
                                 </TooltipContent>
                             </Tooltip>
                         </SidebarMenuItem>
+                        <SidebarMenuItem className="hidden md:block mt-4 group-data-[collapsible=icon]:mt-6">
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <Link
+                                        to="/ii-claw"
+                                        aria-label="II-Claw"
+                                        className="flex items-center gap-x-2 group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:justify-center"
+                                    >
+                                        <Icon
+                                            name="connector"
+                                            className="fill-black dark:fill-white"
+                                        />
+                                        <span className="group-data-[collapsible=icon]:hidden">
+                                            II-Claw
+                                        </span>
+                                    </Link>
+                                </TooltipTrigger>
+                                <TooltipContent
+                                    side="right"
+                                    align="center"
+                                    hidden={state !== 'collapsed' || isMobile}
+                                >
+                                    II-Claw
+                                </TooltipContent>
+                            </Tooltip>
+                        </SidebarMenuItem>
 
                         <div className="mt-4 md:mt-8 space-y-8 group-data-[collapsible=icon]:mt-4">
                             <ProjectList

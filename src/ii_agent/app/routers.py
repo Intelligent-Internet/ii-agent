@@ -29,6 +29,8 @@ def include_routers(app: FastAPI) -> None:
     from ii_agent.sessions.router import router as sessions_router
     from ii_agent.sessions.router import public_router as sessions_public_router
     from ii_agent.settings.router import router as settings_router
+    from ii_agent.ii_claw.api.router import router as ii_claw_router
+    from ii_agent.ii_claw.api.user_agent_router import router as ii_claw_agents_router
 
     # ── Root-level routes (no /v1 prefix) ────────────────────────────────
     app.include_router(health_router)
@@ -56,6 +58,10 @@ def include_routers(app: FastAPI) -> None:
     v1_router.include_router(media_router)  # /v1/media, /v1/media-templates, /v1/media-tools
 
     app.include_router(v1_router)
+
+    # ── II-Claw routes (root level, no /v1 prefix) ──────────────────────
+    app.include_router(ii_claw_router)  # /ii-claw (channels, cron, webhook)
+    app.include_router(ii_claw_agents_router)  # /ii-claw/agents (custom agents CRUD)
 
     # ── Public API routes (/v1/public) ───────────────────────────────────
     v1_public_router = APIRouter(prefix="/v1/public")

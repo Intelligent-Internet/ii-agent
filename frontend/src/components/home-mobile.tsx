@@ -20,6 +20,7 @@ import {
 } from '@/state'
 import { AGENT_TYPE, QUESTION_MODE } from '@/typings/agent'
 import { SidebarTrigger } from './ui/sidebar'
+import { Link } from 'react-router'
 import { useTranslation } from 'react-i18next'
 import QuestionInput from './question-input'
 import type {
@@ -347,6 +348,12 @@ const HomeMobile = ({
                         </div>
                     </div>
                     <div className="flex items-center gap-4">
+                        <Link to="/ii-claw" aria-label="II-Claw">
+                            <Icon
+                                name="connector"
+                                className="size-6 fill-black dark:fill-white"
+                            />
+                        </Link>
                         <SwitchLanguage />
                         <button
                             type="button"
