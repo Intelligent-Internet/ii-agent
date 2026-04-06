@@ -29,6 +29,7 @@ def include_routers(app: FastAPI) -> None:
     from ii_agent.sessions.router import router as sessions_router
     from ii_agent.sessions.router import public_router as sessions_public_router
     from ii_agent.settings.router import router as settings_router
+    from ii_agent.memory.router import router as memory_router
 
     # ── Root-level routes (no /v1 prefix) ────────────────────────────────
     app.include_router(health_router)
@@ -54,6 +55,7 @@ def include_routers(app: FastAPI) -> None:
     v1_router.include_router(enhance_prompt_router)  # /v1/enhance-prompt
     v1_router.include_router(settings_router)  # /v1/user-settings (includes /models, /mcp, /skills)
     v1_router.include_router(media_router)  # /v1/media, /v1/media-templates, /v1/media-tools
+    v1_router.include_router(memory_router)  # /v1/memories
 
     app.include_router(v1_router)
 

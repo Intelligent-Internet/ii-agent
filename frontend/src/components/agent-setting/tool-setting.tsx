@@ -40,6 +40,7 @@ enum TOOL {
     REVIEW_AGENT = 'Review Agent',
     CODEX = 'Codex',
     CLAUDE_CODE = 'Claude Code',
+    AGENTIC_MEMORY = 'Agentic Memory',
     WEB_SEARCH = 'Web Search',
     WEB_VISIT = 'Web Visit',
     IMAGE_SEARCH = 'Image Search',
@@ -160,6 +161,9 @@ const ToolSetting = ({ className }: ToolSettingProps) => {
                 case TOOL.CLAUDE_CODE:
                     isActive = toolSettings?.claude_code || false
                     break
+                case TOOL.AGENTIC_MEMORY:
+                    isActive = toolSettings?.agentic_memory || false
+                    break
                 default:
                     isActive = tool.isActive || false
             }
@@ -222,6 +226,9 @@ const ToolSetting = ({ className }: ToolSettingProps) => {
                     newSettings.claude_code = shouldEnableClaudeCode
                     break
                 }
+                case TOOL.AGENTIC_MEMORY:
+                    newSettings.agentic_memory = checked
+                    break
                 case TOOL.WEB_SEARCH:
                     newChatSettings.web_search = checked
                     break

@@ -6,6 +6,10 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, field_serializer
 
 
+class UserPreferences(BaseModel):
+    has_memory: bool = True
+
+
 class UserPublic(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -20,6 +24,7 @@ class UserPublic(BaseModel):
     subscription_billing_cycle: str | None = None
     subscription_current_period_end: datetime | None = None
     language: str = "en"
+    preferences: UserPreferences = UserPreferences()
 
     @field_serializer("subscription_current_period_end", when_used="json", mode="plain")
     def serialize_period_end(self, value: datetime | None, _info) -> str | None:

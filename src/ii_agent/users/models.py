@@ -100,6 +100,14 @@ class User(Base):
         "Skill", back_populates="user", cascade="all, delete-orphan"
     )
 
+    @property
+    def preferences(self) -> dict:
+        md = self.user_metadata if isinstance(self.user_metadata, dict) else {}
+        prefs = md.get("preferences", {})
+        return {
+            "has_memory": prefs.get("has_memory", True),
+        }
+
     # Add index for email lookup
     __table_args__ = (Index("idx_users_email", "email"),)
 

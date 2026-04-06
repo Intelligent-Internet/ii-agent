@@ -63,6 +63,17 @@ export const INIT_TOOLS = [
         isFill: false,
         isActive: false,
         isRequireKey: true
+    },
+    {
+        name: 'Agentic Memory',
+        nameKey: 'toolCatalog.init.agenticMemory.name',
+        description:
+            'Enables the agent to update user memories during a run, only when real-time updates, explicit memory commands, or complex memory reasoning are required.',
+        descriptionKey: 'toolCatalog.init.agenticMemory.description',
+        icon: 'magic-pen',
+        isFill: false,
+        isActive: false,
+        isRequireKey: false
     }
 ]
 

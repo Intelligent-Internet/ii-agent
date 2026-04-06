@@ -207,7 +207,8 @@
             "connectors": "コネクタ",
             "dataControls": "データ管理",
             "usage": "使用量",
-            "subscription": "サブスクリプション"
+            "subscription": "サブスクリプション",
+            "personalization": "パーソナライゼーション"
         },
         "general": {
             "theme": "テーマ",
@@ -249,6 +250,30 @@
             "noSharedLinks": "まだ会話を共有していません",
             "linkDeleted": "共有リンクが正常に削除されました",
             "deleteError": "共有リンクの削除に失敗しました"
+        },
+        "personalization": {
+            "referenceMemories": "保存した記憶を参照",
+            "referenceMemoriesDescription": "IIAgentが応答時に記憶を保存・使用することを許可します。",
+            "memoriesTitle": "保存した記憶",
+            "memoriesDescription": "IIAgentがあなたについて保存した記憶を表示・管理します。",
+            "searchPlaceholder": "記憶を検索...",
+            "filterByTopics": "トピックで絞り込む",
+            "allTopics": "すべてのトピック",
+            "addMemory": "記憶を追加",
+            "editMemory": "記憶を編集",
+            "deleteMemory": "記憶を削除",
+            "deleteMemoryConfirmTitle": "記憶を削除",
+            "deleteMemoryConfirmDescription": "この記憶を削除してもよろしいですか？この操作は取り消せません。",
+            "memoryContent": "記憶",
+            "memoryContentPlaceholder": "記憶を入力...",
+            "topicsLabel": "トピック",
+            "topicsPlaceholder": "カンマ区切りでトピックを入力",
+            "noMemories": "まだ記憶が保存されていません",
+            "noMatchingMemories": "一致する記憶がありません",
+            "columnMemory": "記憶",
+            "columnTopics": "トピック",
+            "columnUpdatedAt": "更新日",
+            "expandCreatedAt": "作成日"
         }
     },
     "userMenu": {
@@ -2233,6 +2258,10 @@
             "claudeCode": {
                 "name": "Claude Code",
                 "description": "自律的なコード生成のためにClaude Codeを有効化"
+            },
+            "agenticMemory": {
+                "name": "エージェント記憶",
+                "description": "リアルタイム更新、明示的な記憶コマンド、または複雑な記憶推論が必要な場合にのみ、エージェントが実行中にユーザーの記憶を更新できるようにします。"
             }
         },
         "chatTools": {

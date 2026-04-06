@@ -50,6 +50,9 @@ from ii_agent.content.slides.nano_banana.repository import NanoBananaRepository
 from ii_agent.content.slides.design.repository import SlideDesignRepository
 from ii_agent.credits.repository import CreditBalanceRepository, CreditTransactionRepository
 from ii_agent.agents.sandboxes.repository import SandboxRepository
+from ii_agent.memory.repository import MemoryRepository
+from ii_agent.memory.cache_service import MemoryCacheService
+from ii_agent.memory.service import MemoryService
 
 # ── Schema classes (for TypedEntityCache) ────────────────────────────────
 from ii_agent.tasks.schemas import RunTaskResponse
@@ -160,6 +163,7 @@ class ApplicationContainer:
     plan_service: PlanService
     event_service: EventService
     workspace_explorer_service: WorkspaceExplorer
+    memory_service: MemoryService
 
     # ── Repositories (exposed for consumers that need direct repo access) ─
     event_repo: EventRepository = field(default_factory=EventRepository)
@@ -190,6 +194,9 @@ class ApplicationContainer:
             redis_client=redis_client, namespace="composio", ttl=604800
         )
         media_cache = get_entity_cache(redis_client=redis_client, namespace="media", ttl=600)
+        memory_cache_backend = get_entity_cache(
+            redis_client=redis_client, namespace="memory", ttl=600
+        )
 
         # Repositories
         user_repo = UserRepository()
@@ -219,6 +226,7 @@ class ApplicationContainer:
         wishlist_repo = WishlistRepository()
         subdomain_repo = SubdomainRepository()
         slide_template_repo = SlideTemplateRepository()
+        memory_repo = MemoryRepository()
 
         # services
         run_task_svc = RunTaskService(
@@ -236,6 +244,8 @@ class ApplicationContainer:
         billing_svc = BillingService(settings=cfg)
         deployment_orch_svc = DeploymentOrchestrationService(config=cfg)
         message_svc = MessageService()
+        memory_cache_svc = MemoryCacheService(cache=memory_cache_backend)
+        memory_svc = MemoryService(memory_repo=memory_repo, cache=memory_cache_svc)
         credit_svc = CreditService(
             balance_repo=credit_balance_repo,
             transaction_repo=credit_tx_repo,
@@ -468,6 +478,7 @@ class ApplicationContainer:
             plan_service=plan_svc,
             event_service=event_svc,
             workspace_explorer_service=workspace_explorer_svc,
+            memory_service=memory_svc,
             event_repo=event_repo,
         )
 

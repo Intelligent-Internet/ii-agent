@@ -207,7 +207,8 @@
             "connectors": "कनेक्टर",
             "dataControls": "डेटा नियंत्रण",
             "usage": "उपयोग",
-            "subscription": "सब्सक्रिप्शन"
+            "subscription": "सब्सक्रिप्शन",
+            "personalization": "वैयक्तिकरण"
         },
         "general": {
             "theme": "थीम",
@@ -249,6 +250,30 @@
             "noSharedLinks": "आपने अभी तक कोई बातचीत साझा नहीं की है",
             "linkDeleted": "साझा लिंक सफलतापूर्वक हटा दिया गया",
             "deleteError": "साझा लिंक हटाने में विफल"
+        },
+        "personalization": {
+            "referenceMemories": "सहेजी गई यादें देखें",
+            "referenceMemoriesDescription": "IIAgent को प्रतिक्रिया देते समय यादें सहेजने और उपयोग करने दें।",
+            "memoriesTitle": "सहेजी गई यादें",
+            "memoriesDescription": "IIAgent द्वारा आपके बारे में सहेजी गई यादें देखें और प्रबंधित करें।",
+            "searchPlaceholder": "यादें खोजें...",
+            "filterByTopics": "विषय से फ़िल्टर करें",
+            "allTopics": "सभी विषय",
+            "addMemory": "याद जोड़ें",
+            "editMemory": "याद संपादित करें",
+            "deleteMemory": "याद हटाएं",
+            "deleteMemoryConfirmTitle": "याद हटाएं",
+            "deleteMemoryConfirmDescription": "क्या आप वाकई इस याद को हटाना चाहते हैं? यह क्रिया पूर्ववत नहीं की जा सकती।",
+            "memoryContent": "याद",
+            "memoryContentPlaceholder": "एक याद दर्ज करें...",
+            "topicsLabel": "विषय",
+            "topicsPlaceholder": "अल्पविराम से अलग करके विषय दर्ज करें",
+            "noMemories": "अभी तक कोई याद सहेजी नहीं गई",
+            "noMatchingMemories": "कोई मिलती-जुलती याद नहीं",
+            "columnMemory": "याद",
+            "columnTopics": "विषय",
+            "columnUpdatedAt": "अपडेट",
+            "expandCreatedAt": "बनाया गया"
         }
     },
     "userMenu": {
@@ -2233,6 +2258,10 @@
             "claudeCode": {
                 "name": "Claude Code",
                 "description": "स्वचालित कोड जनरेशन के लिए Claude Code सक्षम करें"
+            },
+            "agenticMemory": {
+                "name": "एजेंट मेमोरी",
+                "description": "एजेंट को रन के दौरान उपयोगकर्ता की यादें अपडेट करने की अनुमति देता है, केवल जब रीयल-टाइम अपडेट, स्पष्ट मेमोरी कमांड या जटिल मेमोरी रीजनिंग की आवश्यकता हो।"
             }
         },
         "chatTools": {

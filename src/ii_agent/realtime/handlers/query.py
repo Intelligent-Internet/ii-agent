@@ -89,6 +89,20 @@ class UserQueryHandler(BaseCommandHandler[QueryCommandContent]):
         final_status = RunStatus.FAILED
         try:
             session_store = AgentSessionStore(session_maker=get_session_factory())
+
+            # Merge DB-backed user preferences as base, with request tool_args as override
+            from ii_agent.memory.service import MemoryService
+            tool_args = query_command.tool_args or {}
+            try:
+                memory_service: MemoryService = self._container.memory_service
+                async with get_db_session_local() as prefs_db:
+                    user_prefs = await memory_service.load_user_memory_preferences(
+                        prefs_db, session_info.user_id
+                    )
+                tool_args = {**user_prefs, **tool_args}
+            except Exception as e:
+                logger.warning(f"Failed to load user memory preferences: {e}")
+
             agent = await agent_factory.create_agent(
                 user_id=str(session_info.user_id),
                 session_id=str(session_info.id),
@@ -97,7 +111,7 @@ class UserQueryHandler(BaseCommandHandler[QueryCommandContent]):
                 if session_info.agent_type
                 else AgentType.GENERAL,
                 session_store=session_store,
-                tool_args=query_command.tool_args,
+                tool_args=tool_args,
                 metadata=query_command.metadata,
                 skill_creator=self._create_skill_creator(session_info.user_id),
             )

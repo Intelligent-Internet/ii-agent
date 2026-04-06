@@ -89,7 +89,10 @@ from ii_agent.agents.utils.agent import (
     store_media_util,
     validate_media_object_id,
 )
+from ii_agent.memory.manager import MemoryManager
 from ii_agent.agents.runs.events import (
+    create_memory_update_completed_event,
+    create_memory_update_started_event,
     create_post_hook_completed_event,
     create_post_hook_started_event,
     create_pre_hook_completed_event,
@@ -143,6 +146,16 @@ class IIAgent:
 
     # Session summary manager
     session_summary_manager: Optional[SessionSummaryManager] = None
+
+    # --- Agent Memory ---
+    # Memory manager for persistent user memories
+    memory_manager: Optional[MemoryManager] = None
+    # If True, the agent gets an update_user_memory tool to manage memories during conversation
+    enable_agentic_memory: bool = False
+    # If True, the agent auto-extracts memories from each run in a background task
+    update_memory_on_run: bool = False
+    # If True, inject existing memories into the system prompt
+    add_memories_to_context: bool = False
 
     # --- Agent Tools ---
     # A list of tools provided to the Model.
@@ -227,6 +240,9 @@ class IIAgent:
             self.session_store = NoOpSessionStore()
         if self.session_summary_manager is None:
             self._set_session_summary_manager()
+        # Initialize memory manager if any memory feature is enabled
+        if self.update_memory_on_run or self.enable_agentic_memory or self.memory_manager is not None:
+            self._set_memory_manager()
         # Initialize sub-agents
         if self.sub_agents is None:
             self.sub_agents = []
@@ -467,6 +483,128 @@ class IIAgent:
             if self.session_summary_manager.model is None:
                 self.session_summary_manager.model = self.model
 
+    def _set_memory_manager(self) -> None:
+        """Initialize or configure the memory manager with defaults."""
+        if self.memory_manager is None:
+            self.memory_manager = MemoryManager(model=self.model)
+        if self.memory_manager.model is None:
+            self.memory_manager.model = self.model
+
+    def _get_update_user_memory_function(self, user_id: Optional[str] = None) -> Function:
+        """Create the agentic memory tool as a Function closure."""
+        memory_manager = cast(MemoryManager, self.memory_manager)
+
+        async def update_user_memory(task: str) -> str:
+            """Submit a task to modify the Agent's memory of a user.
+
+            The task can include adding a memory, updating a memory, deleting a memory, or clearing all memories.
+
+            Args:
+                task: The task to update the memory. Be specific and describe the task in detail.
+
+            Returns:
+                A string indicating the status of the task.
+            """
+            return await memory_manager.aupdate_memory_task(task=task, user_id=user_id)
+
+        return Function.from_callable(update_user_memory, name="update_user_memory")
+
+    async def _amake_memories(
+        self,
+        run_messages: RunMessages,
+        user_id: Optional[str] = None,
+    ) -> None:
+        """Extract memories from the current run messages (background task)."""
+        if self.memory_manager is None or not self.update_memory_on_run:
+            return
+
+        user_message_str = (
+            run_messages.user_message.content
+            if run_messages.user_message is not None and run_messages.user_message.content
+            else None
+        )
+        if not user_message_str or (isinstance(user_message_str, str) and not user_message_str.strip()):
+            return
+
+        try:
+            await self.memory_manager.acreate_user_memories(
+                message=user_message_str if isinstance(user_message_str, str) else str(user_message_str),
+                user_id=user_id,
+                agent_id=self.id,
+            )
+        except Exception as e:
+            logger.warning(f"Error creating memories: {e}")
+
+    async def aget_user_memories(self, user_id: Optional[str] = None) -> list:
+        """Public API: retrieve user memories."""
+        if self.memory_manager is None:
+            self._set_memory_manager()
+        return await self.memory_manager.aget_user_memories(user_id=user_id)  # type: ignore
+
+    async def _abuild_memory_context(self, user_id: Optional[str] = None) -> Optional[str]:
+        """Build the memory snippet to inject into the system prompt."""
+        if not self.add_memories_to_context:
+            return None
+
+        manager = self.memory_manager
+        temp_init = False
+        if manager is None:
+            self._set_memory_manager()
+            manager = self.memory_manager
+            temp_init = True
+
+        if manager is None:
+            return None
+
+        try:
+            user_memories = await manager.aget_user_memories(user_id=user_id or self.user_id)
+        except Exception as e:
+            logger.warning(f"Error fetching memories for context: {e}")
+            if temp_init:
+                self.memory_manager = None
+            return None
+
+        if temp_init:
+            self.memory_manager = None
+
+        lines: List[str] = []
+        if user_memories:
+            lines.append(
+                "You have access to user info and preferences from previous interactions "
+                "that you can use to personalize your response:\n"
+            )
+            lines.append("<memories_from_previous_interactions>")
+            for mem in user_memories:
+                lines.append(f"- {mem['memory']}")
+            lines.append("</memories_from_previous_interactions>\n")
+            lines.append(
+                "Note: this information is from previous interactions and may be updated "
+                "in this conversation. Always prefer information from the current conversation."
+            )
+        else:
+            lines.append(
+                "You have the capability to retain memories from previous interactions "
+                "with the user, but have not had any interactions yet."
+            )
+
+        if self.enable_agentic_memory:
+            lines.append("\n<updating_user_memories>")
+            lines.append(
+                "- You have access to the `update_user_memory` tool to add, update, delete, or clear memories."
+            )
+            lines.append(
+                "- If the user's message includes information worth remembering, use the tool."
+            )
+            lines.append(
+                "- Use this tool if the user asks to update, delete, or clear their memory."
+            )
+            lines.append(
+                "- If you use the `update_user_memory` tool, remember to pass on the response to the user."
+            )
+            lines.append("</updating_user_memories>")
+
+        return "\n".join(lines)
+
     def add_tool(self, tool: Union[Toolkit, Callable, Function, Dict, BaseAgentTool]):
         if not self.tools:
             self.tools = []
@@ -700,6 +838,13 @@ class IIAgent:
 
             store_media_util(run_response, model_response)
 
+            # 7. Start memory creation in background task
+            memory_task: Optional[asyncio.Task] = None
+            if self.update_memory_on_run and self.memory_manager is not None:
+                memory_task = asyncio.create_task(
+                    self._amake_memories(run_messages=run_messages, user_id=user_id)
+                )
+
             # 13. Execute post-hooks (after output is generated but before response is returned)
             if self.post_hooks is not None:
                 async for _ in self._aexecute_post_hooks(
@@ -725,6 +870,13 @@ class IIAgent:
                     session=agent_session,
                     run_context=run_context,
                 )
+
+            # 14. Wait for background memory creation
+            if memory_task is not None:
+                try:
+                    await memory_task
+                except Exception as e:
+                    logger.warning(f"Background memory creation failed: {e}")
 
             run_response.status = RunStatus.COMPLETED
             logger.debug(f"Agent Run End: {run_response.run_id}")
@@ -977,6 +1129,20 @@ class IIAgent:
             # Check for cancellation after model processing
             await raise_if_cancelled(run_response.run_id)  # type: ignore
 
+            # 7. Start memory creation in background task
+            memory_task: Optional[asyncio.Task] = None
+            if self.update_memory_on_run and self.memory_manager is not None:
+                if stream_events:
+                    yield handle_event(  # type: ignore
+                        create_memory_update_started_event(from_run_response=run_response),
+                        run_response,
+                        events_to_skip=self.events_to_skip,  # type: ignore
+                        store_events=self.store_events,
+                    )
+                memory_task = asyncio.create_task(
+                    self._amake_memories(run_messages=run_messages, user_id=user_id)
+                )
+
             if stream_events:
                 yield handle_event(  # type: ignore
                     create_run_content_completed_event(from_run_response=run_response),
@@ -1010,6 +1176,20 @@ class IIAgent:
                 ):
                     yield event
                 return  # Stop execution here, run is paused
+
+            # 14. Wait for background memory creation
+            if memory_task is not None:
+                try:
+                    await memory_task
+                except Exception as e:
+                    logger.warning(f"Background memory creation failed: {e}")
+                if stream_events:
+                    yield handle_event(  # type: ignore
+                        create_memory_update_completed_event(from_run_response=run_response),
+                        run_response,
+                        events_to_skip=self.events_to_skip,  # type: ignore
+                        store_events=self.store_events,
+                    )
 
             # Update run_response.session_state before creating RunCompletedEvent
             # This ensures the event has the final state after all tool modifications
@@ -3033,6 +3213,14 @@ class IIAgent:
             _functions.append(delegate_func)
             logger.debug(f"Added delegation tool for {len(self.sub_agents)} sub-agents")
 
+        # Add agentic memory tool
+        if self.enable_agentic_memory and self.memory_manager is not None:
+            memory_func = self._get_update_user_memory_function(user_id=user_id)
+            memory_func._agent = self
+            memory_func._run_context = run_context
+            _functions.append(memory_func)
+            logger.debug("Added update_user_memory tool for agentic memory")
+
         logger.debug(f"[V1 Agent] Converted {len(_functions)} tools to Functions for LLM")
         logger.debug(
             f"[V1 Agent] Function names: {[f.name if isinstance(f, Function) else str(f.get('name', 'unknown')) for f in _functions]}"
@@ -3075,13 +3263,28 @@ class IIAgent:
         1. If system_message is provided (str, callable, or Message), use that.
         2. If prompt_config is provided, use SystemPromptBuilder.
         3. Fall back to legacy behavior (description/instructions/additional_context).
+
+        Memory and agentic-memory instructions are appended when enabled.
         """
 
         # 1. If the system_message is provided, use that (highest priority)
         if self.system_message is not None:
             if isinstance(self.system_message, Message):
-                return self.system_message
-        return Message(role=self.model.system_message_role, content=self.system_message)
+                base_content = self.system_message.content or ""
+                role = self.system_message.role
+            else:
+                base_content = self.system_message
+                role = self.model.system_message_role
+        else:
+            base_content = ""
+            role = self.model.system_message_role
+
+        # Append memory context if enabled
+        memory_snippet = await self._abuild_memory_context(user_id=user_id)
+        if memory_snippet:
+            base_content = f"{base_content}\n\n{memory_snippet}" if base_content else memory_snippet
+
+        return Message(role=role, content=base_content)
 
     async def _aget_user_message(
         self,

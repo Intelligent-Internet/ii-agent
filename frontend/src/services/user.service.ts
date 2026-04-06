@@ -39,6 +39,15 @@ class UserService {
         })
         return response.data
     }
+    async updatePreferences(body: {
+        has_memory?: boolean
+    }): Promise<{ message: string; preferences: { has_memory: boolean } }> {
+        const response = await axiosInstance.patch<{
+            message: string
+            preferences: { has_memory: boolean }
+        }>('/auth/me/preferences', body)
+        return response.data
+    }
 }
 
 export const userService = new UserService()
