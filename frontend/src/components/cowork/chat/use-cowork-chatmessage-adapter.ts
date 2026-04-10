@@ -1,15 +1,10 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-    setCurrentQuestion,
-    setEditingMessage,
-    setLoading,
-    setMessages,
     setQuestionMode,
-    setRunStatus,
-    setWorkspaceInfo,
     useAppDispatch
 } from '@/state'
 import { QUESTION_MODE, type Message } from '@/typings/agent'
+import { useChatMessageAdapterState } from '@/components/agent/use-chat-message-adapter-state'
 import type {
     CoworkChatSessionDetail,
     CoworkLiveSessionState
@@ -81,6 +76,88 @@ const mapLiveMessages = (
     return nextMessages
 }
 
+const STREAM_REVEAL_TICK_MS = 24
+const STREAM_REVEAL_MAX_STEP = 12
+
+const useAnimatedStreamText = (
+    targetText: string,
+    streamKey: string | null
+) => {
+    const [renderedText, setRenderedText] = useState(targetText)
+    const previousStreamKeyRef = useRef<string | null>(streamKey)
+
+    useEffect(() => {
+        if (!targetText) {
+            setRenderedText('')
+            previousStreamKeyRef.current = streamKey
+            return
+        }
+
+        if (previousStreamKeyRef.current !== streamKey) {
+            previousStreamKeyRef.current = streamKey
+            setRenderedText('')
+            return
+        }
+
+        setRenderedText((currentText) => {
+            if (!currentText) {
+                return currentText
+            }
+
+            if (
+                currentText.length > targetText.length ||
+                !targetText.startsWith(currentText)
+            ) {
+                return targetText
+            }
+
+            return currentText
+        })
+    }, [streamKey, targetText])
+
+    useEffect(() => {
+        if (!targetText || renderedText === targetText) {
+            return
+        }
+
+        if (
+            renderedText.length > targetText.length ||
+            !targetText.startsWith(renderedText)
+        ) {
+            setRenderedText(targetText)
+            return
+        }
+
+        const timeoutId = window.setTimeout(() => {
+            setRenderedText((currentText) => {
+                if (
+                    currentText.length >= targetText.length ||
+                    !targetText.startsWith(currentText)
+                ) {
+                    return targetText
+                }
+
+                const remainingLength = targetText.length - currentText.length
+                const nextStep = Math.max(
+                    1,
+                    Math.min(
+                        STREAM_REVEAL_MAX_STEP,
+                        Math.ceil(remainingLength / 6)
+                    )
+                )
+
+                return targetText.slice(0, currentText.length + nextStep)
+            })
+        }, STREAM_REVEAL_TICK_MS)
+
+        return () => {
+            window.clearTimeout(timeoutId)
+        }
+    }, [renderedText, targetText])
+
+    return renderedText
+}
+
 const sortTimelineMessages = (messages: Message[]) =>
     messages
         .map((message, index) => ({ message, index }))
@@ -92,6 +169,13 @@ const sortTimelineMessages = (messages: Message[]) =>
             return left.message.timestamp - right.message.timestamp
         })
         .map(({ message }) => message)
+
+const buildTranscriptSignature = (message: Message) =>
+    message.action
+        ? null
+        : `${message.role}:${message.isThinkMessage ? 'think' : 'text'}:${
+              message.content?.trim() ?? ''
+          }`
 
 const buildCoworkMessages = ({
     activeSession,
@@ -105,11 +189,26 @@ const buildCoworkMessages = ({
     const persistedMessageIds = new Set(
         persistedMessages.map((message) => message.id)
     )
-    const liveMessages = mapLiveMessages(liveSession).filter(
-        (message) => !persistedMessageIds.has(message.id)
+    const persistedTranscriptSignatures = new Set(
+        persistedMessages
+            .map(buildTranscriptSignature)
+            .filter((signature): signature is string => Boolean(signature))
     )
     const liveEventMessages = eventMessages.filter(
-        (message) => !persistedMessageIds.has(message.id)
+        (message) =>
+            !persistedMessageIds.has(message.id) &&
+            (message.action ||
+                !persistedTranscriptSignatures.has(
+                    buildTranscriptSignature(message) ?? ''
+                ))
+    )
+    const liveEventMessageIds = new Set(
+        liveEventMessages.map((message) => message.id)
+    )
+    const liveMessages = mapLiveMessages(liveSession).filter(
+        (message) =>
+            !persistedMessageIds.has(message.id) &&
+            !liveEventMessageIds.has(message.id)
     )
 
     if (liveEventMessages.length === 0 && liveMessages.length === 0) {
@@ -174,10 +273,33 @@ export const useCoworkChatMessageAdapter = ({
     isSending = false
 }: UseCoworkChatMessageAdapterOptions) => {
     const dispatch = useAppDispatch()
+    const animatedThinking = useAnimatedStreamText(
+        liveSession?.thinking ?? '',
+        liveSession?.thinking_message_id ?? null
+    )
+    const animatedResponse = useAnimatedStreamText(
+        liveSession?.response ?? '',
+        liveSession?.response_message_id ?? null
+    )
+    const animatedLiveSession = useMemo(() => {
+        if (!liveSession) {
+            return null
+        }
+
+        return {
+            ...liveSession,
+            thinking: animatedThinking,
+            response: animatedResponse
+        }
+    }, [animatedResponse, animatedThinking, liveSession])
 
     const messages = useMemo(
-        () => buildCoworkMessages({ activeSession, liveSession }),
-        [activeSession, liveSession]
+        () =>
+            buildCoworkMessages({
+                activeSession,
+                liveSession: animatedLiveSession
+            }),
+        [activeSession, animatedLiveSession]
     )
     const runStatus = useMemo(
         () => mapCoworkRunStatus({ activeSession, liveSession, isSending }),
@@ -189,34 +311,15 @@ export const useCoworkChatMessageAdapter = ({
             activeSession?.run_status === 'thinking'
     )
 
+    useChatMessageAdapterState({
+        messages,
+        runStatus,
+        isLoading: isChatLoading,
+        workspaceInfo: '',
+        resetEditingOnKey: activeSession?.id ?? 'cowork-empty'
+    })
+
     useEffect(() => {
         dispatch(setQuestionMode(QUESTION_MODE.COWORK))
-        dispatch(setWorkspaceInfo(''))
-    }, [dispatch])
-
-    useEffect(() => {
-        dispatch(setMessages(messages))
-    }, [dispatch, messages])
-
-    useEffect(() => {
-        dispatch(setRunStatus(runStatus))
-    }, [dispatch, runStatus])
-
-    useEffect(() => {
-        dispatch(setLoading(isChatLoading))
-    }, [dispatch, isChatLoading])
-
-    useEffect(() => {
-        dispatch(setEditingMessage(undefined))
-    }, [dispatch, activeSession?.id])
-
-    useEffect(() => {
-        return () => {
-            dispatch(setMessages([]))
-            dispatch(setRunStatus(null))
-            dispatch(setLoading(false))
-            dispatch(setCurrentQuestion(''))
-            dispatch(setEditingMessage(undefined))
-        }
     }, [dispatch])
 }

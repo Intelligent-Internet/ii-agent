@@ -40,6 +40,8 @@ const formatFileSize = (size: number) => {
     return `${size} B`
 }
 
+const COWORK_HIDE_UPLOAD_SCOPE_CLASS = 'cowork-chat-box--hide-upload'
+
 const CoworkChatBox = ({
     className = '',
     isVisible = true,
@@ -81,10 +83,16 @@ const CoworkChatBox = ({
         <div
             className={clsx(
                 'relative h-full w-full min-w-0 overflow-hidden pt-4 md:shrink md:border-l md:border-neutral-200 md:pt-0 md:dark:border-white/30',
+                COWORK_HIDE_UPLOAD_SCOPE_CLASS,
                 responsiveChatBoxWidthClass,
                 className
             )}
         >
+            <style>{`
+                .${COWORK_HIDE_UPLOAD_SCOPE_CLASS} div:has(> input#file-upload) > :first-child {
+                    display: none;
+                }
+            `}</style>
             <div className="hidden md:flex gap-x-2 items-center p-4">
                 <Button
                     className={clsx(

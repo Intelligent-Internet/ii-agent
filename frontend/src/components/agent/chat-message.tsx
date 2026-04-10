@@ -138,7 +138,7 @@ function debounce<T extends (...args: never[]) => unknown>(
     return debounced
 }
 
-interface ChatMessageProps {
+export interface ChatMessageProps {
     isReplayMode: boolean
     messagesEndRef: React.RefObject<HTMLDivElement | null>
     handleClickAction: (

@@ -136,6 +136,44 @@ const readString = (record: Record<string, unknown>, key: string) => {
     return typeof value === 'string' && value.trim() ? value : undefined
 }
 
+const readEventText = (record: Record<string, unknown>) =>
+    readString(record, 'text') ??
+    readString(record, 'message') ??
+    readString(record, 'content') ??
+    readString(record, 'delta')
+
+const mergeStreamingText = (current: string, incoming: string) => {
+    if (!incoming) {
+        return current
+    }
+
+    if (!current) {
+        return incoming
+    }
+
+    if (incoming === current) {
+        return current
+    }
+
+    if (incoming.startsWith(current)) {
+        return incoming
+    }
+
+    if (current.endsWith(incoming)) {
+        return current
+    }
+
+    const maxOverlap = Math.min(current.length, incoming.length)
+
+    for (let size = maxOverlap; size > 0; size -= 1) {
+        if (current.slice(-size) === incoming.slice(0, size)) {
+            return `${current}${incoming.slice(size)}`
+        }
+    }
+
+    return `${current}${incoming}`
+}
+
 const normalizeCoworkToolNameForUi = (toolName?: string) => {
     const normalized = toolName?.trim()
     if (!normalized) {
@@ -285,6 +323,67 @@ const upsertEventMessage = (messages: Message[], nextMessage: Message) => {
         ...nextMessage
     }
     return nextMessages
+}
+
+const retainCoworkActionMessages = (messages: Message[]) =>
+    messages.filter((message) => Boolean(message.action))
+
+const buildTranscriptEventMessage = ({
+    kind,
+    content,
+    sessionId,
+    emittedAt,
+    messageId
+}: {
+    kind: 'thinking' | 'response'
+    content: string
+    sessionId: string
+    emittedAt: string
+    messageId?: string
+}): Message => ({
+    id:
+        messageId ??
+        buildCoworkTranscriptMessageId(
+            kind,
+            resolveCoworkTranscriptAnchor(emittedAt, sessionId) ?? sessionId
+        ),
+    role: 'assistant',
+    content,
+    timestamp: toTimestamp(emittedAt),
+    ...(kind === 'thinking' ? { isThinkMessage: true } : {})
+})
+
+const flushTranscriptBuffer = ({
+    messages,
+    kind,
+    content,
+    sessionId,
+    emittedAt,
+    messageId
+}: {
+    messages: Message[]
+    kind: 'thinking' | 'response'
+    content?: string
+    sessionId: string
+    emittedAt: string
+    messageId?: string
+}) => {
+    const normalizedContent = content?.trim()
+
+    if (!normalizedContent) {
+        return messages
+    }
+
+    return upsertEventMessage(
+        messages,
+        buildTranscriptEventMessage({
+            kind,
+            content: normalizedContent,
+            sessionId,
+            emittedAt,
+            messageId
+        })
+    )
 }
 
 const buildToolEventMessageId = (
@@ -472,15 +571,24 @@ const reduceCoworkLiveEvent = (
                 emittedAt
             ) ?? emittedAt
         )
+    const resolveFinalTranscriptId = (kind: 'thinking' | 'response') =>
+        buildCoworkTranscriptMessageId(
+            kind,
+            resolveCoworkTranscriptAnchor(
+                event.runtime_event_id,
+                event.runtime_created_at,
+                emittedAt
+            ) ?? emittedAt
+        )
 
     switch (event.runtime_event_type) {
         case 'reasoning_delta':
         case 'agent_thinking_delta': {
-            const delta = readString(content, 'text')
+            const delta = readEventText(content)
             if (!delta) return nextState
             return {
                 ...nextState,
-                thinking: `${nextState.thinking}${delta}`,
+                thinking: mergeStreamingText(nextState.thinking, delta),
                 thinking_message_id: resolveTranscriptId(
                     'thinking',
                     nextState.thinking_message_id
@@ -492,25 +600,40 @@ const reduceCoworkLiveEvent = (
         }
         case 'reasoning':
         case 'agent_thinking': {
-            const text = readString(content, 'text')
+            const text = readEventText(content)
+            const finalizedThinking = text
+                ? mergeStreamingText(nextState.thinking, text)
+                : nextState.thinking
+            const finalizedThinkingId = text
+                ? resolveFinalTranscriptId('thinking')
+                : nextState.thinking_message_id
             return {
                 ...nextState,
-                thinking: text ?? nextState.thinking,
-                thinking_message_id: resolveTranscriptId(
-                    'thinking',
-                    nextState.thinking_message_id
-                ),
+                thinking: finalizedThinking,
+                thinking_message_id: finalizedThinkingId,
                 thinking_started_at: nextState.thinking_started_at ?? emittedAt,
                 latest_runtime_event_type: event.runtime_event_type,
                 last_event_at: emittedAt
             }
         }
         case 'agent_response_delta': {
-            const delta = readString(content, 'text')
+            const delta = readEventText(content)
             if (!delta) return nextState
+            const flushedThinkingMessages = flushTranscriptBuffer({
+                messages: nextState.event_messages,
+                kind: 'thinking',
+                content: nextState.thinking,
+                sessionId: event.session_id,
+                emittedAt,
+                messageId: nextState.thinking_message_id
+            })
             return {
                 ...nextState,
-                response: `${nextState.response}${delta}`,
+                thinking: '',
+                thinking_message_id: undefined,
+                thinking_started_at: undefined,
+                event_messages: flushedThinkingMessages,
+                response: mergeStreamingText(nextState.response, delta),
                 response_message_id: resolveTranscriptId(
                     'response',
                     nextState.response_message_id
@@ -521,14 +644,17 @@ const reduceCoworkLiveEvent = (
             }
         }
         case 'agent_response': {
-            const text = readString(content, 'text')
+            const text = readEventText(content)
+            const finalizedResponse = text
+                ? mergeStreamingText(nextState.response, text)
+                : nextState.response
+            const finalizedResponseId = text
+                ? resolveFinalTranscriptId('response')
+                : nextState.response_message_id
             return {
                 ...nextState,
-                response: text ?? nextState.response,
-                response_message_id: resolveTranscriptId(
-                    'response',
-                    nextState.response_message_id
-                ),
+                response: finalizedResponse,
+                response_message_id: finalizedResponseId,
                 response_started_at: nextState.response_started_at ?? emittedAt,
                 latest_runtime_event_type: event.runtime_event_type,
                 last_event_at: emittedAt
@@ -553,11 +679,19 @@ const reduceCoworkLiveEvent = (
                 ),
                 nextToolCall
             ]
+            const baseEventMessages = flushTranscriptBuffer({
+                messages: nextState.event_messages,
+                kind: 'thinking',
+                content: nextState.thinking,
+                sessionId: event.session_id,
+                emittedAt,
+                messageId: nextState.thinking_message_id
+            })
             const action = buildCoworkActionStep(content)
             const actionSync =
                 action && !HIDDEN_TOOL_MESSAGE_TYPES.has(action.type)
                     ? syncActionEventMessage(
-                          nextState.event_messages,
+                          baseEventMessages,
                           action,
                           event.session_id,
                           emittedAt
@@ -567,11 +701,13 @@ const reduceCoworkLiveEvent = (
             return {
                 ...nextState,
                 tool_calls: toolCalls,
+                thinking: '',
+                thinking_message_id: undefined,
+                thinking_started_at: undefined,
                 is_awaiting_turn_action: actionSync
                     ? false
                     : nextState.is_awaiting_turn_action,
-                event_messages:
-                    actionSync?.messages ?? nextState.event_messages,
+                event_messages: actionSync?.messages ?? baseEventMessages,
                 current_action:
                     actionSync?.currentAction ?? nextState.current_action,
                 activities: appendActivity(nextState.activities, {
@@ -678,9 +814,30 @@ const reduceCoworkLiveEvent = (
         case 'error':
         case 'agent_response_interrupted':
         case 'model_compact': {
+            const flushedThinkingMessages = flushTranscriptBuffer({
+                messages: nextState.event_messages,
+                kind: 'thinking',
+                content: nextState.thinking,
+                sessionId: event.session_id,
+                emittedAt,
+                messageId: nextState.thinking_message_id
+            })
+            const finalizedResponseContent =
+                event.runtime_event_type === 'complete' ||
+                event.runtime_event_type === 'stream_complete' ||
+                event.runtime_event_type === 'sub_agent_complete'
+                    ? readEventText(content) ?? nextState.response
+                    : nextState.response
+            const flushedTranscriptMessages = flushTranscriptBuffer({
+                messages: flushedThinkingMessages,
+                kind: 'response',
+                content: finalizedResponseContent,
+                sessionId: event.session_id,
+                emittedAt,
+                messageId: nextState.response_message_id
+            })
             const detail =
-                readString(content, 'message') ??
-                readString(content, 'text') ??
+                readEventText(content) ??
                 stringifyLiveValue(content.result) ??
                 stringifyLiveValue(content.summary)
             const titleMap: Record<string, string> = {
@@ -702,6 +859,13 @@ const reduceCoworkLiveEvent = (
 
             return {
                 ...nextState,
+                thinking: '',
+                response: '',
+                thinking_message_id: undefined,
+                response_message_id: undefined,
+                thinking_started_at: undefined,
+                response_started_at: undefined,
+                event_messages: flushedTranscriptMessages,
                 activities: appendActivity(nextState.activities, {
                     id: `${event.session_id}:${emittedAt}:${event.runtime_event_type}`,
                     runtime_event_type: event.runtime_event_type,
@@ -744,6 +908,10 @@ const replayPersistedLiveSession = (
 
     return {
         ...replayedState,
+        event_messages:
+            session.messages.length > 0
+                ? retainCoworkActionMessages(replayedState.event_messages)
+                : replayedState.event_messages,
         thinking: '',
         response: '',
         thinking_message_id: undefined,
@@ -910,6 +1078,9 @@ const CoworkPage = () => {
                         thinking: '',
                         response: '',
                         is_awaiting_turn_action: true,
+                        event_messages: retainCoworkActionMessages(
+                            baseline.event_messages
+                        ),
                         thinking_message_id: undefined,
                         response_message_id: undefined,
                         thinking_started_at: undefined,
@@ -941,6 +1112,9 @@ const CoworkPage = () => {
                         ...current,
                         thinking: '',
                         response: '',
+                        event_messages: retainCoworkActionMessages(
+                            current.event_messages
+                        ),
                         is_awaiting_turn_action: false,
                         thinking_message_id: undefined,
                         response_message_id: undefined,
@@ -1642,7 +1816,7 @@ const CoworkPage = () => {
                     }
                 }
 
-                let hydratedSession = await coworkService.getChatSession(
+                const hydratedSession = await coworkService.getChatSession(
                     response.session_id,
                     scope
                 )
