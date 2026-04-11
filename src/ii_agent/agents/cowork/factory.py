@@ -21,10 +21,6 @@ from ii_agent.agents.skills.base import SkillCreator
 from ii_agent.agents.skills.prompt_db import generate_skill_tool_description
 from ii_agent.settings.llm import Provider
 
-# Hardcoded defaults for cowork agents
-DEFAULT_MODEL_ID = "gpt-5.2"
-DEFAULT_PROVIDER = Provider.OPENAI
-
 class CoworkAgentFactory:
     """Factory for cowork-specific IIAgent creation with runtime overrides."""
 
@@ -210,12 +206,6 @@ class CoworkAgentFactory:
         agent_config: Optional[Dict[str, Any]] = None,
     ) -> IIAgent:
         logger.info(f"Creating cowork {agent_type} agent for session {session_id}")
-
-        # Override LLM config with hardcoded defaults       
-        llm_config = llm_config.model_copy(update={
-            "model": DEFAULT_MODEL_ID,
-            "provider": DEFAULT_PROVIDER,
-        })
 
         tool_args = tool_args or {}
         has_media = tool_args.get("media_generation", False)

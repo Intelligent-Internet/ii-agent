@@ -13,6 +13,7 @@ import type {
     CoworkLiveSessionState
 } from '@/typings/cowork'
 import { useCoworkChatMessageAdapter } from './use-cowork-chatmessage-adapter'
+import CoworkModelSelector from './cowork-model-selector'
 
 interface CoworkChatBoxProps {
     className?: string
@@ -125,6 +126,7 @@ const CoworkChatBox = ({
                 >
                     All files
                 </Button>
+                <CoworkModelSelector className="ml-auto" />
             </div>
 
             <div
