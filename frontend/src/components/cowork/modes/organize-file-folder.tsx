@@ -346,10 +346,10 @@ const OrganizeFileFolderMode = ({
                         )}
                     >
                         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-black/50 dark:text-white/50">
-                            Organize file/folder
+                            Intelligent Folder
                         </p>
                         <h2 className="mt-3 text-2xl font-semibold text-black dark:text-white">
-                            Start a new organization process
+                            Start a new Intelligent Folder session
                         </h2>
                         {/* <p className="mt-3 text-sm text-black/60 dark:text-white/60">
                             Enter a local path, browse with the native picker, or

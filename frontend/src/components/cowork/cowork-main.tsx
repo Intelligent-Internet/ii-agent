@@ -88,8 +88,7 @@ const CoworkMain = ({
                                     {mode.label}
                                 </p>
                                 <p className="mt-2 text-sm text-black/60 dark:text-white/60">
-                                    Start with a dedicated file and folder
-                                    organization workflow.
+                                    A smarter way to work with folders.
                                 </p>
                             </div>
                         </button>

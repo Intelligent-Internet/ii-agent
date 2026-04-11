@@ -67,13 +67,16 @@ const CoworkChatBox = ({
     })
 
     const sessionFiles = activeSession?.files ?? []
+    const hasUserStartedChat = Boolean(
+        activeSession?.messages.some((message) => message.role === 'user')
+    )
     const sessionContentKey = useMemo(
         () => activeSession?.id ?? `empty-${scope}`,
         [activeSession?.id, scope]
     )
     const emptyStateDescription =
         scope === 'organize-file-folder'
-            ? 'Start a Cowork chat session to discuss structure, naming, and file organization.'
+            ? 'Start a Cowork chat session to understand, discuss, and organize your folder.'
             : 'Start a new Cowork chat to discuss your task.'
     const responsiveChatBoxWidthClass = 'md:w-[clamp(320px,38vw,600px)]'
 
@@ -130,56 +133,44 @@ const CoworkChatBox = ({
                 })}
             >
                 <div className="relative h-full">
-                    <AnimatePresence mode="wait">
-                        <motion.div
-                            key={sessionContentKey}
-                            initial={{ opacity: 0, x: 16 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            exit={{ opacity: 0, x: -12 }}
-                            transition={{
-                                duration: 0.2,
-                                ease: 'easeOut'
-                            }}
-                            className="h-full"
-                        >
-                            <ChatMessage
-                                isReplayMode={false}
-                                messagesEndRef={messagesEndRef}
-                                handleClickAction={(action) => {
-                                    if (action) {
-                                        onSelectAction?.(action)
-                                    }
-                                }}
-                                setCurrentQuestion={(value) =>
-                                    dispatch(setCurrentQuestion(value))
+                    <div className="h-full">
+                        <ChatMessage
+                            isReplayMode={false}
+                            messagesEndRef={messagesEndRef}
+                            handleClickAction={(action) => {
+                                if (action) {
+                                    onSelectAction?.(action)
                                 }
-                                handleKeyDown={(event) => {
-                                    dispatch(
-                                        setCurrentQuestion(
-                                            event.currentTarget.value
-                                        )
+                            }}
+                            setCurrentQuestion={(value) =>
+                                dispatch(setCurrentQuestion(value))
+                            }
+                            handleKeyDown={(event) => {
+                                dispatch(
+                                    setCurrentQuestion(
+                                        event.currentTarget.value
                                     )
-                                }}
-                                handleQuestionSubmit={(question) => {
-                                    if (isInputLocked || isSending) {
-                                        return
-                                    }
-                                    dispatch(setCurrentQuestion(''))
-                                    void onSendMessage(question)
-                                }}
-                                handleEnhancePrompt={() => {}}
-                                handleCancel={() => {
-                                    void onStopSession?.()
-                                }}
-                                handleEditMessage={() => {}}
-                                connectWebSocket={() => {}}
-                                handleReviewSession={() => {}}
-                                submitDisabled={isInputLocked}
-                            />
-                        </motion.div>
-                    </AnimatePresence>
+                                )
+                            }}
+                            handleQuestionSubmit={(question) => {
+                                if (isInputLocked || isSending) {
+                                    return
+                                }
+                                dispatch(setCurrentQuestion(''))
+                                void onSendMessage(question)
+                            }}
+                            handleEnhancePrompt={() => {}}
+                            handleCancel={() => {
+                                void onStopSession?.()
+                            }}
+                            handleEditMessage={() => {}}
+                            connectWebSocket={() => {}}
+                            handleReviewSession={() => {}}
+                            submitDisabled={isInputLocked}
+                        />
+                    </div>
 
-                    {activeSession === null && !isSending && !isLoading && (
+                    {!hasUserStartedChat && !isSending && !isLoading && (
                         <div className="pointer-events-none absolute left-3 right-3 top-0 z-[1] md:left-4 md:right-4">
                             <div className="inline-block text-left rounded-lg text-black dark:text-white w-full">
                                 <p className="text-sm font-semibold text-black dark:text-white">

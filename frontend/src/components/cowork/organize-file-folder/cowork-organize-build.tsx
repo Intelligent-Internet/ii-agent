@@ -38,7 +38,7 @@ const CoworkOrganizeBuild = ({
         buildState.currentAction?.data.tool_display_name ||
         buildState.currentAction?.data.tool_name ||
         (session?.run_status === 'completed'
-            ? 'Organize run completed'
+            ? 'Intelligent Folder run completed'
             : isAwaitingNextAction
               ? 'Generating'
               : 'Cowork build')
@@ -51,7 +51,7 @@ const CoworkOrganizeBuild = ({
                     state={buildState}
                     renderers={organizeBuildRenderers}
                     renderUnsupportedAction
-                    unsupportedMessage="This organize event does not have a dedicated build renderer yet."
+                    unsupportedMessage="This Intelligent Folder event does not have a dedicated build renderer yet."
                     emptyTitle={
                         isAwaitingNextAction
                             ? 'Generating'
@@ -68,7 +68,7 @@ const CoworkOrganizeBuild = ({
                     onJumpToLatest={buildState.jumpToLatest}
                 />
             }
-            footerText="Browse organize events one step at a time."
+            footerText="Browse Intelligent Folder events one step at a time."
         />
     )
 }
