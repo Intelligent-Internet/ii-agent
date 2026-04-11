@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod cancel;
 mod desktop_dispatcher;
 mod mapper;
 mod payload;
