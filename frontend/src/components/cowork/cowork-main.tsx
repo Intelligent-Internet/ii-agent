@@ -6,47 +6,47 @@ import type { ActionStep } from '@/typings/agent'
 import { Icon } from '@/components/ui/icon'
 import { cn } from '@/lib/utils'
 import { COWORK_MODES, type CoworkModeId } from './cowork.constants'
-import OrganizeFileFolderMode from './modes/organize-file-folder'
+import IntelligentFolderMode from './modes/intelligent-folder'
 
 interface CoworkMainProps {
     activeMode: CoworkModeId | null
-    organizeSession: CoworkChatSessionDetail | null
-    organizeLiveSession: CoworkLiveSessionState | null
-    isOrganizeSessionLoading: boolean
-    isOrganizeChatSending: boolean
+    folderSession: CoworkChatSessionDetail | null
+    folderLiveSession: CoworkLiveSessionState | null
+    isFolderSessionLoading: boolean
+    isFolderChatSending: boolean
     onSelectMode: (mode: CoworkModeId) => void
-    organizeModeResetVersion: number
-    onOrganizeWorkflowActiveChange: (active: boolean) => void
-    onOrganizeSessionCreated: (session: CoworkChatSessionDetail) => void
-    requestedOrganizeAction?: ActionStep | null
-    requestedOrganizeActionToken?: number
+    folderModeResetVersion: number
+    onFolderWorkflowActiveChange: (active: boolean) => void
+    onFolderSessionCreated: (session: CoworkChatSessionDetail) => void
+    requestedFolderAction?: ActionStep | null
+    requestedFolderActionToken?: number
 }
 
 const CoworkMain = ({
     activeMode,
-    organizeSession,
-    organizeLiveSession,
-    isOrganizeSessionLoading,
-    isOrganizeChatSending,
+    folderSession,
+    folderLiveSession,
+    isFolderSessionLoading,
+    isFolderChatSending,
     onSelectMode,
-    organizeModeResetVersion,
-    onOrganizeWorkflowActiveChange,
-    onOrganizeSessionCreated,
-    requestedOrganizeAction = null,
-    requestedOrganizeActionToken = 0
+    folderModeResetVersion,
+    onFolderWorkflowActiveChange,
+    onFolderSessionCreated,
+    requestedFolderAction = null,
+    requestedFolderActionToken = 0
 }: CoworkMainProps) => {
-    if (activeMode === 'organize-file-folder') {
+    if (activeMode === 'intelligent-folder') {
         return (
-            <OrganizeFileFolderMode
-                resetVersion={organizeModeResetVersion}
-                session={organizeSession}
-                liveSession={organizeLiveSession}
-                isSessionLoading={isOrganizeSessionLoading}
-                isSending={isOrganizeChatSending}
-                onWorkflowActiveChange={onOrganizeWorkflowActiveChange}
-                onSessionCreated={onOrganizeSessionCreated}
-                requestedBuildAction={requestedOrganizeAction}
-                requestedBuildActionToken={requestedOrganizeActionToken}
+            <IntelligentFolderMode
+                resetVersion={folderModeResetVersion}
+                session={folderSession}
+                liveSession={folderLiveSession}
+                isSessionLoading={isFolderSessionLoading}
+                isSending={isFolderChatSending}
+                onWorkflowActiveChange={onFolderWorkflowActiveChange}
+                onSessionCreated={onFolderSessionCreated}
+                requestedBuildAction={requestedFolderAction}
+                requestedBuildActionToken={requestedFolderActionToken}
             />
         )
     }

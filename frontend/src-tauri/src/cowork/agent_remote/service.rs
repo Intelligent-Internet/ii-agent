@@ -217,7 +217,7 @@ pub async fn send_remote_chat_message(
 
     local_session = reload_latest_local_session(&app, &local_session);
     session_gateway::apply_runtime_session_snapshot(&mut local_session, runtime_snapshot);
-    session_gateway::sync_organize_result_tree(&mut local_session)?;
+    session_gateway::sync_folder_result_tree(&mut local_session)?;
     local_session = session_gateway::persist_local_session(&app, local_session)?;
     session_gateway::emit_local_terminal_state(&app, &local_session, false);
 
@@ -259,15 +259,15 @@ fn persist_runtime_error_with_latest(
 fn build_remote_runtime_metadata(session: &session_gateway::LocalCoworkSession) -> Option<Value> {
     match session {
         session_gateway::LocalCoworkSession::Homepage(_) => None,
-        session_gateway::LocalCoworkSession::Organize(detail) => Some(json!({
+        session_gateway::LocalCoworkSession::Folder(detail) => Some(json!({
             "cowork": {
-                "scope": "organize-file-folder",
+                "scope": "intelligent-folder",
                 "execution_context": "desktop",
                 "tool_runtime": "desktop_builtin",
                 "tool_binding_mode": "desktop_only",
                 "local_session_id": detail.base.id.clone(),
-                "source_root": detail.organize_tree_pair.source_root.clone(),
-                "result_root": detail.organize_tree_pair.result_root.clone(),
+                "source_root": detail.folder_tree_pair.source_root.clone(),
+                "result_root": detail.folder_tree_pair.result_root.clone(),
             }
         })),
     }

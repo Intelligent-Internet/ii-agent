@@ -1,28 +1,28 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
-import type { CoworkOrganizeTreeNode } from '@/typings/cowork'
+import type { CoworkFolderTreeNode } from '@/typings/cowork'
 import { cn } from '@/lib/utils'
-import { getTreeNodeVisual } from './cowork-organize-tree-icons'
+import { getTreeNodeVisual } from './cowork-folder-tree-icons'
 
-export type OrganizeTreeNode = CoworkOrganizeTreeNode
+export type FolderTreeNode = CoworkFolderTreeNode
 
-interface FlattenedTreeNode extends OrganizeTreeNode {
+interface FlattenedTreeNode extends FolderTreeNode {
     path: string
 }
 
-interface CoworkOrganizeTreeViewProps {
+interface CoworkFolderTreeViewProps {
     label: string
     rootPath: string
-    tree: OrganizeTreeNode
+    tree: FolderTreeNode
 }
 
-const getAllFolderIds = (node: OrganizeTreeNode): string[] => [
+const getAllFolderIds = (node: FolderTreeNode): string[] => [
     ...(node.kind === 'folder' ? [node.id] : []),
     ...(node.children?.flatMap((child) => getAllFolderIds(child)) ?? [])
 ]
 
 const flattenTree = (
-    node: OrganizeTreeNode,
+    node: FolderTreeNode,
     rootPath: string,
     parentPath = ''
 ): FlattenedTreeNode[] => {
@@ -36,7 +36,7 @@ const flattenTree = (
     ]
 }
 
-const getDirectChildCounts = (node: OrganizeTreeNode) => ({
+const getDirectChildCounts = (node: FolderTreeNode) => ({
     folders:
         node.children?.filter((child) => child.kind === 'folder').length ?? 0,
     files: node.children?.filter((child) => child.kind === 'file').length ?? 0
@@ -50,7 +50,7 @@ const renderTreeNode = ({
     onToggle,
     onSelect
 }: {
-    node: OrganizeTreeNode
+    node: FolderTreeNode
     depth: number
     expandedIds: Set<string>
     selectedId: string
@@ -141,11 +141,11 @@ const renderTreeNode = ({
     )
 }
 
-const CoworkOrganizeTreeView = ({
+const CoworkFolderTreeView = ({
     label,
     rootPath,
     tree
-}: CoworkOrganizeTreeViewProps) => {
+}: CoworkFolderTreeViewProps) => {
     const [expandedIds, setExpandedIds] = useState<Set<string>>(
         () => new Set(getAllFolderIds(tree))
     )
@@ -296,6 +296,6 @@ const CoworkOrganizeTreeView = ({
     )
 }
 
-export default CoworkOrganizeTreeView
+export default CoworkFolderTreeView
 
 

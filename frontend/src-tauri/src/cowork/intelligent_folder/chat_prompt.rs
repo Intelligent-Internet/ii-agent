@@ -1,15 +1,15 @@
-use crate::cowork::organize::sessions::CoworkChatSessionDetail;
+use crate::cowork::intelligent_folder::sessions::CoworkChatSessionDetail;
 
-pub fn build_organize_prompt_context(session: &CoworkChatSessionDetail) -> String {
+pub fn build_folder_prompt_context(session: &CoworkChatSessionDetail) -> String {
     format!(
-        "You are assisting in II Cowork organize-file-folder mode.\n\
+        "You are assisting in II Cowork intelligent-folder mode.\n\
 You are working on the user's real local desktop folder.\n\
-Your job is to inspect, understand, clean up, and reorganize files inside that folder based on the user's request.\n\n\
+Your job is to inspect, understand, clean up, and refolder files inside that folder based on the user's request.\n\n\
 [Operating rules]\n\
 - Work only inside the selected local folder.\n\
 - Understand the current structure before changing it.\n\
 - Always read relevant files before modifying them when the decision depends on file content, meaning, or purpose.\n\
-- Do not reorganize semantic content based only on filenames when content inspection is needed.\n\
+- Do not refolder semantic content based only on filenames when content inspection is needed.\n\
 - For purely structural tasks such as grouping by extension, renaming obvious folders, or moving generated files, you may act from directory structure alone when that is sufficient.\n\
 - Keep changes scoped, intentional, and easy to explain.\n\
 - Preserve user content unless the request clearly asks for renaming, regrouping, cleanup, or rewrites.\n\
@@ -32,17 +32,17 @@ Your job is to inspect, understand, clean up, and reorganize files inside that f
 - `apply_patch` - Apply structured multi-file edits\n\
 - `Bash` - Execute shell commands inside the selected folder\n\
 - `TodoWrite` - Keep a short task checklist during the run\n\n\
-[Local organize scope and context]\n\
-Mode scope: organize-file-folder\n\
+[Local folder scope and context]\n\
+Mode scope: intelligent-folder\n\
 Input folder path: {}\n",
-        session.organize_tree_pair.source_root,
+        session.folder_tree_pair.source_root,
     )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cowork::organize::file_tree::{FileTreeNode, FileTreeNodeKind};
+    use crate::cowork::intelligent_folder::file_tree::{FileTreeNode, FileTreeNodeKind};
 
     fn sample_folder(name: &str) -> FileTreeNode {
         FileTreeNode {
@@ -58,8 +58,8 @@ mod tests {
     fn sample_session() -> CoworkChatSessionDetail {
         CoworkChatSessionDetail {
             base: crate::cowork::chat::CoworkChatSessionDetail {
-                id: "cowork-organize-1".to_string(),
-                scope: crate::cowork::chat::CoworkChatScope::OrganizeFileFolder,
+                id: "cowork-folder-1".to_string(),
+                scope: crate::cowork::chat::CoworkChatScope::IntelligentFolder,
                 title: "demo".to_string(),
                 preview: "demo".to_string(),
                 updated_at: "2026-04-04T00:00:00.000Z".to_string(),
@@ -71,7 +71,7 @@ mod tests {
                 files: Vec::new(),
                 run_status: crate::cowork::chat::CoworkChatRunStatus::Idle,
             },
-            organize_tree_pair: crate::cowork::organize::sessions::CoworkOrganizeTreePair {
+            folder_tree_pair: crate::cowork::intelligent_folder::sessions::CoworkFolderTreePair {
                 source_root: "C:/demo".to_string(),
                 result_root: "C:/demo".to_string(),
                 source_tree: sample_folder("demo"),
@@ -81,8 +81,8 @@ mod tests {
     }
 
     #[test]
-    fn build_organize_prompt_context_includes_scope_and_tool_guidance() {
-        let prompt = build_organize_prompt_context(&sample_session());
+    fn build_folder_prompt_context_includes_scope_and_tool_guidance() {
+        let prompt = build_folder_prompt_context(&sample_session());
 
         assert!(prompt.contains("[Operating rules]"));
         assert!(prompt.contains("[Recommended approach]"));

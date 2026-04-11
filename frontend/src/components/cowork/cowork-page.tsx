@@ -48,13 +48,13 @@ import CoworkSidebar from './cowork-sidebar'
 import CoworkTabs from './cowork-tabs'
 
 const HOMEPAGE_SCOPE: CoworkChatScope = 'homepage'
-const ORGANIZE_SCOPE: CoworkChatScope = 'organize-file-folder'
+const FOLDER_SCOPE: CoworkChatScope = 'intelligent-folder'
 
 const createScopeRecord = <T,>(
     initialValue: T
 ): Record<CoworkChatScope, T> => ({
     homepage: initialValue,
-    'organize-file-folder': initialValue
+    'intelligent-folder': initialValue
 })
 
 const upsertChatSessionSummary = (
@@ -99,7 +99,7 @@ const buildSessionDetailFromSummary = (
     runtime_events: current?.runtime_events ?? [],
     files: current?.files ?? [],
     run_status: current?.run_status ?? 'idle',
-    organize_tree_pair: current?.organize_tree_pair
+    folder_tree_pair: current?.folder_tree_pair
 })
 
 const appendMessageIfMissing = (
@@ -926,9 +926,9 @@ const CoworkPage = () => {
     const [isSidebarOpen, setIsSidebarOpen] = useState(false)
     const [isChatSessionsBoardOpen, setIsChatSessionsBoardOpen] =
         useState(false)
-    const [organizeModeResetVersion, setOrganizeModeResetVersion] = useState(0)
+    const [folderModeResetVersion, setFolderModeResetVersion] = useState(0)
     const [isSessionsBoardOpen, setIsSessionsBoardOpen] = useState(false)
-    const [isOrganizeWorkflowActive, setIsOrganizeWorkflowActive] =
+    const [isFolderWorkflowActive, setIsFolderWorkflowActive] =
         useState(false)
     const [pendingDeleteSession, setPendingDeleteSession] =
         useState<CoworkChatSessionSummary | null>(null)
@@ -956,9 +956,9 @@ const CoworkPage = () => {
     const [liveSessionsById, setLiveSessionsById] = useState<
         Record<string, CoworkLiveSessionState>
     >({})
-    const [requestedOrganizeAction, setRequestedOrganizeAction] =
+    const [requestedFolderAction, setRequestedFolderAction] =
         useState<ActionStep | null>(null)
-    const [requestedOrganizeActionToken, setRequestedOrganizeActionToken] =
+    const [requestedFolderActionToken, setRequestedFolderActionToken] =
         useState(0)
     const recoveringSessionIdsRef = useRef<Set<string>>(new Set())
     const suppressedStreamingSessionIdsRef = useRef<Set<string>>(new Set())
@@ -970,7 +970,7 @@ const CoworkPage = () => {
     )
 
     const currentChatScope: CoworkChatScope =
-        activeMode === 'organize-file-folder' ? ORGANIZE_SCOPE : HOMEPAGE_SCOPE
+        activeMode === 'intelligent-folder' ? FOLDER_SCOPE : HOMEPAGE_SCOPE
 
     const currentActiveChatSession = activeChatSessionsByScope[currentChatScope]
     const replayedCurrentLiveSession = useMemo(
@@ -986,32 +986,32 @@ const CoworkPage = () => {
         isChatSessionLoadingByScope[currentChatScope]
     const isCurrentChatSending = isChatSendingByScope[currentChatScope]
     const isCurrentChatInputLocked =
-        activeMode === 'organize-file-folder' && !isOrganizeWorkflowActive
+        activeMode === 'intelligent-folder' && !isFolderWorkflowActive
 
     const homepageChatSessions = chatSessionsByScope[HOMEPAGE_SCOPE]
     const homepageActiveChatSessionId = activeChatSessionIds[HOMEPAGE_SCOPE]
-    const organizeChatSessions = chatSessionsByScope[ORGANIZE_SCOPE]
-    const organizeActiveChatSessionId = activeChatSessionIds[ORGANIZE_SCOPE]
-    const organizeActiveChatSession = activeChatSessionsByScope[ORGANIZE_SCOPE]
-    const replayedOrganizeLiveSession = useMemo(
-        () => replayPersistedLiveSession(organizeActiveChatSession),
-        [organizeActiveChatSession]
+    const folderChatSessions = chatSessionsByScope[FOLDER_SCOPE]
+    const folderActiveChatSessionId = activeChatSessionIds[FOLDER_SCOPE]
+    const folderActiveChatSession = activeChatSessionsByScope[FOLDER_SCOPE]
+    const replayedFolderLiveSession = useMemo(
+        () => replayPersistedLiveSession(folderActiveChatSession),
+        [folderActiveChatSession]
     )
-    const organizeLiveSession = organizeActiveChatSession
-        ? (liveSessionsById[organizeActiveChatSession.id] ??
-          replayedOrganizeLiveSession ??
+    const folderLiveSession = folderActiveChatSession
+        ? (liveSessionsById[folderActiveChatSession.id] ??
+          replayedFolderLiveSession ??
           null)
         : null
-    const isOrganizeSessionLoading = isChatSessionLoadingByScope[ORGANIZE_SCOPE]
+    const isFolderSessionLoading = isChatSessionLoadingByScope[FOLDER_SCOPE]
 
-    const resetOrganizeSessionState = useCallback(() => {
+    const resetFolderSessionState = useCallback(() => {
         setActiveChatSessionIds((prev) => ({
             ...prev,
-            [ORGANIZE_SCOPE]: null
+            [FOLDER_SCOPE]: null
         }))
         setActiveChatSessionsByScope((prev) => ({
             ...prev,
-            [ORGANIZE_SCOPE]: null
+            [FOLDER_SCOPE]: null
         }))
     }, [])
 
@@ -1475,7 +1475,7 @@ const CoworkPage = () => {
     useEffect(() => {
         void Promise.all([
             refreshChatSessions(HOMEPAGE_SCOPE),
-            refreshChatSessions(ORGANIZE_SCOPE)
+            refreshChatSessions(FOLDER_SCOPE)
         ])
     }, [refreshChatSessions])
 
@@ -1484,7 +1484,7 @@ const CoworkPage = () => {
         setIsSidebarOpen(false)
         setIsChatSessionsBoardOpen(false)
         setIsSessionsBoardOpen(false)
-        setIsOrganizeWorkflowActive(false)
+        setIsFolderWorkflowActive(false)
     }
 
     const handleSelectMode = (mode: CoworkModeId) => {
@@ -1492,12 +1492,12 @@ const CoworkPage = () => {
         setIsChatSessionsBoardOpen(false)
         setIsSessionsBoardOpen(false)
 
-        if (mode === 'organize-file-folder') {
-            resetOrganizeSessionState()
-            setOrganizeModeResetVersion((prev) => prev + 1)
-            setIsOrganizeWorkflowActive(false)
-            setRequestedOrganizeAction(null)
-            setRequestedOrganizeActionToken(0)
+        if (mode === 'intelligent-folder') {
+            resetFolderSessionState()
+            setFolderModeResetVersion((prev) => prev + 1)
+            setIsFolderWorkflowActive(false)
+            setRequestedFolderAction(null)
+            setRequestedFolderActionToken(0)
         }
     }
 
@@ -1512,15 +1512,15 @@ const CoworkPage = () => {
         setIsSessionsBoardOpen(open)
     }
 
-    const handleOrganizeWorkflowActiveChange = (active: boolean) => {
-        setIsOrganizeWorkflowActive(active)
+    const handleFolderWorkflowActiveChange = (active: boolean) => {
+        setIsFolderWorkflowActive(active)
     }
 
     const handleOpenModeFirstPage = () => {
-        if (activeMode === 'organize-file-folder') {
-            resetOrganizeSessionState()
-            setOrganizeModeResetVersion((prev) => prev + 1)
-            setIsOrganizeWorkflowActive(false)
+        if (activeMode === 'intelligent-folder') {
+            resetFolderSessionState()
+            setFolderModeResetVersion((prev) => prev + 1)
+            setIsFolderWorkflowActive(false)
         }
 
         setIsChatSessionsBoardOpen(false)
@@ -1531,14 +1531,14 @@ const CoworkPage = () => {
         setIsChatSessionsBoardOpen(false)
         setIsSessionsBoardOpen(false)
 
-        if (sessionId !== activeChatSessionIds[ORGANIZE_SCOPE]) {
-            await loadChatSession(sessionId, ORGANIZE_SCOPE)
+        if (sessionId !== activeChatSessionIds[FOLDER_SCOPE]) {
+            await loadChatSession(sessionId, FOLDER_SCOPE)
         }
     }
 
     const handleRenameSession = useCallback(
         async (sessionId: string) => {
-            const currentSummary = chatSessionsByScope[ORGANIZE_SCOPE].find(
+            const currentSummary = chatSessionsByScope[FOLDER_SCOPE].find(
                 (session) => session.id === sessionId
             )
             const nextTitle = window.prompt(
@@ -1550,24 +1550,24 @@ const CoworkPage = () => {
                 return
             }
 
-            const renamedSession = await coworkService.renameOrganizeSession(
+            const renamedSession = await coworkService.renameFolderSession(
                 sessionId,
                 nextTitle
             )
 
             setChatSessionsByScope((prev) => ({
                 ...prev,
-                [ORGANIZE_SCOPE]: upsertChatSessionSummary(
-                    prev[ORGANIZE_SCOPE],
+                [FOLDER_SCOPE]: upsertChatSessionSummary(
+                    prev[FOLDER_SCOPE],
                     buildChatSessionSummary(renamedSession)
                 )
             }))
             setActiveChatSessionsByScope((prev) => ({
                 ...prev,
-                [ORGANIZE_SCOPE]:
-                    prev[ORGANIZE_SCOPE]?.id === renamedSession.id
+                [FOLDER_SCOPE]:
+                    prev[FOLDER_SCOPE]?.id === renamedSession.id
                         ? renamedSession
-                        : prev[ORGANIZE_SCOPE]
+                        : prev[FOLDER_SCOPE]
             }))
         },
         [chatSessionsByScope]
@@ -1613,14 +1613,14 @@ const CoworkPage = () => {
 
     const handleDeleteSession = useCallback(
         (sessionId: string) => {
-            const currentSummary = chatSessionsByScope[ORGANIZE_SCOPE].find(
+            const currentSummary = chatSessionsByScope[FOLDER_SCOPE].find(
                 (session) => session.id === sessionId
             )
 
             setPendingDeleteSession(
                 currentSummary ?? {
                     id: sessionId,
-                    scope: ORGANIZE_SCOPE,
+                    scope: FOLDER_SCOPE,
                     title: sessionId,
                     preview: '',
                     updated_at: '',
@@ -1664,7 +1664,7 @@ const CoworkPage = () => {
             if (sessionScope === HOMEPAGE_SCOPE) {
                 await coworkService.deleteHomepageChatSession(sessionId)
             } else {
-                await coworkService.deleteOrganizeSession(sessionId)
+                await coworkService.deleteFolderSession(sessionId)
             }
 
             setChatSessionsByScope((prev) => ({
@@ -1685,10 +1685,10 @@ const CoworkPage = () => {
                         [HOMEPAGE_SCOPE]: null
                     }))
                 }
-            } else if (activeChatSessionIds[ORGANIZE_SCOPE] === sessionId) {
-                resetOrganizeSessionState()
-                setOrganizeModeResetVersion((prev) => prev + 1)
-                setIsOrganizeWorkflowActive(false)
+            } else if (activeChatSessionIds[FOLDER_SCOPE] === sessionId) {
+                resetFolderSessionState()
+                setFolderModeResetVersion((prev) => prev + 1)
+                setIsFolderWorkflowActive(false)
             }
 
             removeLiveSessionState(sessionId)
@@ -1701,7 +1701,7 @@ const CoworkPage = () => {
         isDeletingSession,
         pendingDeleteSession,
         removeLiveSessionState,
-        resetOrganizeSessionState
+        resetFolderSessionState
     ])
 
     const handleDeleteDialogOpenChange = useCallback(
@@ -1713,22 +1713,22 @@ const CoworkPage = () => {
         [isDeletingSession]
     )
 
-    const handleOrganizeSessionCreated = useCallback(
+    const handleFolderSessionCreated = useCallback(
         (session: CoworkChatSessionDetail) => {
             setChatSessionsByScope((prev) => ({
                 ...prev,
-                [ORGANIZE_SCOPE]: upsertChatSessionSummary(
-                    prev[ORGANIZE_SCOPE],
+                [FOLDER_SCOPE]: upsertChatSessionSummary(
+                    prev[FOLDER_SCOPE],
                     buildChatSessionSummary(session)
                 )
             }))
             setActiveChatSessionIds((prev) => ({
                 ...prev,
-                [ORGANIZE_SCOPE]: session.id
+                [FOLDER_SCOPE]: session.id
             }))
             setActiveChatSessionsByScope((prev) => ({
                 ...prev,
-                [ORGANIZE_SCOPE]: session
+                [FOLDER_SCOPE]: session
             }))
         },
         []
@@ -1736,12 +1736,12 @@ const CoworkPage = () => {
 
     const handleSelectCoworkAction = useCallback(
         (action: ActionStep) => {
-            if (currentChatScope !== ORGANIZE_SCOPE) {
+            if (currentChatScope !== FOLDER_SCOPE) {
                 return
             }
 
-            setRequestedOrganizeAction(action)
-            setRequestedOrganizeActionToken((prev) => prev + 1)
+            setRequestedFolderAction(action)
+            setRequestedFolderActionToken((prev) => prev + 1)
         },
         [currentChatScope]
     )
@@ -1786,9 +1786,9 @@ const CoworkPage = () => {
                 return
             }
 
-            if (scope === ORGANIZE_SCOPE) {
-                setRequestedOrganizeAction(null)
-                setRequestedOrganizeActionToken((prev) => prev + 1)
+            if (scope === FOLDER_SCOPE) {
+                setRequestedFolderAction(null)
+                setRequestedFolderActionToken((prev) => prev + 1)
             }
 
             setScopeSending(scope, true)
@@ -1832,8 +1832,8 @@ const CoworkPage = () => {
                     : hydratedSession
 
                 if (
-                    scope === ORGANIZE_SCOPE &&
-                    resolvedSession.organize_tree_pair?.source_root
+                    scope === FOLDER_SCOPE &&
+                    resolvedSession.folder_tree_pair?.source_root
                 ) {
                     resolvedSession = await coworkService.getChatSession(
                         resolvedSession.id,
@@ -1938,13 +1938,13 @@ const CoworkPage = () => {
                                     onSessionsBoardOpenChange={
                                         handleSessionsBoardOpenChange
                                     }
-                                    modeSessions={organizeChatSessions}
+                                    modeSessions={folderChatSessions}
                                     activeModeSessionId={
-                                        organizeActiveChatSessionId
+                                        folderActiveChatSessionId
                                     }
                                     isModeSessionsLoading={
                                         isChatSessionsLoadingByScope[
-                                            ORGANIZE_SCOPE
+                                            FOLDER_SCOPE
                                         ]
                                     }
                                     onSelectSession={handleSelectSession}
@@ -1954,33 +1954,33 @@ const CoworkPage = () => {
                                 <div className="min-h-0 flex-1 overflow-hidden">
                                     <CoworkMain
                                         activeMode={activeMode}
-                                        organizeSession={
-                                            organizeActiveChatSession
+                                        folderSession={
+                                            folderActiveChatSession
                                         }
-                                        organizeLiveSession={
-                                            organizeLiveSession
+                                        folderLiveSession={
+                                            folderLiveSession
                                         }
-                                        isOrganizeSessionLoading={
-                                            isOrganizeSessionLoading
+                                        isFolderSessionLoading={
+                                            isFolderSessionLoading
                                         }
-                                        isOrganizeChatSending={
-                                            isChatSendingByScope[ORGANIZE_SCOPE]
+                                        isFolderChatSending={
+                                            isChatSendingByScope[FOLDER_SCOPE]
                                         }
                                         onSelectMode={handleSelectMode}
-                                        organizeModeResetVersion={
-                                            organizeModeResetVersion
+                                        folderModeResetVersion={
+                                            folderModeResetVersion
                                         }
-                                        onOrganizeWorkflowActiveChange={
-                                            handleOrganizeWorkflowActiveChange
+                                        onFolderWorkflowActiveChange={
+                                            handleFolderWorkflowActiveChange
                                         }
-                                        onOrganizeSessionCreated={
-                                            handleOrganizeSessionCreated
+                                        onFolderSessionCreated={
+                                            handleFolderSessionCreated
                                         }
-                                        requestedOrganizeAction={
-                                            requestedOrganizeAction
+                                        requestedFolderAction={
+                                            requestedFolderAction
                                         }
-                                        requestedOrganizeActionToken={
-                                            requestedOrganizeActionToken
+                                        requestedFolderActionToken={
+                                            requestedFolderActionToken
                                         }
                                     />
                                 </div>
@@ -2017,7 +2017,7 @@ const CoworkPage = () => {
                             <AlertDialogTitle>
                                 {pendingDeleteSession?.scope === HOMEPAGE_SCOPE
                                     ? 'Delete chat session?'
-                                    : 'Delete organize session?'}
+                                    : 'Delete folder session?'}
                             </AlertDialogTitle>
                             <AlertDialogDescription>
                                 {`Session "${pendingDeleteSession?.title ?? ''}" will be removed from this device.`}

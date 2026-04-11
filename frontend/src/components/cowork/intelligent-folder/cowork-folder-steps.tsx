@@ -1,15 +1,15 @@
 import clsx from 'clsx'
 import { Icon } from '@/components/ui/icon'
 
-export type CoworkOrganizeStep = 'source' | 'build' | 'result'
+export type CoworkFolderStep = 'source' | 'build' | 'result'
 
-interface CoworkOrganizeStepsProps {
-    activeStep: CoworkOrganizeStep
-    onSelectStep: (step: CoworkOrganizeStep) => void
+interface CoworkFolderStepsProps {
+    activeStep: CoworkFolderStep
+    onSelectStep: (step: CoworkFolderStep) => void
 }
 
 const steps: {
-    id: CoworkOrganizeStep
+    id: CoworkFolderStep
     label: string
     icon: string
 }[] = [
@@ -18,10 +18,10 @@ const steps: {
     { id: 'result', label: 'Result', icon: 'ai-magic' }
 ]
 
-const CoworkOrganizeSteps = ({
+const CoworkFolderSteps = ({
     activeStep,
     onSelectStep
-}: CoworkOrganizeStepsProps) => {
+}: CoworkFolderStepsProps) => {
     return (
         <div className="flex items-center justify-center gap-x-3">
             {steps.map((step, index) => {
@@ -74,4 +74,4 @@ const CoworkOrganizeSteps = ({
     )
 }
 
-export default CoworkOrganizeSteps
+export default CoworkFolderSteps

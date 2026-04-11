@@ -8,8 +8,8 @@ pub const COWORK_STREAM_EVENT_NAME: &str = "cowork://stream";
 pub enum CoworkChatScope {
     #[serde(rename = "homepage")]
     Homepage,
-    #[serde(rename = "organize-file-folder", alias = "organize_file_folder")]
-    OrganizeFileFolder,
+    #[serde(rename = "intelligent-folder", alias = "intelligent_folder")]
+    IntelligentFolder,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]

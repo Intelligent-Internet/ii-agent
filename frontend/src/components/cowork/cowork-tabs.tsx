@@ -233,7 +233,7 @@ const CoworkTabs = ({
                         </PopoverContent>
                     </Popover>
                 )}
-                {activeMode === 'organize-file-folder' && (
+                {activeMode === 'intelligent-folder' && (
                     <div className="flex items-center gap-2">
                         <Popover
                             open={isSessionsBoardOpen}

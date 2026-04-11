@@ -26,13 +26,13 @@ fn main() {
             cowork::homepage::chat_sessions::update_homepage_chat_session,
             cowork::homepage::chat_sessions::rename_homepage_chat_session,
             cowork::homepage::chat_sessions::delete_homepage_chat_session,
-            cowork::organize::file_tree::read_path_tree,
-            cowork::organize::sessions::list_organize_sessions,
-            cowork::organize::sessions::get_organize_session,
-            cowork::organize::sessions::create_organize_session,
-            cowork::organize::sessions::update_organize_session,
-            cowork::organize::sessions::rename_organize_session,
-            cowork::organize::sessions::delete_organize_session
+            cowork::intelligent_folder::file_tree::read_path_tree,
+            cowork::intelligent_folder::sessions::list_folder_sessions,
+            cowork::intelligent_folder::sessions::get_folder_session,
+            cowork::intelligent_folder::sessions::create_folder_session,
+            cowork::intelligent_folder::sessions::update_folder_session,
+            cowork::intelligent_folder::sessions::rename_folder_session,
+            cowork::intelligent_folder::sessions::delete_folder_session
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

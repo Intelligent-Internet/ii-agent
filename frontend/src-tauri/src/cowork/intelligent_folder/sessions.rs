@@ -1,7 +1,7 @@
 pub use crate::cowork::chat::{CoworkChatRunStatus, CoworkChatScope, CoworkChatSessionSummary};
 
 use crate::cowork::chat::CoworkChatSessionDetail as BaseCoworkChatSessionDetail;
-use crate::cowork::organize::file_tree::{self, FileTreeNode, FileTreeNodeKind};
+use crate::cowork::intelligent_folder::file_tree::{self, FileTreeNode, FileTreeNodeKind};
 use chrono::{SecondsFormat, Utc};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -13,11 +13,11 @@ use std::{
 use tauri::{AppHandle, Manager};
 
 const STORE_DIR_NAME: &str = "cowork";
-const SESSION_STORE_DIR_NAME: &str = "organize-sessions";
-const LEGACY_STORE_FILE_NAME: &str = "organize-sessions.json";
+const SESSION_STORE_DIR_NAME: &str = "folder-sessions";
+const LEGACY_STORE_FILE_NAME: &str = "folder-sessions.json";
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
-pub struct CoworkOrganizeTreePair {
+pub struct CoworkFolderTreePair {
     pub source_root: String,
     pub result_root: String,
     pub source_tree: FileTreeNode,
@@ -28,7 +28,7 @@ pub struct CoworkOrganizeTreePair {
 pub struct CoworkChatSessionDetail {
     #[serde(flatten)]
     pub base: BaseCoworkChatSessionDetail,
-    pub organize_tree_pair: CoworkOrganizeTreePair,
+    pub folder_tree_pair: CoworkFolderTreePair,
 }
 
 impl Deref for CoworkChatSessionDetail {
@@ -46,12 +46,12 @@ impl DerefMut for CoworkChatSessionDetail {
 }
 
 #[derive(Debug, Serialize, Deserialize, Default)]
-struct OrganizeSessionStore {
+struct FolderSessionStore {
     sessions: Vec<CoworkChatSessionDetail>,
 }
 
 #[tauri::command]
-pub fn list_organize_sessions(app: AppHandle) -> Result<Vec<CoworkChatSessionSummary>, String> {
+pub fn list_folder_sessions(app: AppHandle) -> Result<Vec<CoworkChatSessionSummary>, String> {
     let mut sessions = load_sessions(&app)?;
     sort_sessions(&mut sessions);
 
@@ -59,7 +59,7 @@ pub fn list_organize_sessions(app: AppHandle) -> Result<Vec<CoworkChatSessionSum
 }
 
 #[tauri::command]
-pub fn get_organize_session(
+pub fn get_folder_session(
     app: AppHandle,
     session_id: String,
 ) -> Result<CoworkChatSessionDetail, String> {
@@ -67,9 +67,9 @@ pub fn get_organize_session(
 }
 
 #[tauri::command]
-pub fn create_organize_session(
+pub fn create_folder_session(
     app: AppHandle,
-    tree_pair: CoworkOrganizeTreePair,
+    tree_pair: CoworkFolderTreePair,
 ) -> Result<CoworkChatSessionDetail, String> {
     validate_tree_pair(&tree_pair)?;
 
@@ -77,7 +77,7 @@ pub fn create_organize_session(
     let session = CoworkChatSessionDetail {
         base: BaseCoworkChatSessionDetail {
             id: generate_session_id(),
-            scope: CoworkChatScope::OrganizeFileFolder,
+            scope: CoworkChatScope::IntelligentFolder,
             title: build_session_title(&tree_pair.source_root),
             preview: build_session_preview(&tree_pair.source_root),
             updated_at: now,
@@ -89,7 +89,7 @@ pub fn create_organize_session(
             files: Vec::new(),
             run_status: CoworkChatRunStatus::Idle,
         },
-        organize_tree_pair: tree_pair,
+        folder_tree_pair: tree_pair,
     };
 
     write_session(&app, &session)?;
@@ -98,7 +98,7 @@ pub fn create_organize_session(
 }
 
 #[tauri::command]
-pub fn update_organize_session(
+pub fn update_folder_session(
     app: AppHandle,
     session: CoworkChatSessionDetail,
 ) -> Result<CoworkChatSessionDetail, String> {
@@ -112,7 +112,7 @@ pub fn update_organize_session(
 }
 
 #[tauri::command]
-pub fn rename_organize_session(
+pub fn rename_folder_session(
     app: AppHandle,
     session_id: String,
     title: String,
@@ -133,18 +133,18 @@ pub fn rename_organize_session(
 }
 
 #[tauri::command]
-pub fn delete_organize_session(app: AppHandle, session_id: String) -> Result<(), String> {
+pub fn delete_folder_session(app: AppHandle, session_id: String) -> Result<(), String> {
     delete_session(&app, &session_id)
 }
 
 pub fn sync_result_tree_from_disk(session: &mut CoworkChatSessionDetail) -> Result<(), String> {
     let latest_tree =
-        file_tree::read_path_tree(session.organize_tree_pair.source_root.clone(), None)?;
-    let source_hash = hash_tree(&session.organize_tree_pair.source_tree)?;
+        file_tree::read_path_tree(session.folder_tree_pair.source_root.clone(), None)?;
+    let source_hash = hash_tree(&session.folder_tree_pair.source_tree)?;
     let latest_hash = hash_tree(&latest_tree)?;
 
-    session.organize_tree_pair.result_root = session.organize_tree_pair.source_root.clone();
-    session.organize_tree_pair.result_tree = if source_hash == latest_hash {
+    session.folder_tree_pair.result_root = session.folder_tree_pair.source_root.clone();
+    session.folder_tree_pair.result_tree = if source_hash == latest_hash {
         None
     } else {
         Some(latest_tree)
@@ -154,36 +154,36 @@ pub fn sync_result_tree_from_disk(session: &mut CoworkChatSessionDetail) -> Resu
 }
 
 fn validate_session(session: &CoworkChatSessionDetail) -> Result<(), String> {
-    if session.scope != CoworkChatScope::OrganizeFileFolder {
-        return Err("Only organize-file-folder sessions can be persisted locally".to_string());
+    if session.scope != CoworkChatScope::IntelligentFolder {
+        return Err("Only intelligent-folder sessions can be persisted locally".to_string());
     }
 
-    validate_tree_pair(&session.organize_tree_pair)
+    validate_tree_pair(&session.folder_tree_pair)
 }
 
 fn hash_tree(tree: &FileTreeNode) -> Result<String, String> {
     let serialized = serde_json::to_vec(tree)
-        .map_err(|error| format!("Failed to serialize organize tree for hashing: {}", error))?;
+        .map_err(|error| format!("Failed to serialize folder tree for hashing: {}", error))?;
     let digest = Sha256::digest(serialized);
     Ok(digest.iter().map(|value| format!("{value:02x}")).collect())
 }
 
-fn validate_tree_pair(tree_pair: &CoworkOrganizeTreePair) -> Result<(), String> {
+fn validate_tree_pair(tree_pair: &CoworkFolderTreePair) -> Result<(), String> {
     if tree_pair.source_root.trim().is_empty() {
-        return Err("Organize session source_root is required".to_string());
+        return Err("Folder session source_root is required".to_string());
     }
 
     if tree_pair.result_root.trim().is_empty() {
-        return Err("Organize session result_root is required".to_string());
+        return Err("Folder session result_root is required".to_string());
     }
 
     if tree_pair.source_tree.kind != FileTreeNodeKind::Folder {
-        return Err("Organize session source_tree root must be a folder".to_string());
+        return Err("Folder session source_tree root must be a folder".to_string());
     }
 
     if let Some(result_tree) = &tree_pair.result_tree {
         if result_tree.kind != FileTreeNodeKind::Folder {
-            return Err("Organize session result_tree root must be a folder".to_string());
+            return Err("Folder session result_tree root must be a folder".to_string());
         }
     }
 
@@ -211,7 +211,7 @@ fn build_session_title(source_root: &str) -> String {
         .unwrap_or(trimmed);
 
     if folder_name.is_empty() {
-        "Organize session".to_string()
+        "Folder session".to_string()
     } else {
         folder_name.to_string()
     }
@@ -222,7 +222,7 @@ fn build_session_preview(source_root: &str) -> String {
 }
 
 fn generate_session_id() -> String {
-    format!("cowork-organize-{}", Utc::now().timestamp_millis())
+    format!("cowork-folder-{}", Utc::now().timestamp_millis())
 }
 
 fn now_iso() -> String {
@@ -232,7 +232,7 @@ fn now_iso() -> String {
 fn normalize_session(mut session: CoworkChatSessionDetail) -> CoworkChatSessionDetail {
     session.base.normalize_runtime_binding();
     session.base.message_count = session.base.messages.len();
-    session.base.preview = build_session_preview(&session.organize_tree_pair.source_root);
+    session.base.preview = build_session_preview(&session.folder_tree_pair.source_root);
     if session.base.messages.is_empty()
         && session.base.runtime_events.is_empty()
         && session.base.runtime_session_id.is_none()
@@ -259,7 +259,7 @@ fn load_sessions(app: &AppHandle) -> Result<Vec<CoworkChatSessionDetail>, String
     let store_dir = session_store_dir_path(app)?;
     let entries = fs::read_dir(&store_dir).map_err(|error| {
         format!(
-            "Failed to read organize sessions directory {}: {}",
+            "Failed to read folder sessions directory {}: {}",
             store_dir.display(),
             error
         )
@@ -269,7 +269,7 @@ fn load_sessions(app: &AppHandle) -> Result<Vec<CoworkChatSessionDetail>, String
     for entry in entries {
         let entry = entry.map_err(|error| {
             format!(
-                "Failed to read an entry in organize sessions directory {}: {}",
+                "Failed to read an entry in folder sessions directory {}: {}",
                 store_dir.display(),
                 error
             )
@@ -291,7 +291,7 @@ fn load_session(app: &AppHandle, session_id: &str) -> Result<CoworkChatSessionDe
 
     let session_file = session_file_path(app, session_id)?;
     if !session_file.exists() {
-        return Err(format!("Organize session not found: {}", session_id.trim()));
+        return Err(format!("Folder session not found: {}", session_id.trim()));
     }
 
     Ok(normalize_session(read_session_file(&session_file)?))
@@ -303,14 +303,14 @@ fn write_session(app: &AppHandle, session: &CoworkChatSessionDetail) -> Result<(
     let session_file = session_file_path(app, &session.id)?;
     let contents = serde_json::to_string_pretty(session).map_err(|error| {
         format!(
-            "Failed to serialize organize session {}: {}",
+            "Failed to serialize folder session {}: {}",
             session.id, error
         )
     })?;
 
     fs::write(&session_file, contents).map_err(|error| {
         format!(
-            "Failed to write organize session file {}: {}",
+            "Failed to write folder session file {}: {}",
             session_file.display(),
             error
         )
@@ -322,12 +322,12 @@ fn delete_session(app: &AppHandle, session_id: &str) -> Result<(), String> {
 
     let session_file = session_file_path(app, session_id)?;
     if !session_file.exists() {
-        return Err(format!("Organize session not found: {}", session_id.trim()));
+        return Err(format!("Folder session not found: {}", session_id.trim()));
     }
 
     fs::remove_file(&session_file).map_err(|error| {
         format!(
-            "Failed to delete organize session file {}: {}",
+            "Failed to delete folder session file {}: {}",
             session_file.display(),
             error
         )
@@ -337,7 +337,7 @@ fn delete_session(app: &AppHandle, session_id: &str) -> Result<(), String> {
 fn read_session_file(path: &PathBuf) -> Result<CoworkChatSessionDetail, String> {
     let contents = fs::read_to_string(path).map_err(|error| {
         format!(
-            "Failed to read organize session file {}: {}",
+            "Failed to read folder session file {}: {}",
             path.display(),
             error
         )
@@ -345,14 +345,14 @@ fn read_session_file(path: &PathBuf) -> Result<CoworkChatSessionDetail, String> 
 
     if contents.trim().is_empty() {
         return Err(format!(
-            "Organize session file is empty: {}",
+            "Folder session file is empty: {}",
             path.display()
         ));
     }
 
     serde_json::from_str(&contents).map_err(|error| {
         format!(
-            "Failed to parse organize session file {}: {}",
+            "Failed to parse folder session file {}: {}",
             path.display(),
             error
         )
@@ -366,12 +366,12 @@ fn migrate_legacy_store(app: &AppHandle) -> Result<(), String> {
     }
 
     let contents = fs::read_to_string(&legacy_store_file)
-        .map_err(|error| format!("Failed to read organize session store: {}", error))?;
+        .map_err(|error| format!("Failed to read folder session store: {}", error))?;
 
     if contents.trim().is_empty() {
         fs::remove_file(&legacy_store_file).map_err(|error| {
             format!(
-                "Failed to remove empty legacy organize session store {}: {}",
+                "Failed to remove empty legacy folder session store {}: {}",
                 legacy_store_file.display(),
                 error
             )
@@ -379,21 +379,21 @@ fn migrate_legacy_store(app: &AppHandle) -> Result<(), String> {
         return Ok(());
     }
 
-    let legacy_store: OrganizeSessionStore = serde_json::from_str(&contents)
-        .map_err(|error| format!("Failed to parse organize session store: {}", error))?;
+    let legacy_store: FolderSessionStore = serde_json::from_str(&contents)
+        .map_err(|error| format!("Failed to parse folder session store: {}", error))?;
 
     for session in legacy_store.sessions {
         let session_file = session_file_path(app, &session.id)?;
         let session_contents = serde_json::to_string_pretty(&session).map_err(|error| {
             format!(
-                "Failed to serialize migrated organize session {}: {}",
+                "Failed to serialize migrated folder session {}: {}",
                 session.id, error
             )
         })?;
 
         fs::write(&session_file, session_contents).map_err(|error| {
             format!(
-                "Failed to write migrated organize session file {}: {}",
+                "Failed to write migrated folder session file {}: {}",
                 session_file.display(),
                 error
             )
@@ -402,7 +402,7 @@ fn migrate_legacy_store(app: &AppHandle) -> Result<(), String> {
 
     fs::remove_file(&legacy_store_file).map_err(|error| {
         format!(
-            "Failed to remove legacy organize session store {}: {}",
+            "Failed to remove legacy folder session store {}: {}",
             legacy_store_file.display(),
             error
         )
@@ -412,11 +412,11 @@ fn migrate_legacy_store(app: &AppHandle) -> Result<(), String> {
 fn normalize_session_id(session_id: &str) -> Result<String, String> {
     let trimmed = session_id.trim();
     if trimmed.is_empty() {
-        return Err("Organize session id is required".to_string());
+        return Err("Folder session id is required".to_string());
     }
 
     if trimmed == "." || trimmed == ".." {
-        return Err(format!("Invalid organize session id: {}", trimmed));
+        return Err(format!("Invalid folder session id: {}", trimmed));
     }
 
     if trimmed.chars().any(|character| {
@@ -426,7 +426,7 @@ fn normalize_session_id(session_id: &str) -> Result<String, String> {
                 '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*'
             )
     }) {
-        return Err(format!("Invalid organize session id: {}", trimmed));
+        return Err(format!("Invalid folder session id: {}", trimmed));
     }
 
     Ok(trimmed.to_string())
@@ -441,7 +441,7 @@ fn store_root_dir_path(app: &AppHandle) -> Result<PathBuf, String> {
     data_dir.push(STORE_DIR_NAME);
 
     fs::create_dir_all(&data_dir)
-        .map_err(|error| format!("Failed to create organize session directory: {}", error))?;
+        .map_err(|error| format!("Failed to create folder session directory: {}", error))?;
 
     Ok(data_dir)
 }
@@ -452,7 +452,7 @@ fn session_store_dir_path(app: &AppHandle) -> Result<PathBuf, String> {
 
     fs::create_dir_all(&store_root).map_err(|error| {
         format!(
-            "Failed to create organize sessions directory {}: {}",
+            "Failed to create folder sessions directory {}: {}",
             store_root.display(),
             error
         )

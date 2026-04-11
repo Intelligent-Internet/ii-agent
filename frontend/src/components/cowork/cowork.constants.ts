@@ -2,7 +2,7 @@ export const COWORK_HOME_LABEL = 'Homepage'
 
 export const COWORK_MODES = [
     {
-        id: 'organize-file-folder',
+        id: 'intelligent-folder',
         label: 'Intelligent Folder'
     }
 ] as const

@@ -11,7 +11,7 @@ import {
     useCoworkBuildState
 } from '../cowork-build/cowork-build.shared'
 
-interface CoworkOrganizeBuildProps {
+interface CoworkFolderBuildProps {
     session?: CoworkChatSessionDetail | null
     liveSession?: CoworkLiveSessionState | null
     isRunning?: boolean
@@ -19,14 +19,14 @@ interface CoworkOrganizeBuildProps {
     requestedActionToken?: number
 }
 
-const organizeBuildRenderers = pickCoworkBuildRenderers('terminal', 'code')
+const folderBuildRenderers = pickCoworkBuildRenderers('terminal', 'code')
 
-const CoworkOrganizeBuild = ({
+const CoworkFolderBuild = ({
     session = null,
     liveSession = null,
     requestedAction = null,
     requestedActionToken = 0
-}: CoworkOrganizeBuildProps) => {
+}: CoworkFolderBuildProps) => {
     const buildState = useCoworkBuildState({
         liveSession,
         requestedAction,
@@ -49,7 +49,7 @@ const CoworkOrganizeBuild = ({
             viewport={
                 <CoworkBuildViewport
                     state={buildState}
-                    renderers={organizeBuildRenderers}
+                    renderers={folderBuildRenderers}
                     renderUnsupportedAction
                     unsupportedMessage="This Intelligent Folder event does not have a dedicated build renderer yet."
                     emptyTitle={
@@ -73,4 +73,4 @@ const CoworkOrganizeBuild = ({
     )
 }
 
-export default CoworkOrganizeBuild
+export default CoworkFolderBuild

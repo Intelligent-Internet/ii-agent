@@ -290,7 +290,7 @@ mod tests {
                 id: "evt-1".to_string(),
                 event_type: "session.user_message".to_string(),
                 content: json!({
-                    "text": "Please organize these files"
+                    "text": "Please folder these files"
                 }),
                 created_at: Some("2026-04-06T00:00:00Z".to_string()),
             }],
@@ -300,7 +300,7 @@ mod tests {
 
         assert_eq!(snapshot.messages.len(), 1);
         assert_eq!(snapshot.messages[0].role, crate::cowork::chat::CoworkChatMessageRole::User);
-        assert_eq!(snapshot.messages[0].content, "Please organize these files");
+        assert_eq!(snapshot.messages[0].content, "Please folder these files");
     }
 
     #[test]

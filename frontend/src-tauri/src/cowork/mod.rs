@@ -5,7 +5,7 @@ pub mod chat_commands;
 pub mod desktop_skills;
 pub mod desktop_tools;
 pub mod homepage;
-pub mod organize;
+pub mod intelligent_folder;
 pub mod runtime;
 pub mod session_gateway;
 pub mod string_utils;

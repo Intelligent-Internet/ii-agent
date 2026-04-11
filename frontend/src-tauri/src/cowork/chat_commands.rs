@@ -22,7 +22,7 @@ pub fn stop_cowork_chat_session(
         }
     }
 
-    session_gateway::sync_organize_result_tree(&mut local_session)?;
+    session_gateway::sync_folder_result_tree(&mut local_session)?;
     local_session = session_gateway::persist_local_session(&app, local_session)?;
     session_gateway::emit_local_terminal_state(&app, &local_session, false);
 

@@ -1,7 +1,7 @@
 import type { ActionStep, Message } from './agent'
 
 export type CoworkChatMessageRole = 'user' | 'assistant'
-export type CoworkChatScope = 'homepage' | 'organize-file-folder'
+export type CoworkChatScope = 'homepage' | 'intelligent-folder'
 
 export interface CoworkGitHubRepositoryContext {
     owner: string
@@ -19,20 +19,20 @@ export interface CoworkChatToolSettings {
     generate_video?: boolean
 }
 
-export interface CoworkOrganizeTreeNode {
+export interface CoworkFolderTreeNode {
     id: string
     name: string
     kind: 'folder' | 'file'
     extension?: string
     size?: string
-    children?: CoworkOrganizeTreeNode[]
+    children?: CoworkFolderTreeNode[]
 }
 
-export interface CoworkOrganizeTreePair {
+export interface CoworkFolderTreePair {
     source_root: string
     result_root: string
-    source_tree: CoworkOrganizeTreeNode
-    result_tree: CoworkOrganizeTreeNode | null
+    source_tree: CoworkFolderTreeNode
+    result_tree: CoworkFolderTreeNode | null
 }
 
 export interface CoworkChatMessage {
@@ -76,7 +76,7 @@ export interface CoworkChatSessionDetail extends CoworkChatSessionSummary {
     runtime_events: CoworkRuntimeEventPayload[]
     files: CoworkChatFile[]
     run_status: CoworkChatRunStatus
-    organize_tree_pair?: CoworkOrganizeTreePair
+    folder_tree_pair?: CoworkFolderTreePair
 }
 
 export type CoworkChatEvent =

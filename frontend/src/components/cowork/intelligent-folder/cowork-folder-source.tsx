@@ -1,15 +1,15 @@
-import type { CoworkOrganizeTreeNode } from '@/typings/cowork'
-import CoworkOrganizeTreeView from './cowork-organize-tree-view'
+import type { CoworkFolderTreeNode } from '@/typings/cowork'
+import CoworkFolderTreeView from './cowork-folder-tree-view'
 
-interface CoworkOrganizeSourceProps {
+interface CoworkFolderSourceProps {
     rootSource?: string
-    tree?: CoworkOrganizeTreeNode | null
+    tree?: CoworkFolderTreeNode | null
 }
 
-const CoworkOrganizeSource = ({
+const CoworkFolderSource = ({
     rootSource = 'root_source',
     tree = null
-}: CoworkOrganizeSourceProps) => {
+}: CoworkFolderSourceProps) => {
     if (!tree) {
         return (
             <div className="flex h-full w-full items-center justify-center rounded-[32px] border border-neutral-200 bg-white p-6 dark:border-white/20 dark:bg-white/[0.03]">
@@ -29,7 +29,7 @@ const CoworkOrganizeSource = ({
     }
 
     return (
-        <CoworkOrganizeTreeView
+        <CoworkFolderTreeView
             label="Source"
             rootPath={rootSource}
             tree={tree}
@@ -37,4 +37,4 @@ const CoworkOrganizeSource = ({
     )
 }
 
-export default CoworkOrganizeSource
+export default CoworkFolderSource

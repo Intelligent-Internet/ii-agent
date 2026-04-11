@@ -6,12 +6,12 @@ import type {
     CoworkChatSendMessageResponse,
     CoworkChatSessionDetail,
     CoworkChatSessionSummary,
-    CoworkOrganizeTreeNode,
-    CoworkOrganizeTreePair
+    CoworkFolderTreeNode,
+    CoworkFolderTreePair
 } from '@/typings/cowork'
 
 const HOMEPAGE_SCOPE: CoworkChatScope = 'homepage'
-const ORGANIZE_SCOPE: CoworkChatScope = 'organize-file-folder'
+const FOLDER_SCOPE: CoworkChatScope = 'intelligent-folder'
 
 interface ReadPathTreeOptions {
     max_depth?: number
@@ -39,17 +39,17 @@ class CoworkService {
     async readPathTree(
         path: string,
         options?: ReadPathTreeOptions
-    ): Promise<CoworkOrganizeTreeNode> {
-        return invoke<CoworkOrganizeTreeNode>('read_path_tree', {
+    ): Promise<CoworkFolderTreeNode> {
+        return invoke<CoworkFolderTreeNode>('read_path_tree', {
             path,
             options
         })
     }
 
-    async createOrganizeSession(
-        treePair: CoworkOrganizeTreePair
+    async createFolderSession(
+        treePair: CoworkFolderTreePair
     ): Promise<CoworkChatSessionDetail> {
-        return invoke<CoworkChatSessionDetail>('create_organize_session', {
+        return invoke<CoworkChatSessionDetail>('create_folder_session', {
             treePair
         })
     }
@@ -62,10 +62,10 @@ class CoworkService {
         })
     }
 
-    async updateOrganizeSession(
+    async updateFolderSession(
         session: CoworkChatSessionDetail
     ): Promise<CoworkChatSessionDetail> {
-        return invoke<CoworkChatSessionDetail>('update_organize_session', {
+        return invoke<CoworkChatSessionDetail>('update_folder_session', {
             session
         })
     }
@@ -94,18 +94,18 @@ class CoworkService {
         })
     }
 
-    async renameOrganizeSession(
+    async renameFolderSession(
         sessionId: string,
         title: string
     ): Promise<CoworkChatSessionDetail> {
-        return invoke<CoworkChatSessionDetail>('rename_organize_session', {
+        return invoke<CoworkChatSessionDetail>('rename_folder_session', {
             sessionId,
             title
         })
     }
 
-    async deleteOrganizeSession(sessionId: string): Promise<void> {
-        return invoke<void>('delete_organize_session', {
+    async deleteFolderSession(sessionId: string): Promise<void> {
+        return invoke<void>('delete_folder_session', {
             sessionId
         })
     }
@@ -119,8 +119,8 @@ class CoworkService {
             )
         }
 
-        if (scope === ORGANIZE_SCOPE) {
-            return invoke<CoworkChatSessionSummary[]>('list_organize_sessions')
+        if (scope === FOLDER_SCOPE) {
+            return invoke<CoworkChatSessionSummary[]>('list_folder_sessions')
         }
 
         return []
@@ -139,8 +139,8 @@ class CoworkService {
             )
         }
 
-        if (scope === ORGANIZE_SCOPE) {
-            return invoke<CoworkChatSessionDetail>('get_organize_session', {
+        if (scope === FOLDER_SCOPE) {
+            return invoke<CoworkChatSessionDetail>('get_folder_session', {
                 sessionId
             })
         }

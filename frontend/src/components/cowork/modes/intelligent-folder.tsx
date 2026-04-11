@@ -7,26 +7,26 @@ import { coworkService } from '@/services/cowork.service'
 import type {
     CoworkChatSessionDetail,
     CoworkLiveSessionState,
-    CoworkOrganizeTreeNode,
-    CoworkOrganizeTreePair
+    CoworkFolderTreeNode,
+    CoworkFolderTreePair
 } from '@/typings/cowork'
 import type { ActionStep } from '@/typings/agent'
 import { cn } from '@/lib/utils'
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import CoworkOrganizeBuild from '../organize-file-folder/cowork-organize-build'
-import CoworkOrganizeResult from '../organize-file-folder/cowork-organize-result'
-import CoworkOrganizeSource from '../organize-file-folder/cowork-organize-source'
-import { ORGANIZE_TREE_READ_OPTIONS } from '../organize-file-folder/organize-tree-utils'
-import CoworkOrganizeSteps, {
-    type CoworkOrganizeStep
-} from '../organize-file-folder/cowork-organize-steps'
+import CoworkFolderBuild from '../intelligent-folder/cowork-folder-build'
+import CoworkFolderResult from '../intelligent-folder/cowork-folder-result'
+import CoworkFolderSource from '../intelligent-folder/cowork-folder-source'
+import { FOLDER_TREE_READ_OPTIONS } from '../intelligent-folder/folder-tree-utils'
+import CoworkFolderSteps, {
+    type CoworkFolderStep
+} from '../intelligent-folder/cowork-folder-steps'
 
-const organizeStepTransition = {
+const folderStepTransition = {
     duration: 0.14,
     ease: 'easeOut'
 } as const
 
-interface OrganizeFileFolderModeProps {
+interface IntelligentFolderModeProps {
     resetVersion?: number
     session?: CoworkChatSessionDetail | null
     liveSession?: CoworkLiveSessionState | null
@@ -38,7 +38,7 @@ interface OrganizeFileFolderModeProps {
     requestedBuildActionToken?: number
 }
 
-const OrganizeFileFolderMode = ({
+const IntelligentFolderMode = ({
     resetVersion = 0,
     session = null,
     liveSession = null,
@@ -48,15 +48,15 @@ const OrganizeFileFolderMode = ({
     onSessionCreated,
     requestedBuildAction = null,
     requestedBuildActionToken = 0
-}: OrganizeFileFolderModeProps) => {
+}: IntelligentFolderModeProps) => {
     const [sourcePath, setSourcePath] = useState('')
     const [isLoadingPath, setIsLoadingPath] = useState(false)
     const [loadError, setLoadError] = useState<string | null>(null)
     const [isDragActive, setIsDragActive] = useState(false)
     const [loadedTreePair, setLoadedTreePair] =
-        useState<CoworkOrganizeTreePair | null>(null)
+        useState<CoworkFolderTreePair | null>(null)
     const [isProcessing, setIsProcessing] = useState(false)
-    const [activeStep, setActiveStep] = useState<CoworkOrganizeStep>('source')
+    const [activeStep, setActiveStep] = useState<CoworkFolderStep>('source')
 
     useEffect(() => {
         onWorkflowActiveChange?.(isProcessing)
@@ -74,15 +74,15 @@ const OrganizeFileFolderMode = ({
 
     useLayoutEffect(() => {
         if (!session) return
-        setSourcePath(session.organize_tree_pair?.source_root ?? '')
+        setSourcePath(session.folder_tree_pair?.source_root ?? '')
         setLoadedTreePair(null)
         setActiveStep('source')
         setIsProcessing(true)
-    }, [session?.id, session?.organize_tree_pair?.source_root])
+    }, [session?.id, session?.folder_tree_pair?.source_root])
 
-    const organizeTreePair = loadedTreePair ?? session?.organize_tree_pair
-    const modeResultTree: CoworkOrganizeTreeNode | null =
-        organizeTreePair?.result_tree ?? null
+    const folderTreePair = loadedTreePair ?? session?.folder_tree_pair
+    const modeResultTree: CoworkFolderTreeNode | null =
+        folderTreePair?.result_tree ?? null
     const hasStreamingBuildActivity = Boolean(
         liveSession?.thinking.trim() ||
             liveSession?.response.trim() ||
@@ -92,7 +92,7 @@ const OrganizeFileFolderMode = ({
     )
     const isRunCompleted = session?.run_status === 'completed'
     const sessionContentKey = useMemo(
-        () => loadedTreePair?.source_root ?? session?.id ?? 'organize-entry',
+        () => loadedTreePair?.source_root ?? session?.id ?? 'folder-entry',
         [loadedTreePair?.source_root, session?.id]
     )
 
@@ -202,7 +202,7 @@ const OrganizeFileFolderMode = ({
             setSourcePath(resolvedPath)
 
             const sourceTree = await coworkService.readPathTree(resolvedPath, {
-                ...ORGANIZE_TREE_READ_OPTIONS
+                ...FOLDER_TREE_READ_OPTIONS
             })
 
             const treePair = {
@@ -212,20 +212,20 @@ const OrganizeFileFolderMode = ({
                 result_tree: null
             }
             const persistedSession =
-                await coworkService.createOrganizeSession(treePair)
+                await coworkService.createFolderSession(treePair)
 
             setLoadedTreePair({
                 source_root:
-                    persistedSession.organize_tree_pair?.source_root ??
+                    persistedSession.folder_tree_pair?.source_root ??
                     resolvedPath,
                 result_root:
-                    persistedSession.organize_tree_pair?.result_root ??
+                    persistedSession.folder_tree_pair?.result_root ??
                     resolvedPath,
                 source_tree:
-                    persistedSession.organize_tree_pair?.source_tree ??
+                    persistedSession.folder_tree_pair?.source_tree ??
                     sourceTree,
                 result_tree:
-                    persistedSession.organize_tree_pair?.result_tree ?? null
+                    persistedSession.folder_tree_pair?.result_tree ?? null
             })
             onSessionCreated?.(persistedSession)
             setActiveStep('source')
@@ -321,7 +321,7 @@ const OrganizeFileFolderMode = ({
         <AnimatePresence mode="wait" initial={false}>
             {!isProcessing ? (
                 <motion.div
-                    key={`organize-entry-${resetVersion}`}
+                    key={`folder-entry-${resetVersion}`}
                     initial={{ opacity: 0, y: 18, scale: 0.985 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: -12, scale: 0.99 }}
@@ -357,14 +357,14 @@ const OrganizeFileFolderMode = ({
                         </p> */}
                         <div className="mx-auto mt-8 max-w-xl rounded-[28px] border border-neutral-200 bg-[#f8fafb] p-4 text-left dark:border-white/15 dark:bg-[#121716]">
                             <label
-                                htmlFor="organize-source-path"
+                                htmlFor="folder-source-path"
                                 className="text-xs font-semibold uppercase tracking-[0.2em] text-black/50 dark:text-white/50"
                             >
                                 Source path
                             </label>
                             <div className="mt-3 flex flex-col gap-3 md:flex-row">
                                 <Input
-                                    id="organize-source-path"
+                                    id="folder-source-path"
                                     value={sourcePath}
                                     onChange={(event) =>
                                         setSourcePath(event.target.value)
@@ -450,7 +450,7 @@ const OrganizeFileFolderMode = ({
                 </motion.div>
             ) : (
                 <motion.div
-                    key={`organize-process-${sessionContentKey}`}
+                    key={`folder-process-${sessionContentKey}`}
                     initial={{ opacity: 0, y: 18, scale: 0.992 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: -12, scale: 0.992 }}
@@ -458,7 +458,7 @@ const OrganizeFileFolderMode = ({
                     className="h-full w-full overflow-hidden bg-white dark:bg-white/[0.01]"
                 >
                     <div className="flex h-full flex-col items-center justify-between px-3 pb-8 pt-8 md:p-6">
-                        <CoworkOrganizeSteps
+                        <CoworkFolderSteps
                             activeStep={activeStep}
                             onSelectStep={setActiveStep}
                         />
@@ -475,20 +475,20 @@ const OrganizeFileFolderMode = ({
                                         filter: 'blur(0px)'
                                     }}
                                     exit={{ opacity: 1, filter: 'blur(0px)' }}
-                                    transition={organizeStepTransition}
+                                    transition={folderStepTransition}
                                     className="flex min-h-0 w-full flex-1"
                                 >
                                     {activeStep === 'source' && (
-                                        <CoworkOrganizeSource
+                                        <CoworkFolderSource
                                             rootSource={
-                                                organizeTreePair?.source_root ??
+                                                folderTreePair?.source_root ??
                                                 'root_source'
                                             }
-                                            tree={organizeTreePair?.source_tree}
+                                            tree={folderTreePair?.source_tree}
                                         />
                                     )}
                                     {activeStep === 'build' && (
-                                        <CoworkOrganizeBuild
+                                        <CoworkFolderBuild
                                             session={session}
                                             liveSession={liveSession}
                                             isRunning={
@@ -506,9 +506,9 @@ const OrganizeFileFolderMode = ({
                                         />
                                     )}
                                     {activeStep === 'result' && (
-                                        <CoworkOrganizeResult
+                                        <CoworkFolderResult
                                             rootResult={
-                                                organizeTreePair?.result_root ??
+                                                folderTreePair?.result_root ??
                                                 'root_result'
                                             }
                                             tree={modeResultTree}
@@ -536,4 +536,4 @@ const OrganizeFileFolderMode = ({
     )
 }
 
-export default OrganizeFileFolderMode
+export default IntelligentFolderMode

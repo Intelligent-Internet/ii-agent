@@ -6,8 +6,8 @@ use crate::cowork::chat::{
     CoworkChatSessionSummary, CoworkChatStatusEvent,
 };
 use crate::cowork::homepage::chat_sessions as homepage_sessions;
-use crate::cowork::organize::chat_prompt as organize_chat_prompt;
-use crate::cowork::organize::sessions as organize_sessions;
+use crate::cowork::intelligent_folder::chat_prompt as folder_chat_prompt;
+use crate::cowork::intelligent_folder::sessions as folder_sessions;
 use crate::cowork::runtime::CoworkRuntimeSessionSnapshot;
 use crate::cowork::time_utils::{generate_message_id, now_iso};
 use tauri::AppHandle;
@@ -15,21 +15,21 @@ use tauri::AppHandle;
 #[derive(Clone)]
 pub enum LocalCoworkSession {
     Homepage(CoworkChatSessionDetail),
-    Organize(organize_sessions::CoworkChatSessionDetail),
+    Folder(folder_sessions::CoworkChatSessionDetail),
 }
 
 impl LocalCoworkSession {
     pub fn base(&self) -> &CoworkChatSessionDetail {
         match self {
             Self::Homepage(session) => session,
-            Self::Organize(session) => &session.base,
+            Self::Folder(session) => &session.base,
         }
     }
 
     pub fn base_mut(&mut self) -> &mut CoworkChatSessionDetail {
         match self {
             Self::Homepage(session) => session,
-            Self::Organize(session) => &mut session.base,
+            Self::Folder(session) => &mut session.base,
         }
     }
 }
@@ -51,10 +51,10 @@ trait FeatureSessionStore {
 }
 
 struct HomepageSessionStore;
-struct OrganizeSessionStore;
+struct FolderSessionStore;
 
 static HOMEPAGE_SESSION_STORE: HomepageSessionStore = HomepageSessionStore;
-static ORGANIZE_SESSION_STORE: OrganizeSessionStore = OrganizeSessionStore;
+static FOLDER_SESSION_STORE: FolderSessionStore = FolderSessionStore;
 
 impl FeatureSessionStore for HomepageSessionStore {
     fn load(&self, app: &AppHandle, session_id: &str) -> Result<LocalCoworkSession, String> {
@@ -92,10 +92,10 @@ impl FeatureSessionStore for HomepageSessionStore {
     }
 }
 
-impl FeatureSessionStore for OrganizeSessionStore {
+impl FeatureSessionStore for FolderSessionStore {
     fn load(&self, app: &AppHandle, session_id: &str) -> Result<LocalCoworkSession, String> {
-        organize_sessions::get_organize_session(app.clone(), session_id.to_string())
-            .map(LocalCoworkSession::Organize)
+        folder_sessions::get_folder_session(app.clone(), session_id.to_string())
+            .map(LocalCoworkSession::Folder)
     }
 
     fn load_or_create(
@@ -106,9 +106,9 @@ impl FeatureSessionStore for OrganizeSessionStore {
         let session_id = request
             .session_id
             .as_ref()
-            .ok_or_else(|| "Organize cowork session_id is required".to_string())?;
-        let session = organize_sessions::get_organize_session(app.clone(), session_id.clone())?;
-        Ok((LocalCoworkSession::Organize(session), false))
+            .ok_or_else(|| "Folder cowork session_id is required".to_string())?;
+        let session = folder_sessions::get_folder_session(app.clone(), session_id.clone())?;
+        Ok((LocalCoworkSession::Folder(session), false))
     }
 
     fn save(
@@ -116,12 +116,12 @@ impl FeatureSessionStore for OrganizeSessionStore {
         app: &AppHandle,
         session: LocalCoworkSession,
     ) -> Result<LocalCoworkSession, String> {
-        let LocalCoworkSession::Organize(detail) = session else {
-            return Err("Organize session store received a non-organize session".to_string());
+        let LocalCoworkSession::Folder(detail) = session else {
+            return Err("Folder session store received a non-folder session".to_string());
         };
 
-        organize_sessions::update_organize_session(app.clone(), detail)
-            .map(LocalCoworkSession::Organize)
+        folder_sessions::update_folder_session(app.clone(), detail)
+            .map(LocalCoworkSession::Folder)
     }
 }
 
@@ -197,7 +197,7 @@ pub fn persist_runtime_error(
     base.message_count = base.messages.len();
     base.run_status = CoworkChatRunStatus::Stopped;
 
-    sync_organize_result_tree(&mut session)?;
+    sync_folder_result_tree(&mut session)?;
     persist_local_session(app, session)
 }
 
@@ -264,11 +264,11 @@ pub fn clear_runtime_binding(session: &mut LocalCoworkSession) {
     base.runtime_session_id = None;
 }
 
-pub fn sync_organize_result_tree(session: &mut LocalCoworkSession) -> Result<(), String> {
+pub fn sync_folder_result_tree(session: &mut LocalCoworkSession) -> Result<(), String> {
     match session {
         LocalCoworkSession::Homepage(_) => Ok(()),
-        LocalCoworkSession::Organize(detail) => {
-            organize_sessions::sync_result_tree_from_disk(detail)
+        LocalCoworkSession::Folder(detail) => {
+            folder_sessions::sync_result_tree_from_disk(detail)
         }
     }
 }
@@ -279,8 +279,8 @@ pub fn resolve_prompt_context(
 ) -> Option<String> {
     explicit_prompt_context.or_else(|| match session {
         LocalCoworkSession::Homepage(_) => None,
-        LocalCoworkSession::Organize(detail) => {
-            Some(organize_chat_prompt::build_organize_prompt_context(detail))
+        LocalCoworkSession::Folder(detail) => {
+            Some(folder_chat_prompt::build_folder_prompt_context(detail))
         }
     })
 }
@@ -474,14 +474,14 @@ fn is_same_runtime_event(left: &CoworkChatRuntimeEvent, right: &CoworkChatRuntim
 fn resolve_store_for_scope(scope: CoworkChatScope) -> &'static dyn FeatureSessionStore {
     match scope {
         CoworkChatScope::Homepage => &HOMEPAGE_SESSION_STORE,
-        CoworkChatScope::OrganizeFileFolder => &ORGANIZE_SESSION_STORE,
+        CoworkChatScope::IntelligentFolder => &FOLDER_SESSION_STORE,
     }
 }
 
 fn resolve_store_for_session(session: &LocalCoworkSession) -> &'static dyn FeatureSessionStore {
     match session {
         LocalCoworkSession::Homepage(_) => &HOMEPAGE_SESSION_STORE,
-        LocalCoworkSession::Organize(_) => &ORGANIZE_SESSION_STORE,
+        LocalCoworkSession::Folder(_) => &FOLDER_SESSION_STORE,
     }
 }
 

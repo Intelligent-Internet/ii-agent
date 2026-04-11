@@ -75,8 +75,8 @@ const CoworkChatBox = ({
         [activeSession?.id, scope]
     )
     const emptyStateDescription =
-        scope === 'organize-file-folder'
-            ? 'Start a Cowork chat session to understand, discuss, and organize your folder.'
+        scope === 'intelligent-folder'
+            ? 'Start a Cowork chat session to understand, discuss, and folder your folder.'
             : 'Start a new Cowork chat to discuss your task.'
     const responsiveChatBoxWidthClass = 'md:w-[clamp(320px,38vw,600px)]'
 
