@@ -41,6 +41,13 @@ import {
     buildCoworkTranscriptMessageId,
     resolveCoworkTranscriptAnchor
 } from './chat/cowork-chatmessage-contract'
+import {
+    inferCoworkToolDisplayName,
+    isCoworkBuildPanelActionVisible,
+    normalizeCoworkToolNameForUi,
+    readCoworkRecord,
+    readCoworkString
+} from './cowork-action-utils'
 import CoworkHeader from './cowork-header'
 import CoworkMain from './cowork-main'
 import { type CoworkModeId } from './cowork.constants'
@@ -131,10 +138,8 @@ const stringifyLiveValue = (value: unknown) => {
     }
 }
 
-const readString = (record: Record<string, unknown>, key: string) => {
-    const value = record[key]
-    return typeof value === 'string' && value.trim() ? value : undefined
-}
+const readString = (record: Record<string, unknown>, key: string) =>
+    readCoworkString(record, key)
 
 const readEventText = (record: Record<string, unknown>) =>
     readString(record, 'text') ??
@@ -174,71 +179,8 @@ const mergeStreamingText = (current: string, incoming: string) => {
     return `${current}${incoming}`
 }
 
-const normalizeCoworkToolNameForUi = (toolName?: string) => {
-    const normalized = toolName?.trim()
-    if (!normalized) {
-        return undefined
-    }
-
-    switch (normalized.toLowerCase()) {
-        case 'ls':
-            return TOOL.LS
-        case 'bash':
-            return TOOL.BASH
-        case 'bashinit':
-        case 'bash_init':
-            return TOOL.BASH_INIT
-        case 'bashview':
-        case 'bash_view':
-            return TOOL.BASH_VIEW
-        case 'bashstop':
-        case 'bash_stop':
-            return TOOL.BASH_STOP
-        case 'bashkill':
-        case 'bash_kill':
-            return TOOL.BASH_KILL
-        case 'bashlist':
-        case 'bash_list':
-            return TOOL.BASH_LIST
-        case 'bashwritetoprocess':
-        case 'bash_write_to_process':
-            return TOOL.BASH_WRITE_TO_PROCESS
-        case 'read':
-        case 'read_file':
-            return TOOL.READ
-        case 'write':
-        case 'write_file':
-            return TOOL.WRITE
-        case 'edit':
-        case 'edit_file':
-            return TOOL.EDIT
-        case 'apply_patch':
-            return TOOL.APPLY_PATCH
-        case 'todowrite':
-        case 'todo_write':
-            return TOOL.TODO_WRITE
-        case 'glob':
-            return TOOL.GLOB
-        case 'grep':
-        case 'astgrep':
-            return TOOL.GREP
-        case 'multiedit':
-        case 'multi_edit':
-            return TOOL.MULTI_EDIT
-        case 'list_dir':
-            return TOOL.LS
-        default:
-            return normalized
-    }
-}
-
-const readRecord = (value: unknown): Record<string, unknown> | undefined => {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) {
-        return undefined
-    }
-
-    return value as Record<string, unknown>
-}
+const readRecord = (value: unknown): Record<string, unknown> | undefined =>
+    readCoworkRecord(value)
 
 const toTimestamp = (value?: string) => {
     if (!value) {
@@ -249,26 +191,14 @@ const toTimestamp = (value?: string) => {
     return Number.isNaN(timestamp) ? Date.now() : timestamp
 }
 
-const inferToolDisplayName = (content: Record<string, unknown>) => {
-    const skillName =
-        typeof content.tool_input === 'object' &&
-        content.tool_input !== null &&
-        'skill' in content.tool_input &&
-        typeof content.tool_input.skill === 'string'
-            ? content.tool_input.skill
-            : undefined
-    const toolName =
-        readString(content, 'display_name') ??
-        readString(content, 'tool_display_name') ??
-        readString(content, 'tool_name') ??
-        'Tool'
-
-    if (toolName === 'Skill' && skillName) {
-        return `Skill: ${skillName}`
-    }
-
-    return toolName
-}
+const inferToolDisplayName = (content: Record<string, unknown>) =>
+    inferCoworkToolDisplayName({
+        toolName: readString(content, 'tool_name'),
+        displayName:
+            readString(content, 'display_name') ??
+            readString(content, 'tool_display_name'),
+        toolInput: readRecord(content.tool_input)
+    })
 
 const HIDDEN_TOOL_MESSAGE_TYPES = new Set<string>([
     TOOL.SEQUENTIAL_THINKING,
@@ -826,7 +756,7 @@ const reduceCoworkLiveEvent = (
                 event.runtime_event_type === 'complete' ||
                 event.runtime_event_type === 'stream_complete' ||
                 event.runtime_event_type === 'sub_agent_complete'
-                    ? readEventText(content) ?? nextState.response
+                    ? (readEventText(content) ?? nextState.response)
                     : nextState.response
             const flushedTranscriptMessages = flushTranscriptBuffer({
                 messages: flushedThinkingMessages,
@@ -928,8 +858,7 @@ const CoworkPage = () => {
         useState(false)
     const [folderModeResetVersion, setFolderModeResetVersion] = useState(0)
     const [isSessionsBoardOpen, setIsSessionsBoardOpen] = useState(false)
-    const [isFolderWorkflowActive, setIsFolderWorkflowActive] =
-        useState(false)
+    const [isFolderWorkflowActive, setIsFolderWorkflowActive] = useState(false)
     const [pendingDeleteSession, setPendingDeleteSession] =
         useState<CoworkChatSessionSummary | null>(null)
     const [isDeletingSession, setIsDeletingSession] = useState(false)
@@ -1013,6 +942,8 @@ const CoworkPage = () => {
             ...prev,
             [FOLDER_SCOPE]: null
         }))
+        setRequestedFolderAction(null)
+        setRequestedFolderActionToken(0)
     }, [])
 
     const setScopeLoading = useCallback(
@@ -1715,6 +1646,8 @@ const CoworkPage = () => {
 
     const handleFolderSessionCreated = useCallback(
         (session: CoworkChatSessionDetail) => {
+            setRequestedFolderAction(null)
+            setRequestedFolderActionToken((prev) => prev + 1)
             setChatSessionsByScope((prev) => ({
                 ...prev,
                 [FOLDER_SCOPE]: upsertChatSessionSummary(
@@ -1737,6 +1670,10 @@ const CoworkPage = () => {
     const handleSelectCoworkAction = useCallback(
         (action: ActionStep) => {
             if (currentChatScope !== FOLDER_SCOPE) {
+                return
+            }
+
+            if (!isCoworkBuildPanelActionVisible(action)) {
                 return
             }
 
@@ -1954,12 +1891,8 @@ const CoworkPage = () => {
                                 <div className="min-h-0 flex-1 overflow-hidden">
                                     <CoworkMain
                                         activeMode={activeMode}
-                                        folderSession={
-                                            folderActiveChatSession
-                                        }
-                                        folderLiveSession={
-                                            folderLiveSession
-                                        }
+                                        folderSession={folderActiveChatSession}
+                                        folderLiveSession={folderLiveSession}
                                         isFolderSessionLoading={
                                             isFolderSessionLoading
                                         }

@@ -25,6 +25,11 @@ glob = "0.3"
 regex = "1"
 sha2 = "0.10"
 zstd = "0.13"
+wasmtime = { version = "26", default-features = false, features = ["cranelift", "runtime"] }
+wasmtime-wasi = { version = "26", default-features = false, features = ["preview1"] }
+wat = "1.218"
+lopdf = { version = "0.36", default-features = false }
+tokio = { version = "1", features = ["rt", "sync", "time"] }
 
 [features]
 # This feature is used for production builds or when a dev server is not specified, DO NOT REMOVE!!

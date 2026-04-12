@@ -3,11 +3,43 @@ import SearchBrowser from '@/components/agent/search-browser'
 import CodeEditor from '@/components/code-editor'
 import Terminal from '@/components/terminal'
 import { TOOL, type ActionStep } from '@/typings/agent'
+import { formatCoworkBuildHeaderLabel } from '../cowork-action-utils'
 import type {
     CoworkBuildRendererDefinition,
     CoworkBuildRendererKey,
     CoworkBuildRendererContext
 } from './cowork-build.types'
+
+const escapeRegExp = (value: string) =>
+    value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+const extractOutputJsonString = (raw?: string) => {
+    if (!raw) {
+        return undefined
+    }
+
+    const sectionKeys = ['output.json (merged)', 'output.json']
+
+    for (const key of sectionKeys) {
+        const matcher = new RegExp(
+            `(?:^|\\n\\n)${escapeRegExp(key)}:\\n([\\s\\S]*?)(?=\\n\\n(?:output\\.json(?: \\(merged\\))?|stdout(?: \\(merged\\))?|stderr(?: \\(merged\\))?|output_files|error|chunk_summary):|$)`
+        )
+        const match = raw.match(matcher)
+        const sectionBody = match?.[1]?.trim()
+
+        if (!sectionBody) {
+            continue
+        }
+
+        try {
+            return JSON.stringify(JSON.parse(sectionBody), null, 2)
+        } catch {
+            return sectionBody
+        }
+    }
+
+    return undefined
+}
 
 export const coworkBuildEventToolGroups = {
     terminal: new Set<TOOL>([
@@ -68,8 +100,33 @@ export const coworkBuildEventToolGroups = {
         TOOL.BROWSER_RESTART,
         TOOL.BROWSER_ENTER_TEXT,
         TOOL.BROWSER_ENTER_MULTI_TEXTS
-    ])
+    ]),
+    desktopTool: new Set<TOOL>([TOOL.WASM_RUN])
 } satisfies Record<CoworkBuildRendererKey, Set<TOOL>>
+
+const DesktopToolBuildCard = ({
+    currentAction,
+    currentToolCall
+}: CoworkBuildRendererContext) => {
+    const backendResult =
+        currentToolCall?.result ??
+        (typeof currentAction.data.result === 'string'
+            ? currentAction.data.result
+            : undefined)
+    const outputJson = extractOutputJsonString(backendResult)
+
+    return (
+        <div className="h-full w-full overflow-auto px-3 py-4 md:px-4">
+            <div className="mx-auto w-full max-w-[640px]">
+                <pre className="whitespace-pre-wrap break-words rounded-2xl bg-white/70 px-4 py-3 text-xs text-black/75 dark:bg-white/[0.08] dark:text-white/75">
+                    {outputJson ??
+                        backendResult ??
+                        `${formatCoworkBuildHeaderLabel(currentAction) || 'Process'} is still running...`}
+                </pre>
+            </div>
+        </div>
+    )
+}
 
 export const coworkBuildRendererCatalog: Record<
     CoworkBuildRendererKey,
@@ -125,10 +182,7 @@ export const coworkBuildRendererCatalog: Record<
         key: 'browser',
         matches: (action: ActionStep) =>
             coworkBuildEventToolGroups.browser.has(action.type),
-        render: ({
-            browserUrl,
-            browserRaw
-        }: CoworkBuildRendererContext) => (
+        render: ({ browserUrl, browserRaw }: CoworkBuildRendererContext) => (
             <Browser
                 isHideHeader
                 className="!h-full !overflow-auto !rounded-none"
@@ -137,6 +191,14 @@ export const coworkBuildRendererCatalog: Record<
                 url={browserUrl}
                 raw={browserRaw}
             />
+        )
+    },
+    desktopTool: {
+        key: 'desktopTool',
+        matches: (action: ActionStep) =>
+            coworkBuildEventToolGroups.desktopTool.has(action.type),
+        render: (context: CoworkBuildRendererContext) => (
+            <DesktopToolBuildCard {...context} />
         )
     }
 }

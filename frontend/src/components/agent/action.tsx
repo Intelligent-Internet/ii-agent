@@ -7,6 +7,7 @@ import { FileText, Paperclip, SearchCheck, Share2, Sparkle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { ActionStep, TOOL } from '@/typings/agent'
+import { getCoworkActionValue } from '@/components/cowork/cowork-action-utils'
 import { Icon } from '../ui/icon'
 import { identifyFilesNeeded, identifySlidesNeeded } from '@/lib/utils'
 
@@ -213,6 +214,20 @@ const Action = ({ workspaceInfo, type, value, onClick }: ActionProps) => {
             case TOOL.SKILL:
                 return (
                     <Icon name="book" className={`fill-white ${className}`} />
+                )
+            case TOOL.DESKTOP_SKILL_RUN:
+                return (
+                    <Icon
+                        name="book"
+                        className={`fill-current text-white ${className}`}
+                    />
+                )
+            case TOOL.WASM_RUN:
+                return (
+                    <Icon
+                        name="cpu"
+                        className={`fill-current text-white ${className}`}
+                    />
                 )
             case TOOL.GET_DATABASE_CONNECTION:
                 return (
@@ -494,6 +509,10 @@ const Action = ({ workspaceInfo, type, value, onClick }: ActionProps) => {
                 return t('agent.action.titles.registerStripeWebhook')
             case TOOL.MOBILE_APP_INIT:
                 return t('agent.action.titles.mobileAppInit')
+            case TOOL.DESKTOP_SKILL_RUN:
+                return 'Desktop Skill'
+            case TOOL.WASM_RUN:
+                return 'Process'
             default:
                 // Fallback to tool_display_name if available
                 return value.tool_display_name || type
@@ -783,6 +802,9 @@ const Action = ({ workspaceInfo, type, value, onClick }: ActionProps) => {
             }
             case TOOL.SKILL:
                 return value.tool_input?.skill
+            case TOOL.DESKTOP_SKILL_RUN:
+            case TOOL.WASM_RUN:
+                return getCoworkActionValue({ type, data: value })
 
             case TOOL.MOBILE_APP_INIT:
                 return value.tool_input?.project_name

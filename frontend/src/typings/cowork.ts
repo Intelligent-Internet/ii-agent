@@ -25,6 +25,7 @@ export interface CoworkFolderTreeNode {
     kind: 'folder' | 'file'
     extension?: string
     size?: string
+    last_modified?: string
     children?: CoworkFolderTreeNode[]
 }
 

@@ -3,6 +3,7 @@ import type {
     CoworkChatSessionDetail,
     CoworkLiveSessionState
 } from '@/typings/cowork'
+import { formatCoworkBuildHeaderLabel } from '../cowork-action-utils'
 import CoworkBuildPanel from '../cowork-build/cowork-build-panel'
 import { pickCoworkBuildRenderers } from '../cowork-build/cowork-build.renderers'
 import {
@@ -19,7 +20,11 @@ interface CoworkFolderBuildProps {
     requestedActionToken?: number
 }
 
-const folderBuildRenderers = pickCoworkBuildRenderers('terminal', 'code')
+const folderBuildRenderers = pickCoworkBuildRenderers(
+    'desktopTool',
+    'terminal',
+    'code'
+)
 
 const CoworkFolderBuild = ({
     session = null,
@@ -35,7 +40,7 @@ const CoworkFolderBuild = ({
     const isAwaitingNextAction =
         buildState.isAwaitingTurnAction && buildState.hasActionHistory
     const headerLabel =
-        buildState.currentAction?.data.tool_display_name ||
+        formatCoworkBuildHeaderLabel(buildState.currentAction) ||
         buildState.currentAction?.data.tool_name ||
         (session?.run_status === 'completed'
             ? 'Intelligent Folder run completed'

@@ -42,6 +42,19 @@ const getDirectChildCounts = (node: FolderTreeNode) => ({
     files: node.children?.filter((child) => child.kind === 'file').length ?? 0
 })
 
+const formatLastModified = (value?: string) => {
+    if (!value) {
+        return '-'
+    }
+
+    const parsed = new Date(value)
+    if (Number.isNaN(parsed.getTime())) {
+        return value
+    }
+
+    return parsed.toLocaleString()
+}
+
 const renderTreeNode = ({
     node,
     depth,
@@ -165,21 +178,54 @@ const CoworkFolderTreeView = ({
         () => getDirectChildCounts(selectedNode),
         [selectedNode]
     )
+    const selectedDetails = useMemo(
+        () =>
+            selectedNode.kind === 'folder'
+                ? [
+                      {
+                          label: 'Node type',
+                          value: 'Folder'
+                      },
+                      {
+                          label: 'Subfolders',
+                          value: selectedChildCounts.folders
+                      },
+                      {
+                          label: 'Files',
+                          value: selectedChildCounts.files
+                      }
+                  ]
+                : [
+                      {
+                          label: 'Node type',
+                          value: selectedNode.extension?.toUpperCase() ?? 'File'
+                      },
+                      {
+                          label: 'Size',
+                          value: selectedNode.size ?? '-'
+                      },
+                      {
+                          label: 'Last modified',
+                          value: formatLastModified(selectedNode.last_modified)
+                      }
+                  ],
+        [selectedChildCounts.files, selectedChildCounts.folders, selectedNode]
+    )
 
     return (
         <div className="flex h-full w-full flex-col gap-4 overflow-hidden rounded-[32px] border border-neutral-200 bg-white p-4 dark:border-white/20 dark:bg-white/[0.03] md:p-6">
             <div className="flex flex-wrap items-start justify-between gap-4">
-                <div className="max-w-2xl">
+                <div className="min-w-0 max-w-2xl flex-1">
                     <p className="text-xs font-semibold uppercase tracking-[0.2em] text-black/50 dark:text-white/50">
                         {label}{' '}
-                        <span className="normal-case text-black/70 dark:text-white/70">
+                        <span className="break-all normal-case text-black/70 dark:text-white/70">
                             {rootPath}
                         </span>
                     </p>
                 </div>
             </div>
-            <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(320px,0.9fr)]">
-                <div className="min-h-0 overflow-hidden rounded-[28px] border border-neutral-200 bg-white dark:border-white/15 dark:bg-[#121716]">
+            <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1.7fr)_minmax(14rem,0.82fr)] xl:grid-cols-[minmax(0,1.8fr)_minmax(16rem,0.88fr)]">
+                <div className="min-h-0 min-w-0 overflow-hidden rounded-[28px] border border-neutral-200 bg-white dark:border-white/15 dark:bg-[#121716]">
                     <div className="h-full overflow-auto p-3">
                         {renderTreeNode({
                             node: tree,
@@ -198,8 +244,8 @@ const CoworkFolderTreeView = ({
                     </div>
                 </div>
 
-                <div className="flex min-h-0 flex-col gap-4">
-                    <div className="rounded-[28px] border border-neutral-200 bg-white p-5 dark:border-white/15 dark:bg-[#121716]">
+                <div className="flex min-h-0 min-w-0 flex-col">
+                    <div className="h-fit rounded-[28px] border border-neutral-200 bg-white p-4 dark:border-white/15 dark:bg-[#121716] sm:p-5">
                         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-black/50 dark:text-white/50">
                             Selected
                         </p>
@@ -236,54 +282,16 @@ const CoworkFolderTreeView = ({
                                 </p>
                             </div>
                         </div>
-                    </div>
-
-                    <div className="rounded-[28px] border border-neutral-200 bg-white p-5 dark:border-white/15 dark:bg-[#121716]">
-                        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-black/50 dark:text-white/50">
-                            File details
-                        </p>
-                        <div className="mt-4 grid gap-3">
-                            {(
-                                selectedNode.kind === 'folder'
-                                    ? [
-                                          {
-                                              label: 'Node type',
-                                              value: 'Folder'
-                                          },
-                                          {
-                                              label: 'Subfolders',
-                                              value: selectedChildCounts.folders
-                                          },
-                                          {
-                                              label: 'Files',
-                                              value: selectedChildCounts.files
-                                          }
-                                      ]
-                                    : [
-                                          {
-                                              label: 'Node type',
-                                              value:
-                                                  selectedNode.extension?.toUpperCase() ??
-                                                  'File'
-                                          },
-                                          {
-                                              label: 'Size',
-                                              value: selectedNode.size ?? '-'
-                                          },
-                                          {
-                                              label: 'Children',
-                                              value: 0
-                                          }
-                                      ]
-                            ).map((item) => (
+                        <div className="mt-5 grid gap-2.5">
+                            {selectedDetails.map((item) => (
                                 <div
                                     key={item.label}
-                                    className="flex items-center justify-between rounded-2xl border border-firefly/10 bg-firefly/5 px-4 py-3 dark:border-sky-blue/10 dark:bg-sky-blue/10"
+                                    className="flex min-w-0 items-center justify-between gap-3 rounded-2xl border border-firefly/10 bg-firefly/5 px-3 py-2.5 dark:border-sky-blue/10 dark:bg-sky-blue/10 sm:px-4"
                                 >
-                                    <span className="text-sm font-medium text-black/60 dark:text-white/60">
+                                    <span className="shrink-0 text-xs font-medium text-black/60 dark:text-white/60 sm:text-sm">
                                         {item.label}
                                     </span>
-                                    <span className="text-sm font-semibold text-black dark:text-white">
+                                    <span className="min-w-0 text-right text-xs font-semibold text-black dark:text-white sm:text-sm">
                                         {item.value}
                                     </span>
                                 </div>
@@ -297,5 +305,3 @@ const CoworkFolderTreeView = ({
 }
 
 export default CoworkFolderTreeView
-
-

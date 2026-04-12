@@ -5,6 +5,7 @@ import { Icon } from '@/components/ui/icon'
 import { Slider } from '@/components/ui/slider'
 import { parseJson } from '@/lib/utils'
 import { TOOL, type ActionStep } from '@/typings/agent'
+import { isCoworkBuildPanelActionVisible } from '../cowork-action-utils'
 import type {
     CoworkBuildActionMessage,
     CoworkBuildRendererContext,
@@ -120,9 +121,11 @@ export const useCoworkBuildState = ({
 }: UseCoworkBuildStateOptions): CoworkBuildState => {
     const actionMessages = useMemo(
         () =>
-            ((liveSession?.event_messages ?? []).filter(
-                (message) => message.action
-            ) as CoworkBuildActionMessage[]),
+            (liveSession?.event_messages ?? []).filter(
+                (message) =>
+                    message.action &&
+                    isCoworkBuildPanelActionVisible(message.action)
+            ) as CoworkBuildActionMessage[],
         [liveSession?.event_messages]
     )
     const totalSteps = actionMessages.length
@@ -172,16 +175,34 @@ export const useCoworkBuildState = ({
         Boolean(liveSession?.is_awaiting_turn_action) && isLiveUpdate
     const selectedAction =
         step > 0 ? actionMessages[step - 1]?.action : undefined
+    const liveCurrentAction = isCoworkBuildPanelActionVisible(
+        liveSession?.current_action
+    )
+        ? liveSession?.current_action
+        : undefined
 
     const currentAction =
         (!isAwaitingTurnAction ? selectedAction : undefined) ??
-        (!isAwaitingTurnAction ? liveSession?.current_action : undefined)
+        (!isAwaitingTurnAction ? liveCurrentAction : undefined)
 
     const currentToolCall = useMemo(() => {
+        if (!currentAction) {
+            return undefined
+        }
+
         const toolCalls = liveSession?.tool_calls ?? []
 
         if (!currentAction?.data.tool_call_id) {
-            return toolCalls.at(-1)
+            return (
+                [...toolCalls]
+                    .reverse()
+                    .find(
+                        (toolCall) =>
+                            toolCall.name === currentAction.data.tool_name ||
+                            toolCall.display_name ===
+                                currentAction.data.tool_display_name
+                    ) ?? toolCalls.at(-1)
+            )
         }
 
         return (
@@ -193,6 +214,25 @@ export const useCoworkBuildState = ({
 
     const previewPath = getPreviewPath(currentAction)
     const previewContent = getPreviewContent(currentAction)
+    const currentActivities = useMemo(() => {
+        if (!currentAction) {
+            return []
+        }
+
+        const toolCallId =
+            currentAction.data.tool_call_id ?? currentToolCall?.id ?? null
+
+        return (liveSession?.activities ?? []).filter((activity) => {
+            if (toolCallId && activity.tool_call_id === toolCallId) {
+                return true
+            }
+
+            return (
+                activity.tool_name === currentAction.data.tool_name &&
+                Boolean(activity.tool_name)
+            )
+        })
+    }, [currentAction, currentToolCall?.id, liveSession?.activities])
     const searchKeyword =
         currentAction?.data.tool_input?.query ||
         currentAction?.data.tool_input?.queries?.join(', ')
@@ -216,7 +256,8 @@ export const useCoworkBuildState = ({
                 ? currentAction.data.result
                 : stringifyValue(currentAction.data.result)
             : undefined
-    const fallbackContent = currentToolCall?.result || currentToolCall?.input || ''
+    const fallbackContent =
+        currentToolCall?.result || currentToolCall?.input || ''
 
     return {
         actionMessages,
@@ -227,6 +268,7 @@ export const useCoworkBuildState = ({
         isAwaitingTurnAction,
         currentAction,
         currentToolCall,
+        currentActivities,
         fallbackContent,
         previewPath,
         previewContent,
@@ -340,6 +382,7 @@ export const CoworkBuildViewport = ({
         fallbackContent,
         previewPath,
         previewContent,
+        currentActivities,
         browserUrl,
         browserRaw,
         searchKeyword,
@@ -363,9 +406,7 @@ export const CoworkBuildViewport = ({
                         <p className="text-sm uppercase tracking-[0.25em] text-white/70">
                             {emptyLabel}
                         </p>
-                        <p className="text-lg font-semibold">
-                            {emptyTitle}
-                        </p>
+                        <p className="text-lg font-semibold">{emptyTitle}</p>
                     </div>
                     <div className="w-[min(640px,90vw)] rounded-full h-3 bg-white/10 overflow-hidden">
                         <div
@@ -386,6 +427,7 @@ export const CoworkBuildViewport = ({
     const context: CoworkBuildRendererContext = {
         currentAction,
         currentToolCall,
+        currentActivities,
         previewPath,
         previewContent,
         browserUrl,

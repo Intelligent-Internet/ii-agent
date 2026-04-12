@@ -1,6 +1,12 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { FolderOpen, LoaderCircle } from 'lucide-react'
-import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react'
+import {
+    useCallback,
+    useEffect,
+    useLayoutEffect,
+    useMemo,
+    useState
+} from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -14,6 +20,7 @@ import type {
 import type { ActionStep } from '@/typings/agent'
 import { cn } from '@/lib/utils'
 import { getCurrentWindow } from '@tauri-apps/api/window'
+import { isCoworkBuildPanelActionVisible } from '../cowork-action-utils'
 import CoworkFolderBuild from '../intelligent-folder/cowork-folder-build'
 import CoworkFolderResult from '../intelligent-folder/cowork-folder-result'
 import CoworkFolderSource from '../intelligent-folder/cowork-folder-source'
@@ -86,13 +93,23 @@ const IntelligentFolderMode = ({
     }, [session?.id, session?.folder_tree_pair?.source_root])
 
     const folderTreePair = loadedTreePair ?? session?.folder_tree_pair
+    const isFreshLoadedFolderAwaitingSessionSync = Boolean(
+        loadedTreePair &&
+            loadedTreePair.source_root !==
+                session?.folder_tree_pair?.source_root
+    )
     const modeResultTree: CoworkFolderTreeNode | null =
         folderTreePair?.result_tree ?? null
+    const hasVisibleBuildAction = Boolean(
+        isCoworkBuildPanelActionVisible(liveSession?.current_action) ||
+            liveSession?.event_messages?.some((message) =>
+                isCoworkBuildPanelActionVisible(message.action)
+            )
+    )
     const hasStreamingBuildActivity = Boolean(
         liveSession?.thinking.trim() ||
             liveSession?.response.trim() ||
-            liveSession?.current_action ||
-            liveSession?.tool_calls.length ||
+            hasVisibleBuildAction ||
             liveSession?.is_awaiting_turn_action
     )
     const isRunCompleted = session?.run_status === 'completed'
@@ -106,13 +123,18 @@ const IntelligentFolderMode = ({
             return
         }
 
-        if (isRunCompleted) {
-            setActiveStep('result')
+        if (isFreshLoadedFolderAwaitingSessionSync) {
+            setActiveStep('source')
             return
         }
 
         if (requestedBuildAction) {
             setActiveStep('build')
+            return
+        }
+
+        if (isRunCompleted) {
+            setActiveStep('result')
             return
         }
 
@@ -126,6 +148,7 @@ const IntelligentFolderMode = ({
         }
     }, [
         hasStreamingBuildActivity,
+        isFreshLoadedFolderAwaitingSessionSync,
         isProcessing,
         isRunCompleted,
         isSending,

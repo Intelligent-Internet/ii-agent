@@ -1,12 +1,21 @@
 import type { ReactNode } from 'react'
 import type { ActionStep, Message } from '@/typings/agent'
-import type { CoworkLiveSessionState, CoworkLiveToolCall } from '@/typings/cowork'
+import type {
+    CoworkLiveActivity,
+    CoworkLiveSessionState,
+    CoworkLiveToolCall
+} from '@/typings/cowork'
 
 export type CoworkBuildActionMessage = Message & {
     action: ActionStep
 }
 
-export type CoworkBuildRendererKey = 'terminal' | 'code' | 'search' | 'browser'
+export type CoworkBuildRendererKey =
+    | 'terminal'
+    | 'code'
+    | 'search'
+    | 'browser'
+    | 'desktopTool'
 
 export type CoworkBuildSearchResult =
     | string
@@ -16,6 +25,7 @@ export type CoworkBuildSearchResult =
 export interface CoworkBuildRendererContext {
     currentAction: ActionStep
     currentToolCall?: CoworkLiveToolCall
+    currentActivities: CoworkLiveActivity[]
     previewPath?: string
     previewContent: string
     browserUrl?: string
@@ -45,6 +55,7 @@ export interface CoworkBuildState {
     isAwaitingTurnAction: boolean
     currentAction?: ActionStep
     currentToolCall?: CoworkLiveToolCall
+    currentActivities: CoworkLiveActivity[]
     fallbackContent: string
     previewPath?: string
     previewContent: string

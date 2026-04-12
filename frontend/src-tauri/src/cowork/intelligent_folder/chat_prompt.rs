@@ -31,7 +31,22 @@ Your job is to inspect, understand, clean up, and refolder files inside that fol
 - `Edit` - Make exact text replacements in local files\n\
 - `apply_patch` - Apply structured multi-file edits\n\
 - `Bash` - Execute shell commands inside the selected folder\n\
-- `TodoWrite` - Keep a short task checklist during the run\n\n\
+- `TodoWrite` - Keep a short task checklist during the run\n\
+- `desktop_skill_run` - Load the full body of a desktop skill by name. Call this first whenever you plan to process a complex document format (pdf, docx, xlsx, pptx). It returns markdown instructions and the exact `wasm_run` shape you should use next. It does NOT execute anything itself.\n\
+- `wasm_run` - Execute a WebAssembly module inside the isolated desktop runtime. Only call this after you have read the relevant skill body via `desktop_skill_run` and know the exact module name, input_json, and input_files shape to use. You may also call it directly when debugging a specific module.\n\n\
+[Desktop skills available]\n\
+Skills are packaged guidance backed by the desktop WebAssembly runtime. To use a skill, follow the two-step flow:\n\
+1. Call `desktop_skill_run(skill_name=<name>)` to load the skill's body and operation contracts into context.\n\
+2. Follow the body: usually it tells you to call `wasm_run` with a specific module and shape. Copy that shape exactly.\n\
+Built-in skills:\n\
+- `pdf` - PDF text extraction and metadata via the `pdf_processor` isolated runtime.\n\
+- `docx` - Word document text extraction via the `docx_processor` isolated runtime.\n\
+- `xlsx` - Spreadsheet reading via the `xlsx_processor` isolated runtime (csv/tsv use host tools directly).\n\
+- `pptx` - Presentation slide text extraction via the `pptx_processor` isolated runtime.\n\
+Decision rule:\n\
+- Plain text, markdown, code, or csv/tsv files: use `Read`, `Write`, `Edit`, `grep` directly. Do not touch skills.\n\
+- `.pdf`, `.docx`, `.xlsx`, `.pptx`: call `desktop_skill_run` first to read instructions, then follow them.\n\
+- If a skill body reports that its WebAssembly module is not shipped yet, tell the user what is unavailable and offer filename-level operations instead. Never try to edit a binary container (.docx, .xlsx, .pptx are all zipped OOXML) with `Edit` or `Write` — you will corrupt the file.\n\n\
 [Local folder scope and context]\n\
 Mode scope: intelligent-folder\n\
 Input folder path: {}\n",
@@ -51,6 +66,7 @@ mod tests {
             kind: FileTreeNodeKind::Folder,
             extension: None,
             size: None,
+            last_modified: None,
             children: Some(Vec::new()),
         }
     }
@@ -77,7 +93,7 @@ mod tests {
                 source_tree: sample_folder("demo"),
                 result_tree: None,
             },
-            undo_slot: crate::cowork::intelligent_folder::sessions::FolderUndoSlotState::None,
+            undo_state: crate::cowork::intelligent_folder::sessions::FolderUndoState::default(),
         }
     }
 
@@ -97,5 +113,24 @@ mod tests {
         assert!(prompt.contains("- `Read` - Read local text files"));
         assert!(prompt.contains("- `Edit` - Make exact text replacements in local files"));
         assert!(prompt.contains("- `Bash` - Execute shell commands inside the selected folder"));
+    }
+
+    #[test]
+    fn build_folder_prompt_context_advertises_two_step_flow() {
+        let prompt = build_folder_prompt_context(&sample_session());
+        assert!(prompt.contains("- `desktop_skill_run`"));
+        assert!(prompt.contains("- `wasm_run`"));
+        assert!(prompt.contains("[Desktop skills available]"));
+        assert!(prompt.contains("- `pdf`"));
+        assert!(prompt.contains("- `docx`"));
+        assert!(prompt.contains("- `xlsx`"));
+        assert!(prompt.contains("- `pptx`"));
+        assert!(prompt.contains("Decision rule:"));
+        // Two-step flow must be spelled out explicitly.
+        assert!(prompt.contains("two-step flow"));
+        assert!(prompt.contains("desktop_skill_run(skill_name="));
+        assert!(prompt.contains("Follow the body"));
+        // The prompt must tell the LLM not to edit binary containers.
+        assert!(prompt.contains("corrupt the file"));
     }
 }

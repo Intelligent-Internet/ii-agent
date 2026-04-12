@@ -2,6 +2,7 @@ pub mod agent_presets;
 pub mod agent_remote;
 pub mod chat;
 pub mod chat_commands;
+pub mod desktop_runtime;
 pub mod desktop_skills;
 pub mod desktop_tools;
 pub mod homepage;

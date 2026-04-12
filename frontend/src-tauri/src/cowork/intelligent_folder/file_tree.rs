@@ -1,3 +1,4 @@
+use chrono::{DateTime, SecondsFormat, Utc};
 use serde::{Deserialize, Serialize};
 use std::{
     fs,
@@ -30,6 +31,8 @@ pub struct FileTreeNode {
     pub extension: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub size: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_modified: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub children: Option<Vec<FileTreeNode>>,
 }
@@ -115,6 +118,7 @@ fn build_node(
             kind: FileTreeNodeKind::File,
             extension: file_extension(path),
             size: Some(format_bytes(metadata.len())),
+            last_modified: format_modified_time(&metadata),
             children: None,
         });
     }
@@ -126,6 +130,7 @@ fn build_node(
             kind: FileTreeNodeKind::Folder,
             extension: None,
             size: None,
+            last_modified: format_modified_time(&metadata),
             children: Some(Vec::new()),
         });
     }
@@ -167,6 +172,7 @@ fn build_node(
         kind: FileTreeNodeKind::Folder,
         extension: None,
         size: None,
+        last_modified: format_modified_time(&metadata),
         children: Some(children),
     })
 }
@@ -236,9 +242,17 @@ fn format_bytes(bytes: u64) -> String {
     }
 }
 
+fn format_modified_time(metadata: &fs::Metadata) -> Option<String> {
+    let modified = metadata.modified().ok()?;
+    let date_time = DateTime::<Utc>::from(modified);
+    Some(date_time.to_rfc3339_opts(SecondsFormat::Secs, true))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{build_node, format_bytes, FileTreeNodeKind, TraversalState};
+    use super::{
+        build_node, format_bytes, format_modified_time, FileTreeNodeKind, TraversalState,
+    };
     use std::{
         fs,
         path::PathBuf,
@@ -259,6 +273,21 @@ mod tests {
         assert_eq!(format_bytes(512), "512 B");
         assert_eq!(format_bytes(1_536), "1.5 KB");
         assert_eq!(format_bytes(104_857_600), "100 MB");
+    }
+
+    #[test]
+    fn formats_modified_time_as_rfc3339() {
+        let root = temp_test_dir();
+        fs::write(&root, b"hello world").expect("should create test file");
+
+        let metadata = fs::symlink_metadata(&root).expect("should read metadata");
+        let modified = format_modified_time(&metadata)
+            .expect("test file metadata should expose modified time");
+
+        assert!(modified.ends_with('Z'));
+        assert!(modified.contains('T'));
+
+        fs::remove_file(&root).expect("should clean up test file");
     }
 
     #[test]
@@ -290,6 +319,7 @@ mod tests {
         assert_eq!(nested_children[0].name, "demo.txt");
         assert_eq!(nested_children[0].kind, FileTreeNodeKind::File);
         assert_eq!(nested_children[0].extension.as_deref(), Some("txt"));
+        assert!(nested_children[0].last_modified.is_some());
 
         fs::remove_dir_all(&root).expect("should clean up test directory");
     }

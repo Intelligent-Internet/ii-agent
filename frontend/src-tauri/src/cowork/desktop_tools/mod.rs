@@ -6,9 +6,11 @@ mod grep;
 mod list_dir;
 mod read;
 mod todo_write;
+mod wasm_run;
 mod write;
 
 use crate::cowork::agent_presets::shared::DesktopToolCapability;
+use crate::cowork::desktop_runtime::wasm::{WasmRunError, WasmRunResult};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::fs;
@@ -24,6 +26,7 @@ pub const TOOL_TODO_WRITE: &str = "TodoWrite";
 pub const TOOL_GLOB: &str = "glob";
 pub const TOOL_GREP: &str = "grep";
 pub const TOOL_LIST_DIR: &str = "list_dir";
+pub const TOOL_WASM_RUN: &str = "wasm_run";
 
 pub type DesktopToolExecuteFn =
     for<'a> fn(&mut DesktopToolContext<'a>, &Value) -> Result<String, String>;
@@ -131,6 +134,14 @@ impl<'a> DesktopToolContext<'a> {
         &self.execution_scope.canonical_root
     }
 
+    pub fn local_session_id(&self) -> &str {
+        self.local_session_id
+    }
+
+    pub fn app_handle(&self) -> &AppHandle {
+        self.app
+    }
+
     pub fn resolve_scoped_path(
         &self,
         file_path: &str,
@@ -178,6 +189,12 @@ pub fn common_desktop_tools() -> Vec<DesktopTool> {
         edit::desktop_tool(),
         apply_patch::desktop_tool(),
         todo_write::desktop_tool(),
+        // desktop_skill_run lives under desktop_skills/ because its job is
+        // to surface skill guidance, not to drive the host filesystem.
+        // It still appears in the common tool list so every cowork mode
+        // that ships desktop tools automatically advertises it.
+        crate::cowork::desktop_skills::desktop_skill_run::desktop_tool(),
+        wasm_run::desktop_tool(),
     ]
 }
 
@@ -224,6 +241,77 @@ pub fn resolve_desktop_tool_name(tool_name: &str) -> Option<String> {
             None
         }
     })
+}
+
+/// Shared formatter for desktop tools that invoke the WASM runtime.
+///
+/// This stays in the desktop tool layer because it renders the
+/// user-facing tool result string, not the runtime's execution contract.
+pub(super) fn format_wasm_result(result: &WasmRunResult) -> String {
+    let mut sections = Vec::new();
+    sections.push(format!(
+        "module: {}\nduration_ms: {}",
+        result.module, result.duration_ms
+    ));
+    if !result.stdout.trim().is_empty() {
+        sections.push(format!("stdout:\n{}", result.stdout.trim_end()));
+    }
+    if !result.stderr.trim().is_empty() {
+        sections.push(format!("stderr:\n{}", result.stderr.trim_end()));
+    }
+    if let Some(output_json) = &result.output_json {
+        if let Ok(pretty) = serde_json::to_string_pretty(output_json) {
+            sections.push(format!("output.json:\n{}", pretty));
+        }
+    }
+    if !result.output_files.is_empty() {
+        let listing = result
+            .output_files
+            .iter()
+            .map(|file| format!("- {} ({} bytes)", file.name, file.bytes))
+            .collect::<Vec<_>>()
+            .join("\n");
+        sections.push(format!("output_files:\n{}", listing));
+    }
+    if let Some(scratch) = &result.scratch_dir {
+        sections.push(format!("scratch_dir: {}", scratch.display()));
+    }
+    sections.join("\n\n")
+}
+
+/// Shared formatter for human-readable WASM tool errors.
+pub(super) fn format_wasm_error(tool: &str, module: &str, error: WasmRunError) -> String {
+    let (message, hint) = match &error {
+        WasmRunError::UnknownModule(name) => (
+            format!("{tool}: unknown module '{name}'"),
+            "Check that the skill body references a registered module name.".to_string(),
+        ),
+        WasmRunError::Timeout(duration) => (
+            format!("{tool}: module '{module}' timed out after {duration:?}"),
+            "The file may be too complex. Try a smaller file or a subset (e.g., specific page range).".to_string(),
+        ),
+        WasmRunError::OutOfFuel => (
+            format!("{tool}: module '{module}' exhausted its instruction budget"),
+            "The file requires more processing than the budget allows. Try a smaller file.".to_string(),
+        ),
+        WasmRunError::MemoryLimit(limit) => (
+            format!("{tool}: module '{module}' exceeded memory limit {limit} bytes"),
+            "The file is too large for the current memory budget. For PDF, the host auto-splits large files. For docx/xlsx/pptx, try a smaller file or extract a subset.".to_string(),
+        ),
+        WasmRunError::Io(detail) => (
+            format!("{tool}: I/O error preparing sandbox: {detail}"),
+            "Check that the input file exists and is readable.".to_string(),
+        ),
+        WasmRunError::ModuleLoad(detail) => (
+            format!("{tool}: failed to load module: {detail}"),
+            "The WebAssembly module may be corrupt. This is an internal error.".to_string(),
+        ),
+        WasmRunError::Execution(detail) => (
+            format!("{tool}: module '{module}' failed during execution: {detail}"),
+            "The file may be corrupt or in an unsupported format. Do not retry with the same file.".to_string(),
+        ),
+    };
+    format!("{message}\n\nHint: {hint}")
 }
 
 fn resolve_scoped_path(
