@@ -154,10 +154,7 @@ out
 agent_logs.txt
 workspace/
 tmp/
-data/file_store
-data/workspace
-data/logs
-data/events.db
+data/
 output/
 
 # Editor / IDE / AI
@@ -171,3 +168,6 @@ output/
 # Local only scripts
 start_tool_server.sh
 a2a_agents.json
+scripts/local/register_seats_mcp.sh
+scripts/local/create_seats_dark_template.sh
+scripts/local/rctcop_title_slide_rework.sh
