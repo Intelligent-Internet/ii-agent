@@ -35,6 +35,26 @@ export interface CoworkFolderTreePair {
     result_tree: CoworkFolderTreeNode | null
 }
 
+/**
+ * Mirrors Rust's `FolderUndoState` struct. Lightweight UI hint derived
+ * from the session's snapshot timeline on disk:
+ *
+ *   - `can_undo` / `can_redo` — whether the corresponding pill should
+ *     be enabled.
+ *   - `current` — 1-based index of the snapshot currently materialised
+ *     on disk. `0` when the timeline is empty (no runs have committed
+ *     a change yet).
+ *   - `total` — number of snapshots in the timeline. `0` when empty.
+ *
+ * When `total === 0`, the UI hides the Undo/Redo row entirely.
+ */
+export interface CoworkFolderUndoState {
+    can_undo: boolean
+    can_redo: boolean
+    current: number
+    total: number
+}
+
 export interface CoworkChatMessage {
     id: string
     role: CoworkChatMessageRole
@@ -77,6 +97,7 @@ export interface CoworkChatSessionDetail extends CoworkChatSessionSummary {
     files: CoworkChatFile[]
     run_status: CoworkChatRunStatus
     folder_tree_pair?: CoworkFolderTreePair
+    undo_state?: CoworkFolderUndoState
 }
 
 export type CoworkChatEvent =

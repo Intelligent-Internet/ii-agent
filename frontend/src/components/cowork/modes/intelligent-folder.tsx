@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { FolderOpen, LoaderCircle } from 'lucide-react'
-import { useEffect, useLayoutEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { coworkService } from '@/services/cowork.service'
@@ -20,6 +21,7 @@ import { FOLDER_TREE_READ_OPTIONS } from '../intelligent-folder/folder-tree-util
 import CoworkFolderSteps, {
     type CoworkFolderStep
 } from '../intelligent-folder/cowork-folder-steps'
+import CoworkFolderUndoRedo from '../intelligent-folder/cowork-folder-undo-redo'
 
 const folderStepTransition = {
     duration: 0.14,
@@ -57,6 +59,9 @@ const IntelligentFolderMode = ({
         useState<CoworkFolderTreePair | null>(null)
     const [isProcessing, setIsProcessing] = useState(false)
     const [activeStep, setActiveStep] = useState<CoworkFolderStep>('source')
+    // True while an Undo or Redo RPC is in flight — disables the button so
+    // the user can't double-click and trigger two swaps at once.
+    const [isUndoRedoBusy, setIsUndoRedoBusy] = useState(false)
 
     useEffect(() => {
         onWorkflowActiveChange?.(isProcessing)
@@ -317,6 +322,35 @@ const IntelligentFolderMode = ({
         }
     }
 
+    // Session-update callback is stable across Undo/Redo — reuse the same
+    // channel the rest of the flow uses so the parent page's session cache
+    // picks up the flipped `undo_slot` and the refreshed `result_tree`.
+    const handleUndoRedo = useCallback(
+        async (action: 'undo' | 'redo') => {
+            if (!session?.id || isUndoRedoBusy) return
+            setIsUndoRedoBusy(true)
+            try {
+                const updated =
+                    action === 'undo'
+                        ? await coworkService.undoFolder(session.id)
+                        : await coworkService.redoFolder(session.id)
+                onSessionCreated?.(updated)
+            } catch (error) {
+                toast.error(
+                    getErrorMessage(
+                        error,
+                        action === 'undo'
+                            ? 'Failed to undo folder changes.'
+                            : 'Failed to redo folder changes.'
+                    )
+                )
+            } finally {
+                setIsUndoRedoBusy(false)
+            }
+        },
+        [session?.id, isUndoRedoBusy, onSessionCreated]
+    )
+
     return (
         <AnimatePresence mode="wait" initial={false}>
             {!isProcessing ? (
@@ -458,10 +492,27 @@ const IntelligentFolderMode = ({
                     className="h-full w-full overflow-hidden bg-white dark:bg-white/[0.01]"
                 >
                     <div className="flex h-full flex-col items-center justify-between px-3 pb-8 pt-8 md:p-6">
-                        <CoworkFolderSteps
-                            activeStep={activeStep}
-                            onSelectStep={setActiveStep}
-                        />
+                        <div className="flex w-full items-center">
+                            {/* Left spacer — balances the Undo/Redo slot on the right
+                                so the steps row stays visually centered. */}
+                            <div className="flex-1" />
+                            <CoworkFolderSteps
+                                activeStep={activeStep}
+                                onSelectStep={setActiveStep}
+                            />
+                            <div className="flex flex-1 justify-end">
+                                <CoworkFolderUndoRedo
+                                    state={session?.undo_state ?? null}
+                                    onUndo={() => handleUndoRedo('undo')}
+                                    onRedo={() => handleUndoRedo('redo')}
+                                    isBusy={
+                                        isUndoRedoBusy ||
+                                        isSending ||
+                                        isSessionLoading
+                                    }
+                                />
+                            </div>
+                        </div>
                         <div className="relative flex min-h-0 w-full flex-1 pt-6">
                             <AnimatePresence mode="wait" initial={false}>
                                 <motion.div

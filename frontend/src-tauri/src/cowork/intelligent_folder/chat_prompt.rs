@@ -77,6 +77,7 @@ mod tests {
                 source_tree: sample_folder("demo"),
                 result_tree: None,
             },
+            undo_slot: crate::cowork::intelligent_folder::sessions::FolderUndoSlotState::None,
         }
     }
 

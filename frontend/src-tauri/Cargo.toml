@@ -24,6 +24,7 @@ rust_socketio = "0.6"
 glob = "0.3"
 regex = "1"
 sha2 = "0.10"
+zstd = "0.13"
 
 [features]
 # This feature is used for production builds or when a dev server is not specified, DO NOT REMOVE!!

@@ -32,7 +32,9 @@ fn main() {
             cowork::intelligent_folder::sessions::create_folder_session,
             cowork::intelligent_folder::sessions::update_folder_session,
             cowork::intelligent_folder::sessions::rename_folder_session,
-            cowork::intelligent_folder::sessions::delete_folder_session
+            cowork::intelligent_folder::sessions::delete_folder_session,
+            cowork::intelligent_folder::undo_commands::undo_cowork_folder,
+            cowork::intelligent_folder::undo_commands::redo_cowork_folder
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

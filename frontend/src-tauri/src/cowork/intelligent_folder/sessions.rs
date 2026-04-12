@@ -15,6 +15,7 @@ use tauri::{AppHandle, Manager};
 const STORE_DIR_NAME: &str = "cowork";
 const SESSION_STORE_DIR_NAME: &str = "folder-sessions";
 const LEGACY_STORE_FILE_NAME: &str = "folder-sessions.json";
+const FOLDER_SNAPSHOTS_DIR_NAME: &str = "folder-snapshots";
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct CoworkFolderTreePair {
@@ -24,11 +25,33 @@ pub struct CoworkFolderTreePair {
     pub result_tree: Option<FileTreeNode>,
 }
 
+/// Lightweight UI hint mirroring the on-disk `timeline.json` for a folder
+/// session's snapshot history. The authoritative timeline lives in
+/// `{app_data}/cowork/folder-snapshots/{session_id}/timeline.json`; this
+/// struct caches just enough state on the session JSON for the frontend
+/// to render the Undo/Redo pill with a "current/total" counter without
+/// having to load the timeline file on every render.
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Default)]
+pub struct FolderUndoState {
+    /// Is there at least one earlier snapshot to undo to?
+    pub can_undo: bool,
+    /// Is there at least one later snapshot to redo into?
+    pub can_redo: bool,
+    /// 1-based index of the snapshot currently on disk. `0` when the
+    /// timeline is empty (no snapshots yet) — in that case `total` is
+    /// also `0` and the UI hides the pill.
+    pub current: usize,
+    /// Total number of snapshots in the timeline. `0` when empty.
+    pub total: usize,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct CoworkChatSessionDetail {
     #[serde(flatten)]
     pub base: BaseCoworkChatSessionDetail,
     pub folder_tree_pair: CoworkFolderTreePair,
+    #[serde(default)]
+    pub undo_state: FolderUndoState,
 }
 
 impl Deref for CoworkChatSessionDetail {
@@ -90,6 +113,7 @@ pub fn create_folder_session(
             run_status: CoworkChatRunStatus::Idle,
         },
         folder_tree_pair: tree_pair,
+        undo_state: FolderUndoState::default(),
     };
 
     write_session(&app, &session)?;
@@ -134,7 +158,50 @@ pub fn rename_folder_session(
 
 #[tauri::command]
 pub fn delete_folder_session(app: AppHandle, session_id: String) -> Result<(), String> {
+    // Snapshot dir cleanup is best-effort: if it fails we still delete the
+    // session file so the user isn't blocked. A dangling snapshot dir only
+    // wastes disk until the user deletes the app data directory.
+    if let Ok(snapshot_dir) = folder_snapshot_session_dir(&app, &session_id) {
+        if snapshot_dir.exists() {
+            if let Err(error) = fs::remove_dir_all(&snapshot_dir) {
+                eprintln!(
+                    "[cowork] failed to clean up folder snapshot dir {}: {}",
+                    snapshot_dir.display(),
+                    error
+                );
+            }
+        }
+    }
+
     delete_session(&app, &session_id)
+}
+
+/// Absolute path to `{app_data}/cowork/folder-snapshots/` (ensures it exists).
+pub fn folder_snapshots_base_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    let mut store_root = store_root_dir_path(app)?;
+    store_root.push(FOLDER_SNAPSHOTS_DIR_NAME);
+
+    fs::create_dir_all(&store_root).map_err(|error| {
+        format!(
+            "Failed to create folder snapshots directory {}: {}",
+            store_root.display(),
+            error
+        )
+    })?;
+
+    Ok(store_root)
+}
+
+/// Absolute path to the per-session snapshot directory (does NOT create it).
+/// The snapshot store is responsible for lazy-creating the subdirs it needs.
+pub fn folder_snapshot_session_dir(
+    app: &AppHandle,
+    session_id: &str,
+) -> Result<PathBuf, String> {
+    let normalized = normalize_session_id(session_id)?;
+    let mut dir = folder_snapshots_base_dir(app)?;
+    dir.push(normalized);
+    Ok(dir)
 }
 
 pub fn sync_result_tree_from_disk(session: &mut CoworkChatSessionDetail) -> Result<(), String> {
@@ -161,7 +228,7 @@ fn validate_session(session: &CoworkChatSessionDetail) -> Result<(), String> {
     validate_tree_pair(&session.folder_tree_pair)
 }
 
-fn hash_tree(tree: &FileTreeNode) -> Result<String, String> {
+pub fn hash_tree(tree: &FileTreeNode) -> Result<String, String> {
     let serialized = serde_json::to_vec(tree)
         .map_err(|error| format!("Failed to serialize folder tree for hashing: {}", error))?;
     let digest = Sha256::digest(serialized);

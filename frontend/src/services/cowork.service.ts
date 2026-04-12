@@ -172,6 +172,18 @@ class CoworkService {
             sessionId
         })
     }
+
+    async undoFolder(sessionId: string): Promise<CoworkChatSessionDetail> {
+        return invoke<CoworkChatSessionDetail>('undo_cowork_folder', {
+            sessionId
+        })
+    }
+
+    async redoFolder(sessionId: string): Promise<CoworkChatSessionDetail> {
+        return invoke<CoworkChatSessionDetail>('redo_cowork_folder', {
+            sessionId
+        })
+    }
 }
 
 export const coworkService = new CoworkService()
