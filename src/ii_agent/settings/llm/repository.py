@@ -79,7 +79,7 @@ class ModelSettingRepository(BaseRepository[ModelSetting]):
         """Get a system-level setting by model_id."""
         result = await db.execute(
             select(ModelSetting).where(
-                ModelSetting.id == model_id,
+                ModelSetting.model_id == model_id,
                 ModelSetting.user_id.is_(None),
                 ModelSetting.config_type == "system",
             )

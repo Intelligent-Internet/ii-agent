@@ -6,8 +6,6 @@ from typing import Any
 
 import pytest
 
-pytest.skip("ii_agent.integrations.a2a was removed during refactoring", allow_module_level=True)
-
 from ii_agent.integrations.a2a.context_adapter import (
     _as_bool,
     _as_int,

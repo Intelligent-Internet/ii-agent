@@ -240,8 +240,15 @@ class Sandbox(ABC):
     # ── Networking ────────────────────────────────────────────────────────
 
     @abstractmethod
-    async def expose_port(self, port: int) -> str:
-        """Expose a port and return its public URL."""
+    async def expose_port(self, port: int, *, external: bool = True) -> str:
+        """Expose a port and return its URL.
+
+        Args:
+            port: The port number to expose.
+            external: If True, return a browser-accessible URL (e.g., public URL
+                or host-mapped port). If False, return a container-internal URL
+                usable only by the agent within the sandbox network.
+        """
         ...
 
     @abstractmethod

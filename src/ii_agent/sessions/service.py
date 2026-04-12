@@ -20,7 +20,7 @@ from ii_agent.sessions.models import Session
 from ii_agent.sessions.repository import SessionRepository
 from ii_agent.sessions.schemas import SessionEventDetail, SessionInfo, ValidatedSessionResult
 from ii_agent.sessions.title_service import SessionTitleService
-from ii_agent.core.config.settings import Settings
+from ii_agent.core.config.settings import Settings, get_settings
 from ii_agent.core.redis.cache import EntityCache
 from ii_agent.core.storage.providers.base import StorageProvider
 
@@ -172,20 +172,76 @@ class SessionService:
 
     # ==================== Session State ====================
 
+    async def _cancel_active_run(self, db: AsyncSession, session_id: uuid.UUID) -> None:
+        """Cancel any active run for the session via Redis + task status transition."""
+        active_task = await self._run_task_service.find_active_by_session(db, session_id)
+        if active_task is None:
+            return
+        from ii_agent.core.redis.cancel import cancel_run
+        from ii_agent.tasks.types import RunStatus
+
+        cancelled = await cancel_run(str(active_task.id))
+        await self._run_task_service.transition_status(
+            db,
+            task_id=active_task.id,
+            to_status=RunStatus.CANCELLED,
+            error_message="Session deleted",
+        )
+        logger.info(
+            "Cancelled active run %s for deleted session %s (redis_signal=%s)",
+            active_task.id,
+            session_id,
+            cancelled,
+        )
+
+    async def _publish_session_deleted_event(
+        self, db: AsyncSession, session_id: uuid.UUID, user_id: uuid.UUID
+    ) -> None:
+        """Persist a SessionDeletedEvent for observability."""
+        event = ApplicationEvent(
+            session_id=session_id,
+            user_id=user_id,
+            event_type="session.deleted",
+            event_group="session",
+            content={"session_id": str(session_id), "user_id": str(user_id)},
+        )
+        await self._event_repo.save(db, event)
+
     async def soft_delete_session(
         self, db: AsyncSession, session_id: uuid.UUID, user_id: uuid.UUID
     ) -> None:
-        """Soft delete a session by setting is_deleted flag."""
+        """Soft delete a session with full resource cleanup.
+
+        1. Cancel any active run (Redis signal + task status transition).
+        2. Mark session as deleted (soft delete).
+        3. Publish a ``session.deleted`` event for observability.
+        4. Evict session from cache.
+
+        Sandbox containers are cleaned up asynchronously by the orphan-cleanup
+        background loop, which checks ``is_deleted`` and removes containers
+        after the configured grace period.
+        """
         session = await self._session_repo.get_by_id_and_user(db, session_id, user_id)
         if not session:
             raise SessionNotFoundError(f"Session {session_id} not found or already deleted")
+
+        # Cancel active runs before marking deleted
+        await self._cancel_active_run(db, session_id)
+
         session.is_deleted = True
         await self._session_repo.update(db, session)
+
+        await self._publish_session_deleted_event(db, session_id, user_id)
+        await self._evict_session_cache(session_id)
+
+        logger.info("Soft-deleted session %s for user %s", session_id, user_id)
 
     async def bulk_soft_delete_sessions(
         self, db: AsyncSession, session_ids: list[uuid.UUID], user_id: uuid.UUID
     ) -> tuple[list[uuid.UUID], list[uuid.UUID]]:
-        """Bulk soft delete sessions.
+        """Bulk soft delete sessions with full resource cleanup.
+
+        Cancels active runs and publishes events for each session.
 
         Returns:
             Tuple of (deleted_ids, failed_ids).
@@ -195,12 +251,26 @@ class SessionService:
         )
         deleted_ids: list[uuid.UUID] = []
         for session in sessions:
+            # Cancel active runs before marking deleted
+            await self._cancel_active_run(db, session.id)
+
             session.is_deleted = True
             deleted_ids.append(session.id)
+
+            await self._publish_session_deleted_event(db, session.id, user_id)
+            await self._evict_session_cache(session.id)
+
         await db.flush()
 
         found_ids = set(deleted_ids)
         failed_ids = [sid for sid in session_ids if sid not in found_ids]
+
+        logger.info(
+            "Bulk soft-deleted %d sessions for user %s (failed=%d)",
+            len(deleted_ids),
+            user_id,
+            len(failed_ids),
+        )
         return deleted_ids, failed_ids
 
     async def set_session_public(
@@ -378,6 +448,10 @@ class SessionService:
             session = await self.find_session_by_id(db, session_uuid)
             if not session:
                 raise SessionNotFoundError(f"Session {session_uuid} not found")
+            # Upgrade api_version when re-joining with a newer version
+            if session.api_version != api_version and api_version == "v1":
+                await self._session_repo.update_api_version(db, session_uuid, api_version)
+                session = SessionInfo(**{**session.model_dump(), "api_version": api_version})
         else:
             session = await self.create_new_session(db, uuid.uuid4(), user_id, api_version)
         return session
@@ -468,7 +542,7 @@ class SessionService:
             session_info = self._build_session_info(session)
 
         # Credit check
-        if not model_config.is_user_model():
+        if not model_config.is_user_model() and get_settings().credits.billing_enabled:
             has_credits = await credit_service.has_sufficient_credits(
                 db,
                 user_id=user_id,

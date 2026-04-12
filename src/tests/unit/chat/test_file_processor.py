@@ -654,3 +654,80 @@ class TestProcessedFilesDataclass:
             skipped_files=skipped,
         )
         assert pf.skipped_files[0]["file_name"] == "bad.bin"
+
+
+# ===========================================================================
+# estimate_tokens
+# ===========================================================================
+
+
+class TestEstimateTokens:
+    """Tests for estimate_tokens pure utility function."""
+
+    def test_empty_string_returns_zero(self):
+        from ii_agent.chat.application.file_processor import estimate_tokens
+        assert estimate_tokens("") == 0
+
+    def test_three_chars_returns_one_token(self):
+        from ii_agent.chat.application.file_processor import estimate_tokens
+        # CHARS_PER_TOKEN = 3, so 3 chars = ceil(3/3) = 1
+        assert estimate_tokens("abc") == 1
+
+    def test_four_chars_rounds_up(self):
+        from ii_agent.chat.application.file_processor import estimate_tokens
+        # 4 chars → ceil(4/3) = 2
+        assert estimate_tokens("abcd") == 2
+
+    def test_nine_chars_returns_three(self):
+        from ii_agent.chat.application.file_processor import estimate_tokens
+        assert estimate_tokens("a" * 9) == 3
+
+    def test_longer_text_estimates_reasonably(self):
+        from ii_agent.chat.application.file_processor import estimate_tokens
+        text = "Hello world! " * 100  # 1300 chars → ceil(1300/3) = 434
+        result = estimate_tokens(text)
+        assert result > 100
+
+
+# ===========================================================================
+# get_pdf_page_count / extract_pdf_text
+# ===========================================================================
+
+
+class TestPdfFunctions:
+    """Tests for get_pdf_page_count and extract_pdf_text."""
+
+    def _make_pdf_bytes(self) -> bytes:
+        """Return a minimal valid PDF bytes object using PyMuPDF."""
+        try:
+            import fitz
+
+            doc = fitz.open()
+            page = doc.new_page()
+            page.insert_text((72, 72), "Hello, PDF world!")
+            return doc.tobytes()
+        except ImportError:
+            pytest.skip("PyMuPDF not installed")
+
+    def test_get_pdf_page_count_valid(self):
+        from ii_agent.chat.application.file_processor import get_pdf_page_count
+        pdf_bytes = self._make_pdf_bytes()
+        count = get_pdf_page_count(pdf_bytes)
+        assert count == 1
+
+    def test_get_pdf_page_count_invalid_returns_minus_one(self):
+        from ii_agent.chat.application.file_processor import get_pdf_page_count
+        result = get_pdf_page_count(b"not a pdf at all")
+        assert result == -1
+
+    def test_extract_pdf_text_returns_content(self):
+        from ii_agent.chat.application.file_processor import extract_pdf_text
+        pdf_bytes = self._make_pdf_bytes()
+        text = extract_pdf_text(pdf_bytes)
+        assert text is not None
+        assert "Hello" in text
+
+    def test_extract_pdf_text_invalid_returns_none(self):
+        from ii_agent.chat.application.file_processor import extract_pdf_text
+        result = extract_pdf_text(b"definitely not pdf bytes")
+        assert result is None

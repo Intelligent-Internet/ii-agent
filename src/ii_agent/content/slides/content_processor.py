@@ -26,11 +26,15 @@ class SlideContentProcessor:
         storage: StorageProvider,
         sandbox: Sandbox,
         url_cache: Optional[Dict[str, str]] = None,
+        slide_assets_base_url: Optional[str] = None,
     ):
         self.storage = storage
         self.sandbox = sandbox
         # Session-level cache: {content_hash: permanent_url}
         self.url_cache = url_cache if url_cache is not None else {}
+        # Override base URL for slide asset serving (e.g., when MinIO is
+        # not directly accessible from the browser).
+        self._slide_assets_base_url = slide_assets_base_url
 
     async def process_html_content(self, html_content: str, slide_file_path: str) -> str:
         """
@@ -80,6 +84,19 @@ class SlideContentProcessor:
         except Exception as e:
             logger.error(f"Error processing slide content: {e}")
             return html_content  # Return original on error
+
+    def _slide_url(self, storage_path: str) -> str:
+        """Return the publicly reachable URL for a slide asset.
+
+        When a ``slide_assets_base_url`` was provided (local Docker/MinIO
+        setups), we construct a ``/files/slides/assets/{filename}`` URL
+        that the backend will serve.  Otherwise, delegate to the storage
+        provider's ``public_url`` (GCS / custom domain).
+        """
+        if self._slide_assets_base_url:
+            filename = storage_path.rsplit("/", 1)[-1]
+            return f"{self._slide_assets_base_url.rstrip('/')}/{filename}"
+        return self.storage.public_url(storage_path)
 
     def _is_external_url(self, path: str) -> bool:
         """Check if path is already an external URL or data URI."""
@@ -135,7 +152,7 @@ class SlideContentProcessor:
             # Check if file already exists in storage (fast)
             if await self.storage.exists(storage_path):
                 logger.info(f"File already exists in storage: {storage_path}")
-                permanent_url = self.storage.public_url(storage_path)
+                permanent_url = self._slide_url(storage_path)
                 # Cache for session reuse
                 self.url_cache[content_hash] = permanent_url
                 return permanent_url
@@ -234,7 +251,7 @@ class SlideContentProcessor:
                 return None
 
             # Get permanent URL for the uploaded file
-            permanent_url = self.storage.public_url(storage_path)
+            permanent_url = self._slide_url(storage_path)
             return permanent_url
 
         except Exception as e:

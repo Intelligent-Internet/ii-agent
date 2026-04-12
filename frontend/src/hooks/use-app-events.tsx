@@ -5,6 +5,8 @@ import { useCallback, useEffect, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 import { toast } from 'sonner'
 
+import { rewriteLocalhostUrl } from '@/lib/utils'
+
 import {
     requestAction,
     setActiveFile,
@@ -19,6 +21,7 @@ import {
     setCancelling,
     setRunStatus,
     setSandboxIframeAwake,
+    setSandboxStatus,
     setFullstackProjectInitialized,
     setProjectId,
     setPublished,
@@ -51,6 +54,7 @@ import {
     setCurrentQuestion,
     setMobileAppUrl,
     setVscodeUrl,
+    setVncUrl,
     setWorkspaceInfo
 } from '@/state/slice/workspace'
 import {
@@ -481,7 +485,7 @@ export function useAppEvents() {
                     }
                     const vscode_url = data.content.vscode_url as string
                     if (vscode_url) {
-                        dispatch(setVscodeUrl(vscode_url))
+                        dispatch(setVscodeUrl(rewriteLocalhostUrl(vscode_url)))
                     }
                     break
                 }
@@ -606,10 +610,13 @@ export function useAppEvents() {
                     if (!ignoreClickAction) {
                         const isAwake = data.content.status === 'running'
                         dispatch(setSandboxIframeAwake(isAwake))
+                        dispatch(setSandboxStatus((data.content.status as string) ?? ''))
                     }
                     const vscode_url = data.content.vscode_url as string
                     // Always update vscode_url, even if null/empty (to clear stale URLs from previous sessions)
-                    dispatch(setVscodeUrl(vscode_url || ''))
+                    dispatch(setVscodeUrl(rewriteLocalhostUrl(vscode_url || '')))
+                    const vnc_url = data.content.vnc_url as string
+                    dispatch(setVncUrl(rewriteLocalhostUrl(vnc_url || '')))
                     break
                 }
 
@@ -1022,7 +1029,7 @@ export function useAppEvents() {
                         const url = (data.content.tool_input as { url: string })
                             ?.url as string
                         if (url) {
-                            dispatch(setBrowserUrl(url))
+                            dispatch(setBrowserUrl(rewriteLocalhostUrl(url)))
                         }
                         safeDispatch(addMessage(message))
                         if (
@@ -1087,11 +1094,13 @@ export function useAppEvents() {
                         dispatch(setFullstackProjectInitialized(true))
                         dispatch(
                             setBrowserUrl(
-                                (
-                                    data.content.result as {
-                                        preview_url?: string
-                                    }
-                                )?.preview_url || ''
+                                rewriteLocalhostUrl(
+                                    (
+                                        data.content.result as {
+                                            preview_url?: string
+                                        }
+                                    )?.preview_url || ''
+                                )
                             )
                         )
                         dispatch(
@@ -1113,7 +1122,7 @@ export function useAppEvents() {
                             }
                         )?.web_preview_url
                         if (web_preview_url) {
-                            dispatch(setBrowserUrl(web_preview_url))
+                            dispatch(setBrowserUrl(rewriteLocalhostUrl(web_preview_url)))
                             dispatch(setActiveTab(TAB.RESULT))
                         }
                     }
@@ -1124,7 +1133,7 @@ export function useAppEvents() {
                             qr_code_value?: string
                         }
                         if (result?.web_preview_url) {
-                            dispatch(setBrowserUrl(result.web_preview_url))
+                            dispatch(setBrowserUrl(rewriteLocalhostUrl(result.web_preview_url)))
                         }
                         if (result?.qr_code_value) {
                             dispatch(setMobileAppUrl(result.qr_code_value))
@@ -1141,7 +1150,7 @@ export function useAppEvents() {
                             }
                         )?.preview_url
                         if (previewUrl) {
-                            dispatch(setBrowserUrl(previewUrl))
+                            dispatch(setBrowserUrl(rewriteLocalhostUrl(previewUrl)))
                         }
                     }
 
@@ -1638,6 +1647,33 @@ export function useAppEvents() {
                     } else {
                         dispatch(setFileLoading(false))
                     }
+                    break
+                }
+
+                case AgentEvent.DELEGATION_FALLBACK: {
+                    const reason = data.content.reason as string
+                    const failureCount = data.content.failure_count as number
+                    const circuitState = data.content.circuit_state as string
+                    console.warn(
+                        '[A2A] Delegation fallback:',
+                        reason,
+                        `failures=${failureCount}`,
+                        `circuit=${circuitState}`
+                    )
+                    toast.warning(
+                        'Switching to built-in mode due to connectivity issue.'
+                    )
+                    break
+                }
+
+                case AgentEvent.COMPACTION_AUTHORITY: {
+                    const authority = data.content.authority as string
+                    const locked = data.content.compaction_locked as boolean
+                    console.debug(
+                        '[A2A] Compaction authority:',
+                        authority,
+                        locked ? '(locked)' : '(unlocked)'
+                    )
                     break
                 }
 

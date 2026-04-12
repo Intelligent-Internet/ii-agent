@@ -3,6 +3,7 @@
 Extracted from ``server.socket.command.awake_sandbox_handler``.
 """
 
+from ii_agent.core.logger import logger
 from ii_agent.realtime.pubsub import AsyncIOPubSub
 from ii_agent.realtime.events.app_events import SandboxStatusChangedEvent
 from ii_agent.core.container import ApplicationContainer
@@ -13,8 +14,7 @@ from ii_agent.realtime.handlers.base import (
     CommandType,
 )
 from ii_agent.realtime.schemas import AwakeSandboxContent
-from ii_agent.agents.sandboxes import E2BSandbox, SandboxStatus
-from ii_agent.agents.sandboxes.repository import SandboxRepository
+from ii_agent.agents.sandboxes import SandboxStatus
 
 
 class AwakeSandboxHandler(BaseCommandHandler[AwakeSandboxContent]):
@@ -29,32 +29,29 @@ class AwakeSandboxHandler(BaseCommandHandler[AwakeSandboxContent]):
         return CommandType.AWAKE_SANDBOX
 
     async def handle(self, content: AwakeSandboxContent, session_info: SessionInfo) -> None:
-        """Handle awake sandbox request."""
+        """Handle awake sandbox request.
+
+        Uses SandboxService.get_sandbox_for_session() which delegates to the
+        correct provider (E2B or Docker).  DockerSandbox.connect() will
+        automatically restart stopped/exited containers.
+        """
         status = SandboxStatus.NOT_INITIALIZED.value
         vscode_url = None
+        vnc_url = None
 
-        container = self._container
-        sandbox_repo = SandboxRepository()
+        sandbox_service = self._container.sandbox_service
 
-        if session_info.api_version == "v1":
-            async with get_db_session_local() as db:
-                # First try to get sandbox by session_id
-                sandbox_record = await sandbox_repo.get_by_session_id(db, session_info.id)
-
-                if sandbox_record and sandbox_record.provider_sandbox_id:
-                    # Connect to existing sandbox (this wakes it up)
-                    sandbox_manager = await E2BSandbox.connect(
-                        sandbox_id=str(sandbox_record.id),
-                        session_id=str(sandbox_record.session_id),
-                        provider_sandbox_id=sandbox_record.provider_sandbox_id,
-                    )
-                    sandbox_info = await sandbox_manager.get_info()
+        async with get_db_session_local() as db:
+            try:
+                sandbox = await sandbox_service.get_sandbox_for_session(db, session_info.id)
+                if sandbox:
+                    sandbox_info = await sandbox.get_info()
                     status = sandbox_info.status.value
                     vscode_url = sandbox_info.vscode_url
-        else:
-            sandbox_svc = container.sandbox_service
-            await sandbox_svc.wake_up_sandbox_by_session(session_info.id)
-            status = await sandbox_svc.get_sandbox_status_by_session(session_info.id)
+                    vnc_url = sandbox_info.vnc_url
+            except Exception as e:
+                logger.error(f"Failed to awake sandbox for session {session_info.id}: {e}")
+                status = SandboxStatus.ERROR.value
 
         valid_statuses = {"starting", "ready", "paused", "terminated", "error"}
         event_status = status if status in valid_statuses else "starting"
@@ -62,8 +59,9 @@ class AwakeSandboxHandler(BaseCommandHandler[AwakeSandboxContent]):
         await self.send_event(
             SandboxStatusChangedEvent(
                 session_id=session_info.id,
-                content={"status": status, "vscode_url": vscode_url},
+                content={"status": status, "vscode_url": vscode_url, "vnc_url": vnc_url},
                 status=event_status,
                 vscode_url=vscode_url,
+                vnc_url=vnc_url,
             )
         )

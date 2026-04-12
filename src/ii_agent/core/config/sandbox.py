@@ -99,6 +99,79 @@ class SandboxSettings(BaseSettings):
         gt=0,
     )
 
+    # Docker-specific settings
+    docker_image: str = Field(
+        default="ii-agent-sandbox:latest",
+        description="Docker image for sandbox containers",
+    )
+
+    docker_network: str = Field(
+        default="ii-agent-local_ii-network",
+        description="Docker network for sandbox containers",
+    )
+
+    port_range_start: int = Field(
+        default=30000,
+        description="Start of port range for Docker sandbox port allocation",
+    )
+
+    port_range_end: int = Field(
+        default=30999,
+        description="End of port range for Docker sandbox port allocation",
+    )
+
+    local_mode: bool = Field(
+        default=False,
+        description="Enable local mode (disables cloud features, enables orphan cleanup)",
+    )
+
+    orphan_cleanup_enabled: bool = Field(
+        default=True,
+        description="Enable background cleanup of orphaned Docker sandbox containers",
+    )
+
+    orphan_cleanup_interval_seconds: int = Field(
+        default=60,
+        description="Interval in seconds between orphan cleanup sweeps",
+        gt=0,
+    )
+
+    stale_sandbox_pause_seconds: int = Field(
+        default=1800,
+        description="Pause sandbox containers for sessions idle longer than this (in seconds, default 30 min)",
+        gt=0,
+    )
+
+    backend_url: str = Field(
+        default="http://backend:8000",
+        description="Backend URL for orphan cleanup session verification",
+    )
+
+    # Configurable well-known container ports
+    mcp_server_port: int = Field(
+        default=6060,
+        description="Container port for the MCP server",
+    )
+
+    code_server_port: int = Field(
+        default=9000,
+        description="Container port for code-server (VS Code)",
+    )
+
+    novnc_port: int = Field(
+        default=6080,
+        description="Container port for noVNC (browser-based VNC)",
+    )
+
+    docker_host: str = Field(
+        default="localhost",
+        description=(
+            "Host address for sandbox port URLs returned to the browser. "
+            "Set to the Docker host's LAN IP (e.g. 192.168.2.2) when the "
+            "browser runs on a different machine."
+        ),
+    )
+
     def validate_for_provider(self) -> None:
         """Validate configuration for the selected provider.
 

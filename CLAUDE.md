@@ -18,7 +18,7 @@ src/ii_agent/
 │   ├── llm/                    # LLM billing service, execution service, base utilities
 │   ├── middleware/              # CORS, request tracing, exception handling
 │   ├── redis/                  # Async Redis client, cache, cancel tokens
-│   ├── storage/                # GCS/local file storage abstraction + path resolver
+│   ├── storage/                # GCS/MinIO file storage abstraction + path resolver
 │   └── container.py            # ApplicationContainer singleton (global + app.state)
 │
 ├── auth/                       # OAuth 2.0, JWT (uuid.UUID user_id), session management
@@ -185,6 +185,9 @@ Socket "chat_message" -> CommandHandlerFactory
 | `/connectors/composio` | `integrations/connectors/composio/router.py` | Composio |
 | `/connectors` | `integrations/connectors/router.py` | Connectors (GitHub, Google) |
 | `/enhance-prompt` | `integrations/enhance_prompt/router.py` | Prompt Enhancement |
+| `/storage` | `files/storage_proxy_router.py` | Storage Proxy (local deploy) |
+| `/files/slides/assets` | `files/slide_assets_router.py` | Slide Assets |
+| `/sandbox-files` | `files/sandbox_files_router.py` | Sandbox File Preview |
 
 Router registration: `app/routers.py::include_routers(app)`
 
@@ -583,7 +586,7 @@ curl http://localhost:8000/health
 | `core/config/settings.py` | Pydantic settings (`get_settings` singleton) |
 | `core/db/base.py` | SQLAlchemy Base (UUID PK, DateTime timestamps), TimestampColumn, BaseRepository |
 | `core/redis/` | Redis client, cache, pubsub, lock, cancel management |
-| `core/storage/` | File storage abstraction (GCS, local) + path resolver |
+| `core/storage/` | File storage abstraction (GCS, MinIO) + path resolver |
 | `auth/dependencies.py` | CurrentUser, DBSession, get_current_user |
 | `tasks/` | Canonical domain implementation (RunTask, TaskLog, types, schemas, exceptions) |
 | `realtime/handlers/factory.py` | CommandHandlerFactory -- 21 Socket.IO command handlers |

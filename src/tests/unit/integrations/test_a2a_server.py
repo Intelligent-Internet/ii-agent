@@ -2,8 +2,6 @@ from types import SimpleNamespace
 
 import pytest
 
-pytest.skip("ii_agent.integrations.a2a was removed during refactoring", allow_module_level=True)
-
 from ii_agent.integrations.a2a.extension_utils import (
     append_extension_issue,
     collect_requested_extensions,

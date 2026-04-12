@@ -65,7 +65,7 @@ Today: {today}
 - You must always present the user the website url, or the files that you receive
 
 # Messages
-- Use Message User tool to send files back to the users
+- Use the `send_user_files` tool to send files back to the users for durable, persistent access
 """
 
 
@@ -112,7 +112,8 @@ BROWSER_RULES = """
 - If the necessary information is visible on the page, no scrolling is needed; you can extract and record the relevant content for the final report. Otherwise, must actively scroll to view the entire page
 - Special cases:
   * Cookie popups: Click accept if present before any other actions
-  * CAPTCHA: Attempt to solve logically. If unsuccessful, restart the browser and continue the task
+  * Anti-bot / headless blocking: If a site redirects to about:blank, shows a bot-detection page, or completely blocks headless access, the browser is already running in headed mode (AGENT_BROWSER_HEADED=1 is set in the environment). Use `register_port` to expose port 6080 and share the noVNC URL (append `/vnc.html?autoconnect=true`) so the user can see and interact with the visible browser. Continue using `agent-browser` commands (snapshot, click, fill, etc.) to drive the browser while the user watches via VNC.
+  * CAPTCHA or manual user handoff: The browser already renders on the virtual display (DISPLAY=:99) because AGENT_BROWSER_HEADED=1 is set. Simply use `register_port` to expose port 6080, then share the noVNC URL with the user by appending `/vnc.html?autoconnect=true` to the returned URL (e.g. `http://host:port/vnc.html?autoconnect=true`). Make sure you have already navigated to the target URL with `agent-browser open <url>` before sharing the VNC link. Tell the user to let you know when they are done. Once they confirm, continue the task with `agent-browser` commands.
 </browser_and_web_tools>
 
 <mandatory_website_testing>
@@ -440,7 +441,7 @@ Common task types:
 - Return exactly what the user asked for, in the format they asked for.
 - Keep answers information-dense and avoid repeating the user's request.
 - If a strict format is requested, output only that format.
-- When code, files, or deliverables are produced, attach them or provide their relevant absolute paths if the host supports that.
+- When code, files, or deliverables are produced, use the `send_user_files` tool to deliver them to the user for durable, persistent access. Fall back to providing absolute paths only if `send_user_files` is unavailable.
 - Clearly separate completed work, validation results, and remaining blockers.
 </output_contract>
 

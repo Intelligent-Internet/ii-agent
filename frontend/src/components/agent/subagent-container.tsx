@@ -7,12 +7,14 @@ import {
     CheckCircle2,
     XCircle,
     Loader2,
-    Clock
+    Clock,
+    StopCircle
 } from 'lucide-react'
 import { useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AgentContext, Message } from '@/typings/agent'
 import { formatDuration } from '@/lib/utils'
+import { useAppSelector, selectIsStopped, selectIsLoading } from '@/state'
 
 interface SubagentContainerProps {
     agentContext: AgentContext
@@ -23,7 +25,8 @@ interface SubagentContainerProps {
 enum SubAgentStatus {
     RUNNING = 'running',
     COMPLETED = 'completed',
-    FAILED = 'failed'
+    FAILED = 'failed',
+    STOPPED = 'stopped'
 }
 
 const SubagentContainer = ({
@@ -33,6 +36,8 @@ const SubagentContainer = ({
 }: SubagentContainerProps) => {
     const { t } = useTranslation()
     const [isExpanded, setIsExpanded] = useState(true)
+    const isStopped = useAppSelector(selectIsStopped)
+    const isLoading = useAppSelector(selectIsLoading)
 
     // Calculate execution time
     const executionTime = useMemo(() => {
@@ -51,6 +56,7 @@ const SubagentContainer = ({
     }, [messages])
 
     // Determine actual status - explicit failed status takes precedence over endTime
+    // Also check global isStopped/isLoading state to determine subagent status
     const actualStatus = useMemo(() => {
         if (agentContext.status === SubAgentStatus.FAILED) {
             return SubAgentStatus.FAILED
@@ -58,14 +64,25 @@ const SubagentContainer = ({
         if (agentContext.endTime) {
             return SubAgentStatus.COMPLETED
         }
-        return agentContext.status || SubAgentStatus.RUNNING
-    }, [agentContext.status, agentContext.endTime])
+        const contextStatus = agentContext.status || SubAgentStatus.RUNNING
+        // If global agent is stopped and this subagent was still running, show as stopped
+        if (isStopped && contextStatus === SubAgentStatus.RUNNING) {
+            return SubAgentStatus.STOPPED
+        }
+        // If main agent is done (not loading, not stopped) and subagent is still "running",
+        // it means the subagent completed but wasn't marked - show as completed
+        if (!isLoading && !isStopped && contextStatus === SubAgentStatus.RUNNING) {
+            return SubAgentStatus.COMPLETED
+        }
+        return contextStatus
+    }, [agentContext.status, agentContext.endTime, isStopped, isLoading])
 
     const statusLabel = useMemo(() => {
         const keyMap: Record<SubAgentStatus, string> = {
             [SubAgentStatus.RUNNING]: 'agent.subagent.status.running',
             [SubAgentStatus.COMPLETED]: 'agent.subagent.status.completed',
-            [SubAgentStatus.FAILED]: 'agent.subagent.status.failed'
+            [SubAgentStatus.FAILED]: 'agent.subagent.status.failed',
+            [SubAgentStatus.STOPPED]: 'agent.subagent.status.stopped'
         }
         return t(keyMap[actualStatus] || 'agent.subagent.status.running')
     }, [actualStatus, t])
@@ -77,6 +94,8 @@ const SubagentContainer = ({
                 return <CheckCircle2 className="size-4 text-green-500" />
             case SubAgentStatus.FAILED:
                 return <XCircle className="size-4 text-red-500" />
+            case SubAgentStatus.STOPPED:
+                return <StopCircle className="size-4 text-yellow-500" />
             case SubAgentStatus.RUNNING:
                 return <Loader2 className="size-4 text-white animate-spin" />
             default:
@@ -152,6 +171,7 @@ const SubagentContainer = ({
                             ${actualStatus === SubAgentStatus.COMPLETED ? 'bg-green-500/20 text-green-400' : ''}
                             ${actualStatus === SubAgentStatus.RUNNING ? 'bg-blue-500/20 text-blue-400' : ''}
                             ${actualStatus === SubAgentStatus.FAILED ? 'bg-red-500/20 text-red-400' : ''}
+                            ${actualStatus === SubAgentStatus.STOPPED ? 'bg-yellow-500/20 text-yellow-400' : ''}
                         `}
                         >
                             {statusLabel}
