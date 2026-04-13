@@ -98,6 +98,8 @@ def _init_pubsub(
     container: ApplicationContainer,
 ) -> AsyncIOPubSub:
     """Create the pub/sub singleton and register callback handlers."""
+    from ii_agent.core.config.settings import get_settings
+
     pubsub = AsyncIOPubSub()
 
     pubsub.subscribe(SioCallbackHandler(sio))
@@ -106,6 +108,8 @@ def _init_pubsub(
         CreditUsageHandler(
             credit_service=container.credit_service,
             pubsub=pubsub,
+            billing_enabled=get_settings().credits.billing_enabled,
+            agent_settings=get_settings().agent,
         )
     )
 

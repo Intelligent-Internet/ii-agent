@@ -58,6 +58,27 @@ tmux new-session -d -s code-server-system-never-kill -c /workspace 'code-server 
   --disable-workspace-trust \
   /workspace'
 
+# Start A2A adapter (with supervised auto-restart on exit)
+# The adapter hosts the II-Agent A2A protocol endpoint used by A2AInnerLoop.
+# SANDBOX_ADAPTER_PORT defaults to 18100 (control-plane reserved range 18000-18999).
+# SANDBOX_ADAPTER_BACKEND selects the inner-loop backend:
+#   simulate   - built-in mock stream (default, no external deps)
+#   copilot    - GitHub Copilot CLI via github-copilot-sdk (uses gh auth or GITHUB_TOKEN)
+#   claude-code - Claude Code CLI subprocess (requires ANTHROPIC_API_KEY)
+#   codex       - OpenAI Codex CLI subprocess (requires OPENAI_API_KEY)
+SANDBOX_ADAPTER_PORT="${SANDBOX_ADAPTER_PORT:-18100}"
+SANDBOX_ADAPTER_BACKEND="${SANDBOX_ADAPTER_BACKEND:-simulate}"
+echo "Starting A2A adapter on port ${SANDBOX_ADAPTER_PORT} (backend=${SANDBOX_ADAPTER_BACKEND})..."
+tmux new-session -d -s copilot-adapter-system-never-kill -c /workspace \
+  "while true; do \
+     DISPLAY=:99 AGENT_BROWSER_HEADED=1 \
+     python -m ii_agent.integrations.a2a.adapter_server \
+       --host 0.0.0.0 --port ${SANDBOX_ADAPTER_PORT} \
+       --backend ${SANDBOX_ADAPTER_BACKEND}; \
+     echo 'A2A adapter exited, restarting in 2s...'; \
+     sleep 2; \
+   done"
+
 # Wait for both processes to start
 sleep 3
 

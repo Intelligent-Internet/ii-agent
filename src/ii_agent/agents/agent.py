@@ -49,6 +49,7 @@ from ii_agent.agents.exceptions import (
 )
 from ii_agent.files.media import Audio, File, Image, Video
 from ii_agent.agents.models.base import Model
+from ii_agent.agents.inner_loop import InnerLoopStrategy, NativeInnerLoop
 from ii_agent.agents.models.message import Message
 from ii_agent.agents.models.metrics import Metrics
 from ii_agent.agents.models.response import ModelResponse, ModelResponseEvent, ToolExecution
@@ -128,6 +129,7 @@ class IIAgent:
     session_id: str
     model: Model
     name: str = None
+    inner_loop_strategy: Optional[InnerLoopStrategy] = None
 
     _internal_lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False, repr=False)
     _sandbox: Optional[Sandbox] = None
@@ -207,6 +209,9 @@ class IIAgent:
     role: Optional[str] = None
 
     def __post_init__(self) -> None:
+        if self.inner_loop_strategy is None:
+            self.inner_loop_strategy = NativeInnerLoop()
+
         # Ensure tools is a list
         if self.tools is not None:
             self.tools = list(self.tools)
@@ -458,6 +463,102 @@ class IIAgent:
     def sandbox(self, value: Optional[Sandbox]) -> None:
         """Set the sandbox."""
         self._sandbox = value
+        # Wire the sandbox into a deferred A2A inner loop strategy so the
+        # url_factory closure can resolve the adapter port at call time.
+        if value is not None and hasattr(self.inner_loop_strategy, "_sandbox_ref"):
+            self.inner_loop_strategy._sandbox_ref[0] = value
+
+    async def _ensure_sandbox_for_inner_loop(self) -> None:
+        """Eagerly initialise the sandbox for the A2A inner-loop adapter.
+
+        Uses the same double-checked locking pattern as
+        :meth:`BaseSandboxTool._ensure_sandbox` so that concurrent calls
+        (e.g. from tool pre-hooks) never create a second sandbox.
+
+        After the sandbox container is running the method polls the A2A
+        adapter ``/health`` endpoint (up to ~15 s) to avoid an immediate
+        ECONNREFUSED on the first ``aresponse_stream`` call.
+        """
+        import uuid as _uuid
+
+        from ii_agent.core.container import get_app_container
+        from ii_agent.core.db.base import get_db_session_local
+
+        if self._sandbox is not None:
+            return
+
+        async with self._internal_lock:
+            if self._sandbox is not None:
+                return
+
+            logger.info(
+                "Eagerly initializing sandbox for A2A inner loop (session={})",
+                self.session_id,
+            )
+            sandbox_service = get_app_container().sandbox_service
+            async with get_db_session_local() as db:
+                sandbox = await sandbox_service.init_sandbox(
+                    db,
+                    session_id=_uuid.UUID(self.session_id),
+                    user_id=_uuid.UUID(self.user_id),
+                )
+
+            self.sandbox = sandbox  # triggers setter → wires _sandbox_ref[0]
+            self._sandbox_was_initialized = True
+
+            # Wait for the A2A adapter to become healthy inside the sandbox.
+            await self._wait_for_a2a_adapter(sandbox)
+
+    async def _wait_for_a2a_adapter(self, sandbox: Sandbox) -> None:
+        """Poll the A2A adapter ``/health`` endpoint until it responds.
+
+        Retries with exponential back-off (0.5 s → 1 s → 2 s → 4 s …) for up
+        to ``_A2A_HEALTH_TIMEOUT`` seconds total.  If the adapter never becomes
+        healthy a warning is logged but execution continues — the circuit
+        breaker will handle genuine failures downstream.
+        """
+        import httpx
+
+        from ii_agent.agents.sandboxes.docker import ADAPTER_CONTAINER_PORT
+
+        _A2A_HEALTH_TIMEOUT = 20.0  # seconds
+        _A2A_HEALTH_INTERVAL = 0.5  # initial back-off
+
+        try:
+            url = await sandbox.expose_port(ADAPTER_CONTAINER_PORT)
+        except Exception:
+            logger.warning(
+                "Could not resolve A2A adapter port for sandbox; "
+                "skipping health check (session={})",
+                self.session_id,
+            )
+            return
+
+        health_url = f"{url}/health"
+        deadline = asyncio.get_event_loop().time() + _A2A_HEALTH_TIMEOUT
+        interval = _A2A_HEALTH_INTERVAL
+
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            while asyncio.get_event_loop().time() < deadline:
+                try:
+                    resp = await client.get(health_url)
+                    if resp.status_code < 500:
+                        logger.info(
+                            "A2A adapter healthy (session={}, status={})",
+                            self.session_id,
+                            resp.status_code,
+                        )
+                        return
+                except (httpx.ConnectError, httpx.TimeoutException, httpx.ReadError):
+                    pass
+                await asyncio.sleep(interval)
+                interval = min(interval * 2, 4.0)
+
+        logger.warning(
+            "A2A adapter did not become healthy within {}s (session={})",
+            _A2A_HEALTH_TIMEOUT,
+            self.session_id,
+        )
 
     def _set_session_summary_manager(self) -> None:
         if self.session_summary_manager is None:
@@ -2322,17 +2423,30 @@ class IIAgent:
 
         model_response = ModelResponse(content="")
 
-        stream_model_response = True
+        strategy = self.inner_loop_strategy or NativeInnerLoop()
 
-        model_response_stream = self.model.aresponse_stream(
+        # Ensure sandbox is running before an A2A inner-loop call.
+        # The sandbox hosts the A2A adapter; without it the URL factory
+        # raises RuntimeError and poisons the circuit breaker.
+        if hasattr(strategy, "_sandbox_ref") and self._sandbox is None:
+            try:
+                await self._ensure_sandbox_for_inner_loop()
+            except Exception:
+                logger.warning(
+                    "A2A sandbox init failed; falling back to native inner loop (session={})",
+                    self.session_id,
+                )
+                strategy = NativeInnerLoop()
+
+        model_response_stream = strategy.aresponse_stream(
+            model=self.model,
             messages=run_messages.messages,
             response_format=response_format,
             tools=tools,
             tool_choice=self.tool_choice,
             tool_call_limit=self.tool_call_limit,
-            stream_model_response=stream_model_response,
             run_response=run_response,
-        )  # type: ignore
+        )
 
         async for model_response_event in model_response_stream:  # type: ignore
             if self._sandbox_was_initialized is True and self._sandbox:
@@ -2491,6 +2605,15 @@ class IIAgent:
                 events_to_skip=self.events_to_skip,  # type: ignore
                 store_events=self.store_events,
             )
+        elif not isinstance(model_response_event, ModelResponse):
+            # Non-RunOutputEvent, non-ModelResponse events (e.g. CompactionAuthorityEvent)
+            # are bubbled up as-is without attempting to access ModelResponse attributes.
+            yield handle_event(  # type: ignore
+                model_response_event,  # type: ignore
+                run_response,
+                events_to_skip=self.events_to_skip,  # type: ignore
+                store_events=self.store_events,
+            )
         else:
             model_response_event = cast(ModelResponse, model_response_event)
 
@@ -2542,6 +2665,19 @@ class IIAgent:
                             model_response.reasoning_content or ""
                         ) + model_response_event.reasoning_content
                         run_response.reasoning_content = model_response.reasoning_content
+                    elif (
+                        model_response_event.reasoning_content is not None
+                        and not model_response_event.is_delta
+                    ):
+                        # Non-delta (e.g. A2A reasoning_done): replace rather
+                        # than append so we don't double the accumulated text.
+                        # If deltas already built the content, keep the richer
+                        # accumulated version; otherwise accept the replacement.
+                        if not model_response.reasoning_content:
+                            model_response.reasoning_content = (
+                                model_response_event.reasoning_content
+                            )
+                            run_response.reasoning_content = model_response.reasoning_content
 
                     if (
                         model_response_event.redacted_reasoning_content is not None

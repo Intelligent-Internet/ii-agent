@@ -9,14 +9,18 @@ from ii_agent.chat.base import LLMClient
 from ii_server.core.workspace import WorkspaceManager
 from ii_agent.agents.prompts.agent_prompts import get_system_prompt_for_agent_type
 from ii_agent.agents.sandboxes import Sandbox
+from ii_agent.agents.sandboxes.docker import ADAPTER_CONTAINER_PORT
 from ii_agent.agents.agent import IIAgent
 from ii_agent.agents.skills.base import SkillCreator
 from ii_agent.agents.connector import BaseConnectorTool
 from ii_agent.agents.factory.tools import AgentConfigManager, AgentType
 from ii_agent.agents.factory.tool_manager import AgentToolManager
+from ii_agent.agents.inner_loop import A2AInnerLoop, InnerLoopStrategy, NativeInnerLoop
 from ii_agent.agents.models.utils import get_model
 from ii_agent.agents.sessions import SessionStore
 from ii_agent.agents.tools.task import SYSTEM_PROMPT, TaskAgentTool, DESCRIPTION
+from ii_agent.integrations.a2a.as_client import IIAgentA2AClient
+from ii_agent.integrations.a2a.backend_compat import check_model_backend_compat
 from ii_agent.core.logger import logger
 
 
@@ -40,6 +44,67 @@ class AgentFactory:
         """
         self.config = config
 
+    def _build_inner_loop_strategy(self, sandbox: Optional[Sandbox] = None) -> InnerLoopStrategy:
+        if self.config.agent.inner_loop_mode != "a2a":
+            return NativeInnerLoop()
+
+        # Sandbox-resolved URL (production path): the adapter runs inside the
+        # sandbox container.  We pass a url_factory so port resolution is lazy
+        # — the sandbox only needs to be running by the time the first A2A call
+        # is made, not at agent construction time.
+        if sandbox is not None:
+            client = IIAgentA2AClient(
+                url_factory=lambda: sandbox.expose_port(ADAPTER_CONTAINER_PORT),
+                timeout=self.config.agent.a2a_timeout_seconds,
+            )
+            return A2AInnerLoop(
+                client=client,
+                fallback_to_native=self.config.agent.a2a_fallback_to_native,
+                context_reuse=self.config.agent.a2a_context_reuse,
+            )
+
+        # External agent URL override (non-sandbox path, e.g. development or
+        # an externally managed A2A agent).
+        if self.config.agent.a2a_agent_url:
+            client = IIAgentA2AClient(
+                agent_url=self.config.agent.a2a_agent_url,
+                timeout=self.config.agent.a2a_timeout_seconds,
+            )
+            return A2AInnerLoop(
+                client=client,
+                fallback_to_native=self.config.agent.a2a_fallback_to_native,
+                context_reuse=self.config.agent.a2a_context_reuse,
+            )
+
+        # Deferred sandbox path: sandbox will be lazily initialized after agent
+        # construction (e.g. when the first tool needs it).  Create the A2A
+        # strategy now with a url_factory that reads the strategy's own
+        # _sandbox_ref — the agent's sandbox setter will fill ref[0] later.
+        #
+        # We need a two-phase init: build the deferred URL closure first,
+        # create the strategy, then bind the closure to the strategy's ref.
+        sandbox_holder: list = [None]
+
+        async def _deferred_url() -> str:
+            sb = sandbox_holder[0]
+            if sb is None:
+                raise RuntimeError("A2A adapter URL not available: sandbox not yet initialized")
+            return await sb.expose_port(ADAPTER_CONTAINER_PORT)
+
+        client = IIAgentA2AClient(
+            url_factory=_deferred_url,
+            timeout=self.config.agent.a2a_timeout_seconds,
+        )
+        strategy = A2AInnerLoop(
+            client=client,
+            fallback_to_native=self.config.agent.a2a_fallback_to_native,
+            context_reuse=self.config.agent.a2a_context_reuse,
+        )
+        # Point the strategy's _sandbox_ref and our closure at the same list.
+        strategy._sandbox_ref = sandbox_holder
+        logger.info("A2A inner loop created with deferred sandbox binding")
+        return strategy
+
     async def create_agent(
         self,
         user_id: str,
@@ -48,6 +113,7 @@ class AgentFactory:
         agent_type: AgentType = AgentType.GENERAL,
         workspace_manager: Optional[WorkspaceManager] = None,
         session_store: Optional[SessionStore] = None,
+        sandbox: Optional[Sandbox] = None,
         tool_args: Optional[Dict[str, Any]] = None,
         metadata: Optional[Dict[str, Any]] = None,
         system_prompt: Optional[str] = None,
@@ -169,8 +235,15 @@ class AgentFactory:
                 session_id=session_id,
                 llm_config=llm_config,
                 tool_args=tool_args,
+                sandbox=sandbox,
             )
             sub_agents.append(task_agent)
+
+        # Warn if the LLM model is incompatible with the configured A2A backend
+        if self.config.agent.inner_loop_mode == "a2a":
+            compat_warning = check_model_backend_compat(model.id, self.config.agent.a2a_backend)
+            if compat_warning:
+                logger.warning("A2A backend/model mismatch: %s", compat_warning)
 
         # Create the agent
         agent = IIAgent(
@@ -183,6 +256,7 @@ class AgentFactory:
             session_store=session_store,
             metadata=metadata,
             sub_agents=sub_agents,
+            inner_loop_strategy=self._build_inner_loop_strategy(sandbox),
             retries=0,
             stream=True,
             stream_events=True,
@@ -247,6 +321,7 @@ class AgentFactory:
         llm_config: LLMConfig,
         tool_args: Optional[Dict[str, Any]] = None,
         run_id: Optional[UUID] = None,
+        sandbox: Optional[Sandbox] = None,
     ):
         """Create a task agent as a tool for delegation.
 
@@ -284,6 +359,7 @@ class AgentFactory:
             name=TaskAgentTool.name,
             system_message=SYSTEM_PROMPT,
             description=DESCRIPTION,
+            inner_loop_strategy=self._build_inner_loop_strategy(sandbox),
             stream=True,
             stream_events=True,
             store_events=False,

@@ -6,6 +6,19 @@ For each event it:
 2. Atomically deducts credits via ``CreditService``.
 3. Publishes ``CreditsDeductedEvent`` for frontend balance updates + audit.
 4. Cancels the agent run if the user's balance is exhausted.
+
+Backend-aware billing
+---------------------
+When ``billing_backend`` on a ``ModelUsageEvent`` starts with ``"a2a:"``,
+the handler consults ``AgentSettings`` for the configured billing strategy
+(``a2a_billing_strategy``).  Three modes are supported:
+
+* **token_based** (default): same PricingInfo × token-count calculation as
+  native, optionally scaled by ``a2a_billing_multiplier``.
+* **provider_reported**: uses the cost / premium-request data reported by the
+  backend, converted to credits.  For Copilot this means
+  ``premium_requests × multiplier × overage_price``.
+* **none**: no LLM billing for A2A-served turns (subscription covers it).
 """
 
 from __future__ import annotations
@@ -15,6 +28,7 @@ import uuid
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
+from ii_agent.core.config.agent import AgentSettings
 from ii_agent.core.db import get_db_session_local
 from ii_agent.core.redis.cancel import cancel_run
 from ii_agent.credits.constants import MINIMUM_REQUIRED_CREDITS
@@ -49,10 +63,12 @@ class CreditUsageHandler(EventCallbackHandler):
         credit_service: CreditService,
         pubsub: AsyncIOPubSub,
         billing_enabled: bool = True,
+        agent_settings: AgentSettings | None = None,
     ) -> None:
         self._credit_service = credit_service
         self._pubsub = pubsub
         self._billing_enabled = billing_enabled
+        self._agent_settings = agent_settings
 
     async def on_event(self, event: BaseEvent) -> None:
         if not self._billing_enabled:
@@ -77,7 +93,7 @@ class CreditUsageHandler(EventCallbackHandler):
                 )
                 return
 
-            credits = self._calculate_llm_credits(event)
+            credits = self._calculate_credits_for_event(event)
             if credits <= Decimal("0"):
                 return
 
@@ -166,6 +182,100 @@ class CreditUsageHandler(EventCallbackHandler):
     # ------------------------------------------------------------------
     # Shared helpers
     # ------------------------------------------------------------------
+
+    def _calculate_credits_for_event(self, event: ModelUsageEvent) -> Decimal:
+        """Route to the appropriate billing strategy based on backend.
+
+        For ``"native"`` and any unrecognised backend, falls through to the
+        standard token-based calculation.  For A2A backends, the configured
+        ``a2a_billing_strategy`` in :class:`AgentSettings` determines whether
+        billing uses tokens, the provider-reported cost, or is skipped.
+        """
+        if not event.billing_backend.startswith("a2a:") or self._agent_settings is None:
+            return self._calculate_llm_credits(event)
+
+        strategy = self._agent_settings.a2a_billing_strategy
+
+        if strategy == "none":
+            logger.debug(
+                "A2A billing strategy 'none': skipping charge for %s (session=%s)",
+                event.billing_backend,
+                event.session_id,
+            )
+            return Decimal("0")
+
+        if strategy == "provider_reported":
+            return self._calculate_provider_reported_credits(event)
+
+        # Default: token_based with optional multiplier
+        credits = self._calculate_llm_credits(event)
+        multiplier = Decimal(str(self._agent_settings.a2a_billing_multiplier))
+        if multiplier != Decimal("1"):
+            logger.debug(
+                "A2A token_based billing: applying multiplier %.3f (session=%s)",
+                multiplier,
+                event.session_id,
+            )
+        return credits * multiplier
+
+    def _calculate_provider_reported_credits(self, event: ModelUsageEvent) -> Decimal:
+        """Calculate credits from the backend's own cost/premium-request data.
+
+        For Copilot: ``premium_requests × model_multiplier × overage_price``.
+        For other A2A backends: uses ``provider_reported_cost`` directly.
+        """
+        assert self._agent_settings is not None  # noqa: S101
+
+        if event.billing_backend == "a2a:copilot":
+            # Resolve Copilot premium request multiplier for this model
+            multiplier = self._resolve_copilot_multiplier(event.model_id)
+            premium_cost = Decimal(str(self._agent_settings.a2a_copilot_premium_request_cost))
+            effective_requests = Decimal(str(max(event.premium_requests, 1))) * Decimal(
+                str(multiplier)
+            )
+            total_usd = effective_requests * premium_cost
+            logger.debug(
+                "Copilot provider_reported billing: model=%s multiplier=%.2f "
+                "premium_requests=%d effective=%.2f cost_usd=%.4f",
+                event.model_id,
+                multiplier,
+                event.premium_requests,
+                float(effective_requests),
+                float(total_usd),
+            )
+            return total_usd * _USD_TO_CREDITS
+
+        # Generic A2A backend: use the cost field the adapter reported
+        if event.provider_reported_cost > 0:
+            return Decimal(str(event.provider_reported_cost)) * _USD_TO_CREDITS
+
+        # Fallback to token-based if backend didn't report cost
+        logger.warning(
+            "A2A backend '%s' reported no cost; falling back to token-based billing",
+            event.billing_backend,
+        )
+        return self._calculate_llm_credits(event)
+
+    def _resolve_copilot_multiplier(self, model_id: str) -> float:
+        """Look up the Copilot premium-request multiplier for a model.
+
+        Matches by longest prefix from the configurable multiplier table.
+        """
+        assert self._agent_settings is not None  # noqa: S101
+        multipliers = self._agent_settings.a2a_copilot_multipliers
+        normalized = model_id.lower()
+        best_match = ""
+        best_value = 1.0
+        for prefix, value in multipliers.items():
+            if normalized.startswith(prefix) and len(prefix) > len(best_match):
+                best_match = prefix
+                best_value = value
+        if not best_match:
+            logger.warning(
+                "No Copilot multiplier for model '%s'; defaulting to 1.0",
+                model_id,
+            )
+        return best_value
 
     def _calculate_llm_credits(self, event: ModelUsageEvent) -> Decimal:
         """Calculate credit cost from token counts using PricingInfo.
