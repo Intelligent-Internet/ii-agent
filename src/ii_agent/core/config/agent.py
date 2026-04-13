@@ -1,6 +1,6 @@
 """Agent execution configuration."""
 
-from typing import Set
+from typing import Literal, Set
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -62,6 +62,17 @@ class AgentSettings(BaseSettings):
     allow_tools: Set[str] = Field(
         default_factory=set,
         description="Set of tool names that are pre-approved for execution",
+    )
+
+    a2a_backend: Literal["copilot", "claude-code", "codex"] = Field(
+        default="copilot",
+        description=(
+            "Which A2A backend the adapter uses when inner_loop_mode is 'a2a'. "
+            "copilot: GitHub Copilot CLI (uses GITHUB_TOKEN or GH_TOKEN, falls back to 'gh auth'). "
+            "claude-code: Anthropic Claude Code CLI (requires ANTHROPIC_API_KEY; claude-* models only). "
+            "codex: OpenAI Codex CLI (requires OPENAI_API_KEY; o4-mini/o3 models only). "
+            "Env: AGENT_A2A_BACKEND"
+        ),
     )
 
     def is_tool_allowed(self, tool_name: str) -> bool:

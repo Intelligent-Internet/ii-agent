@@ -15,6 +15,7 @@ from typing import Any, Dict, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ii_agent.agents.sandboxes.base import Sandbox
+from ii_agent.agents.sandboxes.docker import DockerSandbox
 from ii_agent.agents.sandboxes.e2b import E2BSandbox
 from ii_agent.agents.sandboxes.exceptions import SandboxCreationError, SandboxNotFoundException
 from ii_agent.agents.sandboxes.models import AgentSandbox
@@ -95,7 +96,24 @@ class SandboxService:
 
         # 4. Connect or create provider sandbox
         if record.provider_sandbox_id:
-            sandbox_mgr = await self._connect_provider(record)
+            try:
+                sandbox_mgr = await self._connect_provider(record)
+            except SandboxNotFoundException:
+                logger.warning(
+                    "Sandbox container %s gone for session %s — marking deleted and creating new one",
+                    record.provider_sandbox_id,
+                    session_id,
+                )
+                await self._sandbox_repo.update_status(db, record.id, SandboxStatus.DELETED)
+                provider = self._resolve_provider()
+                record = AgentSandbox(
+                    session_id=session_id,
+                    provider=provider,
+                    status=SandboxStatus.INITIALIZING,
+                )
+                record = await self._sandbox_repo.save(db, record)
+                is_new = True
+                sandbox_mgr = await self._create_provider(record, metadata)
         else:
             sandbox_mgr = await self._create_provider(record, metadata)
 
@@ -567,12 +585,24 @@ class SandboxService:
                 session_id=str(record.session_id),
                 metadata=metadata,
             )
+        if record.provider == SandboxProviderType.DOCKER:
+            return await DockerSandbox.create(
+                sandbox_id=str(record.id),
+                session_id=str(record.session_id),
+                metadata=metadata,
+            )
         raise SandboxCreationError(f"Unsupported provider: {record.provider}")
 
     async def _connect_provider(self, record: AgentSandbox) -> Sandbox:
         """Connect to an existing provider sandbox."""
         if record.provider == SandboxProviderType.E2B:
             return await E2BSandbox.connect(
+                sandbox_id=str(record.id),
+                session_id=str(record.session_id),
+                provider_sandbox_id=record.provider_sandbox_id,
+            )
+        if record.provider == SandboxProviderType.DOCKER:
+            return await DockerSandbox.connect(
                 sandbox_id=str(record.id),
                 session_id=str(record.session_id),
                 provider_sandbox_id=record.provider_sandbox_id,

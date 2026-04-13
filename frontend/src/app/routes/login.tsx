@@ -1,5 +1,5 @@
 import { useGoogleLogin } from '@react-oauth/google'
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
@@ -344,6 +344,10 @@ export function LoginPage() {
                     />
                     {t('auth.continueWithII')}
                 </Button>
+                <DevLoginButton
+                    apiBaseUrl={apiBaseUrl}
+                    onSuccess={handleAuthSuccess}
+                />
                 <p className="text-xs text-center text-firefly/70 dark:text-sky-blue/70 mt-6">
                     {t('auth.privacyNotice')}{' '}
                     <br></br>
@@ -356,6 +360,55 @@ export function LoginPage() {
                 </p>
             </div>
         </div>
+    )
+}
+
+/**
+ * Dev login button - only shows if DEV_AUTH_ENABLED is set on backend
+ */
+function DevLoginButton({
+    apiBaseUrl,
+    onSuccess
+}: {
+    apiBaseUrl: string
+    onSuccess: (payload: IiAuthPayload | null | undefined) => Promise<void>
+}) {
+    const [isAvailable, setIsAvailable] = useState<boolean | null>(null)
+
+    useEffect(() => {
+        // Check if dev login is available
+        fetch(`${apiBaseUrl}/auth/dev/login`)
+            .then((res) => {
+                setIsAvailable(res.ok)
+            })
+            .catch(() => setIsAvailable(false))
+    }, [apiBaseUrl])
+
+    const handleDevLogin = async () => {
+        try {
+            const res = await fetch(`${apiBaseUrl}/auth/dev/login`)
+            if (!res.ok) {
+                throw new Error('Dev login failed')
+            }
+            const data = await res.json()
+            await onSuccess(data)
+        } catch (error) {
+            console.error('Dev login failed:', error)
+        }
+    }
+
+    if (isAvailable !== true) {
+        return null
+    }
+
+    return (
+        <Button
+            size="xl"
+            onClick={handleDevLogin}
+            className="w-full mt-4 bg-amber-500 hover:bg-amber-600 text-black font-semibold shadow-btn"
+        >
+            Dev Login (Local Mode)
+        </Button>
     )
 }
 

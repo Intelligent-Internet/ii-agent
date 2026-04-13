@@ -91,7 +91,7 @@ class ModelSettingService:
             encrypted_api_key=encrypted_api_key,
             base_url=model_setting_request.base_url,
             display_name=model_setting_request.display_name,
-            configs=configs_dict,
+            params=configs_dict,
             pricing=pricing_dict,
             config_type=model_setting_request.config_type,
             is_default=model_setting_request.is_default,

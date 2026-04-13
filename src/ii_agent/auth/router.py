@@ -469,3 +469,41 @@ async def reader_user_me(
         subscription_current_period_end=current_user.subscription_current_period_end,
         language=str(current_user.language or "en"),
     )
+
+
+@router.get("/dev/login")
+async def dev_login(
+    db: DBSession,
+    settings: SettingsDep,
+    user_service: UserServiceDep,
+):
+    """Development-only login that creates/finds a local dev user.
+
+    Only available when ``SANDBOX_LOCAL_MODE=true``.
+    Returns JWT tokens for a deterministic dev user without OAuth.
+    """
+    if not settings.sandbox.local_mode:
+        raise ValidationError("Dev login is only available in local mode")
+
+    dev_email = "dev@localhost"
+    user = await user_service.find_or_create_oauth_user(
+        db,
+        email=dev_email,
+        first_name="Local",
+        last_name="Developer",
+        avatar=None,
+        email_verified=True,
+        login_provider="dev",
+    )
+
+    token_payload = _make_token_payload(
+        str(user.id),
+        str(user.email),
+        str(user.role),
+    )
+
+    return TokenResponse(
+        access_token=token_payload["access_token"],
+        refresh_token=token_payload["refresh_token"],
+        expires_in=token_payload["expires_in"],
+    )

@@ -54,7 +54,7 @@ src/ii_agent/
 │   ├── llm/                # LLM billing service, execution service, base client
 │   ├── redis/              # Redis client, cache, pubsub, lock, cancel management
 │   ├── secrets/            # GCP Secret Manager integration
-│   ├── storage/            # File storage abstraction (GCS, local)
+│   ├── storage/            # File storage abstraction (GCS, MinIO)
 │   ├── container.py        # ServiceContainer for complex dependency graphs
 │   └── dependencies.py     # DBSession, SettingsDep (shared Dep aliases)
 │
@@ -72,7 +72,7 @@ src/ii_agent/
 │   └── webhook_handler.py  # Stripe webhook processing
 │
 ├── sessions/               # Chat session management
-│   ├── models.py           # Session model, SessionStateEnum, AppKind
+│   ├── models.py           # Session model, SessionStateEnum, AppKind, delete_after
 │   ├── service.py          # Session CRUD, state transitions
 │   ├── fork_service.py     # Session forking
 │   ├── title_service.py    # Auto-title generation
@@ -165,7 +165,7 @@ These `core/` modules are available to all domains:
 | `core/config/` | Application settings | `Settings`, `get_settings()` |
 | `core/db/` | Database connection | `Base`, `TimestampColumn`, `get_db_session_local()` |
 | `core/redis/` | Caching, pubsub, locks | `redis_client`, `EntityCache`, `AsyncIOPubSub` |
-| `core/storage/` | File storage (GCS) | `BaseStorage`, `storage`, `media_storage` |
+| `core/storage/` | File storage (GCS, MinIO) | `BaseStorage`, `storage`, `media_storage` |
 | `core/llm/` | LLM billing & execution | `LLMBillingService`, `LLMExecutionService` |
 | `core/secrets/` | Secret management | GCP Secret Manager integration |
 | `core/dependencies.py` | Shared Dep aliases | `DBSession`, `SettingsDep` |
@@ -226,6 +226,9 @@ WebSocket (Socket.IO)
 | slide_design | `/slides/design` | Slide design |
 | nano_banana | `/slides/nano-banana` | Nano banana slides |
 | health | `/health` | Health check |
+| storage_proxy | `/storage` | Storage proxy (local deploy) |
+| slide_assets | `/files/slides/assets` | Slide assets |
+| sandbox_files | `/sandbox-files` | Sandbox file preview |
 
 ### Key Design Decisions
 
@@ -233,8 +236,8 @@ WebSocket (Socket.IO)
 - **Dep aliases everywhere**: FastAPI dependency injection uses `Annotated[T, Depends(factory)]` pattern exclusively.
 - **Redis optional**: All Redis usage has in-memory fallbacks for single-worker deployments.
 - **Billing via reservations**: All billable work uses reserve -> settle -> release, never direct deductions.
-- **GCS for storage**: File uploads, media, and slides use Google Cloud Storage with signed URLs.
-- **E2B for sandboxes**: Code execution happens in isolated E2B sandbox environments.
+- **GCS/MinIO for storage**: File uploads, media, and slides use Google Cloud Storage (prod) or MinIO (local Docker) with signed or proxied URLs.
+- **E2B/Docker for sandboxes**: Code execution happens in isolated E2B (cloud) or Docker (local) sandbox environments.
 
 ## Where to Look
 

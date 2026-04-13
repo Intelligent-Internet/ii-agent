@@ -1,0 +1,152 @@
+# Local-only docker-compose for ii-agent with Docker sandboxes
+#
+# This setup uses local Docker containers for sandboxes instead of E2B cloud.
+# All data stays on your machine — suitable for air-gapped / NDA environments.
+#
+# Usage:
+#   1. Build the sandbox image first:
+#      docker build -t ii-agent-sandbox:latest -f e2b.Dockerfile .
+#
+#   2. Copy and configure environment:
+#      cp docker/.stack.env.local.example docker/.stack.env.local
+#
+#   3. Start the stack:
+#      docker compose -f docker/docker-compose.local.yaml \
+#        --env-file docker/.stack.env.local up -d
+#
+# Key differences from docker-compose.stack.yaml:
+# - SANDBOX_PROVIDER=docker (no E2B cloud dependency)
+# - Backend gets Docker socket mount for spawning sandbox containers
+# - Uses minio for local object storage
+# - No separate sandbox-server or tool-server (monolith backend)
+# - DEV_AUTH_ENABLED bypasses OAuth for local development
+
+services:
+  postgres:
+    image: postgres:15
+    restart: unless-stopped
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-iiagent}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-iiagent}
+      POSTGRES_DB: ${POSTGRES_DB:-iiagentdev}
+    env_file:
+      - .stack.env.local
+    volumes:
+      - postgres-data-local:/var/lib/postgresql/data
+      - ./postgres-init/create-databases.sh:/docker-entrypoint-initdb.d/create-databases.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-iiagent} -d ${POSTGRES_DB:-iiagentdev}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
+    volumes:
+      - redis-data-local:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    ports:
+      - "${MINIO_API_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    environment:
+      MINIO_ROOT_USER: ${STORAGE_MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${STORAGE_MINIO_SECRET_KEY:-minioadmin}
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio-data-local:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  frontend:
+    build:
+      context: ..
+      dockerfile: docker/frontend/Dockerfile
+      args:
+        BUILD_MODE: ${FRONTEND_BUILD_MODE:-production}
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
+        VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:-}
+        VITE_STRIPE_PUBLISHABLE_KEY: ${VITE_STRIPE_PUBLISHABLE_KEY:-}
+        VITE_SENTRY_DSN: ${VITE_SENTRY_DSN:-}
+        VITE_DISABLE_CHAT_MODE: ${VITE_DISABLE_CHAT_MODE:-false}
+    restart: unless-stopped
+    env_file:
+      - .stack.env.local
+    environment:
+      NODE_ENV: production
+    ports:
+      - "${FRONTEND_PORT:-1420}:3000"
+
+  backend:
+    build:
+      context: ..
+      dockerfile: docker/backend/Dockerfile
+    init: true
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    env_file:
+      - .stack.env.local
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_SESSION_URL: redis://redis:6379/1
+      # ── Docker sandbox provider ──
+      SANDBOX_PROVIDER: docker
+      SANDBOX_DOCKER_IMAGE: ${SANDBOX_DOCKER_IMAGE:-ii-agent-sandbox:latest}
+      SANDBOX_DOCKER_NETWORK: ${COMPOSE_PROJECT_NAME:-ii-agent-local}_default
+      SANDBOX_PORT_RANGE_START: "30000"
+      SANDBOX_PORT_RANGE_END: "30999"
+      SANDBOX_LOCAL_MODE: "true"
+      SANDBOX_ORPHAN_CLEANUP_ENABLED: "true"
+      SANDBOX_ORPHAN_CLEANUP_INTERVAL_SECONDS: "300"
+      SANDBOX_DOCKER_HOST: ${SANDBOX_DOCKER_HOST:-localhost}
+      # ── Storage ──
+      STORAGE_PROVIDER: minio
+      STORAGE_MINIO_ENDPOINT: minio:9000
+      STORAGE_MINIO_ACCESS_KEY: ${STORAGE_MINIO_ACCESS_KEY:-minioadmin}
+      STORAGE_MINIO_SECRET_KEY: ${STORAGE_MINIO_SECRET_KEY:-minioadmin}
+      STORAGE_BUCKET_NAME: ${STORAGE_MINIO_BUCKET:-ii-agent}
+      STORAGE_MINIO_SECURE: "false"
+      STORAGE_SERVE_BASE_URL: ${STORAGE_SERVE_BASE_URL:-}
+      # ── Auth ──
+      DEV_AUTH_ENABLED: "true"
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    volumes:
+      # Docker socket so backend can spawn sandbox containers
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ii-agent-filestore-local:/.ii_agent
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres-data-local:
+  redis-data-local:
+  minio-data-local:
+  ii-agent-filestore-local:

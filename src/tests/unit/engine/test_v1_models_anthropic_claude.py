@@ -818,3 +818,148 @@ class TestClaudeAinvokeHappyPath:
         assert isinstance(result, ModelResponse)
         assert result.role == "assistant"
         assert result.content == "Hello from Claude!"
+
+
+# ---------------------------------------------------------------------------
+# 16. format_messages – additional branch coverage
+# ---------------------------------------------------------------------------
+
+
+class TestFormatMessagesAdditionalBranches:
+    def test_assistant_reasoning_content_fallback_no_signature(self):
+        """reasoning_content set without signature → redacted_thinking fallback (line 351)."""
+        msgs = [
+            Message(
+                role="assistant",
+                content="Answer",
+                reasoning_content="I thought about this",
+                # No redacted_reasoning_content, No provider_data signature
+            )
+        ]
+        formatted, _ = format_messages(msgs)
+        parts = formatted[0]["content"]
+        redacted_parts = [p for p in parts if p.get("type") == "redacted_thinking"]
+        assert len(redacted_parts) == 1
+        assert redacted_parts[0]["redacted_thinking"] == "I thought about this"
+
+    def test_assistant_message_with_list_content_dict_items(self):
+        """Assistant message with list content – dicts with 'text' key (lines 362-364)."""
+        msgs = [
+            Message(
+                role="assistant",
+                content=[{"text": "Hello"}, {"text": " World"}],
+            )
+        ]
+        formatted, _ = format_messages(msgs)
+        parts = formatted[0]["content"]
+        text_parts = [p for p in parts if p.get("type") == "text"]
+        texts = [p["text"] for p in text_parts]
+        assert "Hello" in texts
+        assert " World" in texts
+
+    def test_assistant_message_with_list_content_non_dict_items(self):
+        """Assistant message with list content – non-dict items (line 366 json.dumps)."""
+        msgs = [
+            Message(
+                role="assistant",
+                content=["plain string", 42],
+            )
+        ]
+        formatted, _ = format_messages(msgs)
+        parts = formatted[0]["content"]
+        text_parts = [p for p in parts if p.get("type") == "text"]
+        # Non-dict items → json.dumps fallback
+        texts = [p["text"] for p in text_parts]
+        assert any("plain string" in t for t in texts)
+
+    def test_user_message_with_files(self):
+        """User message with files sets attached file paths (lines 408-412)."""
+        from ii_agent.files.media.media import File
+
+        f = File(filepath="/tmp/my_file.txt")
+        msgs = [Message(role="user", content="See attached", files=[f])]
+        formatted, _ = format_messages(msgs)
+        parts = formatted[0]["content"]
+        file_texts = [p["text"] for p in parts if "Attached files" in p.get("text", "")]
+        assert len(file_texts) == 1
+        assert "/tmp/my_file.txt" in file_texts[0]
+
+    def test_user_message_files_without_filepath_skipped(self):
+        """Files without filepath are filtered from the output (conditional in line 409)."""
+        from ii_agent.files.media.media import File
+
+        # File with no filepath (has url instead)
+        f = File(url="http://example.com/file.txt")
+        msgs = [Message(role="user", content="See attached", files=[f])]
+        formatted, _ = format_messages(msgs)
+        parts = formatted[0]["content"]
+        file_texts = [p["text"] for p in parts if "Attached files" in p.get("text", "")]
+        # url-only file has no filepath → filtered → no attached files text
+        assert len(file_texts) == 0
+
+    def test_assistant_tool_call_with_str_json_arguments(self):
+        """tool_input as JSON string gets parsed back to dict (lines 385-389)."""
+        tool_calls = [
+            {
+                "id": "tc_str",
+                "tool_name": "search",
+                "tool_args": '{"q": "test query"}',
+            }
+        ]
+        msgs = [Message(role="assistant", content="Using tool", tool_calls=tool_calls)]
+        formatted, _ = format_messages(msgs)
+        parts = formatted[0]["content"]
+        tool_use = next(p for p in parts if p.get("type") == "tool_use")
+        assert isinstance(tool_use["input"], dict)
+        assert tool_use["input"]["q"] == "test query"
+
+    def test_assistant_tool_call_with_invalid_str_arguments(self):
+        """Invalid JSON string in tool_args stays as string (exception path line 389)."""
+        tool_calls = [
+            {
+                "id": "tc_bad",
+                "tool_name": "fn",
+                "tool_args": "not-valid-json{{",
+            }
+        ]
+        msgs = [Message(role="assistant", content="", tool_calls=tool_calls)]
+        formatted, _ = format_messages(msgs)
+        parts = formatted[0]["content"]
+        tool_use = next(p for p in parts if p.get("type") == "tool_use")
+        # Stays as string since json.loads fails
+        assert isinstance(tool_use["input"], str)
+
+
+# ---------------------------------------------------------------------------
+# 17. Claude._get_client_params – additional branch coverage
+# ---------------------------------------------------------------------------
+
+
+class TestClaudeGetClientParams:
+    def test_no_api_key_no_auth_token_logs_error(self, monkeypatch):
+        """When neither api_key nor auth_token is set, error is logged (line 496)."""
+
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
+        c = Claude()
+        # Should not raise, just logs
+        params = c._get_client_params()
+        assert "api_key" in params
+
+    def test_timeout_included_when_set(self):
+        """When timeout is configured, it appears in client params (line 504)."""
+        c = Claude(timeout=30.0)
+        params = c._get_client_params()
+        assert params["timeout"] == 30.0
+
+    def test_client_params_merged(self):
+        """client_params dict is merged into client params (line 508)."""
+        c = Claude(client_params={"proxy": "http://myproxy.com"})
+        params = c._get_client_params()
+        assert params["proxy"] == "http://myproxy.com"
+
+    def test_default_headers_included(self):
+        """default_headers dict is included in client params (line 510)."""
+        c = Claude(default_headers={"X-Custom": "header-value"})
+        params = c._get_client_params()
+        assert params["default_headers"] == {"X-Custom": "header-value"}

@@ -225,6 +225,7 @@ def settings_factory(tmp_path):
             "file_upload_bucket_name": "uploads-bucket",
             "media_bucket_name": "media-bucket",
             "file_store_path": str(tmp_path / "storage"),
+            "serve_base_url": None,
         },
         "oauth": {
             "session_secret_key": "session-secret",
@@ -251,6 +252,11 @@ def settings_factory(tmp_path):
         },
         "llm_configs": {},
         "sandbox": {"time_til_clean_up": 3600},
+        "agent": {
+            "inner_loop_mode": "native",
+            "chat_inner_loop_mode": "direct",
+            "a2a_backend": "copilot",
+        },
         "mcp": {
             "anthropic_oauth_token_url": "https://mcp.local/oauth/token",
             "anthropic_oauth_client_id": "client-id",

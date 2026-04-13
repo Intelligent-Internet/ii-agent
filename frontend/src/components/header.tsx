@@ -20,6 +20,7 @@ import {
 } from '@/state'
 import { deleteSession } from '@/state/slice/sessions'
 import { clearSessionState } from '@/state/slice/session-state'
+import { setRunStatus } from '@/state/slice/agent'
 import { ISession } from '@/typings'
 import {
     AlertDialog,
@@ -90,6 +91,7 @@ const AgentHeader = ({ sessionData, isChatPage }: AgentHeaderProps) => {
             await dispatch(deleteSession(sessionId)).unwrap()
             // Clear cached session state to free up localStorage
             dispatch(clearSessionState(sessionId))
+            dispatch(setRunStatus(null))
             setIsDeleteDialogOpen(false)
             // Navigate to home page after deletion
             navigate('/')

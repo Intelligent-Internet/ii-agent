@@ -306,6 +306,7 @@ class BaseCommandHandler(ABC, Generic[TContent]):
 
             # --- Billing events (per-turn LLM usage) ---
             if isinstance(event, ModelTurnMetricsEvent) and event.metrics and llm_config:
+                _metrics = event.metrics
                 await self.send_event(
                     ModelUsageEvent(
                         session_id=session_info.id,
@@ -315,20 +316,24 @@ class BaseCommandHandler(ABC, Generic[TContent]):
                         model_id=event.model_id,
                         provider=llm_config.provider,
                         pricing=llm_config.pricing,
-                        input_tokens=event.metrics.input_tokens,
-                        output_tokens=event.metrics.output_tokens,
-                        cache_read_tokens=event.metrics.cache_read_tokens,
-                        cache_write_tokens=event.metrics.cache_write_tokens,
-                        reasoning_tokens=event.metrics.reasoning_tokens,
+                        input_tokens=_metrics.input_tokens,
+                        output_tokens=_metrics.output_tokens,
+                        cache_read_tokens=_metrics.cache_read_tokens,
+                        cache_write_tokens=_metrics.cache_write_tokens,
+                        reasoning_tokens=_metrics.reasoning_tokens,
                         is_user_key=is_user_key,
+                        billing_backend=_metrics.billing_backend,
+                        provider_reported_cost=_metrics.cost,
+                        premium_requests=_metrics.premium_requests,
                         content={
                             "model_id": event.model_id,
-                            "input_tokens": event.metrics.input_tokens,
-                            "output_tokens": event.metrics.output_tokens,
-                            "cache_read_tokens": event.metrics.cache_read_tokens,
-                            "cache_write_tokens": event.metrics.cache_write_tokens,
-                            "reasoning_tokens": event.metrics.reasoning_tokens,
+                            "input_tokens": _metrics.input_tokens,
+                            "output_tokens": _metrics.output_tokens,
+                            "cache_read_tokens": _metrics.cache_read_tokens,
+                            "cache_write_tokens": _metrics.cache_write_tokens,
+                            "reasoning_tokens": _metrics.reasoning_tokens,
                             "is_user_key": is_user_key,
+                            "billing_backend": _metrics.billing_backend,
                         },
                     )
                 )

@@ -37,6 +37,7 @@ from ii_agent.credits.constants import MINIMUM_REQUIRED_CREDITS
 from ii_agent.credits.service import CreditService
 from ii_agent.sessions.models import Session
 from ii_agent.sessions.repository import SessionRepository
+from ii_agent.core.config.settings import get_settings
 from ii_agent.core.redis import cancel
 from ii_agent.chat.exceptions import ModelNotFoundError
 from ii_agent.sessions.exceptions import SessionNotFoundError
@@ -217,6 +218,8 @@ class ChatService:
         if not self._credit_service:
             return
         if model_config.is_user_model():
+            return
+        if not get_settings().credits.billing_enabled:
             return
 
         has_credits = await self._credit_service.has_sufficient_credits(

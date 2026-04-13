@@ -186,9 +186,15 @@ class E2BSandbox(Sandbox):
 
     async def get_info(self) -> SandboxInfo:
         vscode_url = None
+        vnc_url = None
         if self.status == SandboxStatus.RUNNING and self.sandbox:
             try:
                 vscode_url = await self.expose_port(self._config.vscode_port)
+            except Exception:
+                pass
+            try:
+                vnc_base = await self.expose_port(self._config.sandbox.novnc_port)
+                vnc_url = f"{vnc_base}/vnc.html?autoconnect=true" if vnc_base else None
             except Exception:
                 pass
         return SandboxInfo(
@@ -198,6 +204,7 @@ class E2BSandbox(Sandbox):
             expired_at=self.expired_at,
             provider=SandboxProviderType.E2B,
             vscode_url=vscode_url,
+            vnc_url=vnc_url,
         )
 
     async def get_status(self) -> SandboxStatus:
@@ -653,7 +660,7 @@ class E2BSandbox(Sandbox):
 
     # ── Networking ────────────────────────────────────────────────────────
 
-    async def expose_port(self, port: int) -> str:
+    async def expose_port(self, port: int, *, external: bool = True) -> str:
         await self._ensure_sandbox_connection()
         host = self.sandbox.get_host(port)
         return f"https://{host}"
