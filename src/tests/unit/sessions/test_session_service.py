@@ -64,6 +64,7 @@ def _make_orm_session(
     session.app_kind = app_kind
     session.public_url = public_url
     session.last_message_at = None
+    session.delete_after = None
     session.created_at = datetime(2024, 1, 1, tzinfo=timezone.utc)
     session.updated_at = datetime(2024, 1, 2, tzinfo=timezone.utc)
     session.project = None

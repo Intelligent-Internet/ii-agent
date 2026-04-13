@@ -187,10 +187,11 @@ When running in local mode, the backend automatically cleans up containers whose
 | `SANDBOX_BACKEND_URL` | `http://backend:8000` | Backend URL for session verification during cleanup |
 
 **How It Works:**
-1. Every 60 seconds (configurable), a background task in the backend queries all Docker sandbox containers
-2. For each sandbox older than 5 minutes, it checks whether the session still exists
-3. If the session was deleted, the sandbox container, ports, and workspace volume are automatically removed
-4. The 5-minute grace period prevents cleanup during session initialization
+1. Every 60 seconds (configurable), a background task in the backend performs three cleanup passes:
+   - **Orphan sweep (DB-driven):** Queries all Docker sandbox records and checks whether the linked session has been deleted. If so, kills the container, releases ports, removes the workspace volume, and marks the DB record as deleted.
+   - **Stale pause:** Pauses (`docker stop`) running sandboxes whose sessions have been idle longer than `SANDBOX_TIMEOUT_SECONDS`. Paused containers retain their filesystem and can be resumed on the next session access.
+   - **Docker zombie sweep:** Lists all Docker containers with the `ii-agent.sandbox=true` label directly via the Docker API, then removes any container whose full ID does not match an active (non-deleted) DB record. This catches containers orphaned by bulk session deletions, DB record failures, or application crashes.
+2. All three passes apply the same 5-minute grace period to avoid racing with sandbox initialization.
 
 #### Storage Configuration
 

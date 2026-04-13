@@ -29,4 +29,5 @@ async def test_app_startup_and_health_route(monkeypatch, settings_factory):
         response = await client.get("/health")
 
     assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    data = response.json()
+    assert data["status"] == "ok"

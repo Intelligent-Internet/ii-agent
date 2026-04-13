@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 import logging
 from copy import deepcopy
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Optional, List
 
 from sqlalchemy import inspect as sa_inspect
@@ -235,6 +236,30 @@ class SessionService:
         await self._evict_session_cache(session_id)
 
         logger.info("Soft-deleted session %s for user %s", session_id, user_id)
+
+    async def schedule_deletion(
+        self,
+        db: AsyncSession,
+        session_id: uuid.UUID,
+        user_id: uuid.UUID,
+        delete_after: datetime,
+    ) -> None:
+        """Schedule a session for automatic deletion at a future time.
+
+        Sets ``delete_after`` on the session.  The orphan-cleanup background
+        loop will soft-delete the session once this timestamp is in the past,
+        which in turn triggers sandbox container cleanup.
+        """
+        session = await self._session_repo.get_by_id_and_user(db, session_id, user_id)
+        if not session:
+            raise SessionNotFoundError(f"Session {session_id} not found or already deleted")
+
+        if delete_after.tzinfo is None:
+            delete_after = delete_after.replace(tzinfo=timezone.utc)
+
+        session.delete_after = delete_after
+        await self._session_repo.update(db, session)
+        logger.info("Scheduled session %s for deletion at %s", session_id, delete_after.isoformat())
 
     async def bulk_soft_delete_sessions(
         self, db: AsyncSession, session_ids: list[uuid.UUID], user_id: uuid.UUID
@@ -597,4 +622,5 @@ class SessionService:
             title_pending=SessionTitleService.is_title_pending(session.session_metadata),
             model_setting_id=session.model_setting_id,
             session_metadata=session.session_metadata,
+            delete_after=session.delete_after.isoformat() if session.delete_after else None,
         )

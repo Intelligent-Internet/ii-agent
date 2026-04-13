@@ -210,23 +210,34 @@ Browser Request                Docker Container
 ### Sandbox Controller - Orphan Cleanup (NEW)
 **File:** [src/ii_agent/agents/sandboxes/orphan_cleanup.py](../src/ii_agent/agents/sandboxes/orphan_cleanup.py)
 
-**New Feature:** Background cleanup of orphaned sandboxes (~120 new lines)
+**New Feature:** Background cleanup of orphaned sandboxes (~350 new lines)
 
 **Problem Solved:**
-When a chat session is deleted in the backend, the sandbox continues running. The orphan cleanup system detects and removes these orphans.
+When a chat session is deleted in the backend, the sandbox continues running. The orphan cleanup system detects and removes these orphans. It also sweeps Docker directly for zombie containers that have no matching DB record (e.g. from bulk session deletions or application crashes).
 
 **Flow:**
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                  _orphan_cleanup_loop()                      │
+│              run_orphan_cleanup_loop()                       │
 │                                                             │
-│  1. List all active sandboxes                               │
+│  Pass 1 — _cleanup_orphans() (DB-driven):                   │
+│  1. List all non-deleted sandbox records                    │
 │  2. For each sandbox:                                       │
 │     a. Skip if created < 5 minutes ago (grace period)       │
-│     b. Call backend: GET /internal/sandboxes/{id}/has-active│
-│     c. If no active session → kill sandbox                  │
-│  3. Sleep for orphan_cleanup_interval_seconds               │
-│  4. Repeat                                                  │
+│     b. Check if session is deleted or missing               │
+│     c. If orphaned → kill container, release ports/volume   │
+│                                                             │
+│  Pass 2 — _pause_stale_sandboxes():                         │
+│  1. Pause running sandboxes whose sessions are idle         │
+│                                                             │
+│  Pass 3 — _cleanup_docker_zombies() (Docker-level sweep):   │
+│  1. List all containers with ii-agent.sandbox=true label    │
+│  2. Query DB for active sandbox provider_sandbox_ids        │
+│  3. For unmatched containers past grace period:             │
+│     → force-remove container, clean volume, release ports   │
+│                                                             │
+│  Sleep for orphan_cleanup_interval_seconds                  │
+│  Repeat                                                     │
 └─────────────────────────────────────────────────────────────┘
 ```
 

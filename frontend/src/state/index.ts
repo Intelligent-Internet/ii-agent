@@ -42,6 +42,7 @@ export {
     fetchSessions,
     fetchChats,
     fetchProjects,
+    fetchAllRemainingProjects,
     bulkDeleteSessions,
     setActiveSessionId,
     clearSessions,

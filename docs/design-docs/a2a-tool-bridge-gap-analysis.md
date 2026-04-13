@@ -261,7 +261,7 @@ These will **never** be bridged (by design):
 ## 5. Data Flow
 
 ```mermaid
-%%{init: {'theme':'base', 'themeVariables': {'fontFamily': 'Arial, sans-serif', 'fontSize': '13px', 'fontWeight': 'normal'}}}%%
+%%{init: {'theme':'base', 'themeVariables': {'fontFamily': 'Arial, sans-serif', 'fontSize': '13px', 'fontWeight': 'normal', 'actorBkg': '#5888a8', 'actorBorder': '#3c6c90', 'actorTextColor': '#f5f5f5', 'actorLineColor': '#5a7a90', 'signalColor': '#5a7a90', 'signalTextColor': '#6b7b8b', 'noteBkgColor': '#c49858', 'noteBorderColor': '#a87c3c', 'noteTextColor': '#f5f5f5', 'loopTextColor': '#6b7b8b', 'labelBoxBkgColor': '#5888a866', 'labelBoxBorderColor': '#3c6c908C', 'activationBkgColor': '#5888a866', 'activationBorderColor': '#3c6c90'}}}%%
 sequenceDiagram
     participant Backend as ii-agent Backend<br/>(A2AInnerLoop)
     participant Adapter as Adapter Server<br/>(sandbox)

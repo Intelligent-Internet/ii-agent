@@ -1,8 +1,8 @@
 # A2A + Copilot CLI Inner Loop — Implementation Status
 
-> **Status**: Phase 8 complete (tool bridge) — interop remediation in progress  
+> **Status**: Phase 8 complete (tool bridge) + chat mode A2A inner loop — interop remediation in progress  
 > **Last updated**: 2026-04-09  
-> **Design reference**: [a2a-copilot-cli-inner-loop-strategy.md](../design-docs/a2a-copilot-cli-inner-loop-strategy.md)  
+> **Design reference**: [a2a-copilot-cli-inner-loop-strategy.md](../design-docs/a2a-copilot-cli-inner-loop-strategy.md), [chat-a2a-inner-loop-integration-assessment.md](../design-docs/chat-a2a-inner-loop-integration-assessment.md)  
 > **Branch**: `rebase/local-docker-sandbox`
 
 ---
@@ -640,6 +640,10 @@ Items marked ✅ were completed in earlier sessions. Remaining items are deferre
 | ✅ Tool bridge: `as_client.py` — `post_tool_result(tool_call_id, result)` for delivering bridged tool results | Phase 8 |
 | ✅ Tool bridge gap analysis — [`a2a-tool-bridge-gap-analysis.md`](../design-docs/a2a-tool-bridge-gap-analysis.md) — responsibility matrix and known limitations | Phase 8 |
 | ✅ Tests: 55 tool bridge tests (21 tool_bridge schema + 17 copilot backend bridge + 17 inner loop bridge) | Phase 8 |
+| ✅ Chat mode A2A inner loop — `A2AChatTurnLoop`, `ChatA2AEventTranslator`, `_select_turn_loop()` routing | [chat-a2a assessment](../design-docs/chat-a2a-inner-loop-integration-assessment.md) |
+| ✅ Chat mode conversation history parity — `build_conversation_context()` structured text reconstruction | [conversation history parity](../design-docs/a2a-conversation-history-parity.md) |
+| ✅ `AGENT_CHAT_INNER_LOOP_MODE` config field on `AgentSettings`; shared A2A client + circuit breaker for chat path | [chat-a2a assessment](../design-docs/chat-a2a-inner-loop-integration-assessment.md) |
+| ✅ Tests: 51 chat A2A turn loop tests + 38 conversation context tests | — |
 
 **Remaining (deferred):**
 
@@ -1323,3 +1327,123 @@ These are documented in the gap analysis but deferred for future phases:
 | `TestRunTurnToolExecution` | 1 | tool.execution_request SSE emission |
 | `TestHeartbeat` | 1 | Heartbeat emitted on queue timeout |
 | `TestStreamWithToolSchemas` | 1 | Tool schemas forwarded to session creation |
+
+---
+
+## Chat Mode A2A Inner Loop
+
+The agent inner loop (Phases 1–8) replaces the LLM call inside the agent execution framework (`agents/`). The **chat mode** inner loop applies the same A2A delegation strategy to the separate chat API surface (`chat/`), which has its own turn loop (`LLMTurnLoopService`) with different features (media modes, thinking tokens, storybook, council orchestration).
+
+**Design reference:** [chat-a2a-inner-loop-integration-assessment.md](../design-docs/chat-a2a-inner-loop-integration-assessment.md)
+**Conversation history parity:** [a2a-conversation-history-parity.md](../design-docs/a2a-conversation-history-parity.md)
+
+### Why a Separate Implementation
+
+The agent and chat paths have fundamentally different turn loop contracts:
+
+| Concern | Agent path (`A2AInnerLoop`) | Chat path (`A2AChatTurnLoop`) |
+|---|---|---|
+| Turn loop service | `InnerLoopStrategy.aresponse_stream()` | `LLMTurnLoopService.stream_llm_turn()` |
+| Output format | `ModelResponse` / `RunOutputEvent` | SSE dict (`{"type": "...", "data": {...}}`) |
+| Tool execution | Tool bridge (Phase 8) | Not applicable — chat tools use `ChatToolService` |
+| Media modes | Not applicable | Image gen, video gen, web search, storybook |
+| Thinking tokens | Not applicable | `thinking_tokens` forwarding from model config |
+| Context management | `ContextWindowManager` + summaries | `ChatContextBuilder` + summaries |
+| Billing | `ModelUsageEvent` on pub/sub | `ModelUsageEvent` on pub/sub (shared) |
+
+### `src/ii_agent/chat/application/a2a_turn_loop_service.py` — `A2AChatTurnLoop`
+
+A2A-backed replacement for `LLMTurnLoopService`. Implements the same `stream_llm_turn()` contract, yielding SSE dicts compatible with the chat API's `StreamingResponse`.
+
+**Key responsibilities:**
+
+- Converts chat messages to the A2A message format via `build_conversation_context()` (from `integrations/a2a/multimodal.py`)
+- Streams via `IIAgentA2AClient.astream()` and translates events through `ChatA2AEventTranslator`
+- Forwards `thinking_tokens` configuration via A2A metadata
+- Handles context compression settings via metadata
+- Falls back to direct `LLMTurnLoopService` on A2A failure (when `fallback_to_native=True`)
+
+### `src/ii_agent/chat/application/a2a_event_translator.py` — `ChatA2AEventTranslator`
+
+Stateful translator from A2A SSE events to chat SSE dicts. Tracks accumulated content and `finish_reason` across delta events.
+
+**Event mapping:**
+
+| A2A event | Chat SSE output |
+|---|---|
+| `assistant.message_delta` / `text_delta` | `{"type": "text_delta", "data": {"delta": ...}}` |
+| `assistant.reasoning_delta` / `reasoning_delta` | `{"type": "reasoning_delta", "data": {"delta": ...}}` |
+| `assistant.message` / `content_done` | `{"type": "message_complete", "data": {"content": ..., "finish_reason": ...}}` |
+| `assistant.usage` / `usage` | `{"type": "usage", "data": {"input_tokens": ..., ...}}` |
+| `session.error` / `error` | `{"type": "error", "data": {"message": ...}}` |
+
+### `build_conversation_context()` — Structured History Reconstruction
+
+Since A2A backends (particularly Copilot SDK) accept a single prompt string rather than structured message arrays, the chat path uses `build_conversation_context()` from `integrations/a2a/multimodal.py` to reconstruct the full conversation history as structured text.
+
+This preserves all message types (user, assistant, tool calls, tool results, summaries, media attachments, citations) in a text format that the backend LLM can understand. See [a2a-conversation-history-parity.md](../design-docs/a2a-conversation-history-parity.md) for the complete format specification and truncation safety rules.
+
+### Configuration
+
+```bash
+AGENT_CHAT_INNER_LOOP_MODE=a2a   # "direct" (default) or "a2a"
+AGENT_A2A_AGENT_URL=http://...   # Adapter URL (shared with agent mode)
+AGENT_A2A_BACKEND=copilot        # Backend selection (shared with agent mode)
+```
+
+All A2A settings (`a2a_timeout_seconds`, `a2a_fallback_to_native`, `a2a_context_reuse`, billing config) are shared between agent and chat modes via `AgentSettings`.
+
+### Routing Logic (`ChatService._select_turn_loop()`)
+
+The chat service routes to `A2AChatTurnLoop` or falls back to direct `LLMTurnLoopService` based on:
+
+| Condition | Result |
+|---|---|
+| `chat_inner_loop_mode == "direct"` | Direct path |
+| No A2A loop configured (URL missing) | Direct path |
+| Council mode | Direct path (orchestrated separately) |
+| BYOK (user keys) **in cloud** (`ENVIRONMENT != local`) | Direct path (user pays own API bill) |
+| BYOK (user keys) **in local** (`ENVIRONMENT=local`) | **A2A path** (operator owns all keys) |
+| Custom/LiteLLM provider | Direct path (no adapter mapping) |
+| Storybook media type | Direct path (requires Celery streaming) |
+| All other cases | A2A path |
+
+#### Local vs Cloud BYOK Distinction
+
+In **cloud (multitenant)** deployments (`ENVIRONMENT=dev/staging/production`), BYOK users
+provide their own API keys and expect direct model calls.  Routing through the platform's A2A
+adapter (e.g. GitHub Copilot) would charge the platform's subscription instead of the user's
+key — a billing leak.
+
+In **local/self-hosted** deployments (`ENVIRONMENT=local`), there is no system/user model
+distinction.  The operator controls all API keys and explicitly opts into A2A via
+`AGENT_CHAT_INNER_LOOP_MODE=a2a`.  All compatible models route through A2A regardless of
+`config_type`.  This also applies to council member routing in `CouncilService`.
+
+### Shared A2A Resources (`chat/api/dependencies.py`)
+
+The chat A2A loop shares a singleton `IIAgentA2AClient` and `CircuitBreaker` instance across requests via `_get_shared_a2a_resources()`. This ensures:
+
+- One circuit breaker state across all chat requests (not reset per-request)
+- One HTTP client pool for adapter connections
+- Consistent fallback behavior when the adapter is unhealthy
+
+### Files Created
+
+| File | Purpose |
+|---|---|
+| `src/ii_agent/chat/application/a2a_event_translator.py` | `ChatA2AEventTranslator` — A2A SSE → chat SSE dict translator |
+| `src/ii_agent/chat/application/a2a_turn_loop_service.py` | `A2AChatTurnLoop` — A2A-backed chat turn loop |
+| `src/tests/unit/chat/test_chat_a2a_turn_loop.py` | 51 unit tests |
+
+### Files Modified
+
+| File | Change |
+|---|---|
+| `src/ii_agent/core/config/agent.py` | Added `chat_inner_loop_mode: Literal["direct", "a2a"]` to `AgentSettings` |
+| `src/ii_agent/chat/application/chat_service.py` | Added `a2a_loop` constructor param; added `_select_turn_loop()` routing |
+| `src/ii_agent/chat/api/dependencies.py` | Shared A2A client + circuit breaker; `_build_a2a_chat_loop()` factory; wired into `get_chat_service()` |
+
+### Test Coverage — `chat/test_chat_a2a_turn_loop.py` (51 tests)
+
+Covers translator event mapping, turn loop streaming, routing logic, message conversion, context ID generation, metadata forwarding, finish_reason tracking, storybook guard, and image support.

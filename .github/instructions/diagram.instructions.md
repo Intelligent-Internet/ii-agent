@@ -415,6 +415,89 @@ Rules:
 
 ---
 
+## Sequence Diagrams
+
+Sequence diagrams have unique dark mode challenges because participant labels, message text,
+loop labels, and notes render against the **page background** — not against styled node fills.
+With the `base` theme, all text defaults to dark, which is invisible on dark backgrounds.
+
+### Required Theme Configuration for Sequence Diagrams
+
+Sequence diagrams MUST use an extended `init` directive that sets explicit colors for all
+visual elements:
+
+```text
+%%{init: {'theme':'base', 'themeVariables': {'fontFamily': 'Arial, sans-serif', 'fontSize': '13px', 'fontWeight': 'normal', 'actorBkg': '#5888a8', 'actorBorder': '#3c6c90', 'actorTextColor': '#f5f5f5', 'actorLineColor': '#5a7a90', 'signalColor': '#5a7a90', 'signalTextColor': '#6b7b8b', 'noteBkgColor': '#c49858', 'noteBorderColor': '#a87c3c', 'noteTextColor': '#f5f5f5', 'loopTextColor': '#6b7b8b', 'labelBoxBkgColor': '#5888a866', 'labelBoxBorderColor': '#3c6c908C', 'activationBkgColor': '#5888a866', 'activationBorderColor': '#3c6c90'}}}%%
+```
+
+> **Exception to the "no explicit text color" rule:** Sequence diagrams REQUIRE explicit
+> `actorTextColor`, `signalTextColor`, `noteTextColor`, and `loopTextColor` in `themeVariables`
+> because these text elements render against either solid fills (actors, notes) or the page
+> background (signals, loops) — neither of which the `base` theme can auto-adapt for dark mode.
+> This is the same category of exception as the border-only flowchart variant.
+
+### Sequence Diagram Color Variables
+
+| Variable | Value | Purpose |
+|----------|-------|---------|
+| `actorBkg` | `#5888a8` | Participant box fill (solid medium-tone) |
+| `actorBorder` | `#3c6c90` | Participant box border |
+| `actorTextColor` | `#f5f5f5` | Participant label text (light on medium fill) |
+| `actorLineColor` | `#5a7a90` | Participant lifeline |
+| `signalColor` | `#5a7a90` | Arrow/message line color |
+| `signalTextColor` | `#6b7b8b` | Message label text (mid-tone, floats on page bg) |
+| `noteBkgColor` | `#c49858` | Note box fill (medium-tone orange) |
+| `noteBorderColor` | `#a87c3c` | Note box border |
+| `noteTextColor` | `#f5f5f5` | Note text (light on medium fill) |
+| `loopTextColor` | `#6b7b8b` | Loop/alt/opt label text (mid-tone, on page bg) |
+| `labelBoxBkgColor` | `#5888a866` | Loop label box fill (alpha-transparent) |
+| `labelBoxBorderColor` | `#3c6c908C` | Loop label box border |
+| `activationBkgColor` | `#5888a866` | Activation bar fill (alpha-transparent) |
+| `activationBorderColor` | `#3c6c90` | Activation bar border |
+
+### Design Rationale
+
+- **Elements with solid fills** (actor boxes, note boxes): use `#f5f5f5` (near-white) text
+  because the medium-tone fill provides a stable, contrast-guaranteed background regardless
+  of page theme
+- **Elements floating on page background** (signal labels, loop text): use `#6b7b8b` (mid-tone)
+  which provides 4.35:1 contrast against both white (`#ffffff`) and dark (`#0d1117`) backgrounds
+- **Alpha-transparent fills** (loop boxes, activation bars): use `66` / `8C` alpha suffixes
+  for the same bi-directional hierarchy effect as subgraph containers
+
+### Sequence Diagram Template
+
+```text
+%%{init: {'theme':'base', 'themeVariables': {'fontFamily': 'Arial, sans-serif', 'fontSize': '13px', 'fontWeight': 'normal', 'actorBkg': '#5888a8', 'actorBorder': '#3c6c90', 'actorTextColor': '#f5f5f5', 'actorLineColor': '#5a7a90', 'signalColor': '#5a7a90', 'signalTextColor': '#6b7b8b', 'noteBkgColor': '#c49858', 'noteBorderColor': '#a87c3c', 'noteTextColor': '#f5f5f5', 'loopTextColor': '#6b7b8b', 'labelBoxBkgColor': '#5888a866', 'labelBoxBorderColor': '#3c6c908C', 'activationBkgColor': '#5888a866', 'activationBorderColor': '#3c6c90'}}}%%
+sequenceDiagram
+    participant A as Service A
+    participant B as Service B
+    participant C as Service C
+
+    A->>B: request()
+    B->>C: delegate()
+    C-->>B: response
+    B-->>A: result
+
+    loop Retry
+        A->>B: retry()
+        B-->>A: ack
+    end
+
+    Note over B,C: Processing phase
+```
+
+Rules:
+
+- **Copy the full `init` directive** for every sequence diagram — do not use the shorter
+  flowchart init (it lacks the sequence-specific variables)
+- Keep participant aliases short (2–4 characters) to reduce horizontal sprawl
+- Use `<br/>` in participant display names for multi-line labels
+- Prefer `->>` (solid with arrowhead) for synchronous calls, `-->>` (dashed) for responses
+- Keep message labels under 30 characters
+
+---
+
 ## Basic Template (Non-Hierarchical, No Subgraphs)
 
 ```text

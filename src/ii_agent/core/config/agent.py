@@ -86,6 +86,18 @@ class AgentSettings(BaseSettings):
         description="Inner-loop execution mode used by agents",
     )
 
+    chat_inner_loop_mode: Literal["direct", "a2a"] = Field(
+        default="direct",
+        description=(
+            "Inner-loop execution mode for chat (/v1/chat) conversations. "
+            "'direct': use the default LLMTurnLoopService (direct SDK calls). "
+            "'a2a': route through the A2A adapter (same transport as agent mode). "
+            "Shares a2a_backend, a2a_timeout_seconds, a2a_fallback_to_native, "
+            "a2a_context_reuse, and billing settings with agent mode. "
+            "Env: AGENT_CHAT_INNER_LOOP_MODE"
+        ),
+    )
+
     a2a_agent_url: str | None = Field(
         default=None,
         description=(

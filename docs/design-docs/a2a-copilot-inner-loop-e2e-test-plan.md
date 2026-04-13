@@ -42,8 +42,11 @@ flowchart LR
     COP --> TOOLS
     TB <-->|"tool.execution_request<br/>tool.execution_result"| IL
 
-    classDef backend fill:#4a90d9,stroke:#2c6cb0
-    classDef sandbox fill:#34a870,stroke:#1e8850
+    style Backend fill:#4a90d966,stroke:#2c6cb08C,stroke-width:2px
+    style Sandbox fill:#34a87066,stroke:#1e88508C,stroke-width:2px
+
+    classDef backend fill:#4a90d9,stroke:#2c6cb0,stroke-width:2px
+    classDef sandbox fill:#34a870,stroke:#1e8850,stroke-width:2px
     class SIO,IL,CB,TB backend
     class AD,COP,TOOLS sandbox
 ```

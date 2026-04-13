@@ -33,6 +33,9 @@ flowchart TD
     A2A -.->|"client.astream()"| Codex
     Native -->|"model.aresponse_stream()"| LLM[LLM Provider API]
 
+    style Agent fill:#4a90d966,stroke:#2c6cb08C,stroke-width:2px
+    style Backends fill:#34a87066,stroke:#1e88508C,stroke-width:2px
+
     classDef primary fill:#4a90d9,stroke:#2c6cb0,stroke-width:2px
     classDef success fill:#34a870,stroke:#1e8850,stroke-width:2px
     classDef warn fill:#e8a838,stroke:#c08828,stroke-width:2px

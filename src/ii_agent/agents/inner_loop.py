@@ -30,6 +30,19 @@ from ii_agent.realtime.events.app_events import (
     EventGroup,
 )
 
+# ---------------------------------------------------------------------------
+# Alias mapping for CLI-native tool names → ii-agent Function names.
+# The Copilot CLI has built-in tools that serve the same purpose as
+# ii-agent bridged tools but under different names.  When the CLI LLM
+# invokes a native name via bridge, this mapping resolves it to the
+# registered Function so that server-side hooks (e.g. file upload in
+# ``on_tool_end``) still execute.
+# ---------------------------------------------------------------------------
+_TOOL_NAME_ALIASES: Dict[str, str] = {
+    "message_user": "send_user_files",
+    "send_message": "send_user_files",
+}
+
 
 class InnerLoopStrategy(Protocol):
     """Protocol for pluggable inner-loop execution backends."""
@@ -480,10 +493,24 @@ class A2AInnerLoop:
         """
         events: List[ModelResponse] = []
 
+        # Resolve CLI-native tool aliases to ii-agent tool names.
+        # The Copilot CLI has built-in tools (e.g. ``message_user``) that
+        # overlap with ii-agent bridged tools (e.g. ``send_user_files``).
+        # When the CLI LLM calls its native name, we need to map it to
+        # the registered Function name so the bridge can execute it with
+        # proper hooks (like file upload in ``on_tool_end``).
+        resolved_name = _TOOL_NAME_ALIASES.get(tool_name, tool_name)
+        if resolved_name != tool_name:
+            logger.info(
+                "A2A tool bridge: resolved CLI alias '{}' → '{}'",
+                tool_name,
+                resolved_name,
+            )
+
         for tool in tools:
             if not isinstance(tool, Function):
                 continue
-            if tool.name != tool_name:
+            if tool.name != resolved_name:
                 continue
             if tool.entrypoint is None:
                 return f"Tool '{tool_name}' has no executable entrypoint", []
@@ -666,7 +693,31 @@ class A2AInnerLoop:
         elapsed: float,
         execution_result: FunctionExecutionResult,
     ) -> ModelResponse:
-        """Build a ``tool_call_completed`` ModelResponse."""
+        """Build a ``tool_call_completed`` ModelResponse.
+
+        When the execution result contains a ``BaseToolResult`` (from tools
+        that use ``user_display_content`` for rich frontend payloads, e.g.
+        ``send_user_files``), the full object is stored in
+        ``ToolExecution.result`` so the event converter can extract
+        ``user_display_content`` — matching the native execution path.
+        Without this, post-hooks like ``on_tool_end`` that upload sandbox
+        files to persistent storage and write permanent URLs into
+        ``user_display_content`` would have their work silently discarded.
+        """
+        from ii_agent.agents.tools.base import ToolResult as BaseToolResult
+
+        # Use the full BaseToolResult when available so the event converter
+        # can extract user_display_content (e.g. uploaded attachment URLs).
+        # This matches the native path where FunctionCall.result stores the
+        # raw ToolResult object.
+        display_result: object = result_str
+        if (
+            not error
+            and execution_result.result is not None
+            and isinstance(execution_result.result, BaseToolResult)
+        ):
+            display_result = execution_result.result
+
         return ModelResponse(
             content=f"{fc.get_call_str()} completed in {elapsed:.4f}s. ",
             tool_executions=[
@@ -675,7 +726,7 @@ class A2AInnerLoop:
                     tool_name=fc.function.name,
                     tool_args=fc.arguments,
                     tool_call_error=error or None,
-                    result=result_str,
+                    result=display_result,
                     display_name=fc.function.display_name,
                     tool_logo=fc.function.tool_logo,
                     sandbox=fc.get_sandbox_info(),

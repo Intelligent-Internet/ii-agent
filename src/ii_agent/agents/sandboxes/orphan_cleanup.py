@@ -3,6 +3,9 @@
 Periodically checks for sandboxes whose sessions have been deleted
 and removes the containers, ports, and volumes.
 
+Also sweeps Docker directly for exited containers that have no
+matching active DB record (e.g. from crashes or bulk DB deletes).
+
 Only active when ``settings.sandbox.local_mode`` and
 ``settings.sandbox.orphan_cleanup_enabled`` are both ``True``.
 """
@@ -11,18 +14,25 @@ from __future__ import annotations
 
 import asyncio
 import threading
+import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
+import docker
+from docker.errors import APIError, NotFound
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from ii_agent.agents.sandboxes.docker import DockerSandbox
+from ii_agent.agents.sandboxes.docker import DockerSandbox, _cleanup_sandbox_volume
 from ii_agent.agents.sandboxes.models import AgentSandbox
+from ii_agent.agents.sandboxes.port_manager import PortPoolManager
 from ii_agent.agents.sandboxes.types import SandboxProviderType, SandboxStatus
 from ii_agent.core.config.settings import Settings, get_settings
 from ii_agent.core.db import get_db_session_local
 from ii_agent.core.logger import logger
 from ii_agent.sessions.models import Session
+from ii_agent.tasks.models import RunTask
+from ii_agent.tasks.types import RunStatus
 
 
 # Grace period before a sandbox can be considered orphaned
@@ -50,13 +60,18 @@ async def run_orphan_cleanup_loop(config: Optional[Settings] = None) -> None:
     while True:
         try:
             await asyncio.sleep(interval)
+            expired = await _soft_delete_expired_sessions()
             cleaned = await _cleanup_orphans(cfg)
             paused = await _pause_stale_sandboxes(cfg)
-            if cleaned > 0 or paused > 0:
+            zombies = await _cleanup_docker_zombies()
+            if cleaned > 0 or paused > 0 or zombies > 0 or expired > 0:
                 logger.info(
-                    "Orphan cleanup sweep: removed=%d orphaned, paused=%d stale",
+                    "Orphan cleanup sweep: expired=%d sessions, removed=%d orphaned, "
+                    "paused=%d stale, reaped=%d docker zombies",
+                    expired,
                     cleaned,
                     paused,
+                    zombies,
                 )
         except asyncio.CancelledError:
             logger.info("Orphan cleanup task cancelled")
@@ -64,6 +79,94 @@ async def run_orphan_cleanup_loop(config: Optional[Settings] = None) -> None:
         except Exception:
             logger.exception("Error in orphan cleanup loop")
             await asyncio.sleep(60)
+
+
+async def _soft_delete_expired_sessions() -> int:
+    """Soft-delete sessions whose ``delete_after`` timestamp has passed.
+
+    This enables timed deletion: callers set ``delete_after`` to a future
+    timestamp and the session is automatically soft-deleted once that time
+    arrives.  The subsequent orphan cleanup sweep will then remove any
+    associated sandbox containers.
+
+    Also cancels any active agent runs on the expired sessions via Redis
+    and transitions their run tasks to CANCELLED status.
+    """
+    now = datetime.now(timezone.utc)
+    deleted = 0
+
+    try:
+        async with get_db_session_local() as db:
+            result = await db.execute(
+                select(Session).where(
+                    Session.is_deleted.is_(False),
+                    Session.delete_after.isnot(None),
+                    Session.delete_after <= now,
+                )
+            )
+            sessions = result.scalars().all()
+
+            for session in sessions:
+                # Cancel any active runs before marking deleted
+                await _cancel_active_runs_for_session(db, session.id)
+
+                session.is_deleted = True
+                deleted += 1
+                logger.info(
+                    "Auto-deleted expired session %s (delete_after=%s)",
+                    session.id,
+                    session.delete_after,
+                )
+
+            if deleted:
+                await db.commit()
+    except Exception:
+        logger.exception("Error in expired session cleanup")
+
+    return deleted
+
+
+async def _cancel_active_runs_for_session(db: AsyncSession, session_id: "uuid.UUID") -> None:
+    """Cancel active runs for a session being auto-deleted.
+
+    Sends a Redis cancellation signal and transitions run tasks to CANCELLED.
+    Best-effort: failures are logged but do not prevent session deletion.
+    """
+    try:
+        active_values = [s.value for s in RunStatus.active_states()]
+        result = await db.execute(
+            select(RunTask).where(
+                RunTask.session_id == session_id,
+                RunTask.status.in_(active_values),
+            )
+        )
+        active_tasks = result.scalars().all()
+
+        for task in active_tasks:
+            try:
+                from ii_agent.core.redis.cancel import cancel_run
+
+                await cancel_run(str(task.id))
+                task.status = RunStatus.CANCELLED.value
+                task.error_message = "Session auto-deleted (timed deletion)"
+                logger.info(
+                    "Cancelled active run %s for expired session %s",
+                    task.id,
+                    session_id,
+                )
+            except Exception:
+                logger.warning(
+                    "Failed to cancel run %s for expired session %s",
+                    task.id,
+                    session_id,
+                    exc_info=True,
+                )
+    except Exception:
+        logger.warning(
+            "Failed to query active runs for expired session %s",
+            session_id,
+            exc_info=True,
+        )
 
 
 async def _cleanup_orphans(cfg: Settings) -> int:
@@ -122,13 +225,22 @@ async def _cleanup_orphans(cfg: Settings) -> int:
                         # Attach to the container for cleanup
                         client = DockerSandbox._get_docker_client()
                         try:
-                            docker_sandbox._container = client.containers.get(
-                                sandbox.provider_sandbox_id
+                            docker_sandbox._container = await asyncio.wait_for(
+                                asyncio.to_thread(
+                                    client.containers.get,
+                                    sandbox.provider_sandbox_id,
+                                ),
+                                timeout=10,
                             )
-                        except Exception:
+                        except (asyncio.TimeoutError, Exception):
                             docker_sandbox._container = None
 
-                        await docker_sandbox.kill()
+                        await asyncio.wait_for(docker_sandbox.kill(), timeout=30)
+                    except asyncio.TimeoutError:
+                        logger.warning(
+                            "Timeout killing orphan container %s — skipping",
+                            sandbox.provider_sandbox_id,
+                        )
                     except Exception as e:
                         logger.warning(
                             f"Failed to kill orphan container {sandbox.provider_sandbox_id}: {e}"
@@ -197,30 +309,29 @@ async def _pause_stale_sandboxes(cfg: Settings) -> int:
                 # Session is stale — pause the sandbox
                 if sandbox.provider_sandbox_id:
                     try:
-                        docker_sandbox = DockerSandbox(
-                            sandbox_id=str(sandbox.id),
-                            session_id=str(sandbox.session_id),
-                            provider_sandbox_id=sandbox.provider_sandbox_id,
-                        )
                         client = DockerSandbox._get_docker_client()
-                        try:
-                            docker_sandbox._container = client.containers.get(
-                                sandbox.provider_sandbox_id
-                            )
-                        except Exception:
-                            docker_sandbox._container = None
-
-                        if docker_sandbox._container is not None:
-                            await docker_sandbox.pause()
-                            sandbox.status = SandboxStatus.PAUSED
-                            await db.flush()
-                            paused += 1
-                            logger.info(
-                                "Paused stale sandbox %s (session %s, idle %.0fs)",
-                                sandbox.id,
-                                sandbox.session_id,
-                                (now - updated_at).total_seconds() if updated_at else 0,
-                            )
+                        container = await asyncio.wait_for(
+                            asyncio.to_thread(client.containers.get, sandbox.provider_sandbox_id),
+                            timeout=10,
+                        )
+                        await asyncio.wait_for(
+                            asyncio.to_thread(container.stop, timeout=10),
+                            timeout=20,
+                        )
+                        sandbox.status = SandboxStatus.PAUSED
+                        await db.flush()
+                        paused += 1
+                        logger.info(
+                            "Paused stale sandbox %s (session %s, idle %.0fs)",
+                            sandbox.id,
+                            sandbox.session_id,
+                            (now - updated_at).total_seconds() if updated_at else 0,
+                        )
+                    except asyncio.TimeoutError:
+                        logger.warning(
+                            "Timeout pausing stale sandbox %s — skipping",
+                            sandbox.id,
+                        )
                     except Exception as e:
                         logger.warning(
                             "Failed to pause stale sandbox %s: %s",
@@ -234,6 +345,125 @@ async def _pause_stale_sandboxes(cfg: Settings) -> int:
         await db.commit()
 
     return paused
+
+
+async def _cleanup_docker_zombies() -> int:
+    """Sweep Docker directly for sandbox containers not tracked in the DB.
+
+    This catches containers that were orphaned because:
+    - Their DB records were bulk-deleted (e.g. mass session cleanup)
+    - The DB record was never written (crash during creation)
+    - ``init_sandbox()`` replaced a dead container without removing the old one
+
+    Only exited containers older than the grace period are removed.
+    Running containers with no DB record are stopped and removed too, since
+    they cannot be reconnected to any session.
+    """
+    reaped = 0
+    now = datetime.now(timezone.utc)
+
+    try:
+        client = DockerSandbox._get_docker_client()
+    except Exception:
+        logger.debug("Docker client unavailable, skipping zombie sweep")
+        return 0
+
+    # Find all ii-sandbox containers (any status) via label
+    try:
+        containers = await asyncio.wait_for(
+            asyncio.to_thread(
+                client.containers.list,
+                all=True,
+                filters={"label": "ii-agent.sandbox=true"},
+            ),
+            timeout=15,
+        )
+    except asyncio.TimeoutError:
+        logger.debug("Timeout listing Docker containers for zombie sweep")
+        return 0
+    except Exception:
+        logger.debug("Failed to list Docker containers for zombie sweep")
+        return 0
+
+    if not containers:
+        return 0
+
+    # Collect the full container IDs present in Docker
+    container_map: dict[str, docker.models.containers.Container] = {}
+    for c in containers:
+        container_map[c.id] = c
+
+    # Query DB for all non-deleted sandbox provider_sandbox_ids
+    active_ids: set[str] = set()
+    try:
+        async with get_db_session_local() as db:
+            result = await db.execute(
+                select(AgentSandbox.provider_sandbox_id).where(
+                    AgentSandbox.provider == SandboxProviderType.DOCKER,
+                    AgentSandbox.status != SandboxStatus.DELETED,
+                    AgentSandbox.provider_sandbox_id.isnot(None),
+                )
+            )
+            active_ids = {row[0] for row in result}
+    except Exception:
+        logger.warning("Failed to query DB for active sandbox IDs, skipping zombie sweep")
+        return 0
+
+    port_manager = PortPoolManager.get_instance()
+
+    for container_id, container in container_map.items():
+        if container_id in active_ids:
+            continue  # Tracked in DB — leave it alone
+
+        # Check grace period using the container's creation time
+        try:
+            created_str = container.attrs.get("Created", "")
+            if created_str:
+                # Docker returns ISO format with nanoseconds, parse safely
+                created_at = datetime.fromisoformat(
+                    created_str.replace("Z", "+00:00").split(".")[0] + "+00:00"
+                )
+                if (now - created_at) < _GRACE_PERIOD:
+                    continue  # Too new — might still be initializing
+        except Exception:
+            pass  # If we can't parse, proceed with cleanup
+
+        # Extract sandbox_id from label for volume + port cleanup
+        sandbox_id = container.labels.get("ii-agent.sandbox-id", "")
+        container_name = container.name or container.short_id
+
+        try:
+            await asyncio.wait_for(
+                asyncio.to_thread(container.remove, force=True),
+                timeout=15,
+            )
+            logger.info(
+                "Reaped Docker zombie container %s (sandbox_id=%s, no active DB record)",
+                container_name,
+                sandbox_id or "unknown",
+            )
+            reaped += 1
+        except asyncio.TimeoutError:
+            logger.warning("Timeout removing zombie container %s — skipping", container_name)
+            continue
+        except NotFound:
+            reaped += 1  # Already gone
+        except APIError as e:
+            logger.warning("Failed to remove zombie container %s: %s", container_name, e)
+            continue
+
+        # Clean up associated volume and ports
+        if sandbox_id:
+            try:
+                _cleanup_sandbox_volume(client, sandbox_id)
+            except Exception:
+                pass
+            try:
+                port_manager.release_ports(sandbox_id)
+            except Exception:
+                pass
+
+    return reaped
 
 
 def start_orphan_cleanup(config: Optional[Settings] = None) -> Optional[asyncio.Task]:

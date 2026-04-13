@@ -60,6 +60,10 @@ flowchart TD
     APP --> COMMANDS
     PLUGINS --> RUNTIME
 
+    style cli fill:#4a90d966,stroke:#2c6cb08C,stroke-width:2px
+    style corelib fill:#34a87066,stroke:#1e88508C,stroke-width:2px
+    style support fill:#e8a83866,stroke:#c088288C,stroke-width:2px
+
     classDef cli fill:#4a90d9,stroke:#2c6cb0,stroke-width:2px
     classDef core fill:#34a870,stroke:#1e8850,stroke-width:2px
     classDef support fill:#e8a838,stroke:#c08828,stroke-width:2px
@@ -170,6 +174,9 @@ flowchart LR
     ADP -->|subprocess stdio| CC1
     ADP -->|subprocess stdio| CC2
     A2A -->|SSE| ADP
+
+    style C1 fill:#34a87066,stroke:#1e88508C,stroke-width:2px
+    style CLAW fill:#d0605066,stroke:#a848388C,stroke-width:2px
 
     classDef good fill:#34a870,stroke:#1e8850,stroke-width:2px
     classDef gap fill:#d06050,stroke:#a84838,stroke-width:2px

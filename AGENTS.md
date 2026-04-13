@@ -72,7 +72,7 @@ src/ii_agent/
 │   └── webhook_handler.py  # Stripe webhook processing
 │
 ├── sessions/               # Chat session management
-│   ├── models.py           # Session model, SessionStateEnum, AppKind
+│   ├── models.py           # Session model, SessionStateEnum, AppKind, delete_after
 │   ├── service.py          # Session CRUD, state transitions
 │   ├── fork_service.py     # Session forking
 │   ├── title_service.py    # Auto-title generation
