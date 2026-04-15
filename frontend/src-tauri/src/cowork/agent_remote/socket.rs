@@ -17,6 +17,7 @@ use crate::cowork::string_utils::normalize_optional_string;
 use crate::cowork::time_utils::now_iso;
 use rust_socketio::{ClientBuilder as SocketClientBuilder, Payload, TransportType};
 use serde_json::{json, Value};
+use std::any::Any;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 use tauri::async_runtime::spawn_blocking;
@@ -42,119 +43,161 @@ pub async fn run_remote_agent_request(
     };
 
     spawn_blocking(move || {
-        let (tx, rx) = mpsc::channel::<RemoteSocketSignal>();
-        let tx_chat = tx.clone();
-        let tx_error = tx.clone();
-        let mut last_status = Some(CoworkChatRunStatus::Thinking);
-        let mut desktop_runtime = DesktopToolRuntime::default();
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(
+            || -> Result<RemoteAgentRunOutcome, String> {
+                let (tx, rx) = mpsc::channel::<RemoteSocketSignal>();
+                let tx_chat = tx.clone();
+                let tx_error = tx.clone();
+                let mut last_status = Some(CoworkChatRunStatus::Thinking);
+                let mut desktop_runtime = DesktopToolRuntime::default();
 
-        let auth_payload = if let Some(session_id) = remote_session_id_for_auth.clone() {
-            json!({
-                "token": access_token,
-                "session_uuid": session_id,
-            })
-        } else {
-            json!({
-                "token": access_token,
-            })
-        };
+                let auth_payload = if let Some(session_id) = remote_session_id_for_auth.clone() {
+                    json!({
+                        "token": access_token,
+                        "session_uuid": session_id,
+                    })
+                } else {
+                    json!({
+                        "token": access_token,
+                    })
+                };
 
-        let socket = SocketClientBuilder::new(api_base_url.as_str())
-            .transport_type(TransportType::Websocket)
-            .auth(auth_payload)
-            .on("chat_event", move |payload, _socket| {
-                if let Some(event) = parse_socket_payload(payload).and_then(parse_socket_chat_event)
-                {
-                    let _ = tx_chat.send(RemoteSocketSignal::ChatEvent(event));
-                }
-            })
-            .on("error", move |payload, _socket| {
-                let message = parse_socket_payload(payload)
-                    .and_then(|value| {
-                        let extracted = extract_error_message(&value);
-                        if extracted.is_empty() {
-                            None
-                        } else {
-                            Some(extracted)
+                let socket = SocketClientBuilder::new(api_base_url.as_str())
+                    .transport_type(TransportType::Websocket)
+                    .auth(auth_payload)
+                    .on("chat_event", move |payload, _socket| {
+                        if let Err(payload) =
+                            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                                if let Some(event) =
+                                    parse_socket_payload(payload).and_then(parse_socket_chat_event)
+                                {
+                                    let _ = tx_chat.send(RemoteSocketSignal::ChatEvent(event));
+                                }
+                            }))
+                        {
+                            eprintln!(
+                                "[cowork] chat_event callback panicked: {}",
+                                panic_payload_message(payload.as_ref())
+                            );
                         }
                     })
-                    .unwrap_or_else(|| "Cowork agent socket returned an unknown error".to_string());
-                let _ = tx_error.send(RemoteSocketSignal::ClientError(message));
-            })
-            .connect()
-            .map_err(|error| format!("Failed to connect Cowork agent socket: {error}"))?;
+                    .on("error", move |payload, _socket| {
+                        if let Err(payload) =
+                            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                                let message = parse_socket_payload(payload)
+                                    .and_then(|value| {
+                                        let extracted = extract_error_message(&value);
+                                        if extracted.is_empty() {
+                                            None
+                                        } else {
+                                            Some(extracted)
+                                        }
+                                    })
+                                    .unwrap_or_else(|| {
+                                        "Cowork agent socket returned an unknown error".to_string()
+                                    });
+                                let _ = tx_error.send(RemoteSocketSignal::ClientError(message));
+                            }))
+                        {
+                            eprintln!(
+                                "[cowork] socket error callback panicked: {}",
+                                panic_payload_message(payload.as_ref())
+                            );
+                        }
+                    })
+                    .connect()
+                    .map_err(|error| format!("Failed to connect Cowork agent socket: {error}"))?;
 
-        let join_payload = if let Some(session_id) = remote_session_id.clone() {
-            json!({ "session_uuid": session_id })
-        } else {
-            json!({})
-        };
+                let join_payload = if let Some(session_id) = remote_session_id.clone() {
+                    json!({ "session_uuid": session_id })
+                } else {
+                    json!({})
+                };
 
-        socket
-            .emit("join_session", join_payload)
-            .map_err(|error| format!("Failed to join Cowork agent session: {error}"))?;
+                socket
+                    .emit("join_session", join_payload)
+                    .map_err(|error| format!("Failed to join Cowork agent session: {error}"))?;
 
-        let active_session_id = wait_for_socket_session(
-            &rx,
-            remote_session_id.clone(),
-            &stream_context,
-            &mut last_status,
-        )?;
+                let active_session_id = wait_for_socket_session(
+                    &rx,
+                    remote_session_id.clone(),
+                    &stream_context,
+                    &mut last_status,
+                )?;
 
-        // Inject "command" into content so the backend discriminated union can resolve it.
-        let mut enriched_content = command_payload.clone();
-        if let Some(obj) = enriched_content.as_object_mut() {
-            obj.insert(
-                "command".to_string(),
-                Value::String(REMOTE_SOCKET_MESSAGE_TYPE.to_string()),
-            );
-        }
+                // Inject "command" into content so the backend discriminated union can resolve it.
+                let mut enriched_content = command_payload.clone();
+                if let Some(obj) = enriched_content.as_object_mut() {
+                    obj.insert(
+                        "command".to_string(),
+                        Value::String(REMOTE_SOCKET_MESSAGE_TYPE.to_string()),
+                    );
+                }
 
-        socket
-            .emit(
-                "chat_message",
-                json!({
-                    "session_uuid": active_session_id,
-                    "content": enriched_content,
-                }),
-            )
-            .map_err(|error| format!("Failed to send Cowork agent message: {error}"))?;
-
-        let continue_session_id = active_session_id.clone();
-        let mut continue_run =
-            |run_id: &str, external_tool_results: Vec<Value>| -> Result<(), String> {
                 socket
                     .emit(
                         "chat_message",
                         json!({
-                            "session_uuid": continue_session_id,
-                            "content": {
-                                "command": "cowork_continue_run",
-                                "run_id": run_id,
-                                "confirmed": true,
-                                "external_tool_results": external_tool_results,
-                            }
+                            "session_uuid": active_session_id,
+                            "content": enriched_content,
                         }),
                     )
-                    .map_err(|error| format!("Failed to continue Cowork agent run: {error}"))
-            };
+                    .map_err(|error| format!("Failed to send Cowork agent message: {error}"))?;
 
-        wait_for_remote_run_completion(
-            &rx,
-            &stream_context,
-            &mut last_status,
-            desktop_runtime_preset.as_ref(),
-            &mut desktop_runtime,
-            &mut continue_run,
-        )?;
-        let _ = socket.disconnect();
+                let continue_session_id = active_session_id.clone();
+                let mut continue_run = |run_id: &str,
+                                        external_tool_results: Vec<Value>|
+                 -> Result<(), String> {
+                    socket
+                        .emit(
+                            "chat_message",
+                            json!({
+                                "session_uuid": continue_session_id,
+                                "content": {
+                                    "command": "cowork_continue_run",
+                                    "run_id": run_id,
+                                    "confirmed": true,
+                                    "external_tool_results": external_tool_results,
+                                }
+                            }),
+                        )
+                        .map_err(|error| format!("Failed to continue Cowork agent run: {error}"))
+                };
 
-        Ok(RemoteAgentRunOutcome {
-            runtime_session_id: active_session_id,
-        })
+                wait_for_remote_run_completion(
+                    &rx,
+                    &stream_context,
+                    &mut last_status,
+                    desktop_runtime_preset.as_ref(),
+                    &mut desktop_runtime,
+                    &mut continue_run,
+                )?;
+                let _ = socket.disconnect();
+
+                Ok(RemoteAgentRunOutcome {
+                    runtime_session_id: active_session_id,
+                })
+            },
+        ))
+        .map_err(|payload| {
+            format!(
+                "Cowork agent worker panicked: {}",
+                panic_payload_message(payload.as_ref())
+            )
+        })?
     })
     .await
     .map_err(|error| format!("Cowork agent worker failed: {error}"))?
+}
+
+fn panic_payload_message(payload: &(dyn Any + Send)) -> String {
+    if let Some(message) = payload.downcast_ref::<&str>() {
+        (*message).to_string()
+    } else if let Some(message) = payload.downcast_ref::<String>() {
+        message.clone()
+    } else {
+        "non-string panic payload".to_string()
+    }
 }
 
 fn wait_for_socket_session(
@@ -243,10 +286,8 @@ fn wait_for_remote_run_completion(
                     }
                 }
 
-                if should_ignore_terminal_after_continue(
-                    &event,
-                    pending_continue_run_id.as_deref(),
-                ) {
+                if should_ignore_terminal_after_continue(&event, pending_continue_run_id.as_deref())
+                {
                     continue;
                 }
                 if should_clear_pending_continue(&event, pending_continue_run_id.as_deref()) {
@@ -382,11 +423,11 @@ pub fn normalize_event_name(raw: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use super::super::types::RemoteSocketChatEvent;
     use super::{
         normalize_event_name, parse_socket_chat_event, should_clear_pending_continue,
         should_ignore_terminal_after_continue,
     };
-    use super::super::types::RemoteSocketChatEvent;
     use serde_json::json;
 
     #[test]
@@ -401,8 +442,14 @@ mod tests {
 
     #[test]
     fn normalizes_reasoning_events_to_thinking_events() {
-        assert_eq!(normalize_event_name("agent.reasoning.start"), "agent_thinking_start");
-        assert_eq!(normalize_event_name("agent.reasoning.delta"), "agent_thinking_delta");
+        assert_eq!(
+            normalize_event_name("agent.reasoning.start"),
+            "agent_thinking_start"
+        );
+        assert_eq!(
+            normalize_event_name("agent.reasoning.delta"),
+            "agent_thinking_delta"
+        );
         assert_eq!(normalize_event_name("agent.reasoning"), "agent_thinking");
     }
 
@@ -418,7 +465,10 @@ mod tests {
         };
 
         assert!(should_ignore_terminal_after_continue(&event, Some("run-1")));
-        assert!(!should_ignore_terminal_after_continue(&event, Some("run-2")));
+        assert!(!should_ignore_terminal_after_continue(
+            &event,
+            Some("run-2")
+        ));
     }
 
     #[test]

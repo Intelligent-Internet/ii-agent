@@ -101,20 +101,29 @@ impl ChunkPlanner for PdfChunker {
         // host side so chunk boundaries are accurate. For small/medium
         // files where memory is not at risk, skip the extra parse.
         if size > LARGE_FILE_THRESHOLD {
-            match splitter::count_pdf_pages(file_path) {
-                Ok(real_page_count) => {
-                    return Ok(Some(plan_from_page_count(real_page_count, size)));
-                }
-                Err(_) => {
-                    // If we cannot parse (corrupt file, etc.), fall back
-                    // to size-based heuristic. The guest will fail later
-                    // with a more informative error.
-                }
-            }
+            return Ok(Some(plan_large_file(
+                file_path,
+                size,
+                splitter::count_pdf_pages(file_path),
+            )?));
         }
 
         Ok(Some(plan_from_size(size)))
     }
+}
+
+fn plan_large_file(
+    file_path: &Path,
+    size: u64,
+    page_count: Result<u32, String>,
+) -> Result<ChunkPlan, String> {
+    let real_page_count = page_count.map_err(|error| {
+        format!(
+            "pdf chunker: failed to count pages for large PDF {}: {error}",
+            file_path.display()
+        )
+    })?;
+    Ok(plan_from_page_count(real_page_count, size))
 }
 
 /// Plan using the real page count (available for large PDFs parsed on
@@ -236,13 +245,17 @@ pub fn plan_from_size(size: u64) -> ChunkPlan {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
 
     #[test]
     fn small_file_is_single_with_default_limits() {
         let plan = plan_from_size(5 * 1024 * 1024); // 5 MB
         match plan {
             ChunkPlan::Single { limits } => {
-                assert_eq!(limits.max_memory_bytes, RuntimeLimits::defaults().max_memory_bytes);
+                assert_eq!(
+                    limits.max_memory_bytes,
+                    RuntimeLimits::defaults().max_memory_bytes
+                );
             }
             other => panic!("expected Single, got {:?}", other),
         }
@@ -278,10 +291,7 @@ mod tests {
                     .and_then(|v| v.as_array())
                     .expect("page_range array");
                 assert_eq!(range[0].as_u64(), Some(1));
-                assert_eq!(
-                    range[1].as_u64(),
-                    Some(LARGE_FILE_CHUNK_PAGES as u64)
-                );
+                assert_eq!(range[1].as_u64(), Some(LARGE_FILE_CHUNK_PAGES as u64));
                 // Second chunk starts right after the first.
                 let second = &chunks[1];
                 let overlay2 = second.input_json_overlay.as_object().expect("overlay obj");
@@ -307,6 +317,19 @@ mod tests {
             "expected Single fallback, got {:?}",
             plan
         );
+    }
+
+    #[test]
+    fn large_file_page_count_failure_does_not_fall_back_to_heuristic() {
+        let err = plan_large_file(
+            Path::new("/tmp/heavy.pdf"),
+            LARGE_FILE_THRESHOLD + 1,
+            Err("helper crashed".to_string()),
+        )
+        .expect_err("large-file helper failure should be surfaced");
+
+        assert!(err.contains("failed to count pages for large PDF /tmp/heavy.pdf"));
+        assert!(err.contains("helper crashed"));
     }
 
     #[test]

@@ -1,5 +1,6 @@
 pub mod agent_presets;
 pub mod agent_remote;
+pub mod bootstrap;
 pub mod chat;
 pub mod chat_commands;
 pub mod desktop_runtime;

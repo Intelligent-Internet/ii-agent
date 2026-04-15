@@ -65,10 +65,11 @@ pub use lifecycle::acquire_runtime;
 use super::{RuntimeKind, RuntimeLimits};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::any::Any;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 use std::{io, thread};
 use wasmtime::{Config, Engine, Linker, Module, Store, StoreLimits, StoreLimitsBuilder};
@@ -105,7 +106,7 @@ impl ModuleRegistry {
     /// Register a module by its raw WASM bytes. The byte buffer is stored
     /// behind an `Arc` so repeated lookups are cheap.
     pub fn register_bytes(&self, name: impl Into<String>, bytes: Vec<u8>) {
-        self.entries.lock().expect("module registry poisoned").insert(
+        lock_or_recover(&self.entries).insert(
             name.into(),
             ModuleEntry {
                 source: ModuleSource::Bytes(Arc::new(bytes)),
@@ -116,7 +117,7 @@ impl ModuleRegistry {
     /// Register a module by its WAT (text format) source. Useful for
     /// bundling small helpers without having to ship pre-compiled bytes.
     pub fn register_wat(&self, name: impl Into<String>, wat: impl Into<String>) {
-        self.entries.lock().expect("module registry poisoned").insert(
+        lock_or_recover(&self.entries).insert(
             name.into(),
             ModuleEntry {
                 source: ModuleSource::Wat(Arc::new(wat.into())),
@@ -128,7 +129,7 @@ impl ModuleRegistry {
     /// so it is safe to register modules that will only become available
     /// at runtime.
     pub fn register_path(&self, name: impl Into<String>, path: PathBuf) {
-        self.entries.lock().expect("module registry poisoned").insert(
+        lock_or_recover(&self.entries).insert(
             name.into(),
             ModuleEntry {
                 source: ModuleSource::Path(path),
@@ -137,31 +138,18 @@ impl ModuleRegistry {
     }
 
     pub fn has(&self, name: &str) -> bool {
-        self.entries
-            .lock()
-            .expect("module registry poisoned")
-            .contains_key(name)
+        lock_or_recover(&self.entries).contains_key(name)
     }
 
     pub fn names(&self) -> Vec<String> {
-        let mut names: Vec<String> = self
-            .entries
-            .lock()
-            .expect("module registry poisoned")
-            .keys()
-            .cloned()
-            .collect();
+        let mut names: Vec<String> = lock_or_recover(&self.entries).keys().cloned().collect();
         names.sort();
         names
     }
 
     fn lookup(&self, name: &str) -> Option<ModuleEntry> {
-        self.entries
-            .lock()
-            .expect("module registry poisoned")
-            .get(name)
-            .cloned()
-        }
+        lock_or_recover(&self.entries).get(name).cloned()
+    }
 
     fn load_module(&self, engine: &Engine, name: &str) -> Result<Module, WasmRunError> {
         let entry = self
@@ -341,8 +329,8 @@ impl WasmRuntime {
         config.wasm_backtrace(true);
         config.wasm_bulk_memory(true);
         config.wasm_multi_value(true);
-        let engine = Engine::new(&config)
-            .map_err(|error| WasmRunError::ModuleLoad(error.to_string()))?;
+        let engine =
+            Engine::new(&config).map_err(|error| WasmRunError::ModuleLoad(error.to_string()))?;
         let runtime = Self {
             engine,
             registry: ModuleRegistry::new(),
@@ -379,7 +367,10 @@ impl WasmRuntime {
         // desktop development.
         #[cfg(debug_assertions)]
         {
-            let base = concat!(env!("CARGO_MANIFEST_DIR"), "/src/cowork/desktop_runtime/wasm");
+            let base = concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/src/cowork/desktop_runtime/wasm"
+            );
             freshness::check_freshness(
                 "pdf_processor",
                 &format!("{base}/modules/pdf_processor.wasm"),
@@ -414,11 +405,22 @@ impl WasmRuntime {
     /// Configure the root directory used to create per-call scratch
     /// workspaces. Typically `{app_data}/cowork/wasm-scratch`.
     pub fn set_scratch_root(&self, root: PathBuf) {
-        *self.scratch_root.lock().expect("scratch root poisoned") = Some(root);
+        *lock_or_recover(&self.scratch_root) = Some(root);
     }
 
     /// Execute a single WASM call and return a structured result.
     pub fn run(&self, request: WasmRunRequest) -> Result<WasmRunResult, WasmRunError> {
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.run_inner(request))).map_err(
+            |payload| {
+                WasmRunError::Execution(format!(
+                    "WASM runtime panicked: {}",
+                    panic_payload_message(payload.as_ref())
+                ))
+            },
+        )?
+    }
+
+    fn run_inner(&self, request: WasmRunRequest) -> Result<WasmRunResult, WasmRunError> {
         let limits = request.limits.unwrap_or_else(RuntimeLimits::defaults);
 
         // --- Prepare scratch workspace ---
@@ -459,7 +461,9 @@ impl WasmRuntime {
         }
 
         // --- Load module ---
-        let module = self.registry.load_module(&self.engine, &request.module_name)?;
+        let module = self
+            .registry
+            .load_module(&self.engine, &request.module_name)?;
 
         // --- Build WASI context ---
         let stdout_pipe = wasmtime_wasi::pipe::MemoryOutputPipe::new(256 * 1024);
@@ -598,7 +602,7 @@ impl WasmRuntime {
     }
 
     fn build_scratch_dir(&self, session_id: Option<&str>) -> Result<PathBuf, WasmRunError> {
-        let base = match self.scratch_root.lock().expect("scratch root poisoned").clone() {
+        let base = match lock_or_recover(&self.scratch_root).clone() {
             Some(root) => root,
             None => std::env::temp_dir().join("ii-cowork-wasm"),
         };
@@ -624,7 +628,7 @@ impl WasmRuntime {
     /// Called by the cowork session gateway when a session is closed or
     /// deleted. Silently succeeds if the session has no scratch state.
     pub fn sweep_session(&self, session_id: &str) -> Result<(), WasmRunError> {
-        let Some(base) = self.scratch_root.lock().expect("scratch root poisoned").clone() else {
+        let Some(base) = lock_or_recover(&self.scratch_root).clone() else {
             return Ok(());
         };
         let scoped = base.join(sanitize_session_segment(session_id));
@@ -637,7 +641,7 @@ impl WasmRuntime {
     /// Remove the entire scratch root. Called at desktop app startup so
     /// leftover artifacts from previous runs do not accumulate.
     pub fn sweep_all(&self) -> Result<(), WasmRunError> {
-        let Some(base) = self.scratch_root.lock().expect("scratch root poisoned").clone() else {
+        let Some(base) = lock_or_recover(&self.scratch_root).clone() else {
             return Ok(());
         };
         if base.exists() {
@@ -703,7 +707,7 @@ impl EpochDeadlineHandle {
         let thread = thread::spawn(move || {
             let start = Instant::now();
             while start.elapsed() < deadline {
-                if *shutdown_clone.lock().expect("shutdown poisoned") {
+                if *lock_or_recover(&shutdown_clone) {
                     return;
                 }
                 thread::sleep(Duration::from_millis(25));
@@ -719,10 +723,26 @@ impl EpochDeadlineHandle {
 
 impl Drop for EpochDeadlineHandle {
     fn drop(&mut self) {
-        *self.shutdown.lock().expect("shutdown poisoned") = true;
+        *lock_or_recover(&self.shutdown) = true;
         if let Some(handle) = self.thread.take() {
             let _ = handle.join();
         }
+    }
+}
+
+fn lock_or_recover<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+fn panic_payload_message(payload: &(dyn Any + Send)) -> String {
+    if let Some(message) = payload.downcast_ref::<&str>() {
+        (*message).to_string()
+    } else if let Some(message) = payload.downcast_ref::<String>() {
+        message.clone()
+    } else {
+        "non-string panic payload".to_string()
     }
 }
 
@@ -960,7 +980,9 @@ mod tests {
                     "page_range": [10, 20]
                 }))
         };
-        let result2 = runtime.run(out_of_range).expect("pdf_processor runs out-of-range");
+        let result2 = runtime
+            .run(out_of_range)
+            .expect("pdf_processor runs out-of-range");
         let output2 = result2.output_json.expect("output.json");
         let pages2 = output2
             .get("pages")
@@ -988,10 +1010,20 @@ mod tests {
         };
         let result = runtime.run(request).expect("docx_processor runs");
         let output = result.output_json.expect("output.json");
-        let paragraphs = output.get("paragraphs").and_then(|v| v.as_array()).expect("paragraphs");
+        let paragraphs = output
+            .get("paragraphs")
+            .and_then(|v| v.as_array())
+            .expect("paragraphs");
         assert!(!paragraphs.is_empty());
-        let joined: String = paragraphs.iter().filter_map(|p| p.as_str()).collect::<Vec<_>>().join(" ");
-        assert!(joined.contains("Hello Desktop Skill Docx"), "got: {joined:?}");
+        let joined: String = paragraphs
+            .iter()
+            .filter_map(|p| p.as_str())
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert!(
+            joined.contains("Hello Desktop Skill Docx"),
+            "got: {joined:?}"
+        );
         std::fs::remove_dir_all(&stage).ok();
     }
 
@@ -1008,7 +1040,10 @@ mod tests {
         };
         let result = runtime.run(request).expect("xlsx_processor runs");
         let output = result.output_json.expect("output.json");
-        let sheets = output.get("sheets").and_then(|v| v.as_array()).expect("sheets");
+        let sheets = output
+            .get("sheets")
+            .and_then(|v| v.as_array())
+            .expect("sheets");
         assert!(!sheets.is_empty());
         let first_name = sheets[0].get("name").and_then(|v| v.as_str()).unwrap_or("");
         assert_eq!(first_name, "TestSheet");
@@ -1050,7 +1085,10 @@ mod tests {
         };
         let result = runtime.run(request).expect("pptx_processor runs");
         let output = result.output_json.expect("output.json");
-        let slides = output.get("slides").and_then(|v| v.as_array()).expect("slides");
+        let slides = output
+            .get("slides")
+            .and_then(|v| v.as_array())
+            .expect("slides");
         assert!(!slides.is_empty());
         let text = slides[0].get("text").and_then(|v| v.as_str()).unwrap_or("");
         assert!(text.contains("Hello Desktop Skill Pptx"), "got: {text:?}");

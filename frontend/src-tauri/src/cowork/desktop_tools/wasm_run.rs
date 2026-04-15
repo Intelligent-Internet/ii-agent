@@ -162,20 +162,15 @@ fn execute(ctx: &mut DesktopToolContext<'_>, tool_input: &Value) -> Result<Strin
         &module_name,
         primary_file,
         op_name,
-        parsed
-            .base_input_json
-            .as_ref()
-            .unwrap_or(&Value::Null),
+        parsed.base_input_json.as_ref().unwrap_or(&Value::Null),
     )?;
 
     // Fix #21: multi-file + chunkable plan is ambiguous — which file do
     // we chunk? Error early so the LLM knows to split its call.
     if plan.is_multi() && parsed.input_files.len() > 1 {
-        return Err(
-            "wasm_run: cannot chunk a call with multiple input_files. \
+        return Err("wasm_run: cannot chunk a call with multiple input_files. \
             Split into one call per file so each can be chunked independently."
-                .to_string(),
-        );
+            .to_string());
     }
 
     let outcome = match plan {
@@ -276,15 +271,10 @@ fn build_request(
     limits: RuntimeLimits,
     input_json_overlay: Option<&Value>,
 ) -> WasmRunRequest {
-    let input_json = match (parsed.base_input_json.as_ref(), input_json_overlay) {
-        (None, None) => None,
-        (Some(base), None) => Some(base.clone()),
-        (None, Some(overlay)) => Some(overlay.clone()),
-        (Some(base), Some(overlay)) => Some(merge_json_objects(base.clone(), overlay)),
-    };
+    let input_json = build_effective_input_json(parsed, input_json_overlay);
 
-    let mut request = WasmRunRequest::new(parsed.module_name.clone())
-        .with_session_id(session_id.to_string());
+    let mut request =
+        WasmRunRequest::new(parsed.module_name.clone()).with_session_id(session_id.to_string());
     request.input_json = input_json;
     request.entrypoint = parsed.entrypoint.clone();
     request.keep_workspace = parsed.keep_workspace;
@@ -296,6 +286,18 @@ fn build_request(
     }
     request.limits = Some(effective_limits);
     request
+}
+
+fn build_effective_input_json(
+    parsed: &ParsedInput,
+    input_json_overlay: Option<&Value>,
+) -> Option<Value> {
+    match (parsed.base_input_json.as_ref(), input_json_overlay) {
+        (None, None) => None,
+        (Some(base), None) => Some(base.clone()),
+        (None, Some(overlay)) => Some(overlay.clone()),
+        (Some(base), Some(overlay)) => Some(merge_json_objects(base.clone(), overlay)),
+    }
 }
 
 /// Shallow merge two JSON values, preferring keys from `overlay`. Both
@@ -316,6 +318,18 @@ fn run_single(
     limits: RuntimeLimits,
     overlay: Option<&Value>,
 ) -> Result<String, String> {
+    if parsed.module_name == "pdf_processor" {
+        let (input_file, _logical_name) = parsed
+            .input_files
+            .first()
+            .ok_or_else(|| "wasm_run: pdf_processor requires one input file".to_string())?;
+        let result = splitter::run_pdf_processor_in_helper(
+            input_file,
+            build_effective_input_json(parsed, overlay),
+        )?;
+        return Ok(super::format_wasm_result(&result));
+    }
+
     let request = build_request(parsed, &parsed.session_id, limits, overlay);
     let result = lease.run(request);
     match result {
@@ -347,9 +361,8 @@ fn run_multi(
     let total_deadline = parsed
         .user_timeout_override
         .unwrap_or(MAX_MULTI_CHUNK_TOTAL_TIMEOUT);
-    let per_chunk_timeout = Duration::from_secs(
-        (total_deadline.as_secs() / chunk_count as u64).max(10),
-    );
+    let per_chunk_timeout =
+        Duration::from_secs((total_deadline.as_secs() / chunk_count as u64).max(10));
 
     // Override per-chunk limits with the computed timeout.
     for chunk in &mut chunks {
@@ -416,11 +429,7 @@ fn run_multi(
                 emit_chunk_progress(parsed, i + 1, chunk_count, &label);
             }
             Err(error) => {
-                let error_msg = super::format_wasm_error(
-                    "wasm_run",
-                    &parsed.module_name,
-                    error,
-                );
+                let error_msg = super::format_wasm_error("wasm_run", &parsed.module_name, error);
                 // Return partial results if we have any, instead of
                 // losing all completed work.
                 return format_multi_result(
@@ -530,7 +539,7 @@ fn format_multi_result(
 /// contains only the relevant pages. The guest is called without a
 /// `page_range` param — it extracts the entire (small) file.
 fn run_multi_with_host_split(
-    lease: &crate::cowork::desktop_runtime::wasm::lifecycle::RuntimeLease,
+    _lease: &crate::cowork::desktop_runtime::wasm::lifecycle::RuntimeLease,
     parsed: &ParsedInput,
     chunks: Vec<Chunk>,
     merge: MergeStrategy,
@@ -566,9 +575,8 @@ fn run_multi_with_host_split(
             .map(|d| d.as_nanos())
             .unwrap_or_default()
     ));
-    let chunk_files =
-        splitter::split_pdf_pages(source_path, &split_dir, pages_per_chunk)
-            .map_err(|e| format!("wasm_run: host-split failed: {e}"))?;
+    let chunk_files = splitter::split_pdf_pages(source_path, &split_dir, pages_per_chunk)
+        .map_err(|e| format!("wasm_run: host-split failed: {e}"))?;
 
     if chunk_files.is_empty() {
         let _ = std::fs::remove_dir_all(&split_dir);
@@ -579,9 +587,6 @@ fn run_multi_with_host_split(
     let total_deadline = parsed
         .user_timeout_override
         .unwrap_or(MAX_MULTI_CHUNK_TOTAL_TIMEOUT);
-    let per_chunk_timeout = Duration::from_secs(
-        (total_deadline.as_secs() / chunk_files.len() as u64).max(10),
-    );
 
     let global_start = Instant::now();
     let mut chunk_outputs: Vec<Value> = Vec::with_capacity(chunk_files.len());
@@ -602,12 +607,7 @@ fn run_multi_with_host_split(
             ));
         }
 
-        // Build a request that uses the chunk file instead of the original.
-        let mut limits = RuntimeLimits::defaults();
-        limits.wall_timeout = per_chunk_timeout;
-        limits.max_memory_bytes = 512 * 1024 * 1024;
-
-        // base input_json without page_range (guest extracts entire chunk file).
+        // Remove page_range because the helper receives a pre-split PDF chunk.
         let chunk_input_json = parsed
             .base_input_json
             .as_ref()
@@ -619,29 +619,25 @@ fn run_multi_with_host_split(
             })
             .or_else(|| parsed.base_input_json.clone());
 
-        let mut request = WasmRunRequest::new(parsed.module_name.clone())
-            .with_session_id(parsed.session_id.clone());
-        request.input_json = chunk_input_json;
-        request.entrypoint = parsed.entrypoint.clone();
-        request.keep_workspace = parsed.keep_workspace;
-        request.input_files = vec![(chunk_file.path.clone(), "input.pdf".to_string())];
-        request.limits = Some(limits);
-
         let label = format!("pages {}-{}", chunk_file.page_start, chunk_file.page_end);
-        let result = lease.run(request);
+        let result = splitter::run_pdf_processor_in_helper(&chunk_file.path, chunk_input_json);
 
         match result {
             Ok(chunk_result) => {
                 total_duration_ms += chunk_result.duration_ms;
                 if !chunk_result.stdout.trim().is_empty() {
-                    combined_stdout.push_str(&format!("[{label}]\n{}\n", chunk_result.stdout.trim_end()));
+                    combined_stdout
+                        .push_str(&format!("[{label}]\n{}\n", chunk_result.stdout.trim_end()));
                 }
                 if !chunk_result.stderr.trim().is_empty() {
-                    combined_stderr.push_str(&format!("[{label}]\n{}\n", chunk_result.stderr.trim_end()));
+                    combined_stderr
+                        .push_str(&format!("[{label}]\n{}\n", chunk_result.stderr.trim_end()));
                 }
                 let Some(mut output_json) = chunk_result.output_json else {
                     let _ = std::fs::remove_dir_all(&split_dir);
-                    return Err(format!("wasm_run: host-split chunk {label} produced no output.json"));
+                    return Err(format!(
+                        "wasm_run: host-split chunk {label} produced no output.json"
+                    ));
                 };
                 // Patch page_offset to reflect position in the original doc.
                 if let Some(obj) = output_json.as_object_mut() {
@@ -663,10 +659,9 @@ fn run_multi_with_host_split(
                 emit_chunk_progress(parsed, i + 1, actual_chunk_count, &label);
             }
             Err(error) => {
-                let error_msg = super::format_wasm_error(
-                    "wasm_run",
-                    &parsed.module_name,
-                    error,
+                let error_msg = format!(
+                    "wasm_run: module '{}' failed: {}",
+                    parsed.module_name, error
                 );
                 let _ = std::fs::remove_dir_all(&split_dir);
                 return format_multi_result(
@@ -743,4 +738,3 @@ fn first_array_len(value: &Value) -> usize {
     }
     0
 }
-

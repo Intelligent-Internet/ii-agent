@@ -27,7 +27,7 @@
 //! the reaper half-way through.
 
 use super::WasmRuntime;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -98,7 +98,7 @@ fn spawn_reaper(state: Arc<Mutex<LifecycleState>>, interval: Duration) {
 /// timeout **and** no leases are outstanding. Factored out so tests can
 /// drive it synchronously.
 fn reap_once(state: &Arc<Mutex<LifecycleState>>) -> bool {
-    let mut guard = state.lock().expect("wasm lifecycle state poisoned");
+    let mut guard = lock_or_recover(state);
     if guard.runtime.is_none() {
         return false;
     }
@@ -120,19 +120,14 @@ fn reap_once(state: &Arc<Mutex<LifecycleState>>) -> bool {
 pub fn acquire_runtime() -> Result<RuntimeLease, super::WasmRunError> {
     let state = global_state();
     let runtime_arc = {
-        let mut guard = state.lock().expect("wasm lifecycle state poisoned");
+        let mut guard = lock_or_recover(&state);
         if guard.runtime.is_none() {
             let new_runtime = WasmRuntime::new()?;
             guard.runtime = Some(Arc::new(new_runtime));
         }
         guard.in_flight = guard.in_flight.saturating_add(1);
         guard.last_used = Instant::now();
-        Arc::clone(
-            guard
-                .runtime
-                .as_ref()
-                .expect("runtime just initialised above"),
-        )
+        Arc::clone(guard.runtime.as_ref().unwrap_or_else(|| unreachable!()))
     };
     Ok(RuntimeLease {
         runtime: runtime_arc,
@@ -163,13 +158,16 @@ impl std::ops::Deref for RuntimeLease {
 
 impl Drop for RuntimeLease {
     fn drop(&mut self) {
-        let mut guard = self
-            .state
-            .lock()
-            .expect("wasm lifecycle state poisoned during drop");
+        let mut guard = lock_or_recover(&self.state);
         guard.in_flight = guard.in_flight.saturating_sub(1);
         guard.last_used = Instant::now();
     }
+}
+
+fn lock_or_recover<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 #[cfg(test)]
@@ -182,8 +180,9 @@ mod tests {
         Arc::new(Mutex::new(LifecycleState::new(timeout)))
     }
 
-    fn lease(state: &Arc<Mutex<LifecycleState>>) -> Result<RuntimeLease, super::super::WasmRunError>
-    {
+    fn lease(
+        state: &Arc<Mutex<LifecycleState>>,
+    ) -> Result<RuntimeLease, super::super::WasmRunError> {
         let mut guard = state.lock().unwrap();
         if guard.runtime.is_none() {
             guard.runtime = Some(Arc::new(WasmRuntime::new()?));

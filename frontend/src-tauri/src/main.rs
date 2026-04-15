@@ -10,6 +10,12 @@ fn greet(name: &str) -> String {
 }
 
 fn main() {
+    cowork::bootstrap::install_panic_diagnostics();
+
+    if let Some(exit_code) = cowork::bootstrap::maybe_startup_exit_code_from_env_args() {
+        std::process::exit(exit_code);
+    }
+
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
