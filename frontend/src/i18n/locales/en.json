@@ -2296,6 +2296,10 @@
                             {
                                 "name": "webapp-testing",
                                 "url": "https://github.com/anthropics/skills/tree/main/skills/webapp-testing"
+                            },
+                            {
+                                "name": "mmx-cli",
+                                "url": "https://github.com/MiniMax-AI/cli/tree/main/skill"
                             }
                         ]
                     }
@@ -2351,6 +2355,10 @@
                         {
                             "name": "webapp-testing",
                             "url": "https://github.com/anthropics/skills/tree/main/skills/webapp-testing"
+                        },
+                        {
+                            "name": "mmx-cli",
+                            "url": "https://github.com/MiniMax-AI/cli/tree/main/skill"
                         }
                     ]
                 },
