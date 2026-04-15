@@ -6,8 +6,8 @@ import { useTranslation } from 'react-i18next'
 import { PROVIDERS_NAME, getProviderKey } from '@/constants/models'
 import {
     selectAvailableModels,
-    selectSelectedModel,
-    setSelectedModel,
+    selectSelectedAgentModel,
+    setSelectedAgentModel,
     setAvailableModels
 } from '@/state'
 import { IModel } from '@/typings/settings'
@@ -28,7 +28,7 @@ const ModelSetting = ({ className }: ModelSettingProps) => {
     const [editingModel, setEditingModel] = useState<IModel | null>(null)
 
     const availableModels = useAppSelector(selectAvailableModels)
-    const selectedModel = useAppSelector(selectSelectedModel)
+    const selectedAgentModel = useAppSelector(selectSelectedAgentModel)
 
     const fetchAvailableModels = async () => {
         try {
@@ -40,7 +40,7 @@ const ModelSetting = ({ className }: ModelSettingProps) => {
     }
 
     const saveConfig = async (model: IModel, isEdit: boolean) => {
-        dispatch(setSelectedModel(model.id))
+        dispatch(setSelectedAgentModel(model.id))
         await fetchAvailableModels()
         setIsAddEditModelOpen(false)
         toast.success(
@@ -59,14 +59,14 @@ const ModelSetting = ({ className }: ModelSettingProps) => {
             await fetchAvailableModels()
 
             // If the deleted model was selected, select the first available model
-            if (selectedModel === modelToDelete) {
+            if (selectedAgentModel === modelToDelete) {
                 const remainingModels = availableModels.filter(
                     (m) => m.id !== modelToDelete
                 )
                 if (remainingModels.length > 0) {
-                    dispatch(setSelectedModel(remainingModels[0].id))
+                    dispatch(setSelectedAgentModel(remainingModels[0].id))
                 } else {
-                    dispatch(setSelectedModel(undefined))
+                    dispatch(setSelectedAgentModel(undefined))
                 }
             }
 
@@ -93,7 +93,7 @@ const ModelSetting = ({ className }: ModelSettingProps) => {
                 {t('agentSetting.modelSetting.title')}
             </p>
             {availableModels?.map((model) => {
-                const isActive = selectedModel === model?.id
+                const isActive = selectedAgentModel === model?.id
                 const providerKey = getProviderKey(model)
 
                 return (
@@ -101,7 +101,7 @@ const ModelSetting = ({ className }: ModelSettingProps) => {
                         key={model?.id}
                         className={`h-[77px] cursor-pointer flex items-center justify-between rounded-2xl ${isActive ? 'border-2 border-firefly dark:border-sky-blue-2 bg-sky-blue dark:bg-sky-blue-2/20 p-[14px]' : 'bg-firefly/10 dark:bg-sky-blue-2/5 p-4'}`}
                         onClick={() => {
-                            dispatch(setSelectedModel(model?.id))
+                            dispatch(setSelectedAgentModel(model?.id))
                         }}
                     >
                         <div className="flex items-center gap-x-4">

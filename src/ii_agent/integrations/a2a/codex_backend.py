@@ -377,8 +377,15 @@ class CodexBackend:
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _build_cmd(self, prompt: str, context_id: str) -> list[str]:
-        """Build the ``codex`` CLI argument list for one turn."""
+    def _build_cmd(self, prompt: str, context_id: str, *, model: str = "") -> list[str]:
+        """Build the ``codex`` CLI argument list for one turn.
+
+        Parameters
+        ----------
+        model:
+            User-selected model ID.  When non-empty overrides
+            ``CodexConfig.model`` for this invocation.
+        """
         cmd: list[str] = [
             self._cfg.codex_bin,
             "--full-auto",
@@ -387,8 +394,9 @@ class CodexBackend:
         conv_id = self._conversations.get(context_id)
         if conv_id:
             cmd += ["--conversation-id", conv_id]
-        if self._cfg.model:
-            cmd += ["--model", self._cfg.model]
+        effective_model = model or self._cfg.model
+        if effective_model:
+            cmd += ["--model", effective_model]
         if self._cfg.instructions:
             cmd += ["--instructions", self._cfg.instructions]
         cmd.append(prompt)
@@ -417,6 +425,7 @@ class CodexBackend:
         task_id: str | None = None,
         *,
         parts: list[Any] | None = None,
+        model: str = "",
     ) -> AsyncGenerator[str, None]:
         """Yield A2A SSE strings for one ``codex`` invocation.
 
@@ -458,7 +467,7 @@ class CodexBackend:
 
         self._touch_session(context_id)
 
-        cmd = self._build_cmd(prompt, context_id)
+        cmd = self._build_cmd(prompt, context_id, model=model)
         env = self._build_env()
 
         proc = await asyncio.create_subprocess_exec(

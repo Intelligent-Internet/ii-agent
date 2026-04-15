@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+    useCallback,
+    useEffect,
+    useLayoutEffect,
+    useRef,
+    useState
+} from 'react'
 import { useLocation, useParams } from 'react-router'
 
 import { type MiniTool } from '@/constants/media-tools'
@@ -8,6 +14,10 @@ import { useChatMediaPreference } from '@/hooks/use-chat-media-preference'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useUploadFiles, type FileUploadStatus } from '@/hooks/use-upload-files'
 import { useVideoFrameUpload } from '@/hooks/use-video-frame-upload'
+import {
+    getComposerBottomInset,
+    keepTextareaTailVisible
+} from '@/lib/textarea-visibility'
 import { isImageFile } from '@/lib/utils'
 import type {
     DownloadedFile,
@@ -216,9 +226,11 @@ const QuestionInput = ({
     const isSessionView = Boolean(sessionId) || isChatRoute
 
     const textareaRef = useRef<HTMLTextAreaElement | null>(null)
+    const composerFooterRef = useRef<HTMLDivElement | null>(null)
     const clearedAttachmentIdsRef = useRef<Set<string>>(new Set())
 
     const [files, setFiles] = useState<FileUploadStatus[]>([])
+    const [composerFooterHeight, setComposerFooterHeight] = useState(0)
     const [currentTextareaValue, setCurrentTextareaValue] = useState(value)
     const [isGeneratingStorybook, setIsGeneratingStorybook] = useState(false)
     const [isStorybookCancelling, setIsStorybookCancelling] = useState(false)
@@ -272,6 +284,31 @@ const QuestionInput = ({
         }
     }, [cancelStorybookGeneration, handleCancel, isLoading, isStorybookPolling])
 
+    useLayoutEffect(() => {
+        const footer = composerFooterRef.current
+
+        if (!footer) return
+
+        const updateHeight = () => {
+            const nextHeight = Math.ceil(footer.getBoundingClientRect().height)
+            setComposerFooterHeight((prev) =>
+                prev === nextHeight ? prev : nextHeight
+            )
+        }
+
+        updateHeight()
+
+        const observer = new ResizeObserver(() => {
+            updateHeight()
+        })
+
+        observer.observe(footer)
+
+        return () => {
+            observer.disconnect()
+        }
+    }, [])
+
     useEffect(() => {
         if (!isStorybookPolling && isStorybookCancelling) {
             setIsStorybookCancelling(false)
@@ -288,6 +325,10 @@ const QuestionInput = ({
     const isMobile = useIsMobile()
     const [advancedPreviewTarget, setAdvancedPreviewTarget] =
         useState<HTMLDivElement | null>(null)
+    const composerBottomInset = getComposerBottomInset(
+        composerFooterHeight,
+        isMobile
+    )
 
     const {
         handleRemoveFile,
@@ -329,11 +370,12 @@ const QuestionInput = ({
                     // Allow default behavior for Shift+Enter (new line)
                     // Only schedule auto-scroll if we're at the last line
                     if (isAtLastLine) {
-                        setTimeout(() => {
-                            if (textarea) {
-                                textarea.scrollTop = textarea.scrollHeight
-                            }
-                        }, 0)
+                        requestAnimationFrame(() => {
+                            keepTextareaTailVisible(
+                                textarea,
+                                composerBottomInset
+                            )
+                        })
                     }
                 }
             } else {
@@ -488,7 +530,7 @@ const QuestionInput = ({
             setTimeout(() => {
                 const textarea = textareaRef.current
                 if (!textarea) return
-                textarea.scrollTop = textarea.scrollHeight
+                keepTextareaTailVisible(textarea, composerBottomInset)
                 setCurrentTextareaValue(textarea.value)
             }, 0)
         },
@@ -755,8 +797,15 @@ const QuestionInput = ({
 
         requestAnimationFrame(() => {
             textareaRef.current?.focus()
+            keepTextareaTailVisible(textareaRef.current, composerBottomInset)
         })
-    }, [focusTextareaSignal])
+    }, [composerBottomInset, focusTextareaSignal])
+
+    useLayoutEffect(() => {
+        requestAnimationFrame(() => {
+            keepTextareaTailVisible(textareaRef.current, composerBottomInset)
+        })
+    }, [composerBottomInset, currentTextareaValue])
 
     useEffect(() => {
         if (!googleDriveFiles || googleDriveFiles.length === 0) return
@@ -925,8 +974,12 @@ const QuestionInput = ({
 
                     <Textarea
                         ref={textareaRef}
+                        style={{
+                            paddingBottom: `${composerBottomInset}px`,
+                            scrollPaddingBottom: `${composerBottomInset}px`
+                        }}
                         className={clsx(
-                            'relative z-[22] w-full p-4 !pb-[50px] md:!pb-[56px] rounded-3xl md:rounded-xl resize-none overflow-y-auto whitespace-break-spaces break-words !placeholder-black/[0.48] dark:!placeholder-white/40 !bg-sidebar-bg dark:!bg-black border-2 border-charcoal dark:border-white md:dark:border-sky-blue-2 max-h-[400px] text-base md:text-sm',
+                            'relative z-[22] w-full p-4 rounded-3xl md:rounded-xl resize-none overflow-y-auto whitespace-break-spaces break-words !placeholder-black/[0.48] dark:!placeholder-white/40 !bg-sidebar-bg dark:!bg-black border-2 border-charcoal dark:border-white md:dark:border-sky-blue-2 max-h-[400px] text-base md:text-sm',
                             files.length > 0
                                 ? '!pt-[72px] !min-h-[240px]'
                                 : 'min-h-[167px]',
@@ -946,11 +999,11 @@ const QuestionInput = ({
                                     chatMediaPreference.type === 'image' ||
                                     chatMediaPreference.type === 'infographic' ||
                                     chatMediaPreference.type === 'poster') &&
-                                'md:!min-h-[204px] md:!pb-[86px]',
+                                'md:!min-h-[204px]',
                             chatMediaPreference.enabled &&
                                 questionMode === QUESTION_MODE.CHAT &&
                                 chatMediaPreference.type === 'video' &&
-                                '!min-h-[220px] md:!min-h-[240px] md:!pb-[180px]',
+                                '!min-h-[220px] md:!min-h-[240px]',
                             textareaClassName
                         )}
                         placeholder={
@@ -961,12 +1014,30 @@ const QuestionInput = ({
                         onChange={(e) => {
                             const newValue = e.target.value
                             setCurrentTextareaValue(newValue)
+
+                            requestAnimationFrame(() => {
+                                keepTextareaTailVisible(
+                                    textareaRef.current,
+                                    composerBottomInset
+                                )
+                            })
                         }}
                         onKeyDown={handleKeyDownWithAutoScroll}
                         onPaste={handlePaste}
+                        onInput={() => {
+                            requestAnimationFrame(() => {
+                                keepTextareaTailVisible(
+                                    textareaRef.current,
+                                    composerBottomInset
+                                )
+                            })
+                        }}
                     />
 
-                    <div className="absolute bottom-0 left-0 px-3 md:px-4 w-full flex flex-col gap-2 z-[22]">
+                    <div
+                        ref={composerFooterRef}
+                        className="absolute bottom-0 left-0 px-3 md:px-4 w-full flex flex-col gap-2 z-[22]"
+                    >
                         <div className="flex items-end justify-between !bg-sidebar-bg dark:!bg-black py-3 md:pb-4 md:pt-3 mb-[2px] rounded-b-xl">
                             <div className="flex items-start gap-x-2 gap-y-2 flex-wrap flex-1">
                                 {questionMode === QUESTION_MODE.CHAT &&

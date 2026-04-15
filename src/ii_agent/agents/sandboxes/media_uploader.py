@@ -106,7 +106,7 @@ async def upload_media_to_sandbox(
             sandbox_images.append(
                 Image(
                     id=image.id,
-                    url=image.url,
+                    filepath=filepath,
                     mime_type=image.mime_type,
                     format=image.format,
                 )

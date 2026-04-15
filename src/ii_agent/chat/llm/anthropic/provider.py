@@ -346,12 +346,13 @@ class AnthropicProvider(LLMClient):
             and len(container_config["skills"]) > 0
         )
 
+        configured_max_tokens = (
+            anthropic_options.get("max_tokens", 8192) if anthropic_options else 8192
+        )
         params = {
             "model": self.model_name,
             "messages": anthropic_messages,
-            "max_tokens": (
-                anthropic_options.get("max_tokens", 8192) if anthropic_options else 8192
-            ),
+            "max_tokens": configured_max_tokens,
         }
 
         if has_skills:
@@ -381,12 +382,24 @@ class AnthropicProvider(LLMClient):
         # Add interleaved thinking beta header if using tools with extended thinking
         betas = []
         if enable_thinking:
-            # Extended thinking is not compatible with temperature modifications
-            # Minimum budget is 1,024 tokens, recommended 16k+ for complex tasks
+            # Extended thinking is not compatible with temperature modifications.
+            # Anthropic requires max_tokens to be greater than thinking.budget_tokens,
+            # so bump the response budget when tools + thinking are both enabled.
             if anthropic_tools:
+                budget_tokens = int(self.llm_config.thinking_tokens)
+                min_completion_tokens = budget_tokens + 1024
+                if int(params["max_tokens"]) <= budget_tokens:
+                    logger.info(
+                        "Adjusting Anthropic max_tokens from %s to %s for thinking budget %s",
+                        params["max_tokens"],
+                        min_completion_tokens,
+                        budget_tokens,
+                    )
+                    params["max_tokens"] = min_completion_tokens
+
                 params["thinking"] = {
                     "type": "enabled",
-                    "budget_tokens": self.llm_config.thinking_tokens,
+                    "budget_tokens": budget_tokens,
                 }
                 betas.append("interleaved-thinking-2025-05-14")
         else:

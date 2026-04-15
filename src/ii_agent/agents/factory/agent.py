@@ -54,7 +54,7 @@ class AgentFactory:
         # is made, not at agent construction time.
         if sandbox is not None:
             client = IIAgentA2AClient(
-                url_factory=lambda: sandbox.expose_port(ADAPTER_CONTAINER_PORT),
+                url_factory=lambda: sandbox.expose_port(ADAPTER_CONTAINER_PORT, external=False),
                 timeout=self.config.agent.a2a_timeout_seconds,
             )
             return A2AInnerLoop(
@@ -89,7 +89,7 @@ class AgentFactory:
             sb = sandbox_holder[0]
             if sb is None:
                 raise RuntimeError("A2A adapter URL not available: sandbox not yet initialized")
-            return await sb.expose_port(ADAPTER_CONTAINER_PORT)
+            return await sb.expose_port(ADAPTER_CONTAINER_PORT, external=False)
 
         client = IIAgentA2AClient(
             url_factory=_deferred_url,

@@ -167,6 +167,9 @@ class A2AInnerLoop:
             "native_tool_schemas": native_tool_schemas,
             "system_message": system_message_content,
         }
+        logger.info(
+            f"[a2a:stream] model_id={model.id!r} context_id={context_id} source=agent"
+        )
 
         # --- Circuit breaker pre-check ---
         circuit_open_reason: Optional[str] = None

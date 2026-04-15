@@ -313,14 +313,6 @@ class FileService:
             if not file_data.url:
                 continue
 
-            files.append(
-                MediaFile(
-                    id=str(file_data.id),
-                    url=file_data.url,
-                    filename=file_data.name,
-                )
-            )
-
             # Detect images via centralized AssetType detection
             detected = AssetType.from_content_type(file_data.content_type)
             mime_type = file_data.content_type
@@ -332,6 +324,14 @@ class FileService:
 
             if detected.is_image:
                 images.append(MediaImage(url=file_data.url, mime_type=mime_type))
+            else:
+                files.append(
+                    MediaFile(
+                        id=str(file_data.id),
+                        url=file_data.url,
+                        filename=file_data.name,
+                    )
+                )
 
         return images, files
 

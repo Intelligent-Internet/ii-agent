@@ -22,3 +22,25 @@ class TestAuthExceptions:
 
         exc = InvalidCredentialsException("wrong password")
         assert exc.status_code == 401
+
+
+class TestUserDisabledException:
+    def test_status_code_is_401(self):
+        """Disabled-user attempts must return 401 Unauthorized, not 403 Forbidden."""
+        from ii_agent.users.exceptions import UserDisabledException
+
+        exc = UserDisabledException("User account is disabled")
+        assert exc.status_code == 401
+
+    def test_is_permission_denied_error(self):
+        """UserDisabledException must be a PermissionDeniedError (not AuthException)."""
+        from ii_agent.core.exceptions import PermissionDeniedError
+        from ii_agent.users.exceptions import UserDisabledException
+
+        exc = UserDisabledException("User account is disabled")
+        assert isinstance(exc, PermissionDeniedError)
+
+    def test_no_circular_import(self):
+        """Importing UserDisabledException must not trigger circular auth import."""
+        # This test would fail with ImportError at collection time if circular
+        from ii_agent.users.exceptions import UserDisabledException  # noqa: F401

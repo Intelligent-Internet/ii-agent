@@ -1,9 +1,34 @@
 # A2A + Copilot CLI Inner Loop — Implementation Status
 
-> **Status**: Phase 8 complete (tool bridge) + chat mode A2A inner loop — interop remediation in progress  
-> **Last updated**: 2026-04-09  
-> **Design reference**: [a2a-copilot-cli-inner-loop-strategy.md](../design-docs/a2a-copilot-cli-inner-loop-strategy.md), [chat-a2a-inner-loop-integration-assessment.md](../design-docs/chat-a2a-inner-loop-integration-assessment.md)  
+> **Status**: ✅ Phase 8 complete (tool bridge) + chat mode A2A inner loop + **model steering (2026-04-15)** — full feature set deployed  
+> **Last updated**: 2026-04-15  
+> **Design reference**: [a2a-copilot-cli-inner-loop-strategy.md](../design-docs/a2a-copilot-cli-inner-loop-strategy.md), [chat-a2a-inner-loop-integration-assessment.md](../design-docs/chat-a2a-inner-loop-integration-assessment.md), [a2a-copilot-model-steering-implemented.md](../design-docs/a2a-copilot-model-steering-implemented.md)  
 > **Branch**: `rebase/local-docker-sandbox`
+
+---
+
+## Recent Additions (2026-04-15)
+
+### Model Steering — Runtime User Model Selection
+
+✅ **COMPLETED**: Users can now select independent models for chat and agent execution. The selected model is automatically forwarded from frontend → inner loop → adapter → backend.
+
+**What was added**:
+- Frontend state split: `selectedChatModel` (chat mode) and `selectedAgentModel` (agent mode) in Redux
+- Adapter server extraction: reads `metadata["model"]` from inner loop envelope
+- Backend parameter threading: All four A2A backends accept `model: str` parameter
+- Copilot backend override logic: `effective_model = model or self.config.model` with logging
+
+**Implementation approach**: Direct request-time forwarding (simpler than aspirational ModelResolver + discovery cache design)
+
+**Files modified**:
+- Frontend: `frontend/src/state/slice/settings.ts` (state split), `chat-header.tsx`, `model-setting.tsx`, `auth-context.tsx`, `home-mobile.tsx`
+- Backend: `src/ii_agent/integrations/a2a/adapter_server.py:532` (metadata extraction)
+- Backends: All four backends in `src/ii_agent/integrations/a2a/*.py` (model parameter threading)
+
+**Tests**: Model steering has dedicated unit tests: adapter server metadata extraction (3 tests), `ClaudeCodeBackend._build_cmd` override logic (4 tests), `CodexBackend._build_cmd` override logic (4 tests), `CopilotBackend._get_or_create_session` model override + logging (4 tests). Full unit suite passes without regressions.
+
+**Design doc**: See [a2a-copilot-model-steering-implemented.md](../design-docs/a2a-copilot-model-steering-implemented.md) for as-built architecture.
 
 ---
 

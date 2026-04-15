@@ -385,6 +385,40 @@ async def test_a2a_loop_fallback_on_stream_error():
 
 
 @pytest.mark.asyncio
+async def test_a2a_loop_fallback_on_session_error_event():
+    """A streamed session.error should trigger native fallback instead of surfacing to chat."""
+    events = [_event("session.error", {"message": "rate limited"})]
+    loop, _, fallback = _make_a2a_loop(events)
+    kwargs = _make_run_kwargs()
+
+    async def _fallback_run(**kw):
+        yield {"type": "content_start"}
+        yield {"type": "content_delta", "content": "fallback"}
+        yield {"type": "complete"}
+
+    fallback.run = _fallback_run
+
+    collected = []
+    with patch("ii_agent.chat.application.a2a_turn_loop_service.cancel") as mock_cancel:
+        mock_cancel.raise_if_cancelled = AsyncMock()
+        with patch(
+            "ii_agent.chat.application.a2a_turn_loop_service.get_db_session_local"
+        ) as mock_db:
+            mock_db.return_value.__aenter__ = AsyncMock(return_value=AsyncMock())
+            mock_db.return_value.__aexit__ = AsyncMock(return_value=False)
+            with patch(
+                "ii_agent.chat.application.a2a_turn_loop_service.ContextWindowManager"
+            ) as mock_cwm:
+                mock_cwm.compress_context_if_needed = AsyncMock(return_value=kwargs["messages"])
+                mock_cwm.check_and_summarize_after_response = AsyncMock()
+                async for ev in loop.run(**kwargs):
+                    collected.append(ev)
+
+    assert [e["type"] for e in collected] == ["content_start", "content_delta", "complete"]
+    assert all(e["type"] != "error" for e in collected)
+
+
+@pytest.mark.asyncio
 async def test_a2a_loop_no_fallback_raises():
     """Without fallback, circuit breaker open raises."""
     loop, _, _ = _make_a2a_loop(fallback_to_native=False)
@@ -950,3 +984,123 @@ class TestMetadataConstruction:
                         pass
 
         assert captured_metadata.get("thinking_tokens") == 16000
+
+
+class TestA2AUncoveredBranches:
+    @pytest.mark.asyncio
+    async def test_bridge_tool_execution_parses_invalid_json_input_as_string_wrapper(self):
+        loop, _, _ = _make_a2a_loop([])
+        tool_service = AsyncMock()
+        tool_service.execute_tool = AsyncMock(return_value=_tool_output_mock("ok", cost=0.0))
+
+        await loop._bridge_tool_execution(
+            event_data={"tool_call_id": "tc-1", "name": "web_search", "input": "{not-json"},
+            tool_registry={},
+            tool_service=tool_service,
+            session_id=uuid.uuid4(),
+            user_id=uuid.uuid4(),
+            run_uuid=uuid.uuid4(),
+        )
+
+        called = tool_service.execute_tool.await_args.kwargs
+        assert called["tool_input"] == {"input": "{not-json"}
+
+    def test_build_a2a_messages_handles_dict_and_text_like_parts(self):
+        text_like = MagicMock()
+        text_like.text = "from-text-attr"
+
+        msg = MagicMock()
+        msg.role = "user"
+        msg.parts = ["plain-text", text_like]
+
+        dict_msg = {"role": "assistant", "content": "dict-content"}
+
+        result = A2AChatTurnLoop._build_a2a_messages([msg, dict_msg])
+
+        assert result[0]["content"] == "plain-text\nfrom-text-attr"
+        assert result[1] == {"role": "user", "content": "dict-content"}
+
+    def test_extract_system_prompt_from_developer_text_like_part(self):
+        text_like = MagicMock()
+        text_like.text = "developer instructions"
+
+        dev_msg = MagicMock()
+        dev_msg.role = "developer"
+        dev_msg.parts = [text_like]
+
+        assert A2AChatTurnLoop._extract_system_prompt([dev_msg]) == "developer instructions"
+
+    @pytest.mark.asyncio
+    async def test_publish_a2a_llm_usage_returns_early_without_pubsub(self):
+        loop, _, _ = _make_a2a_loop([])
+        loop._pubsub = None
+
+        model_config = MagicMock()
+        model_config.id = uuid.uuid4()
+        model_config.model_id = "claude-sonnet-4-20250514"
+        model_config.provider = "Anthropic"
+        model_config.pricing = None
+        model_config.is_user_model.return_value = False
+
+        token_usage = TokenUsage(input_tokens=1, output_tokens=2)
+
+        await loop._publish_a2a_llm_usage(
+            usage_data={"cost": 0.01, "premium_requests": 1},
+            token_usage=token_usage,
+            session_id=uuid.uuid4(),
+            user_id=uuid.uuid4(),
+            run_id=uuid.uuid4(),
+            model_config=model_config,
+        )
+
+    @pytest.mark.asyncio
+    async def test_publish_tool_usage_returns_when_no_cost(self):
+        loop, _, _ = _make_a2a_loop([])
+        pubsub = AsyncMock()
+        loop._pubsub = pubsub
+
+        await loop._publish_tool_usage(
+            tool_result=_tool_output_mock("free", cost=0.0),
+            session_id=uuid.uuid4(),
+            user_id=uuid.uuid4(),
+            run_id=uuid.uuid4(),
+        )
+
+        pubsub.publish.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_publish_a2a_llm_usage_swallows_pubsub_exception(self):
+        loop, _, _ = _make_a2a_loop([])
+        loop._pubsub = AsyncMock()
+        loop._pubsub.publish = AsyncMock(side_effect=RuntimeError("pubsub-down"))
+
+        model_config = MagicMock()
+        model_config.id = uuid.uuid4()
+        model_config.model_id = "claude-sonnet-4-20250514"
+        model_config.provider = "Anthropic"
+        model_config.pricing = None
+        model_config.is_user_model.return_value = False
+
+        token_usage = TokenUsage(input_tokens=3, output_tokens=4)
+
+        await loop._publish_a2a_llm_usage(
+            usage_data={"cost": 0.02, "premium_requests": 0},
+            token_usage=token_usage,
+            session_id=uuid.uuid4(),
+            user_id=uuid.uuid4(),
+            run_id=uuid.uuid4(),
+            model_config=model_config,
+        )
+
+    @pytest.mark.asyncio
+    async def test_publish_tool_usage_swallows_pubsub_exception(self):
+        loop, _, _ = _make_a2a_loop([])
+        loop._pubsub = AsyncMock()
+        loop._pubsub.publish = AsyncMock(side_effect=RuntimeError("pubsub-down"))
+
+        await loop._publish_tool_usage(
+            tool_result=_tool_output_mock("paid", cost=0.5),
+            session_id=uuid.uuid4(),
+            user_id=uuid.uuid4(),
+            run_id=uuid.uuid4(),
+        )

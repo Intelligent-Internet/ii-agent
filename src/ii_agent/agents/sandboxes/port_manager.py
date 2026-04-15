@@ -137,7 +137,23 @@ class PortPoolManager:
         if cls._instance is None:
             with cls._lock:
                 if cls._instance is None:
-                    cls._instance = cls()
+                    port_range_start = DEFAULT_PORT_RANGE_START
+                    port_range_end = DEFAULT_PORT_RANGE_END
+                    try:
+                        from ii_agent.core.config.settings import get_settings
+
+                        sandbox_settings = get_settings().sandbox
+                        port_range_start = sandbox_settings.port_range_start
+                        port_range_end = sandbox_settings.port_range_end
+                    except Exception as exc:
+                        logger.debug(
+                            "Falling back to default sandbox port range due to settings load failure: %s",
+                            exc,
+                        )
+                    cls._instance = cls(
+                        port_range_start=port_range_start,
+                        port_range_end=port_range_end,
+                    )
         return cls._instance
 
     @classmethod

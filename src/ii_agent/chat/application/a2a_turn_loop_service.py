@@ -220,6 +220,11 @@ class A2AChatTurnLoop:
             "native_tool_schemas": native_tool_schemas,
             "source": "chat",
         }
+        logger.info(
+            "[a2a:stream] model_id=%r context_id=%s source=chat",
+            model_config.model_id,
+            context_id,
+        )
 
         # Forward extended thinking config if set
         thinking_tokens = getattr(model_config, "thinking_tokens", None)
@@ -253,6 +258,17 @@ class A2AChatTurnLoop:
             metadata=metadata,
         ):
             await cancel.raise_if_cancelled(run_id)
+
+            if event.event_type in {"session.error", "error"}:
+                message = str(event.data.get("message") or "Unknown A2A stream error")
+                logger.warning(
+                    "A2A chat stream returned session error; using native fallback "
+                    "(session=%s, context_id=%s, error=%s)",
+                    session_id,
+                    context_id,
+                    message,
+                )
+                raise RuntimeError(message)
 
             # Handle tool bridging requests
             if event.event_type == "tool.execution_request":

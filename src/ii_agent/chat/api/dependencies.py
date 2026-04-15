@@ -120,13 +120,36 @@ def _discover_sandbox_adapter_url() -> str | None:
             import json
 
             containers = json.loads(resp.read())
+            containers = sorted(
+                (c for c in containers if c.get("State") == "running"),
+                key=lambda c: c.get("Created", 0),
+                reverse=True,
+            )
+
             for c in containers:
                 names = c.get("Names", [])
-                if names:
-                    name = names[0].lstrip("/")
-                    url = f"http://{name}:18100"
-                    logger.info("Auto-discovered sandbox A2A adapter: %s", url)
-                    return url
+                if not names:
+                    continue
+
+                name = names[0].lstrip("/")
+                url = f"http://{name}:18100"
+
+                # Skip stale sandbox containers whose adapter port is not
+                # actually listening; otherwise chat/council can bind to a
+                # dead container and every A2A request fails immediately.
+                try:
+                    probe = _socket.create_connection((name, 18100), timeout=0.5)
+                    probe.close()
+                except OSError as exc:
+                    logger.info(
+                        "Ignoring sandbox without reachable A2A adapter (%s): %s",
+                        name,
+                        exc,
+                    )
+                    continue
+
+                logger.info("Auto-discovered sandbox A2A adapter: %s", url)
+                return url
     except Exception as exc:
         logger.debug("Sandbox adapter auto-discovery failed: %s", exc)
     return None

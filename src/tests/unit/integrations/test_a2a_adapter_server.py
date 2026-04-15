@@ -656,6 +656,98 @@ async def test_response_carries_a2a_version_header():
 
 
 # ---------------------------------------------------------------------------
+# Model steering: metadata["model"] extraction and forwarding
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_stream_forwards_model_from_metadata():
+    """metadata["model"] must be passed as model= kwarg to backend.stream()."""
+    from unittest.mock import MagicMock
+
+    captured: dict = {}
+
+    async def fake_stream(prompt, context_id, task_id=None, **kwargs):
+        captured.update(kwargs)
+        yield 'data: {"type": "assistant.message_delta", "text": "hi"}\n\n'
+        yield "data: [DONE]\n\n"
+
+    mock_backend = MagicMock()
+    mock_backend.stream = fake_stream
+
+    app = create_app(backend=mock_backend)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.post(
+            "/message:stream",
+            json={
+                "context_id": "ctx-model-1",
+                "messages": [{"role": "user", "content": "hello"}],
+                "metadata": {"model": "gpt-4o"},
+            },
+        )
+    assert resp.status_code == 200
+    assert captured.get("model") == "gpt-4o"
+
+
+@pytest.mark.asyncio
+async def test_stream_uses_empty_model_when_no_model_key_in_metadata():
+    """When metadata has no 'model' key, backend.stream() receives model=''."""
+    from unittest.mock import MagicMock
+
+    captured: dict = {}
+
+    async def fake_stream(prompt, context_id, task_id=None, **kwargs):
+        captured.update(kwargs)
+        yield 'data: {"type": "assistant.message_delta", "text": "hi"}\n\n'
+        yield "data: [DONE]\n\n"
+
+    mock_backend = MagicMock()
+    mock_backend.stream = fake_stream
+
+    app = create_app(backend=mock_backend)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.post(
+            "/message:stream",
+            json={
+                "context_id": "ctx-model-2",
+                "messages": [{"role": "user", "content": "hello"}],
+                "metadata": {},
+            },
+        )
+    assert resp.status_code == 200
+    assert captured.get("model") == ""
+
+
+@pytest.mark.asyncio
+async def test_stream_uses_empty_model_when_model_value_is_null():
+    """metadata={"model": null} must result in model='' (null coerced to empty string)."""
+    from unittest.mock import MagicMock
+
+    captured: dict = {}
+
+    async def fake_stream(prompt, context_id, task_id=None, **kwargs):
+        captured.update(kwargs)
+        yield 'data: {"type": "assistant.message_delta", "text": "hi"}\n\n'
+        yield "data: [DONE]\n\n"
+
+    mock_backend = MagicMock()
+    mock_backend.stream = fake_stream
+
+    app = create_app(backend=mock_backend)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.post(
+            "/message:stream",
+            json={
+                "context_id": "ctx-model-3",
+                "messages": [{"role": "user", "content": "hello"}],
+                "metadata": {"model": None},
+            },
+        )
+    assert resp.status_code == 200
+    assert captured.get("model") == ""
+
+
+# ---------------------------------------------------------------------------
 # _with_heartbeats wrapper tests
 # ---------------------------------------------------------------------------
 

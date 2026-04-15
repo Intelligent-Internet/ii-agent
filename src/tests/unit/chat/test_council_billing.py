@@ -1190,6 +1190,79 @@ class TestCouncilServiceA2ARouting:
         assert len(synth_completes) == 1
         assert synth_completes[0]["billing_backend"] == "native"
 
+    @pytest.mark.asyncio
+    async def test_a2a_rate_limit_falls_back_to_direct_path(self):
+        """Rate-limited A2A council members should fall back to native inference."""
+        from ii_agent.integrations.a2a.as_client import A2AStreamEvent
+
+        config_a = _make_model_config(model_id="model-a")
+        config_b = _make_model_config(model_id="model-b")
+        synth_config = _make_model_config(model_id="synth")
+        usage = _make_token_usage(input_tokens=10, output_tokens=5)
+
+        a2a_client = AsyncMock()
+
+        async def mock_astream(*, messages, context_id, metadata):
+            yield A2AStreamEvent(
+                event_type="session.error",
+                data={"message": "rate limit exceeded"},
+            )
+
+        a2a_client.astream = mock_astream
+
+        def mock_get_client(config):
+            client = MagicMock()
+
+            async def send(messages):
+                return SimpleNamespace(
+                    content=[TextContent(text=f"Direct answer for {config.model_id}")],
+                    usage=usage,
+                )
+
+            client.send = send
+            return client
+
+        prefs = _make_council_preferences(
+            model_ids=["model-a", "model-b"], synthesis_model_id="synth"
+        )
+
+        with (
+            patch(
+                "ii_agent.chat.application.council_service.get_client",
+                side_effect=mock_get_client,
+            ),
+            patch(
+                "ii_agent.chat.application.council_service.cancel.raise_if_cancelled",
+                new_callable=AsyncMock,
+            ),
+        ):
+            events: list[dict] = []
+            async for event in CouncilService.stream_council_response(
+                user_id=_USER,
+                messages=_make_messages(),
+                user_question="Hello",
+                council_preferences=prefs,
+                model_configs={
+                    "model-a": config_a,
+                    "model-b": config_b,
+                    "synth": synth_config,
+                },
+                model_names={},
+                run_id=str(_RUN),
+                session_id=_SESSION,
+                a2a_client=a2a_client,
+                a2a_backend="copilot",
+            ):
+                events.append(event)
+
+        member_completes = [e for e in events if e["type"] == "council_member_complete"]
+        assert len(member_completes) == 2
+        assert all(e["billing_backend"] == "native" for e in member_completes)
+
+        synth_completes = [e for e in events if e["type"] == "council_synthesis_complete"]
+        assert len(synth_completes) == 1
+        assert synth_completes[0]["billing_backend"] == "native"
+
 
 class TestCouncilChatResponseA2ABillingPassthrough:
     """Test that stream_council_chat_response passes A2A billing fields through."""

@@ -11,7 +11,7 @@ import { ISession, QUESTION_MODE, TAB } from '@/typings/agent'
 import {
     selectAvailableModels,
     selectIsFavorite,
-    selectSelectedModel,
+    selectSelectedChatModel,
     toggleFavoriteAsync,
     setMessages,
     setActiveTab,
@@ -69,7 +69,7 @@ const ChatHeader = ({
     const isMobile = useIsMobile()
     const sessionId = searchParams.get('id') || ''
 
-    const selectedModel = useAppSelector(selectSelectedModel)
+    const selectedChatModel = useAppSelector(selectSelectedChatModel)
     const availableModels = useAppSelector(selectAvailableModels)
     const isFavorite = useAppSelector(selectIsFavorite(sessionId || ''))
     const questionMode = useAppSelector(selectQuestionMode)
@@ -82,8 +82,8 @@ const ChatHeader = ({
     const { imageModels, videoModels } = useMediaModels()
 
     const model = useMemo(
-        () => availableModels.find((m) => m.id === selectedModel),
-        [selectedModel, availableModels]
+        () => availableModels.find((m) => m.id === selectedChatModel),
+        [selectedChatModel, availableModels]
     )
 
     const handleShare = () => {

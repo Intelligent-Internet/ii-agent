@@ -54,6 +54,24 @@ def _extract_text(content) -> str:
     return "".join(p.text for p in content if isinstance(p, TextContent))
 
 
+def _should_fallback_to_direct(exc: Exception) -> bool:
+    """Return True when an A2A failure should degrade gracefully to direct inference."""
+    details = f"{type(exc).__name__}: {exc}".lower()
+    return any(
+        marker in details
+        for marker in (
+            "connect",
+            "connection",
+            "timeout",
+            "rate limit",
+            "429",
+            "temporar",
+            "unavailable",
+            "overloaded",
+        )
+    )
+
+
 async def _call_via_a2a(
     *,
     a2a_client: IIAgentA2AClient,
@@ -198,7 +216,7 @@ class CouncilService:
                 if use_a2a:
                     # A2A path — billing via a2a:{backend}
                     context_id = f"council-{session_id}-{model_id}"
-                    metadata = {"model": model_id, "source": "council"}
+                    metadata = {"model": config.model_id, "source": "council"}
                     try:
                         content, usage, cost, prem_req = await asyncio.wait_for(
                             _call_via_a2a(
@@ -219,11 +237,9 @@ class CouncilService:
                         )
                         use_a2a = False  # noqa: F841 — fall through to direct path below
                     except Exception as a2a_exc:
-                        # Check for httpx-specific connect errors
-                        exc_name = type(a2a_exc).__name__
-                        if "Connect" in exc_name or "connect" in str(a2a_exc).lower():
+                        if _should_fallback_to_direct(a2a_exc):
                             logger.warning(
-                                "Council model %s A2A connect failed (%s), falling back to direct",
+                                "Council model %s A2A failed (%s), falling back to direct",
                                 model_id,
                                 a2a_exc,
                             )
@@ -370,25 +386,42 @@ class CouncilService:
 
             if use_a2a_synthesis:
                 context_id = f"council-synthesis-{session_id}"
-                metadata = {"model": synthesis_model_id, "source": "council-synthesis"}
-                synthesis_content, syn_usage, syn_cost, syn_prem = await _call_via_a2a(
-                    a2a_client=a2a_client,
-                    messages=[synthesis_message],
-                    context_id=context_id,
-                    metadata=metadata,
-                )
+                metadata = {"model": synthesis_config.model_id, "source": "council-synthesis"}
+                try:
+                    synthesis_content, syn_usage, syn_cost, syn_prem = await _call_via_a2a(
+                        a2a_client=a2a_client,
+                        messages=[synthesis_message],
+                        context_id=context_id,
+                        metadata=metadata,
+                    )
+                except (ConnectionError, OSError) as conn_err:
+                    logger.warning(
+                        "Council synthesis A2A unreachable (%s), falling back to direct",
+                        conn_err,
+                    )
+                    use_a2a_synthesis = False
+                except Exception as a2a_exc:
+                    if _should_fallback_to_direct(a2a_exc):
+                        logger.warning(
+                            "Council synthesis A2A failed (%s), falling back to direct",
+                            a2a_exc,
+                        )
+                        use_a2a_synthesis = False
+                    else:
+                        raise
+                else:
+                    yield {
+                        "type": "council_synthesis_complete",
+                        "model_id": synthesis_model_id,
+                        "content": synthesis_content,
+                        "usage": syn_usage,
+                        "model_config": synthesis_config,
+                        "billing_backend": f"a2a:{a2a_backend}",
+                        "provider_reported_cost": syn_cost,
+                        "premium_requests": syn_prem,
+                    }
 
-                yield {
-                    "type": "council_synthesis_complete",
-                    "model_id": synthesis_model_id,
-                    "content": synthesis_content,
-                    "usage": syn_usage,
-                    "model_config": synthesis_config,
-                    "billing_backend": f"a2a:{a2a_backend}",
-                    "provider_reported_cost": syn_cost,
-                    "premium_requests": syn_prem,
-                }
-            else:
+            if not use_a2a_synthesis:
                 synthesis_client = get_client(synthesis_config)
                 synthesis_response = await synthesis_client.send(messages=[synthesis_message])
                 synthesis_content = _extract_text(synthesis_response.content)

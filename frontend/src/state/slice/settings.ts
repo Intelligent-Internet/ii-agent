@@ -14,12 +14,14 @@ export interface CouncilPreference {
     synthesisModelId: string
 }
 
-interface SettingsState {
+export interface SettingsState {
     toolSettings: ToolSettings
     chatToolSettings: ChatToolSettings
     chatMediaPreference: ChatMediaPreference
     councilPreference: CouncilPreference
-    selectedModel?: string
+    selectedModel?: string  // Deprecated: use selectedChatModel and selectedAgentModel
+    selectedChatModel?: string  // Model for chat mode
+    selectedAgentModel?: string  // Model for agent mode
     availableModels: IModel[]
     currentSettingData?: ISetting
     isSavingSetting: boolean
@@ -66,6 +68,8 @@ const initialState: SettingsState = {
         synthesisModelId: ''
     },
     selectedModel: undefined,
+    selectedChatModel: undefined,
+    selectedAgentModel: undefined,
     availableModels: [],
     currentSettingData: undefined,
     isSavingSetting: false,
@@ -116,6 +120,18 @@ const settingsSlice = createSlice({
         ) => {
             state.selectedModel = action.payload
         },
+        setSelectedChatModel: (
+            state,
+            action: PayloadAction<string | undefined>
+        ) => {
+            state.selectedChatModel = action.payload
+        },
+        setSelectedAgentModel: (
+            state,
+            action: PayloadAction<string | undefined>
+        ) => {
+            state.selectedAgentModel = action.payload
+        },
         setAvailableModels: (state, action: PayloadAction<IModel[]>) => {
             state.availableModels = action.payload
         },
@@ -165,6 +181,8 @@ export const {
     setCodexToolsStatus,
     setClaudeCodeToolsStatus,
     setSelectedModel,
+    setSelectedChatModel,
+    setSelectedAgentModel,
     setAvailableModels,
     setCurrentSettingData,
     setIsSavingSetting,
@@ -185,6 +203,10 @@ export const selectChatToolSettings = (state: { settings: SettingsState }) =>
     state.settings.chatToolSettings
 export const selectChatMediaPreference = (state: { settings: SettingsState }) =>
     state.settings.chatMediaPreference
+export const selectSelectedChatModel = (state: { settings: SettingsState }) =>
+    state.settings.selectedChatModel
+export const selectSelectedAgentModel = (state: { settings: SettingsState }) =>
+    state.settings.selectedAgentModel
 export const selectSelectedModel = (state: { settings: SettingsState }) =>
     state.settings.selectedModel
 export const selectAvailableModels = (state: { settings: SettingsState }) =>

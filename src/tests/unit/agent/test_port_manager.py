@@ -5,7 +5,8 @@ including allocation, release, and cleanup operations.
 """
 
 import pytest
-from unittest.mock import MagicMock
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 from ii_agent.agents.sandboxes.port_manager import (
     PortPoolManager,
@@ -128,6 +129,21 @@ class TestPortPoolManager:
         stats = manager.get_stats()
         assert stats["port_range"] == "40000-40099"
         assert stats["total_available"] == 100
+
+    def test_get_instance_uses_configured_sandbox_range(self):
+        """Regression test: the singleton must honor configured sandbox range."""
+        PortPoolManager.reset_instance()
+
+        fake_settings = SimpleNamespace(
+            sandbox=SimpleNamespace(port_range_start=30000, port_range_end=39999)
+        )
+
+        with patch("ii_agent.core.config.settings.get_settings", return_value=fake_settings):
+            manager = PortPoolManager.get_instance()
+
+        stats = manager.get_stats()
+        assert stats["port_range"] == "30000-39999"
+        assert stats["total_available"] == 10000
 
     def test_allocate_ports_success(self):
         """Test successful port allocation."""

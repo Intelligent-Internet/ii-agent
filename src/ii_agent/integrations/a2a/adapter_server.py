@@ -524,7 +524,17 @@ def create_app(
             # Forward the agent's system message so the CLI LLM receives
             # the same directives as the native inner loop.
             system_message = (req.metadata or {}).get("system_message") or None
-            # Pass multimodal parts, tool schemas, and system message to backends.
+            # Forward the user-selected model so the backend can steer the
+            # LLM used for this specific request rather than always using
+            # the startup-configured default.
+            model_id: str = (req.metadata or {}).get("model") or ""
+            logger.debug(
+                "[a2a:stream] model_id=%r backend_default=%r context_id=%s",
+                model_id,
+                getattr(getattr(backend, "config", None), "model", ""),
+                req.context_id,
+            )
+            # Pass multimodal parts, tool schemas, system message, and model to backends.
             if has_multimodal_parts(parts):
                 async for chunk in backend.stream(
                     prompt,
@@ -533,6 +543,7 @@ def create_app(
                     parts=parts,
                     tool_schemas=tool_schemas,
                     system_message=system_message,
+                    model=model_id,
                 ):
                     yield chunk
             else:
@@ -542,6 +553,7 @@ def create_app(
                     task_id,
                     tool_schemas=tool_schemas,
                     system_message=system_message,
+                    model=model_id,
                 ):
                     yield chunk
         else:

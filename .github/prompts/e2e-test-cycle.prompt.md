@@ -25,15 +25,31 @@ If services are down, bring them up with `./scripts/stack_control.sh start` and 
 If the stack fails to start after two attempts, **stop and report the infrastructure issue** — do not
 enter the test loop with a broken stack.
 
+## State Management Overview
+
+The E2E test suite maintains state in `.e2e_last_results.json` in `scripts/local/`:
+
+- **First run:** Use `--clear` to delete old state and run all tests
+- **Subsequent runs:** Use `--failed` to run only tests that failed or errored in the previous run
+- Results file is automatically saved after each test run
+- This enables efficient fix/rebuild/retest cycles without re-running passing tests
+
 ## Outer Loop: Full Test Sweep
 
-Run the **complete** E2E test suite:
+### Entry Point (First Outer Loop — Clear State)
+
+Clear previous state and run the **complete** E2E test suite:
 
 ```bash
 cd /home/mdear/workspaces/git/ii-agent
 source ~/workspaces/venvs/ii-agent/bin/activate
-python3 scripts/local/test_e2e.py 2>&1
+python3 scripts/local/test_e2e.py --clear 2>&1
 ```
+
+This will:
+1. Delete `.e2e_last_results.json` (if it exists)
+2. Run all 32+ tests across 11 categories
+3. Save results to `.e2e_last_results.json`
 
 Parse the output summary to collect:
 - Total tests run, passed, failed, skipped, errored
@@ -57,7 +73,7 @@ For **each** failed/errored test (process one at a time, in test-ID alphabetical
 
 1. Re-run the single failing test in isolation to confirm it still fails:
    ```bash
-   TEST_ID="<TEST_ID>" python3 scripts/local/test_e2e.py 2>&1
+   python3 scripts/local/test_e2e.py --test <TEST_ID> 2>&1
    ```
 2. Read the failure output carefully. Check backend and sandbox logs filtered to the relevant
    time window (use the test's session ID or a recent timestamp to narrow results):
@@ -161,7 +177,7 @@ curl -sf http://localhost:8000/health || echo "ERROR: Backend failed to start"
 Re-run **only** the test you just fixed:
 
 ```bash
-TEST_ID="<TEST_ID>" python3 scripts/local/test_e2e.py 2>&1
+python3 scripts/local/test_e2e.py --test <TEST_ID> 2>&1
 ```
 
 - If it **passes**: mark this failure as resolved, move to next failure in the inner loop
@@ -171,28 +187,36 @@ TEST_ID="<TEST_ID>" python3 scripts/local/test_e2e.py 2>&1
 ### Step 5 — After All Failures Processed
 
 Once every failure from the inner loop has been addressed (fixed or logged as unresolvable after
-3 attempts), return to the **Outer Loop** and run the full suite again.
+3 attempts), return to the **Outer Loop Re-entry** below.
 
 ## Outer Loop Re-entry
 
-After the inner loop completes, run the full suite again from the top:
+After the inner loop completes, re-run the full suite to catch any regressions from your fixes:
 
 ```bash
 cd /home/mdear/workspaces/git/ii-agent
 source ~/workspaces/venvs/ii-agent/bin/activate
-python3 scripts/local/test_e2e.py 2>&1
+python3 scripts/local/test_e2e.py --failed 2>&1
 ```
 
-This catches regressions introduced by fixes. Repeat the outer→inner loop cycle until:
+The `--failed` flag will:
+1. Load `.e2e_last_results.json` (which was saved from the previous full run)
+2. Run **only** tests that had FAIL or ERROR status
+3. Save new results, overwriting the previous file
+4. Show summary and any remaining failures
 
-- **All tests PASS or SKIP** (with documented skip reasons), OR
-- **No new progress** is possible (same failures persist after a full inner loop cycle)
+This catches regressions introduced by fixes. Parse the output and:
+
+- **All failures now pass?** → Repeat outer loop one more time with `--clear` to ensure no other tests broke
+- **Different failures than before?** → New bugs introduced. Return to inner loop
+- **Same failures as before?** → Plateau reached, no progress. Stop and report stuck failures
+- **After 5 outer loops?** → Limit reached. Report current state and stop
 
 ## Completion Criteria
 
 The cycle is **complete** when ONE of these is true:
 
-1. **All tests pass**: every test is PASS or SKIP-with-reason
+1. **All tests pass**: every test is PASS or SKIP-with-reason (no FAIL or ERROR)
 2. **Plateau reached**: a full outer loop produces the exact same set of failures as the previous
    outer loop (no progress was made) — report the stuck failures and stop
 3. **Max iterations reached**: after **5 outer loop iterations**, stop regardless and report current
@@ -261,6 +285,8 @@ curl -sf -X DELETE "$BACKEND_URL/sessions/<SESSION_ID>" -H "Authorization: Beare
 | AGEN | Agent Multi-Turn | Context retention, tool use across turns |
 | XFEAT | Cross-Feature | Agent web search + file, chat then agent on same session |
 | HIST | Chat History | Message persistence and retrieval |
+| CNCL | Council Mode | Basic, validation, billing events |
+| A2A | A2A Backend | Config, chat/agent routing, council integration |
 
 ## Critical Rules
 
@@ -270,3 +296,5 @@ curl -sf -X DELETE "$BACKEND_URL/sessions/<SESSION_ID>" -H "Authorization: Beare
 - Keep fixes minimal — do not refactor or improve code beyond what the failing test requires
 - If a test is SKIP due to external factors (API quota, missing credentials), document it and move on
 - Do not modify test expectations to make tests pass — fix the underlying code instead
+- Use `--failed` flag after first cycle to efficiently re-test only failures
+- Use `--clear` flag only at the start (or to reset and try a different approach)

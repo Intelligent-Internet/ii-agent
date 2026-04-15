@@ -100,7 +100,8 @@ async def test_upload_images_only():
 
     assert sandbox_files == []
     assert len(sandbox_images) == 1
-    assert sandbox_images[0].url == "https://example.com/img.png"
+    assert str(sandbox_images[0].filepath) == "/uploads/image_0.png"
+    assert sandbox_images[0].url is None
     sandbox.write_files.assert_awaited_once()
 
 

@@ -350,7 +350,7 @@ class ClaudeCodeBackend:
     # ------------------------------------------------------------------
 
     def _build_cmd(
-        self, prompt: str, context_id: str, *, image_paths: list[str] | None = None
+        self, prompt: str, context_id: str, *, image_paths: list[str] | None = None, model: str = ""
     ) -> list[str]:
         """Build the ``claude`` CLI argument list for one turn.
 
@@ -360,6 +360,9 @@ class ClaudeCodeBackend:
             Optional list of local file paths to images.  Each path is
             passed via ``--image <path>`` to the Claude CLI which supports
             multimodal input natively.
+        model:
+            User-selected model ID.  When non-empty overrides
+            ``ClaudeCodeConfig.model`` for this invocation.
         """
         cmd: list[str] = [
             self._cfg.claude_bin,
@@ -370,8 +373,9 @@ class ClaudeCodeBackend:
         session_id = self._sessions.get(context_id)
         if session_id:
             cmd += ["--resume", session_id]
-        if self._cfg.model:
-            cmd += ["--model", self._cfg.model]
+        effective_model = model or self._cfg.model
+        if effective_model:
+            cmd += ["--model", effective_model]
         for img_path in image_paths or []:
             cmd += ["--image", img_path]
         cmd.append(prompt)
@@ -425,6 +429,7 @@ class ClaudeCodeBackend:
         task_id: str | None = None,
         *,
         parts: list[Any] | None = None,
+        model: str = "",
     ) -> AsyncGenerator[str, None]:
         """Yield A2A SSE strings for one ``claude`` invocation.
 
@@ -457,7 +462,7 @@ class ClaudeCodeBackend:
         image_paths, temp_files = _extract_image_paths_from_parts(parts)
 
         try:
-            cmd = self._build_cmd(prompt, context_id, image_paths=image_paths or None)
+            cmd = self._build_cmd(prompt, context_id, image_paths=image_paths or None, model=model)
             env = self._build_env()
 
             proc = await asyncio.create_subprocess_exec(

@@ -525,7 +525,10 @@ class IIAgent:
         _A2A_HEALTH_INTERVAL = 0.5  # initial back-off
 
         try:
-            url = await sandbox.expose_port(ADAPTER_CONTAINER_PORT)
+            # The health check runs from the backend container, so prefer the
+            # sandbox's internal Docker-network address rather than a host-mapped
+            # port that may not be reachable from inside the container.
+            url = await sandbox.expose_port(ADAPTER_CONTAINER_PORT, external=False)
         except Exception:
             logger.warning(
                 "Could not resolve A2A adapter port for sandbox; "
@@ -2431,10 +2434,12 @@ class IIAgent:
         if hasattr(strategy, "_sandbox_ref") and self._sandbox is None:
             try:
                 await self._ensure_sandbox_for_inner_loop()
-            except Exception:
+            except Exception as exc:
                 logger.warning(
-                    "A2A sandbox init failed; falling back to native inner loop (session={})",
+                    "A2A sandbox init failed; falling back to native inner loop "
+                    "(session={}, error={!r})",
                     self.session_id,
+                    exc,
                 )
                 strategy = NativeInnerLoop()
 

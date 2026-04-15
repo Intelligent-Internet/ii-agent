@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import base64
+import logging
 import os
 import tempfile
+from unittest.mock import AsyncMock, MagicMock, patch
 
-
+import pytest
 from a2a.types import (
     FilePart,
     FileWithBytes,
@@ -16,10 +18,15 @@ from a2a.types import (
 )
 
 from ii_agent.integrations.a2a.claude_code_backend import (
+    ClaudeCodeBackend,
+    ClaudeCodeConfig,
     _cleanup_temp_files,
     _extract_image_paths_from_parts,
 )
+from ii_agent.integrations.a2a.codex_backend import CodexBackend, CodexConfig
 from ii_agent.integrations.a2a.copilot_backend import (
+    CopilotBackend,
+    CopilotConfig,
     _parts_to_attachments,
 )
 
@@ -292,3 +299,132 @@ class TestPartsToAttachments:
 
         for p in temps:
             os.unlink(p)
+
+
+# ---------------------------------------------------------------------------
+# Model steering: per-backend _build_cmd / session model override logic
+# ---------------------------------------------------------------------------
+
+# ─── ClaudeCodeBackend ──────────────────────────────────────────────
+
+
+class TestClaudeCodeBackendModelSteering:
+    def test_override_model_used_in_cmd(self):
+        """Explicit model override must appear in the subprocess command."""
+        cfg = ClaudeCodeConfig(api_key="key", model="claude-opus-4-20250514")
+        backend = ClaudeCodeBackend(cfg)
+        cmd = backend._build_cmd("hi", "ctx", model="claude-sonnet-4-20250514")
+        idx = cmd.index("--model")
+        assert cmd[idx + 1] == "claude-sonnet-4-20250514"
+
+    def test_config_model_used_when_no_override(self):
+        """When no override is provided, the config default appears in the command."""
+        cfg = ClaudeCodeConfig(api_key="key", model="claude-opus-4-20250514")
+        backend = ClaudeCodeBackend(cfg)
+        cmd = backend._build_cmd("hi", "ctx")
+        idx = cmd.index("--model")
+        assert cmd[idx + 1] == "claude-opus-4-20250514"
+
+    def test_empty_override_falls_back_to_config_model(self):
+        """Empty string override must fall back to config model, not omit the flag."""
+        cfg = ClaudeCodeConfig(api_key="key", model="claude-opus-4-20250514")
+        backend = ClaudeCodeBackend(cfg)
+        cmd = backend._build_cmd("hi", "ctx", model="")
+        idx = cmd.index("--model")
+        assert cmd[idx + 1] == "claude-opus-4-20250514"
+
+    def test_model_flag_omitted_when_both_empty(self):
+        """No --model flag when config model and override are both empty."""
+        cfg = ClaudeCodeConfig(api_key="key", model="")
+        backend = ClaudeCodeBackend(cfg)
+        cmd = backend._build_cmd("hi", "ctx", model="")
+        assert "--model" not in cmd
+
+
+# ─── CodexBackend ───────────────────────────────────────────────────
+
+
+class TestCodexBackendModelSteering:
+    def test_override_model_used_in_cmd(self):
+        """Explicit model override must appear in the subprocess command."""
+        cfg = CodexConfig(api_key="key", model="o4-mini")
+        backend = CodexBackend(cfg)
+        cmd = backend._build_cmd("hi", "ctx", model="gpt-4o")
+        idx = cmd.index("--model")
+        assert cmd[idx + 1] == "gpt-4o"
+
+    def test_config_model_used_when_no_override(self):
+        """When no override is provided, the config default appears in the command."""
+        cfg = CodexConfig(api_key="key", model="o4-mini")
+        backend = CodexBackend(cfg)
+        cmd = backend._build_cmd("hi", "ctx")
+        idx = cmd.index("--model")
+        assert cmd[idx + 1] == "o4-mini"
+
+    def test_empty_override_falls_back_to_config_model(self):
+        """Empty string override must fall back to config model."""
+        cfg = CodexConfig(api_key="key", model="o3")
+        backend = CodexBackend(cfg)
+        cmd = backend._build_cmd("hi", "ctx", model="")
+        idx = cmd.index("--model")
+        assert cmd[idx + 1] == "o3"
+
+    def test_model_flag_omitted_when_both_empty(self):
+        """No --model flag when config model and override are both empty."""
+        cfg = CodexConfig(api_key="key", model="")
+        backend = CodexBackend(cfg)
+        cmd = backend._build_cmd("hi", "ctx", model="")
+        assert "--model" not in cmd
+
+
+# ─── CopilotBackend ─────────────────────────────────────────────────
+
+
+class TestCopilotBackendModelSteering:
+    def _make_backend(self, config_model: str = "") -> tuple[CopilotBackend, MagicMock]:
+        cfg = CopilotConfig(model=config_model)
+        backend = CopilotBackend(cfg)
+        mock_client = MagicMock()
+        mock_session = MagicMock()
+        mock_client.create_session = AsyncMock(return_value=mock_session)
+        return backend, mock_client
+
+    @pytest.mark.asyncio
+    async def test_override_model_forwarded_to_sdk(self):
+        """Runtime model override must reach create_session(session_kwargs)."""
+        backend, mock_client = self._make_backend(config_model="copilot-claude-3.5")
+        with patch.object(backend, "_get_client", return_value=mock_client):
+            await backend._get_or_create_session("ctx-1", model="gpt-4o")
+
+        call_kwargs = mock_client.create_session.await_args.args[0]
+        assert call_kwargs["model"] == "gpt-4o"
+
+    @pytest.mark.asyncio
+    async def test_config_model_used_when_no_override(self):
+        """Config default must be used when override is empty."""
+        backend, mock_client = self._make_backend(config_model="copilot-claude-3.5")
+        with patch.object(backend, "_get_client", return_value=mock_client):
+            await backend._get_or_create_session("ctx-1", model="")
+
+        call_kwargs = mock_client.create_session.await_args.args[0]
+        assert call_kwargs["model"] == "copilot-claude-3.5"
+
+    @pytest.mark.asyncio
+    async def test_model_omitted_when_both_empty(self):
+        """No model key in session_kwargs when config and override are both empty."""
+        backend, mock_client = self._make_backend(config_model="")
+        with patch.object(backend, "_get_client", return_value=mock_client):
+            await backend._get_or_create_session("ctx-1", model="")
+
+        call_kwargs = mock_client.create_session.await_args.args[0]
+        assert "model" not in call_kwargs
+
+    @pytest.mark.asyncio
+    async def test_override_logs_when_differs_from_config(self, caplog):
+        """Logger.info must fire when the override differs from config default."""
+        backend, mock_client = self._make_backend(config_model="copilot-claude-3.5")
+        with patch.object(backend, "_get_client", return_value=mock_client):
+            with caplog.at_level(logging.INFO, logger="ii_agent.integrations.a2a.copilot_backend"):
+                await backend._get_or_create_session("ctx-log", model="gpt-4o")
+
+        assert any("gpt-4o" in r.message for r in caplog.records)

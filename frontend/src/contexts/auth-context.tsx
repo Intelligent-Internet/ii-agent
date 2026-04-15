@@ -3,9 +3,11 @@ import { authService } from '@/services/auth.service'
 import { settingsService } from '@/services/settings.service'
 import {
     selectAvailableModels,
-    selectSelectedModel,
+    selectSelectedChatModel,
+    selectSelectedAgentModel,
     setAvailableModels,
-    setSelectedModel,
+    setSelectedChatModel,
+    setSelectedAgentModel,
     store,
     userApi,
     sessionApi
@@ -43,15 +45,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 const firstModel = data.models[0]
 
                 const state = store.getState()
-                const currentSelectedModel = selectSelectedModel(state)
+                const currentSelectedChatModel = selectSelectedChatModel(state)
+                const currentSelectedAgentModel = selectSelectedAgentModel(state)
                 const currentAvailableModels = selectAvailableModels(state)
 
-                const selectedModelStillAvailable = currentAvailableModels.find(
-                    (model) => model.id === currentSelectedModel
+                const selectedChatModelStillAvailable = currentAvailableModels.find(
+                    (model) => model.id === currentSelectedChatModel
+                )
+                const selectedAgentModelStillAvailable = currentAvailableModels.find(
+                    (model) => model.id === currentSelectedAgentModel
                 )
 
-                if (!currentSelectedModel || !selectedModelStillAvailable) {
-                    dispatch(setSelectedModel(firstModel.id))
+                // Set default for chat model if not set or no longer available
+                if (!currentSelectedChatModel || !selectedChatModelStillAvailable) {
+                    dispatch(setSelectedChatModel(firstModel.id))
+                }
+
+                // Set default for agent model if not set or no longer available
+                if (!currentSelectedAgentModel || !selectedAgentModelStillAvailable) {
+                    dispatch(setSelectedAgentModel(firstModel.id))
                 }
             }
         } catch (error) {

@@ -454,6 +454,41 @@ class TestCopilotBackendStream:
         assert chunks[-1] == "data: [DONE]\n\n"
 
     @pytest.mark.asyncio
+    async def test_turn_end_does_not_swallow_trailing_session_error(self) -> None:
+        turn_end_event = self._make_event(_ET.ASSISTANT_TURN_END)
+        error_event = self._make_event(
+            _ET.SESSION_ERROR,
+            message="model failed after turn end",
+            error_type="runtime",
+        )
+        mock_cls, mock_client, mock_session = _build_sdk_mocks([turn_end_event, error_event])
+
+        backend = CopilotBackend(CopilotConfig())
+        backend._sessions["ctx-turn-end"] = "sess-old"
+
+        with (
+            patch(
+                "ii_agent.integrations.a2a.copilot_backend.CopilotBackend._get_client",
+                new=AsyncMock(return_value=mock_client),
+            ),
+            patch(
+                "ii_agent.integrations.a2a.copilot_backend.CopilotBackend._get_or_create_session",
+                new=AsyncMock(return_value=mock_session),
+            ),
+            patch("copilot.generated.session_events.SessionEventType", _ET),
+        ):
+            chunks = await _collect(backend.stream("hello", "ctx-turn-end"))
+
+        parsed = [_parse_sse(c) for c in chunks if not c.startswith("data: [DONE]")]
+        assert any(
+            evt["type"] == "session.error"
+            and evt["data"].get("message") == "model failed after turn end"
+            for evt in parsed
+        )
+        assert "ctx-turn-end" not in backend._sessions
+        assert chunks[-1] == "data: [DONE]\n\n"
+
+    @pytest.mark.asyncio
     async def test_timeout_yields_error_and_done(self) -> None:
         # Use a very short timeout and an event that never arrives.
         backend = CopilotBackend(CopilotConfig(timeout=0.01))

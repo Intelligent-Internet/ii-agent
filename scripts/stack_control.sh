@@ -10,13 +10,14 @@
 #   stop            Stop all services
 #   restart         Restart all services (picks up env changes)
 #   rebuild         Rebuild images from scratch (no cache) and restart
+#   build           Build any combination of backend/frontend/sandbox in parallel
 #   build-sandbox   Build the sandbox Docker image (full --no-cache)
 #   build-sandbox --quick  Rebuild sandbox image with layer cache (fast for src-only changes)
 #   patch-sandbox   Hot-patch source files into running sandbox containers and restart services
 #   patch-sandbox --no-restart  Hot-patch without restarting (processes keep old code)
 #   status          Show running containers and URLs
 #   logs [service]  View logs (add -f to follow)
-#   cleanup         Remove orphaned sandbox containers
+#   cleanup         Remove stale sandbox containers
 #   setup           Create .stack.env.local from template
 #
 set -euo pipefail
@@ -42,6 +43,108 @@ ensure_env() {
   fi
 }
 
+print_help() {
+  cat <<EOF
+stack_control.sh - Manage ii-agent local Docker stack
+
+Usage:
+  scripts/stack_control.sh <command> [options]
+
+Commands:
+  start                        Start all services
+  stop                         Stop all services
+  restart                      Restart all services (picks up env changes)
+  rebuild [service ...]        Rebuild compose services with no cache and restart
+  build [targets ...] [flags]  Build backend/frontend/sandbox in parallel
+  build-sandbox [--quick]      Build the sandbox image only
+  patch-sandbox [--no-restart] Hot-patch source into running sandbox containers
+  status                       Show running containers and URLs
+  logs [service] [-f]          View logs for the full stack or a single service
+  cleanup                      Remove stale sandbox containers
+  setup                        Create docker/.stack.env.local from template
+
+Build targets:
+  backend    FastAPI app, agent runtime, billing, APIs
+  frontend   Chat UI and web client
+  sandbox    Tool execution / code sandbox image
+  all        Alias for backend frontend sandbox
+
+Build flags:
+  --no-cache   Full rebuild without cache for selected targets
+  --quick      Prefer cache (useful for rapid sandbox iteration)
+  -h, --help   Show command help
+
+Agent-focused use cases:
+  scripts/stack_control.sh build backend
+      Rebuild the backend when changing agent logic, routing, billing, or APIs.
+
+  scripts/stack_control.sh build frontend backend
+      Rebuild both UI and API together when chat contracts or UX flows change.
+
+  scripts/stack_control.sh build sandbox --quick
+      Fast iteration when changing tool execution, A2A adapter, or sandbox code.
+
+  scripts/stack_control.sh build all --no-cache
+      Clean parallel rebuild of the full local agent stack.
+
+Notes:
+  - The build command runs selected targets in parallel and returns non-zero if any target fails.
+  - Use rebuild when you want compose services rebuilt and then restarted.
+EOF
+}
+
+print_build_help() {
+  cat <<EOF
+Usage:
+  scripts/stack_control.sh build [targets ...] [--no-cache] [--quick]
+
+Targets:
+  backend | frontend | sandbox | all
+
+Examples:
+  scripts/stack_control.sh build backend
+  scripts/stack_control.sh build frontend backend
+  scripts/stack_control.sh build backend sandbox --quick
+  scripts/stack_control.sh build all --no-cache
+
+Agent-focused guidance:
+  - Pick backend for agent runtime, billing, API, or orchestration changes.
+  - Pick frontend for chat UX or client integration changes.
+  - Pick sandbox for tool bridge, code execution, or adapter environment changes.
+  - Combine targets in one command to rebuild the exact surfaces touched by your change.
+EOF
+}
+
+build_compose_target() {
+  local target="$1"
+  local use_cache="$2"
+
+  set -o pipefail
+  echo "[$target] Starting compose build"
+  if [[ "$use_cache" == true ]]; then
+    compose build "$target" 2>&1 | sed -u "s/^/[$target] /"
+  else
+    compose build --no-cache "$target" 2>&1 | sed -u "s/^/[$target] /"
+  fi
+  echo "[$target] Build complete"
+}
+
+build_sandbox_target() {
+  local use_cache="$1"
+
+  set -o pipefail
+  echo "[sandbox] Starting Docker build for $SANDBOX_IMAGE"
+  if [[ "$use_cache" == true ]]; then
+    docker build -t "$SANDBOX_IMAGE" -f "$ROOT_DIR/e2b.Dockerfile" "$ROOT_DIR" 2>&1 | sed -u 's/^/[sandbox] /'
+  else
+    docker build --no-cache -t "$SANDBOX_IMAGE" -f "$ROOT_DIR/e2b.Dockerfile" "$ROOT_DIR" 2>&1 | sed -u 's/^/[sandbox] /'
+  fi
+  local image_date
+  image_date=$(docker images "$SANDBOX_IMAGE" --format '{{.CreatedAt}}' | head -1)
+  echo "[sandbox] Image timestamp: $image_date"
+  echo "[sandbox] Build complete"
+}
+
 # ── Commands ───────────────────────────────────────────────────────────────
 
 cmd_setup() {
@@ -59,21 +162,113 @@ cmd_build_sandbox() {
   if [[ "${1:-}" == "--quick" ]]; then
     use_cache=true
     shift
+  elif [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+    print_build_help
+    return 0
   fi
 
+  build_sandbox_target "$use_cache"
+}
+
+cmd_build() {
+  ensure_env
+
+  local use_cache=true
+  local targets=()
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      backend|frontend|sandbox)
+        targets+=("$1")
+        ;;
+      all)
+        targets+=(backend frontend sandbox)
+        ;;
+      --no-cache)
+        use_cache=false
+        ;;
+      --quick)
+        use_cache=true
+        ;;
+      -h|--help)
+        print_build_help
+        return 0
+        ;;
+      *)
+        echo "Unknown build target or option: $1"
+        echo ""
+        print_build_help
+        return 1
+        ;;
+    esac
+    shift
+  done
+
+  if [[ ${#targets[@]} -eq 0 ]]; then
+    targets=(backend frontend sandbox)
+  fi
+
+  local deduped=()
+  local target
+  for target in "${targets[@]}"; do
+    local seen=false
+    local existing
+    for existing in "${deduped[@]}"; do
+      if [[ "$existing" == "$target" ]]; then
+        seen=true
+        break
+      fi
+    done
+    if [[ "$seen" == false ]]; then
+      deduped+=("$target")
+    fi
+  done
+
+  echo "Building targets in parallel: ${deduped[*]}"
   if [[ "$use_cache" == true ]]; then
-    echo "Building sandbox image (with cache, fast): $SANDBOX_IMAGE"
-    docker build -t "$SANDBOX_IMAGE" -f "$ROOT_DIR/e2b.Dockerfile" "$ROOT_DIR"
+    echo "Build mode: cache-enabled"
   else
-    echo "Building sandbox image (no cache, full rebuild): $SANDBOX_IMAGE"
-    docker build --no-cache -t "$SANDBOX_IMAGE" -f "$ROOT_DIR/e2b.Dockerfile" "$ROOT_DIR"
+    echo "Build mode: no-cache"
   fi
-  echo "Done. Image: $SANDBOX_IMAGE"
+  echo ""
 
-  # Verify the image was actually updated
-  local image_date
-  image_date=$(docker images "$SANDBOX_IMAGE" --format '{{.CreatedAt}}' | head -1)
-  echo "Image timestamp: $image_date"
+  local pids=()
+  local labels=()
+
+  for target in "${deduped[@]}"; do
+    case "$target" in
+      backend|frontend)
+        build_compose_target "$target" "$use_cache" &
+        pids+=("$!")
+        labels+=("$target")
+        ;;
+      sandbox)
+        build_sandbox_target "$use_cache" &
+        pids+=("$!")
+        labels+=("sandbox")
+        ;;
+    esac
+  done
+
+  local failures=0
+  local idx
+  for idx in "${!pids[@]}"; do
+    if wait "${pids[$idx]}"; then
+      echo "✓ ${labels[$idx]} build succeeded"
+    else
+      echo "✗ ${labels[$idx]} build failed"
+      failures=$((failures + 1))
+    fi
+  done
+
+  if [[ "$failures" -gt 0 ]]; then
+    echo ""
+    echo "Parallel build finished with $failures failure(s)."
+    return 1
+  fi
+
+  echo ""
+  echo "Parallel build finished successfully."
 }
 
 cmd_patch_sandbox() {
@@ -298,16 +493,16 @@ cmd_logs() {
 }
 
 cmd_cleanup() {
-  echo "Removing orphaned sandbox containers..."
+  echo "Removing stale sandbox containers..."
   local containers
-  containers=$(docker ps -a --filter "label=ii-agent.sandbox=true" --filter "status=exited" -q)
+  containers=$(docker ps -a --filter "label=ii-agent.sandbox=true" -q)
   if [[ -z "$containers" ]]; then
-    echo "No orphaned sandbox containers found."
+    echo "No sandbox containers found."
     return
   fi
   local count
   count=$(echo "$containers" | wc -l)
-  echo "Found $count orphaned containers. Removing..."
+  echo "Found $count sandbox container(s). Removing..."
   echo "$containers" | xargs docker rm -f
   echo "Done."
 }
@@ -316,6 +511,7 @@ cmd_cleanup() {
 
 case "${1:-help}" in
   setup)          cmd_setup ;;
+  build)          shift; cmd_build "$@" ;;
   build-sandbox)  shift; cmd_build_sandbox "$@" ;;
   patch-sandbox)  shift; cmd_patch_sandbox "$@" ;;
   start)          shift; cmd_start "$@" ;;
@@ -326,11 +522,12 @@ case "${1:-help}" in
   logs)           shift; cmd_logs "$@" ;;
   cleanup)        cmd_cleanup ;;
   help|--help|-h)
-    sed -n '2,/^set /p' "$0" | head -n -1
+    print_help
     ;;
   *)
     echo "Unknown command: $1"
-    echo "Run: scripts/stack_control.sh --help"
+    echo ""
+    print_help
     exit 1
     ;;
 esac

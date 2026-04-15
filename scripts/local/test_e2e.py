@@ -6,17 +6,26 @@ session management, multi-turn context, and cross-feature integration.
 
 Usage:
     python3 scripts/local/test_e2e.py                  # Run ALL tests
-    python3 scripts/local/test_e2e.py --failed          # Rerun only FAIL/ERROR from last run
-    python3 scripts/local/test_e2e.py --test CNCL-01    # Run a single test by ID
+    python3 scripts/local/test_e2e.py --clear          # Clear previous state, run ALL tests
+    python3 scripts/local/test_e2e.py --failed         # Rerun only FAIL/ERROR from last run
+    python3 scripts/local/test_e2e.py --test CNCL-01   # Run a single test by ID
     python3 scripts/local/test_e2e.py --test CNCL-01,A2A-04  # Run multiple tests by ID (comma-separated)
-    python3 scripts/local/test_e2e.py --category CNCL   # Run all tests in a category
+    python3 scripts/local/test_e2e.py --category CNCL  # Run all tests in a category
     python3 scripts/local/test_e2e.py --category CNCL,A2A  # Run multiple categories (comma-separated)
+    python3 scripts/local/test_e2e.py --help           # Show comprehensive help and agentic instructions
 
 Environment variable overrides (backward-compatible):
     TEST_ID=CNCL-01   python3 scripts/local/test_e2e.py
     TEST_CATEGORY=A2A  python3 scripts/local/test_e2e.py
+
+State Management:
+    Results from each test run are saved to .e2e_last_results.json in this directory.
+    Use --clear to delete previous state and start fresh.
+    Use --failed to rerun only tests that failed or errored in the last run.
+    This enables autonomous fix/rebuild/retest cycles in the E2E test-cycle prompt.
 """
 
+import argparse
 import asyncio
 import json
 import os
@@ -73,6 +82,228 @@ class TestResult:
     status: TestStatus = TestStatus.NOT_RUN
     notes: str = ""
     elapsed: float = 0.0
+
+
+# ─── Result persistence helpers ────────────────────────────────────
+
+
+def save_results(results: list[TestResult]) -> None:
+    """Save test results to RESULTS_FILE as JSON."""
+    data = {
+        "timestamp": time.time(),
+        "results": [
+            {
+                "test_id": r.test_id,
+                "name": r.name,
+                "status": r.status.value,
+                "notes": r.notes,
+                "elapsed": r.elapsed,
+            }
+            for r in results
+        ],
+    }
+    try:
+        RESULTS_FILE.write_text(json.dumps(data, indent=2))
+    except Exception as e:
+        print(f"[Warning] Failed to save results: {e}")
+
+
+def load_last_results() -> list[TestResult] | None:
+    """Load test results from RESULTS_FILE."""
+    if not RESULTS_FILE.exists():
+        return None
+    try:
+        data = json.loads(RESULTS_FILE.read_text())
+        results = []
+        for r in data.get("results", []):
+            status = TestStatus(r["status"])
+            results.append(
+                TestResult(
+                    test_id=r["test_id"],
+                    name=r["name"],
+                    status=status,
+                    notes=r["notes"],
+                    elapsed=r["elapsed"],
+                )
+            )
+        return results
+    except Exception as e:
+        print(f"[Warning] Failed to load results: {e}")
+        return None
+
+
+def print_help_and_agentic_instructions() -> None:
+    """Print comprehensive help and agentic instructions."""
+    help_text = """
+╔════════════════════════════════════════════════════════════════════════════╗
+║                    II-Agent E2E Test Suite — Complete Help                ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+SYNOPSIS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  python3 scripts/local/test_e2e.py [OPTIONS]
+
+DESCRIPTION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Automated E2E test suite for ii-agent with 32+ tests across 11 categories:
+  • Infrastructure (INF): Health, models, sandbox readiness
+  • Chat Mode (CHAT): Anthropic, OpenAI, multi-turn, web search
+  • Images (IMG): Upload, chat attachment, agent attachment
+  • Web (WEB): Web search, browser navigation
+  • Code (CODE): Single file, multi-file execution
+  • Sessions (SESS): List, events, pin, fork
+  • Agent Multi-Turn (AGEN): Context, tool use persistence
+  • Cross-Feature (XFEAT): Web search + file, chat + agent independence
+  • Chat History (HIST): Message persistence
+  • Council Mode (CNCL): Parallel execution, billing, validation
+  • A2A Backend (A2A): Config, chat/agent routing, council integration
+
+OPTIONS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  --help                       Show this help message and exit
+
+  --clear                      Delete .e2e_last_results.json and run all tests
+                               (clears previous state, starts fresh)
+
+  --failed                     Rerun only tests that FAIL or ERROR from last run
+                               (requires .e2e_last_results.json to exist)
+
+  --test TEST_ID[,TEST_ID...]  Run single or multiple tests by ID (comma-separated)
+                               Examples: --test CHAT-01
+                                         --test CHAT-01,IMG-02,CNCL-01
+
+  --category CAT[,CAT...]      Run all tests in one or more categories
+                               Examples: --category CHAT
+                                         --category CHAT,IMG,CODE
+                               Valid: INF, CHAT, IMG, WEB, CODE, SESS, AGEN, XFEAT, HIST, CNCL, A2A
+
+ENVIRONMENT VARIABLES (Legacy Support)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  TEST_ID=CHAT-01              Same as: python3 ... --test CHAT-01
+  TEST_CATEGORY=CHAT           Same as: python3 ... --category CHAT
+  BACKEND_URL                  Override backend URL (default: http://localhost:8000)
+  TOKEN                        Override auth token (default: hardcoded dev token)
+  E2E_SESSION_TTL              Seconds until sessions auto-delete (default: 86400 = 24h)
+
+STATE MANAGEMENT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Results file: .e2e_last_results.json (in scripts/local/ directory)
+
+Workflow:
+  1. First run (fresh):           python3 scripts/local/test_e2e.py --clear
+     • Deletes old results file
+     • Runs all tests
+     • Saves results to .e2e_last_results.json
+     • Shows summary: pass/fail/error/skip counts
+
+  2. Retest failures only:        python3 scripts/local/test_e2e.py --failed
+     • Loads .e2e_last_results.json
+     • Runs only FAIL + ERROR tests from last run
+     • Saves new results
+     • Reports progress
+
+  3. Repeat step 2 until all tests pass, or max iterations reached
+
+EXAMPLES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  # Full test suite with fresh state
+  python3 scripts/local/test_e2e.py --clear
+
+  # Rerun all failures from last session
+  python3 scripts/local/test_e2e.py --failed
+
+  # Run only chat tests
+  python3 scripts/local/test_e2e.py --category CHAT
+
+  # Run specific tests
+  python3 scripts/local/test_e2e.py --test CHAT-01,CHAT-02,IMG-01
+
+  # Use env vars (legacy)
+  TEST_ID=CNCL-01 python3 scripts/local/test_e2e.py
+
+AGENTIC INSTRUCTION: E2E Test-Cycle Workflow
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+When invoked by the e2e-test-cycle prompt, follow this pattern:
+
+### OUTER LOOP: Full Test Sweep (clears state, runs all tests)
+
+  Step 1 — Clear previous state:
+    python3 scripts/local/test_e2e.py --clear
+
+  Step 2 — Parse output for:
+    • Total tests run, passed, failed, skipped, errored
+    • For each FAIL/ERROR: test ID, category, status, failure notes
+
+  Step 3 — Decision:
+    • All tests PASS or SKIP? → DONE (report final results, exit)
+    • Any FAIL or ERROR? → Enter INNER LOOP
+
+### INNER LOOP: Fix Each Failure (one at a time)
+
+  For each failed test (process alphabetically by test ID):
+
+    Step 1 — Diagnose:
+      • Re-run single test: python3 scripts/local/test_e2e.py --test <TEST_ID>
+      • Read failure output + backend logs
+      • Identify root cause (code bug, timeout, config, transient)
+
+    Step 2 — Fix:
+      • Apply minimal fix to source files
+      • Run: uv run ruff check --fix-only <changed_files>
+        and: uv run ruff format <changed_files>
+      • (Skip if only test script changed)
+
+    Step 3 — Rebuild (if code changed):
+      • Backend: ./scripts/stack_control.sh rebuild backend
+      • Sandbox: ./scripts/stack_control.sh build-sandbox (+ flags if needed)
+      • Wait for health: curl -sf http://localhost:8000/health
+
+    Step 4 — Retest single fix:
+      • python3 scripts/local/test_e2e.py --test <TEST_ID>
+      • If PASS: mark resolved, continue to next failure
+      • If still FAIL after 3 attempts: log as unresolvable, move on
+
+### OUTER LOOP RE-ENTRY: Check for Regressions
+
+  After inner loop completes (all failures addressed):
+
+    • Run full suite again: python3 scripts/local/test_e2e.py --failed
+      (or --clear if you want a fresh cycle)
+    • Any new failures? → Return to INNER LOOP
+    • Same failures as before? → Plateau reached, stop and report
+    • All pass? → DONE
+
+COMPLETION CRITERIA
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+The test cycle is complete when ONE of the following is true:
+
+  1. All tests PASS or SKIP (with documented skip reasons)
+  2. Plateau reached: full outer loop produces identical failures as before
+  3. Max iterations (5 outer loops) reached — report and stop
+
+MANDATORY RULES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  • Never run raw 'docker compose' — always use scripts/stack_control.sh
+  • Never modify test expectations to pass — fix underlying code instead
+  • Run ruff on all changed Python files before rebuilding
+  • Mark tests as SKIP (not FAIL) for external quota/credential issues
+  • Keep fixes minimal — no unnecessary refactoring
+  • Limit retries per test to 3 attempts before moving on
+  • Don't stop mid-cycle — run full outer loop to detect regressions
+
+═══════════════════════════════════════════════════════════════════════════════
+"""
+    print(help_text)
+    sys.exit(0)
 
 
 # ─── Utility helpers ────────────────────────────────────────────────
@@ -157,6 +388,74 @@ def detect_content_doubling(content: str) -> str | None:
         if s[:half] == s[half:]:
             return f"Content doubled: '{s}' is '{s[:half]}' repeated twice"
     return None
+
+
+async def resolve_runtime_model_name(model_uuid: str) -> tuple[str | None, str]:
+    """Resolve a public model UUID to the runtime model name passed into A2A metadata."""
+    try:
+        async with await http_client() as client:
+            resp = await client.get("/v1/user-settings/models")
+            if resp.status_code != 200:
+                return None, f"models API HTTP {resp.status_code}"
+
+            for model in resp.json().get("models", []):
+                if model.get("id") == model_uuid:
+                    runtime_model = (model.get("model_id") or model.get("model") or "").strip()
+                    if runtime_model:
+                        label = model.get("display_name") or runtime_model
+                        return runtime_model, label
+                    return None, f"model {model_uuid} had no runtime name"
+
+            return None, f"model {model_uuid} not found in API response"
+    except Exception as e:
+        return None, str(e)[:200]
+
+
+async def get_backend_logs_since(seconds: int = 120) -> str:
+    """Fetch recent backend container logs for A2A verification assertions."""
+    proc = await asyncio.create_subprocess_exec(
+        "docker",
+        "logs",
+        "--since",
+        f"{seconds}s",
+        "ii-agent-local-backend-1",
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await proc.communicate()
+    return stdout.decode() + stderr.decode()
+
+
+def find_model_override_log(logs: str, *, expected_model: str, expected_context: str) -> str | None:
+    """Return the matching A2A model-selection evidence line for this request context."""
+    for line in logs.splitlines():
+        stripped = line.strip()
+        if expected_context not in stripped:
+            continue
+        if "CopilotBackend: runtime model override" in stripped and expected_model in stripped:
+            return stripped
+        if "[a2a:stream]" in stripped and expected_model in stripped:
+            return stripped
+    return None
+
+
+async def ensure_a2a_adapter_warm() -> tuple[bool, str]:
+    """Ensure a healthy local A2A adapter exists before chat-path assertions."""
+    try:
+        logs = await get_backend_logs_since(60)
+        if "Auto-discovered sandbox A2A adapter" in logs or "[a2a:stream]" in logs:
+            return True, "existing adapter evidence found"
+
+        warmup = await agent_query(
+            prompt="Reply with the exact phrase warmup-ok.",
+            model_id=ANTHROPIC_OPUS_MODEL_ID,
+            timeout=min(TIMEOUT_AGENT, 60),
+        )
+        if warmup.get("error"):
+            return False, f"warm-up agent query failed: {warmup['error'][:200]}"
+        return True, f"warm-up session {warmup.get('session_id', 'unknown')}"
+    except Exception as exc:
+        return False, str(exc)[:200]
 
 
 async def chat_sse_request(
@@ -318,7 +617,7 @@ async def agent_query(
     async def disconnect():
         done.set()
 
-    @sio.on("*")
+    @sio.on("*")  # type: ignore[misc]
     async def catch_all(event, data):
         result["events"].append((time.monotonic() - start, event, data))
         if isinstance(data, str):
@@ -853,7 +1152,7 @@ async def test_img_agent_attachment() -> TestResult:
         async def connect():
             connected.set()
 
-        @sio.on("*")
+        @sio.on("*")  # type: ignore[misc]
         async def catch_all(event, data):
             if isinstance(data, str):
                 try:
@@ -1007,7 +1306,6 @@ async def test_agent_code_exec() -> TestResult:
             t.status = TestStatus.FAIL
             t.notes = f"Error: {r['error'][:300]}"
         elif r["completed"]:
-            has_tool = len(r["tool_events"]) > 0
             t.status = TestStatus.PASS
             t.notes = f"Completed with {len(r['tool_events'])} tool calls. Response: {r['response_text'][:200]}"
         else:
@@ -1363,7 +1661,6 @@ async def test_council_basic() -> TestResult:
         synthesis = r["council_synthesis"]
         member_starts = [m for m in members if m.get("status") == "start"]
         member_completes = [m for m in members if m.get("status") == "complete"]
-        synth_starts = [s for s in synthesis if s.get("status") == "start"]
         synth_completes = [s for s in synthesis if s.get("status") == "complete"]
 
         if len(member_starts) < 2:
@@ -1730,7 +2027,8 @@ async def test_a2a_agent_backend_logs() -> TestResult:
             marker in logs
             for marker in [
                 "a2a:copilot",
-                "billing_backend.*a2a",
+                "[a2a:client]",
+                "runtime model override",
                 "A2AAdapter",
                 "a2a_adapter",
                 "copilot_backend",
@@ -1807,6 +2105,118 @@ async def test_a2a_council_uses_a2a() -> TestResult:
         else:
             t.status = TestStatus.FAIL
             t.notes = f"Council did not produce expected outputs. Members: {len(member_completes)}"
+    except Exception as e:
+        t.status = TestStatus.ERROR
+        t.notes = str(e)[:300]
+    t.elapsed = time.monotonic() - start
+    return t
+
+
+async def test_a2a_chat_selected_model_used() -> TestResult:
+    """A2A-05: Chat-selected model reaches the Copilot A2A runtime.
+
+    Mirrors the user flow of entering a chat session, opening Chat Settings
+    with no tab, and choosing a model from the chat model picker.
+    """
+    t = TestResult("A2A-05", "Chat selected model reaches A2A runtime")
+    start = time.monotonic()
+    try:
+        expected_model, label = await resolve_runtime_model_name(ANTHROPIC_OPUS_MODEL_ID)
+        if not expected_model:
+            t.status = TestStatus.ERROR
+            t.notes = f"Could not resolve chat model from API: {label}"
+            return t
+
+        ready, detail = await ensure_a2a_adapter_warm()
+        if not ready:
+            t.status = TestStatus.FAIL
+            t.notes = f"Could not warm A2A adapter before chat test: {detail}"
+            return t
+
+        r = await chat_sse_request(
+            content="Reply with the word chat-ok.",
+            model_id=ANTHROPIC_OPUS_MODEL_ID,
+            timeout=TIMEOUT_CHAT,
+        )
+        if r["error"]:
+            t.status = TestStatus.FAIL
+            t.notes = f"Chat request failed: {r['error'][:200]}"
+            return t
+
+        session_id = r.get("session_id")
+        if not session_id:
+            t.status = TestStatus.FAIL
+            t.notes = "Chat request returned no session_id"
+            return t
+
+        logs = await get_backend_logs_since(120)
+        match = find_model_override_log(
+            logs,
+            expected_model=expected_model,
+            expected_context=f"chat-{session_id}",
+        )
+        if match:
+            t.status = TestStatus.PASS
+            t.notes = f"Chat selection confirmed in A2A logs: {expected_model} ({label})"
+        else:
+            t.status = TestStatus.FAIL
+            t.notes = (
+                f"No A2A runtime model override log found for chat context chat-{session_id} "
+                f"with model {expected_model}"
+            )
+    except Exception as e:
+        t.status = TestStatus.ERROR
+        t.notes = str(e)[:300]
+    t.elapsed = time.monotonic() - start
+    return t
+
+
+async def test_a2a_agent_selected_model_used() -> TestResult:
+    """A2A-06: Agent-selected model reaches the Copilot A2A runtime.
+
+    Mirrors the user flow of opening Agent Settings from the top-right
+    sliders icon and choosing a model from the Model tab.
+    """
+    t = TestResult("A2A-06", "Agent selected model reaches A2A runtime")
+    start = time.monotonic()
+    try:
+        expected_model, label = await resolve_runtime_model_name(ANTHROPIC_OPUS_MODEL_ID)
+        if not expected_model:
+            t.status = TestStatus.ERROR
+            t.notes = f"Could not resolve agent model from API: {label}"
+            return t
+
+        r = await agent_query(
+            prompt="Reply with the exact phrase agent-ok.",
+            model_id=ANTHROPIC_OPUS_MODEL_ID,
+            timeout=TIMEOUT_AGENT,
+        )
+        if r["error"]:
+            t.status = TestStatus.FAIL
+            t.notes = f"Agent query failed: {r['error'][:200]}"
+            return t
+
+        session_id = r.get("session_id")
+        if not session_id:
+            t.status = TestStatus.FAIL
+            t.notes = "Agent query returned no session_id"
+            return t
+
+        logs = await get_backend_logs_since(180)
+        match = find_model_override_log(
+            logs,
+            expected_model=expected_model,
+            expected_context=session_id,
+        )
+        if match:
+            t.status = TestStatus.PASS
+            t.notes = f"Agent selection confirmed in A2A logs: {expected_model} ({label})"
+        else:
+            t.status = TestStatus.FAIL
+            t.notes = (
+                f"No A2A runtime model override log found for agent context {session_id} "
+                f"with model {expected_model}"
+            )
     except Exception as e:
         t.status = TestStatus.ERROR
         t.notes = str(e)[:300]
@@ -1916,6 +2326,8 @@ ALL_TESTS = [
             test_a2a_chat_backend_logs,
             test_a2a_agent_backend_logs,
             test_a2a_council_uses_a2a,
+            test_a2a_chat_selected_model_used,
+            test_a2a_agent_selected_model_used,
         ],
     ),
 ]
@@ -1945,30 +2357,129 @@ async def run_category(cat_id: str, cat_name: str, tests: list) -> list[TestResu
 
 
 async def main():
-    """Run all E2E tests."""
-    # Allow filtering by category
-    filter_cat = os.environ.get("TEST_CATEGORY", "").upper()
-    filter_test = os.environ.get("TEST_ID", "")
+    """Run all E2E tests with state management."""
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(
+        prog="python3 scripts/local/test_e2e.py",
+        description="II-Agent E2E Test Suite with state management for fix/rebuild/retest cycles.",
+        epilog="Use --help to see comprehensive help including agentic instructions.",
+        add_help=False,  # We'll handle --help ourselves to show custom help
+    )
+    parser.add_argument(
+        "--help",
+        "-h",
+        action="store_true",
+        help="Show comprehensive help and agentic instructions",
+    )
+    parser.add_argument(
+        "--clear",
+        action="store_true",
+        help="Delete previous results file and run all tests (fresh state)",
+    )
+    parser.add_argument(
+        "--failed",
+        action="store_true",
+        help="Rerun only tests that FAIL or ERROR from last run",
+    )
+    parser.add_argument(
+        "--test",
+        type=str,
+        default=os.environ.get("TEST_ID", ""),
+        help="Run single or multiple tests by ID (comma-separated): CHAT-01 or CHAT-01,IMG-02",
+    )
+    parser.add_argument(
+        "--category",
+        type=str,
+        default=os.environ.get("TEST_CATEGORY", ""),
+        help="Run all tests in one or more categories (comma-separated): CHAT or CHAT,IMG,CODE",
+    )
+
+    args = parser.parse_args()
+
+    # Handle custom help
+    if args.help:
+        print_help_and_agentic_instructions()
+        return 0
+
+    # Handle --clear: delete old results before running
+    if args.clear:
+        if RESULTS_FILE.exists():
+            try:
+                RESULTS_FILE.unlink()
+                print(f"[State] Cleared previous results: {RESULTS_FILE}")
+            except Exception as e:
+                print(f"[Warning] Failed to delete results file: {e}")
+        args.failed = False  # Ignore --failed if --clear is given
+
+    # Determine which tests to run
+    filter_cat = args.category.upper() if args.category else ""
+    filter_test = args.test.upper() if args.test else ""
+    load_last_failed = args.failed and not args.clear
+
+    # Load previous results if --failed was passed
+    last_failed_test_ids = set()
+    if load_last_failed:
+        last_results = load_last_results()
+        if last_results:
+            last_failed_test_ids = {
+                r.test_id for r in last_results if r.status in (TestStatus.FAIL, TestStatus.ERROR)
+            }
+            print(f"[State] Loaded {len(last_failed_test_ids)} failed tests from last run:")
+            for test_id in sorted(last_failed_test_ids):
+                print(f"         {test_id}")
+        else:
+            print("[Warning] --failed passed but no previous results found. Running all tests.")
 
     print("=" * 60)
     print("  II-Agent Expanded E2E Test Suite")
     print(f"  Backend: {BACKEND_URL}")
-    print(f"  Filter: category={filter_cat or 'ALL'}, test={filter_test or 'ALL'}")
+    if load_last_failed:
+        print(f"  Mode: RETEST FAILURES ({len(last_failed_test_ids)} tests)")
+    elif args.clear:
+        print("  Mode: FULL SUITE (fresh state)")
+    else:
+        print("  Mode: FILTERED")
+    if filter_cat:
+        print(f"  Categories: {filter_cat}")
+    if filter_test:
+        print(f"  Tests: {filter_test}")
     print("=" * 60)
 
     all_results: list[TestResult] = []
     start_time = time.monotonic()
 
-    for cat_id, cat_name, tests in ALL_TESTS:
-        if filter_cat and cat_id != filter_cat:
-            continue
-
-        if filter_test:
-            tests = [t for t in tests if filter_test.lower() in (t.__doc__ or "").lower()]
-            if not tests:
+    # Iterate through all available tests
+    for cat_id, cat_name, available_tests in ALL_TESTS:
+        # Filter by category if specified
+        if filter_cat:
+            categories = [c.strip() for c in filter_cat.split(",")]
+            if cat_id not in categories:
                 continue
 
-        results = await run_category(cat_id, cat_name, tests)
+        # Filter tests within the category
+        filtered_tests = available_tests
+
+        # Apply test ID filter (CLI or env var)
+        if filter_test:
+            test_ids = [t.strip() for t in filter_test.split(",")]
+            filtered_tests = [
+                t
+                for t in filtered_tests
+                if any(test_id in (t.__doc__ or "").upper() for test_id in test_ids)
+            ]
+
+        # Apply failed-only filter (from --failed flag)
+        if load_last_failed and last_failed_test_ids:
+            filtered_tests = [
+                t
+                for t in filtered_tests
+                if any(test_id in (t.__doc__ or "").upper() for test_id in last_failed_test_ids)
+            ]
+
+        if not filtered_tests:
+            continue
+
+        results = await run_category(cat_id, cat_name, filtered_tests)
         all_results.extend(results)
 
     # Summary
@@ -2001,6 +2512,11 @@ async def main():
             f"\n  Cleanup: {len(_created_session_ids)} sessions scheduled for auto-delete in {ttl_h:.0f}h"
         )
 
+    # Save results for next --failed run
+    if all_results:
+        save_results(all_results)
+        print(f"  Results saved to: {RESULTS_FILE}")
+
     print(f"\n{'=' * 60}")
 
     # Return exit code for CI
@@ -2008,5 +2524,18 @@ async def main():
 
 
 if __name__ == "__main__":
-    exit_code = asyncio.run(main())
-    sys.exit(exit_code)
+    try:
+        exit_code = asyncio.run(main())
+        sys.exit(exit_code)
+    except SystemExit:
+        # argparse may call sys.exit() — let it through
+        raise
+    except KeyboardInterrupt:
+        print("\n\n[Interrupted] Test suite cancelled by user")
+        sys.exit(130)
+    except Exception as e:
+        print(f"\n[Fatal Error] {e}")
+        import traceback
+
+        traceback.print_exc()
+        sys.exit(1)

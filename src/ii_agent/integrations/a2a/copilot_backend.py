@@ -577,6 +577,7 @@ class CopilotBackend:
         parts: list[Any] | None = None,
         tool_schemas: list[dict[str, Any]] | None = None,
         system_message: str | None = None,
+        model: str = "",
     ) -> AsyncGenerator[str, None]:
         """Yield A2A SSE strings for a conversation turn.
 
@@ -585,6 +586,14 @@ class CopilotBackend:
         ``ASSISTANT_TURN_END``.  :meth:`_run_turn` detects this and
         keeps draining rather than terminating the stream, so the
         full agentic loop completes within a single HTTP response.
+
+        Parameters
+        ----------
+        model:
+            Optional user-selected model ID to use for this turn.  When
+            non-empty it overrides the backend startup-configured model
+            so the request steers the LLM at runtime.  If empty the
+            backend default (``CopilotConfig.model``) is used.
         """
         attachments, temp_files = _parts_to_attachments(parts)
         if attachments:
@@ -605,6 +614,7 @@ class CopilotBackend:
                 attachments=attachments or None,
                 tool_schemas=tool_schemas,
                 system_message=system_message,
+                model=model,
             ):
                 yield chunk
         except Exception as exc:
@@ -680,6 +690,7 @@ class CopilotBackend:
         context_id: str,
         tool_schemas: list[dict[str, Any]] | None = None,
         system_message: str | None = None,
+        model: str = "",
     ) -> Any:
         """Create a fresh Copilot SDK session for each run.
 
@@ -692,6 +703,13 @@ class CopilotBackend:
         Stale session caching caused bridged tools (e.g. ``register_port``)
         to become invisible to the LLM on resumed sessions — the SDK does
         not re-inject tool definitions or system messages on resume.
+
+        Parameters
+        ----------
+        model:
+            User-selected model ID forwarded from A2A metadata.  When
+            non-empty this overrides ``CopilotConfig.model`` for this
+            session so the request steers the backend LLM at runtime.
         """
         client = await self._get_client()
 
@@ -704,8 +722,17 @@ class CopilotBackend:
             "streaming": True,
             "working_directory": self.config.working_directory or "/workspace",
         }
-        if self.config.model:
-            session_kwargs["model"] = self.config.model
+        # Prefer per-request model override; fall back to startup-configured default.
+        effective_model = model or self.config.model
+        if effective_model:
+            session_kwargs["model"] = effective_model
+            if model and model != self.config.model:
+                logger.info(
+                    "CopilotBackend: runtime model override model=%r (config default=%r) context=%s",
+                    model,
+                    self.config.model,
+                    context_id,
+                )
 
         # Wire infinite-session compaction controls if configured.
         infinite_cfg: dict[str, Any] = {"enabled": True}
@@ -763,12 +790,13 @@ class CopilotBackend:
         attachments: list[dict[str, Any]] | None = None,
         tool_schemas: list[dict[str, Any]] | None = None,
         system_message: str | None = None,
+        model: str = "",
     ) -> AsyncGenerator[str, None]:
         """Run one conversation turn, yielding A2A SSE strings."""
         from copilot.generated.session_events import SessionEventType
 
         session = await self._get_or_create_session(
-            context_id, tool_schemas=tool_schemas, system_message=system_message
+            context_id, tool_schemas=tool_schemas, system_message=system_message, model=model
         )
 
         # Queue-based bridge: the synchronous on() callback puts events into
@@ -808,7 +836,17 @@ class CopilotBackend:
 
         def _on_event(event: Any) -> None:
             _etype = getattr(event, "type", type(event).__name__)
-            logger.info("CopilotBackend._on_event: received SDK event type=%s", _etype)
+            if _etype == SessionEventType.SESSION_ERROR:
+                _edata = getattr(event, "data", None)
+                logger.warning(
+                    "CopilotBackend._on_event: received SDK session error "
+                    "type=%s message=%r error_type=%r",
+                    _etype,
+                    getattr(_edata, "message", None),
+                    getattr(_edata, "error_type", None),
+                )
+            else:
+                logger.info("CopilotBackend._on_event: received SDK event type=%s", _etype)
             loop.call_soon_threadsafe(queue.put_nowait, event)
 
         unsubscribe = session.on(_on_event)
@@ -959,6 +997,51 @@ class CopilotBackend:
                             time.monotonic() - turn_start,
                         )
                         continue
+
+                    # Some SDK builds enqueue SESSION_ERROR or SESSION_IDLE
+                    # immediately after ASSISTANT_TURN_END. Drain any already
+                    # buffered follow-up events before terminating so we do not
+                    # falsely mark an errored turn as a clean blank success.
+                    if event.type == SessionEventType.ASSISTANT_TURN_END:
+                        while True:
+                            try:
+                                trailing_event = queue.get_nowait()
+                            except asyncio.QueueEmpty:
+                                break
+
+                            trailing_type = getattr(
+                                trailing_event, "type", type(trailing_event).__name__
+                            )
+                            logger.info(
+                                "CopilotBackend._run_turn: draining post-turn event type=%s "
+                                "(context_id=%s, elapsed=%.1fs)",
+                                trailing_type,
+                                context_id,
+                                time.monotonic() - turn_start,
+                            )
+
+                            if isinstance(trailing_event, _ToolExecutionRequest):
+                                self._last_turn_had_bridged_tools = True
+                                _turn_had_tools = True
+                                yield _sse("tool.execution_request", trailing_event.data)
+                                continue
+
+                            try:
+                                trailing_sse_strings = parse_copilot_event(trailing_event)
+                                for sse_str in trailing_sse_strings:
+                                    yield sse_str
+                            except Exception as map_exc:
+                                logger.warning(
+                                    "CopilotBackend: failed to map trailing event %s: %s",
+                                    getattr(trailing_event, "type", "?"),
+                                    map_exc,
+                                )
+
+                            if (
+                                getattr(trailing_event, "type", None)
+                                == SessionEventType.SESSION_ERROR
+                            ):
+                                error_occurred = True
 
                     logger.info(
                         "CopilotBackend._run_turn: terminal event type=%s (context_id=%s, elapsed=%.1fs)",

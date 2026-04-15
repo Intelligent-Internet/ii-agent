@@ -11,3 +11,9 @@ docker/.stack.env.local
 
 # Python venv is located in
 ~/workspaces/venvs/ii-agent
+
+# When creating new design docs, place then in docs/design-docs rather than creating them within agentic memory storage.
+
+# When creating new test docs, place then in docs/test-docs rather than creating them within agentic memory storage.
+
+# When creating new implementation docs, place then in docs/impl-docs rather than creating them within agentic memory storage.
