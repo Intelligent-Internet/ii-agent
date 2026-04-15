@@ -6,6 +6,12 @@ use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
 const DEFAULT_BASH_TIMEOUT_SECS: u64 = 60;
 const MAX_BASH_TIMEOUT_SECS: u64 = 180;
 
@@ -268,6 +274,12 @@ fn build_command_process(
     };
 
     process.current_dir(working_directory);
+    #[cfg(target_os = "windows")]
+    {
+        // Keep shell execution headless in desktop mode to avoid flashing terminal windows.
+        process.creation_flags(CREATE_NO_WINDOW);
+    }
+
     Ok(process)
 }
 
