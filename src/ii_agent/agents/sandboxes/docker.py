@@ -12,7 +12,8 @@ import os
 import re
 import tarfile
 import threading
-from datetime import datetime, timezone
+import uuid
+from datetime import datetime, timedelta, timezone
 from pathlib import PurePosixPath
 from typing import IO, TYPE_CHECKING, Any, AsyncIterator, Dict, List, Literal, Optional
 
@@ -239,6 +240,25 @@ class DockerSandbox(Sandbox):
 
         image = cfg.sandbox.docker_image
         network = cfg.sandbox.docker_network
+
+        # R8: Enforce concurrent sandbox cap before allocating resources
+        max_sandboxes = cfg.sandbox.max_concurrent_sandboxes
+        if max_sandboxes > 0:
+            stats = port_manager.get_stats()
+            if stats["sandboxes"] >= max_sandboxes:
+                raise SandboxCreationError(
+                    f"Concurrent sandbox limit reached ({max_sandboxes}). "
+                    f"Wait for existing sandboxes to be cleaned up."
+                )
+
+        # R7: Check port availability before attempting container creation
+        required_ports = 7  # Number of ports per sandbox
+        stats = port_manager.get_stats()
+        if stats["free"] < required_ports:
+            raise SandboxCreationError(
+                f"Insufficient ports available ({stats['free']} free, "
+                f"{required_ports} needed). Port range: {stats['port_range']}."
+            )
 
         # Use configurable port constants from settings
         mcp_port = cfg.sandbox.mcp_server_port
@@ -487,9 +507,33 @@ class DockerSandbox(Sandbox):
             raise SandboxOperationError("pause", str(e))
 
     async def set_timeout(self, timeout_seconds: int) -> None:
-        """Set or update the sandbox timeout."""
+        """Set or update the sandbox timeout.
+
+        R6: Stores the deadline in the DB via ``timeout_at`` column so the
+        cleanup loop can enforce it even after a backend restart.  Also keeps
+        an in-memory task as a best-effort fast path.
+        """
         if self._timeout_task:
             self._timeout_task.cancel()
+
+        # Persist deadline to DB so it survives restarts
+        try:
+            from ii_agent.agents.sandboxes.models import AgentSandbox
+            from ii_agent.core.db import get_db_session_local
+
+            deadline = datetime.now(timezone.utc) + timedelta(seconds=timeout_seconds)
+            async with get_db_session_local() as db:
+                from sqlalchemy import select
+
+                result = await db.execute(
+                    select(AgentSandbox).where(AgentSandbox.id == uuid.UUID(self.sandbox_id))
+                )
+                record = result.scalar_one_or_none()
+                if record:
+                    record.timeout_at = deadline
+                    await db.commit()
+        except Exception as e:
+            logger.warning(f"Failed to persist timeout_at for sandbox {self.sandbox_id}: {e}")
 
         async def _timeout_handler():
             await asyncio.sleep(timeout_seconds)

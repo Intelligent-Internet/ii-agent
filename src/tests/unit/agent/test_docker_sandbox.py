@@ -1111,6 +1111,7 @@ class TestCreate:
         mock_settings.sandbox.code_server_port = 9000
         mock_settings.sandbox.novnc_port = 6080
         mock_settings.sandbox.timeout_seconds = 0
+        mock_settings.sandbox.max_concurrent_sandboxes = 0
 
         mock_httpx_response = MagicMock()
         mock_httpx_response.status_code = 200
@@ -1149,6 +1150,7 @@ class TestCreate:
         mock_settings.sandbox.mcp_server_port = 6060
         mock_settings.sandbox.code_server_port = 9000
         mock_settings.sandbox.novnc_port = 6080
+        mock_settings.sandbox.max_concurrent_sandboxes = 0
 
         with (
             patch.object(DockerSandbox, "_get_docker_client", return_value=mock_client),
@@ -1173,6 +1175,7 @@ class TestCreate:
         mock_settings.sandbox.mcp_server_port = 6060
         mock_settings.sandbox.code_server_port = 9000
         mock_settings.sandbox.novnc_port = 6080
+        mock_settings.sandbox.max_concurrent_sandboxes = 0
 
         with (
             patch.object(DockerSandbox, "_get_docker_client", return_value=mock_client),

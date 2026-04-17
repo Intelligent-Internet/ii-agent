@@ -162,13 +162,30 @@ def _parts_to_attachments(
             if uri.startswith("file://"):
                 attachments.append({"type": "file", "path": uri[7:]})
             else:
-                # Remote URL — not directly supported by SDK attachments.
-                # Log and skip; the agent's view tool can fetch URLs.
-                logger.warning(
-                    "CopilotBackend: skipping remote image URI %s "
-                    "(SDK attachments require local file or base64)",
-                    uri[:120],
-                )
+                # Remote URL — download to temp file so the SDK can attach it.
+                ext = _MIME_EXT.get(mime, ".bin")
+                try:
+                    import httpx as _httpx
+
+                    resp = _httpx.get(uri, timeout=30.0, follow_redirects=True)
+                    resp.raise_for_status()
+                    fd, tmp_path = tempfile.mkstemp(suffix=ext, prefix="copilot_attach_")
+                    os.write(fd, resp.content)
+                    os.close(fd)
+                    attachments.append({"type": "file", "path": tmp_path})
+                    temp_files.append(tmp_path)
+                    logger.info(
+                        "CopilotBackend: downloaded remote image %s to %s (%d bytes)",
+                        uri[:120],
+                        tmp_path,
+                        len(resp.content),
+                    )
+                except Exception as dl_exc:
+                    logger.warning(
+                        "CopilotBackend: failed to download remote image URI %s: %s",
+                        uri[:120],
+                        dl_exc,
+                    )
             continue
 
         # FileWithBytes — SDK has no blob/inline type; write to temp file.
@@ -717,8 +734,21 @@ class CopilotBackend:
         self._sessions.pop(context_id, None)
         self._session_tool_count.pop(context_id, None)
 
+        def _handle_permission_request(req: Any, _ctx: Any) -> dict[str, Any]:
+            """Log and auto-approve permission requests from the Copilot CLI."""
+            # Extract tool info for audit logging
+            tool_name = getattr(req, "name", None) or getattr(req, "tool", "unknown")
+            args = getattr(req, "arguments", None) or getattr(req, "input", {})
+            logger.info(
+                "CopilotBackend: permission request approved — tool=%r args=%r context=%s",
+                tool_name,
+                args,
+                context_id,
+            )
+            return {"kind": "approved", "rules": []}
+
         session_kwargs: dict[str, Any] = {
-            "on_permission_request": lambda _req, _ctx: {"kind": "approved", "rules": []},
+            "on_permission_request": _handle_permission_request,
             "streaming": True,
             "working_directory": self.config.working_directory or "/workspace",
         }

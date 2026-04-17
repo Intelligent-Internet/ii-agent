@@ -137,7 +137,7 @@ def _build_storage() -> Optional["StorageProvider"]:
     try:
         return get_storage()
     except Exception as exc:
-        logger.warning("Message attachments skipped: %s", exc)
+        logger.warning(f"Message attachments skipped: {exc}")
         return None
 
 
@@ -176,7 +176,7 @@ async def _process_attachment(
         }
 
     if not sandbox:
-        logger.warning("No sandbox available to fetch attachment %s", attachment)
+        logger.warning(f"No sandbox available to fetch attachment {attachment}")
         return None
 
     filename = Path(attachment).name or "attachment"
@@ -190,72 +190,53 @@ async def _process_attachment(
             expiry_seconds=3600,
         )
     except Exception as exc:
-        logger.error(
-            "Failed to create signed upload URL for attachment %s: %s",
-            attachment,
-            exc,
-        )
+        logger.error(f"Failed to create signed upload URL for attachment {attachment}: {exc}")
         return None
 
     if not upload_url:
-        logger.error(
-            "Failed to create signed upload URL for attachment %s",
-            attachment,
-        )
+        logger.error(f"Failed to create signed upload URL for attachment {attachment}")
         return None
 
     try:
-        stream = await sandbox.download_file_stream(attachment)
+        file_bytes = await sandbox.download_file(attachment, format="bytes")
     except Exception as exc:
-        logger.warning(
-            "Unable to stream attachment %s from sandbox: %s",
-            attachment,
-            exc,
-        )
+        logger.warning(f"Unable to download attachment {attachment} from sandbox: {exc}")
         return None
 
-    if stream is None:
-        logger.warning("Attachment %s could not be streamed from sandbox", attachment)
+    if file_bytes is None or not isinstance(file_bytes, bytes):
+        logger.warning(f"Attachment {attachment} could not be downloaded from sandbox")
         return None
 
     try:
         async with httpx.AsyncClient(timeout=120.0, follow_redirects=True) as client:
             response = await client.put(
                 upload_url,
-                content=stream,
-                headers={"Content-Type": content_type},
+                content=file_bytes,
+                headers={
+                    "Content-Type": content_type,
+                    "Content-Length": str(len(file_bytes)),
+                },
             )
     except httpx.HTTPError as exc:
-        logger.error(
-            "Failed to upload attachment %s to signed URL: %s",
-            attachment,
-            exc,
-        )
+        logger.error(f"Failed to upload attachment {attachment} to signed URL: {exc}")
         return None
 
     if not response.is_success:
         logger.error(
-            "Failed to upload attachment %s to signed URL: %s %s",
-            attachment,
-            response.status_code,
-            response.text,
+            f"Failed to upload attachment {attachment} to signed URL: {response.status_code} {response.text}"
         )
         return None
 
     try:
         permanent_url = storage.public_url(storage_path)
-        logger.info("Uploaded attachment %s to %s", attachment, storage_path)
+        logger.info(f"Uploaded attachment {attachment} to {storage_path}")
         return {
             "name": filename,
             "file_type": _determine_file_type(filename),
             "url": permanent_url,
         }
     except Exception as exc:
-        logger.error(
-            "Failed to finalize attachment %s after upload: %s",
-            attachment,
-            exc,
-        )
+        logger.error(f"Failed to finalize attachment {attachment} after upload: {exc}")
         return None
 
 

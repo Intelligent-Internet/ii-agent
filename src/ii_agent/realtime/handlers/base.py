@@ -82,11 +82,7 @@ class BaseCommandHandler(ABC, Generic[TContent]):
         try:
             content = self._content_type.model_validate(raw_content)
         except ValidationError as exc:
-            logger.warning(
-                "Validation error for %s: %s",
-                self.get_command_type().value,
-                exc.errors(),
-            )
+            logger.warning(f"Validation error for {self.get_command_type().value}: {exc.errors()}")
             await self._send_error_event(
                 session_info.id,
                 error_code=ErrorCode.VALIDATION_ERROR,
@@ -261,10 +257,7 @@ class BaseCommandHandler(ABC, Generic[TContent]):
                 task_type=task_type,
             )
         except TaskConflictException:
-            logger.warning(
-                "Duplicate task claim for session %s",
-                session_info.id,
-            )
+            logger.warning(f"Duplicate task claim for session {session_info.id}")
             await self._send_error_event(
                 session_info.id,
                 error_code=ErrorCode.DUPLICATE_TASK,

@@ -592,6 +592,24 @@ __all__ = [
 1. Create `workers/cron/jobs/{job_name}.py` with async runner
 2. Add `CronJobSpec` to `workers/cron/cron_jobs.py::CRON_JOBS`
 
+### Sandbox Cleanup Pipeline
+
+The sandbox cleanup loop (`agents/sandboxes/orphan_cleanup.py`) runs every 60 seconds (configurable) via `run_orphan_cleanup_loop()` with 6 stages executed in order:
+
+1. **`_soft_delete_expired_sessions`** — Mark sessions with `delete_after <= now()` as `is_deleted=True`
+2. **`_cleanup_orphans` (R1+R2)** — Kill Docker containers for deleted sessions; mark sandbox DELETED **only if** container confirmed removed (R1); use per-sandbox DB session to prevent rollback cascades (R2)
+3. **`_pause_stale_sandboxes`** — Stop running containers idle >30 min (→ PAUSED status)
+4. **`_cleanup_docker_zombies` (R4)** — Remove Docker containers with no matching active sandbox DB record; 120s timeout, 5 min grace period
+5. **`_cleanup_orphaned_volumes` (R9)** — Remove Docker volumes with `ii-sandbox-workspace-` prefix and no matching active record or container
+6. **`_kill_timed_out_sandboxes` (R6)** — Stop containers where `timeout_at <= now()` (pauses to preserve state)
+
+**Key patterns:**
+- **R1 — Conditional state marking:** Never mark a sandbox DELETED until the Docker container is confirmed removed. If removal times out or fails, skip the sandbox and retry next sweep.
+- **R2 — Per-item DB isolation:** Phase 1 reads all candidates in a single DB session. Phase 2 processes each candidate in its own `get_db_session_local()` context with try/except. One failure doesn't roll back others.
+- **R6 — Persistent timeout:** `AgentSandbox.timeout_at` column persists the deadline across backend restarts. In-memory `asyncio.Task` provides best-effort fast path; the cleanup loop enforces the deadline as fallback.
+
+**Design docs:** [`sandbox-lifecycle-assessment.md`](docs/design-docs/sandbox-lifecycle-assessment.md), [`sandbox-accumulation-root-cause-analysis.md`](docs/design-docs/sandbox-accumulation-root-cause-analysis.md)
+
 ### Import Patterns
 
 ```python

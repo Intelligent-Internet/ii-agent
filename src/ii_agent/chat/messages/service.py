@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Dict, List, Optional
 import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, update
 from pydantic import TypeAdapter
 
 from ii_agent.chat.messages.models import ChatMessage
@@ -135,6 +135,23 @@ class MessageService:
             provider_metadata=db_msg.provider_metadata,
             finish_reason=db_msg.finish_reason,
         )
+
+    async def update_message_parts(
+        self,
+        db: AsyncSession,
+        message_id: uuid.UUID,
+        parts: List[ContentPart],
+    ) -> None:
+        """Persist updated ContentParts for an existing message.
+
+        Used after file processing adds BinaryContent to an already-committed
+        user message so that subsequent turns can access image data.
+        """
+        parts_data = self.parts_adapter.dump_python(parts, mode="json")
+        await db.execute(
+            update(ChatMessage).where(ChatMessage.id == message_id).values(content=parts_data)
+        )
+        await db.flush()
 
     async def list_messages_after_id(
         self,

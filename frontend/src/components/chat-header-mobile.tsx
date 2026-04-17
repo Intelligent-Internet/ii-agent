@@ -7,7 +7,9 @@ import { SidebarTrigger } from '@/components/ui/sidebar'
 import {
     selectIsFavorite,
     selectAvailableModels,
-    selectSelectedModel,
+    selectSelectedChatModel,
+    selectSelectedAgentModel,
+    selectQuestionMode,
     toggleFavoriteAsync,
     useAppDispatch,
     useAppSelector
@@ -16,6 +18,7 @@ import { deleteSession } from '@/state/slice/sessions'
 import { clearSessionState } from '@/state/slice/session-state'
 import { setRunStatus } from '@/state/slice/agent'
 import { type ISession } from '@/typings/agent'
+import { QUESTION_MODE } from '@/typings'
 import HeaderDropdownMenu from '@/components/header-dropdown-menu'
 import ShareConversation from '@/components/agent/share-conversation'
 import {
@@ -44,12 +47,18 @@ const ChatHeaderMobile = ({
     const navigate = useNavigate()
     const dispatch = useAppDispatch()
     const [searchParams] = useSearchParams()
-    const selectedModel = useAppSelector(selectSelectedModel)
+    const selectedChatModel = useAppSelector(selectSelectedChatModel)
+    const selectedAgentModel = useAppSelector(selectSelectedAgentModel)
+    const questionMode = useAppSelector(selectQuestionMode)
     const availableModels = useAppSelector(selectAvailableModels)
     const sessionId = searchParams.get('id') || ''
     const isFavorite = useAppSelector(selectIsFavorite(sessionId || ''))
     const [isShareOpen, setIsShareOpen] = useState(false)
     const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+
+    const selectedModel = questionMode === QUESTION_MODE.CHAT
+        ? selectedChatModel
+        : selectedAgentModel
 
     const model = useMemo(
         () => availableModels.find((item) => item.id === selectedModel),

@@ -100,7 +100,10 @@ async def test_upload_images_only():
 
     assert sandbox_files == []
     assert len(sandbox_images) == 1
-    assert str(sandbox_images[0].filepath) == "/uploads/image_0.png"
+    # Images now carry raw bytes (content) instead of sandbox filepath,
+    # ensuring both A2A adapter and native model fallback can access them.
+    assert sandbox_images[0].content == b"png-bytes"
+    assert sandbox_images[0].filepath is None
     assert sandbox_images[0].url is None
     sandbox.write_files.assert_awaited_once()
 

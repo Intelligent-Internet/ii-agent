@@ -38,6 +38,10 @@ class AgentSandbox(Base):
         TimestampColumn,
         nullable=True,
     )
+    timeout_at: Mapped[Optional[datetime]] = mapped_column(
+        TimestampColumn,
+        nullable=True,
+    )
     provider_data: Mapped[Optional[dict]] = mapped_column(
         JSONB,
         nullable=True,

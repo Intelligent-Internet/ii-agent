@@ -191,6 +191,10 @@ def _format_image_for_message(image: Image) -> Optional[Dict[str, Any]]:
         elif image.content is not None:
             content_bytes = image.content
 
+        # Case 4: Image has a local/sandbox filepath
+        elif image.filepath is not None:
+            content_bytes = image.get_content_bytes()
+
         else:
             logger.error(f"Unsupported image type: {type(image)}")
             return None

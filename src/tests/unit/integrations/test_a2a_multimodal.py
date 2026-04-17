@@ -17,6 +17,7 @@ from a2a.types import (
 from ii_agent.integrations.a2a.multimodal import (
     build_conversation_context,
     content_to_parts,
+    extract_historical_image_parts,
     extract_user_content,
     has_multimodal_parts,
 )
@@ -398,6 +399,145 @@ class TestContentToParts:
         assert len(parts) == 2
         assert isinstance(parts[0].root, TextPart)
         assert isinstance(parts[1].root, FilePart)
+
+
+# ---------------------------------------------------------------------------
+# extract_historical_image_parts
+# ---------------------------------------------------------------------------
+
+
+class TestExtractHistoricalImageParts:
+    def test_no_prior_images(self):
+        messages = [
+            {"role": "user", "content": "hello"},
+            {"role": "assistant", "content": "hi"},
+            {"role": "user", "content": "follow-up"},
+        ]
+        parts = extract_historical_image_parts(messages)
+        assert parts == []
+
+    def test_prior_user_image_collected(self):
+        img_b64 = base64.b64encode(b"\x89PNG_FAKE").decode()
+        messages = [
+            {
+                "role": "user",
+                "content": "describe this",
+                "images": [{"id": "img1", "content": img_b64, "mime_type": "image/png"}],
+            },
+            {"role": "assistant", "content": "It's a cat."},
+            {"role": "user", "content": "What color is it?"},
+        ]
+        parts = extract_historical_image_parts(messages)
+        assert len(parts) == 1
+        assert isinstance(parts[0].root, FilePart)
+
+    def test_latest_user_message_excluded(self):
+        """Images on the last user message are handled by extract_user_content."""
+        img_b64 = base64.b64encode(b"\x89PNG_FAKE").decode()
+        messages = [
+            {"role": "user", "content": "no image here"},
+            {"role": "assistant", "content": "ok"},
+            {
+                "role": "user",
+                "content": "now with image",
+                "images": [{"id": "img1", "content": img_b64, "mime_type": "image/png"}],
+            },
+        ]
+        parts = extract_historical_image_parts(messages)
+        assert parts == []
+
+    def test_deduplicates_by_id(self):
+        img_b64 = base64.b64encode(b"\x89PNG_FAKE").decode()
+        messages = [
+            {
+                "role": "user",
+                "content": "turn1",
+                "images": [{"id": "img1", "content": img_b64, "mime_type": "image/png"}],
+            },
+            {"role": "assistant", "content": "reply1"},
+            {
+                "role": "user",
+                "content": "turn2",
+                "images": [{"id": "img1", "content": img_b64, "mime_type": "image/png"}],
+            },
+            {"role": "assistant", "content": "reply2"},
+            {"role": "user", "content": "turn3"},
+        ]
+        parts = extract_historical_image_parts(messages)
+        assert len(parts) == 1  # same id, deduped
+
+    def test_multiple_images_across_turns(self):
+        img1_b64 = base64.b64encode(b"\x89PNG_FAKE1").decode()
+        img2_b64 = base64.b64encode(b"\x89PNG_FAKE2").decode()
+        messages = [
+            {
+                "role": "user",
+                "content": "turn1",
+                "images": [{"id": "img1", "content": img1_b64, "mime_type": "image/png"}],
+            },
+            {"role": "assistant", "content": "reply1"},
+            {
+                "role": "user",
+                "content": "turn2",
+                "images": [{"id": "img2", "content": img2_b64, "mime_type": "image/jpeg"}],
+            },
+            {"role": "assistant", "content": "reply2"},
+            {"role": "user", "content": "turn3"},
+        ]
+        parts = extract_historical_image_parts(messages)
+        assert len(parts) == 2
+
+    def test_single_user_message_returns_empty(self):
+        """Single user message has no prior history."""
+        img_b64 = base64.b64encode(b"\x89PNG").decode()
+        messages = [
+            {
+                "role": "user",
+                "content": "describe this",
+                "images": [{"id": "img1", "content": img_b64, "mime_type": "image/png"}],
+            },
+        ]
+        parts = extract_historical_image_parts(messages)
+        assert parts == []
+
+    def test_assistant_images_ignored(self):
+        """Only user message images are collected, not assistant."""
+        img_b64 = base64.b64encode(b"\x89PNG").decode()
+        messages = [
+            {"role": "user", "content": "generate something"},
+            {
+                "role": "assistant",
+                "content": "Here it is",
+                "images": [{"id": "gen1", "content": img_b64, "mime_type": "image/png"}],
+            },
+            {"role": "user", "content": "tell me more"},
+        ]
+        parts = extract_historical_image_parts(messages)
+        assert parts == []
+
+    def test_empty_messages(self):
+        assert extract_historical_image_parts([]) == []
+
+    def test_images_without_id_not_deduped(self):
+        """Images without an id field should all be collected."""
+        img_b64 = base64.b64encode(b"\x89PNG").decode()
+        messages = [
+            {
+                "role": "user",
+                "content": "turn1",
+                "images": [{"content": img_b64, "mime_type": "image/png"}],
+            },
+            {"role": "assistant", "content": "reply"},
+            {
+                "role": "user",
+                "content": "turn2",
+                "images": [{"content": img_b64, "mime_type": "image/png"}],
+            },
+            {"role": "assistant", "content": "reply2"},
+            {"role": "user", "content": "turn3"},
+        ]
+        parts = extract_historical_image_parts(messages)
+        assert len(parts) == 2  # no id means no dedup
 
 
 # ---------------------------------------------------------------------------

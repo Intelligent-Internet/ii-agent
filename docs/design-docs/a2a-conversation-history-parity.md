@@ -121,8 +121,10 @@ These are known differences that remain between native and A2A paths:
 1. **SDK context window management** — Native uses `SessionSummaryManager` for
    compaction; the text-based history grows linearly. The SDK's
    `infinite_sessions` config handles this within the Copilot CLI.
-2. **Multimodal history (binary content)** — Historical image/file bytes are
-   not forwarded; only URL references are noted as text placeholders.
+2. **Multimodal history (binary content)** — Historical image bytes from prior
+   user messages are now forwarded via `extract_historical_image_parts()` in
+   `multimodal.py`. Non-image file bytes (e.g., PDFs) are still represented as
+   text placeholders only.
 3. **Message ID linkage** — Tool call IDs are not preserved in the text
    representation; the SDK cannot correlate specific calls to results.
 

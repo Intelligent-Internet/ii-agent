@@ -58,6 +58,11 @@ The automated A2A-05/A2A-06 checks validate the same underlying selection effect
 | SET-03 | Settings/API | LLM settings CRUD round-trip | REST | 10s | None |
 | SET-04 | Settings/API | Enhance prompt round-trip | REST | 10s | None |
 | SET-05 | Settings/API | Credits balance check | REST | 10s | None |
+| SBOX-01 | Sandbox Lifecycle | FK constraint rejects orphaned sandbox rows | Docker+psql | 10s | PostgreSQL |
+| SBOX-02 | Sandbox Lifecycle | Port pool overflow protection active | REST | 10s | None |
+| SBOX-03 | Sandbox Lifecycle | Orphaned Docker volumes cleaned up | Docker | 90s | Docker, cleanup loop |
+| SBOX-04 | Sandbox Lifecycle | timeout_at column persisted in DB | Docker+psql | 10s | PostgreSQL |
+| SBOX-05 | Sandbox Lifecycle | Cleanup loop active (6 stages) | Logs | 10s | Backend logs |
 
 ### Not Automated — Rationale
 

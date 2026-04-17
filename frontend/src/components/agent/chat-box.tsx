@@ -13,7 +13,7 @@ import {
     selectIsAgentInitialized,
     selectMessages,
     selectLastUserMessageContent,
-    selectSelectedModel,
+    selectSelectedAgentModel,
     selectToolSettings,
     selectUploadedFiles,
     setBuildMode,
@@ -108,7 +108,7 @@ const ChatBox = ({
     const lastUserMessageContent = useAppSelector(selectLastUserMessageContent)
     const toolSettings = useAppSelector(selectToolSettings)
     const isAgentInitialized = useAppSelector(selectIsAgentInitialized)
-    const selectedModel = useAppSelector(selectSelectedModel)
+    const selectedModel = useAppSelector(selectSelectedAgentModel)
     const buildMode = useAppSelector(selectBuildMode)
     const activeAgentTab = useAppSelector(selectActiveTab)
     const {

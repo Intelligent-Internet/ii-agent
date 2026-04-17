@@ -167,9 +167,7 @@ class A2AInnerLoop:
             "native_tool_schemas": native_tool_schemas,
             "system_message": system_message_content,
         }
-        logger.info(
-            f"[a2a:stream] model_id={model.id!r} context_id={context_id} source=agent"
-        )
+        logger.info(f"[a2a:stream] model_id={model.id!r} context_id={context_id} source=agent")
 
         # --- Circuit breaker pre-check ---
         circuit_open_reason: Optional[str] = None
@@ -362,12 +360,33 @@ class A2AInnerLoop:
                     delta_status="content_done",
                 )
 
+            # Append an assistant Message to the messages list so that
+            # _finalize_run_response can persist the response to session
+            # history.  The native inner-loop path (model.aresponse_stream)
+            # does this internally; the A2A path must do it explicitly.
+            if _accumulated_text or _accumulated_reasoning:
+                assistant_msg = Message(
+                    role="assistant",
+                    content=_accumulated_text or None,
+                    reasoning_content=_accumulated_reasoning or None,
+                )
+                messages.append(assistant_msg)
+
             await self.circuit_breaker.record_success()
             self._last_owner = "a2a"
         except RunCancelledException:
             # Propagate cancellation to the adapter so it can unblock
             # any waiting tool bridge handlers, then re-raise for
             # agent.py to handle (sets RunStatus.CANCELLED).
+            # Persist partial assistant content so session history
+            # reflects what was streamed before cancellation.
+            if _accumulated_text or _accumulated_reasoning:
+                assistant_msg = Message(
+                    role="assistant",
+                    content=_accumulated_text or None,
+                    reasoning_content=_accumulated_reasoning or None,
+                )
+                messages.append(assistant_msg)
             if adapter_task_id:
                 await self.client.cancel_task(adapter_task_id)
             raise

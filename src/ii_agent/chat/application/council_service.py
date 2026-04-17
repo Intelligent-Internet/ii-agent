@@ -68,6 +68,8 @@ def _should_fallback_to_direct(exc: Exception) -> bool:
             "temporar",
             "unavailable",
             "overloaded",
+            "execution failed",
+            "failed to list",
         )
     )
 
@@ -227,6 +229,14 @@ class CouncilService:
                             ),
                             timeout=COUNCIL_MODEL_TIMEOUT,
                         )
+                    except asyncio.TimeoutError:
+                        # Explicit timeout handling — fall back to direct LLM
+                        logger.warning(
+                            "Council model %s A2A timed out after %ss, falling back to direct",
+                            model_id,
+                            COUNCIL_MODEL_TIMEOUT,
+                        )
+                        use_a2a = False  # fall through to direct path below
                     except (ConnectionError, OSError) as conn_err:
                         # A2A adapter unreachable — fall back to direct LLM
                         # so the council can still produce output.
@@ -394,6 +404,11 @@ class CouncilService:
                         context_id=context_id,
                         metadata=metadata,
                     )
+                except asyncio.TimeoutError:
+                    logger.warning(
+                        "Council synthesis A2A timed out, falling back to direct",
+                    )
+                    use_a2a_synthesis = False
                 except (ConnectionError, OSError) as conn_err:
                     logger.warning(
                         "Council synthesis A2A unreachable (%s), falling back to direct",

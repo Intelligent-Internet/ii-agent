@@ -215,3 +215,36 @@ class TestProxyUpload:
 
         assert resp.status_code == 413
         mock_storage.write.assert_not_awaited()
+
+    def test_upload_ignores_invalid_content_length_header(self):
+        """Non-numeric content-length is ignored; body size still checked."""
+        asset = _make_asset(upload_status=UploadStatus.PENDING)
+        app, mock_storage, _ = _build_app(file_repo_get_result=asset)
+        client = TestClient(app)
+
+        with patch(self._PATCH_TARGET, return_value=mock_storage):
+            resp = client.put(
+                f"/storage/upload/{_ASSET_ID}",
+                content=b"small payload",
+                headers={"content-length": "not-a-number"},
+            )
+
+        # Should succeed — the invalid header is ignored, body is within limits
+        assert resp.status_code == 200
+        mock_storage.write.assert_awaited_once()
+
+    def test_upload_transitions_asset_to_complete(self):
+        """After successful upload, asset.upload_status is set to COMPLETE."""
+        asset = _make_asset(upload_status=UploadStatus.PENDING)
+        app, mock_storage, _ = _build_app(file_repo_get_result=asset)
+        client = TestClient(app)
+
+        with patch(self._PATCH_TARGET, return_value=mock_storage):
+            resp = client.put(
+                f"/storage/upload/{_ASSET_ID}",
+                content=b"file bytes",
+                headers={"content-type": "image/png"},
+            )
+
+        assert resp.status_code == 200
+        assert asset.upload_status == UploadStatus.COMPLETE

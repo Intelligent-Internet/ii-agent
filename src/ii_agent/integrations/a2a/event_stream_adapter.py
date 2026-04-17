@@ -19,6 +19,7 @@ Usage::
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 from typing import Any, Optional
 
@@ -61,6 +62,8 @@ _ARTIFACT_NAMES: dict[str, str] = {
 
 # Tool names that produce user-visible message text.
 _MESSAGE_TOOL_NAMES = {"message", "message_user", "send_message"}
+
+logger = logging.getLogger(__name__)
 
 
 class EventStreamAdapter:
@@ -127,7 +130,13 @@ class EventStreamAdapter:
             for a2a_event in converted:
                 await self.event_queue.enqueue_event(a2a_event)
         except Exception:
-            pass
+            event_name = getattr(event, "name", type(event).__name__)
+            logger.warning(
+                "Failed to convert/enqueue event (type=%s): %s",
+                event_name,
+                event,
+                exc_info=True,
+            )
 
     # ------------------------------------------------------------------
     # Event dispatch

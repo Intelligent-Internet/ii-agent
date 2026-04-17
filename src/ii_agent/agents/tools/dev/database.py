@@ -207,4 +207,4 @@ class GetDatabaseConnection(BaseAgentTool):
 
             logger.info(f"Saved DATABASE_URL to project secrets for session {session_id}")
         except Exception as exc:
-            logger.error("Failed to save DATABASE_URL to project secrets: %s", exc)
+            logger.error(f"Failed to save DATABASE_URL to project secrets: {exc}")

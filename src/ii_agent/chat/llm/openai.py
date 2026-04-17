@@ -4,7 +4,7 @@ import asyncio
 import logging
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Any, AsyncIterator, Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, AsyncIterator, Dict, List, Optional, Tuple, Union
 
 import openai
 from openai.types import FileObject
@@ -117,7 +117,7 @@ class FileResponseObject(BaseModel):
 
     id: str
     provider_file_id: str
-    provider: Literal["openai", "anthropic"]
+    provider: str
     content_type: str
     file_name: str
     file_size: Optional[int] = 0
@@ -281,7 +281,7 @@ class OpenAIProvider(LLMClient):
                 file_content.close()
 
             return FileResponseObject(
-                id=file_info.id,
+                id=str(file_info.id),
                 provider_file_id=file_obj.id,
                 provider=Provider.OPENAI.value,
                 raw_file_object=file_obj,
@@ -707,7 +707,7 @@ class OpenAIProvider(LLMClient):
 
                     # Create FileResponseObject
                     file_response = FileResponseObject(
-                        id=file_uuid,
+                        id=str(file_uuid),
                         provider_file_id=file_id,
                         provider=Provider.OPENAI.value,
                         content_type=content_type,
@@ -753,7 +753,7 @@ class OpenAIProvider(LLMClient):
             file_objects = []
             for provider_file, file_upload in result.all():
                 file_obj = FileResponseObject(
-                    id=provider_file.file_id,
+                    id=str(provider_file.file_id),
                     provider_file_id=provider_file.provider_file_id,
                     provider=provider_file.provider,
                     content_type=file_upload.content_type,

@@ -4,7 +4,7 @@ Per-domain quality assessment. Updated periodically to track code health across 
 
 **Grading:** A (excellent) | B (good) | C (adequate) | D (needs work) | F (critical gaps)
 
-**Last updated:** 2026-03-17
+**Last updated:** 2026-04-17
 
 ## Domain Quality Grades
 
@@ -22,6 +22,7 @@ Per-domain quality assessment. Updated periodically to track code health across 
 | **billing/usage** | B | B | B | A | **B** |
 | **sessions** | B | B | B | A | **B** |
 | **agent/runs** | B | B | C | A | **B-** |
+| **agents/sandboxes** | A | A | B | B | **B+** |
 | **agent/events** | B | B | C | B | **B-** |
 | **agent/socket** | C | B | C | B | **C+** |
 | **agent/application** | B | B | C | B | **B-** |
@@ -36,7 +37,7 @@ Per-domain quality assessment. Updated periodically to track code health across 
 | **projects** | B | B | C | A | **B** |
 | **projects/deployments** | C | B | D | B | **C+** |
 | **projects/secrets** | B | B | D | B | **B-** |
-| **integrations/a2a** | C | C | D | C | **C-** |
+| **integrations/a2a** | A | B | B | C | **B+** |
 | **integrations/connectors** | C | C | D | B | **C** |
 | **integrations/mcp_sse** | C | C | D | C | **C-** |
 | **settings** | B | B | C | A | **B** |

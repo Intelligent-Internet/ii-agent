@@ -471,6 +471,14 @@ class ChatService:
                 display_content=display_content,
             )
 
+            # Persist binary/text parts added by file processing so that
+            # subsequent turns can access images from the conversation history.
+            if any(isinstance(p, BinaryContent) for p in user_message.parts):
+                await self._message_service.update_message_parts(
+                    db, user_message.id, user_message.parts
+                )
+                await db.commit()
+
         # Build LLM user message with repo context and media parts (pure in-memory)
         media_message_parts = media_context.llm_message_parts if media_context else []
 
@@ -638,6 +646,14 @@ class ChatService:
                 llm_content=llm_content,
                 display_content=display_content,
             )
+
+            # Persist binary/text parts added by file processing so that
+            # subsequent turns can access images from the conversation history.
+            if any(isinstance(p, BinaryContent) for p in user_message.parts):
+                await self._message_service.update_message_parts(
+                    db, user_message.id, user_message.parts
+                )
+                await db.commit()
 
             # Resolve model configs for all council models + synthesis model
             all_model_ids = [m.model_id for m in council_prefs.council_models]

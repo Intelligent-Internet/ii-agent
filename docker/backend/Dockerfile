@@ -81,6 +81,11 @@ RUN apt-get purge -y --auto-remove openssh-client git \
 
 RUN chmod +x /entrypoint.sh /app/scripts/start.sh
 
+# Build manifest — written by stack_control.sh at build time.
+# Inspect with: docker exec <container> cat /app/build-manifest.json
+ARG BUILD_MANIFEST='{}'
+RUN printf '%s\n' "$BUILD_MANIFEST" > /app/build-manifest.json
+
 # Place executables in the environment at the front of the path
 ENV PATH="/app/.venv/bin:$PATH"
 

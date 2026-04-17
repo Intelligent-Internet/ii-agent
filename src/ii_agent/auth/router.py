@@ -4,6 +4,7 @@ import base64
 import hashlib
 import json
 import secrets
+import time
 from typing import Any, Dict, Optional
 from urllib.parse import urlparse, urlencode
 
@@ -28,6 +29,10 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 II_STATE_SESSION_KEY = "ii_oauth_state"
 II_CODE_VERIFIER_SESSION_KEY = "ii_code_verifier"
 II_RETURN_TO_SESSION_KEY = "ii_return_to"
+
+# Simple in-memory rate limiter for dev login
+_DEV_LOGIN_TIMESTAMPS: dict[str, float] = {}
+_DEV_LOGIN_RATE_LIMIT_SECONDS = 10  # Allow one request per 10 seconds per IP
 II_RETURN_URL_SESSION_KEY = "ii_return_url"
 
 # ---------------------------------------------------------------------------
@@ -471,8 +476,9 @@ async def reader_user_me(
     )
 
 
-@router.get("/dev/login")
+@router.post("/dev/login")
 async def dev_login(
+    request: Request,
     db: DBSession,
     settings: SettingsDep,
     user_service: UserServiceDep,
@@ -484,6 +490,22 @@ async def dev_login(
     """
     if not settings.sandbox.local_mode:
         raise ValidationError("Dev login is only available in local mode")
+
+    # Simple rate limiting by client IP
+    client_ip = request.client.host if request.client else "unknown"
+    now = time.time()
+    last_request = _DEV_LOGIN_TIMESTAMPS.get(client_ip, 0)
+    if now - last_request < _DEV_LOGIN_RATE_LIMIT_SECONDS:
+        raise ValidationError(
+            f"Rate limited. Please wait {_DEV_LOGIN_RATE_LIMIT_SECONDS} seconds between requests."
+        )
+    _DEV_LOGIN_TIMESTAMPS[client_ip] = now
+
+    # Clean up old entries (simple GC)
+    stale_threshold = now - 3600  # Remove entries older than 1 hour
+    for ip in list(_DEV_LOGIN_TIMESTAMPS.keys()):
+        if _DEV_LOGIN_TIMESTAMPS[ip] < stale_threshold:
+            del _DEV_LOGIN_TIMESTAMPS[ip]
 
     dev_email = "dev@localhost"
     user = await user_service.find_or_create_oauth_user(
@@ -507,3 +529,18 @@ async def dev_login(
         refresh_token=token_payload["refresh_token"],
         expires_in=token_payload["expires_in"],
     )
+
+
+# Keep GET endpoint for backward compatibility but redirect to docs
+@router.get("/dev/login")
+async def dev_login_get(
+    request: Request,
+    db: DBSession,
+    settings: SettingsDep,
+    user_service: UserServiceDep,
+):
+    """Backward-compatible GET endpoint for dev login.
+
+    In local mode, redirects to login via POST semantics for convenience.
+    """
+    return await dev_login(request, db, settings, user_service)

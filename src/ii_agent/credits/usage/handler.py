@@ -230,9 +230,17 @@ class CreditUsageHandler(EventCallbackHandler):
             # Resolve Copilot premium request multiplier for this model
             multiplier = self._resolve_copilot_multiplier(event.model_id)
             premium_cost = Decimal(str(self._agent_settings.a2a_copilot_premium_request_cost))
-            effective_requests = Decimal(str(max(event.premium_requests, 1))) * Decimal(
+            # Use 0 as floor — Copilot may report 0 premium requests for cached/small responses
+            effective_requests = Decimal(str(max(event.premium_requests, 0))) * Decimal(
                 str(multiplier)
             )
+            # If no premium requests were used, no charge
+            if effective_requests == 0:
+                logger.debug(
+                    "Copilot provider_reported billing: model=%s premium_requests=0, no charge",
+                    event.model_id,
+                )
+                return Decimal("0")
             total_usd = effective_requests * premium_cost
             logger.debug(
                 "Copilot provider_reported billing: model=%s multiplier=%.2f "

@@ -888,3 +888,116 @@ async def test_a2a_no_synthetic_finalization_when_content_done_present() -> None
     assert events[0].is_delta is True
     assert events[1].is_delta is False
     assert events[1].content == "hi"
+
+
+@pytest.mark.asyncio
+async def test_a2a_inner_loop_appends_assistant_message_to_messages_list() -> None:
+    """The A2A path must append an assistant Message to the messages list.
+
+    The native inner loop (model.aresponse_stream) does this internally so
+    that _finalize_run_response can persist the response to session history.
+    Without this, subsequent turns see only [system, user] and lose all
+    conversation context.
+
+    Regression test for the multi-turn context loss bug where agent_run_messages
+    rows contained only system+user, never assistant content.
+    """
+    strategy = A2AInnerLoop(
+        client=cast(
+            IIAgentA2AClient,
+            _FakeA2AClient(
+                events=[
+                    A2AStreamEvent(
+                        event_type="assistant.message_delta",
+                        data={"delta": "Solar energy is "},
+                    ),
+                    A2AStreamEvent(
+                        event_type="assistant.message_delta",
+                        data={"delta": "great."},
+                    ),
+                    A2AStreamEvent(
+                        event_type="assistant.message",
+                        data={"content": "Solar energy is great."},
+                    ),
+                ]
+            ),
+        ),
+    )
+
+    messages: list[Message] = [
+        Message(role="system", content="You are helpful."),
+        Message(role="user", content="Tell me about solar."),
+    ]
+
+    async for _ in strategy.aresponse_stream(
+        model=cast(Model, _FakeModel()),
+        messages=messages,
+        run_response=cast(
+            RunOutput,
+            SimpleNamespace(
+                session_id="00000000-0000-0000-0000-000000000001",
+                run_id="00000000-0000-0000-0000-000000000002",
+            ),
+        ),
+    ):
+        pass  # consume stream
+
+    # The messages list should now contain the assistant response
+    assert len(messages) == 3, (
+        f"Expected 3 messages, got {len(messages)}: {[m.role for m in messages]}"
+    )
+    assert messages[2].role == "assistant"
+    assert messages[2].content == "Solar energy is great."
+
+
+@pytest.mark.asyncio
+async def test_a2a_inner_loop_appends_reasoning_to_assistant_message() -> None:
+    """When the A2A stream includes reasoning, the assistant Message should carry it."""
+    strategy = A2AInnerLoop(
+        client=cast(
+            IIAgentA2AClient,
+            _FakeA2AClient(
+                events=[
+                    A2AStreamEvent(
+                        event_type="reasoning_delta",
+                        data={"delta": "Let me think..."},
+                    ),
+                    A2AStreamEvent(
+                        event_type="reasoning_done",
+                        data={"content": "Let me think..."},
+                    ),
+                    A2AStreamEvent(
+                        event_type="assistant.message_delta",
+                        data={"delta": "Done."},
+                    ),
+                    A2AStreamEvent(
+                        event_type="assistant.message",
+                        data={"content": "Done."},
+                    ),
+                ]
+            ),
+        ),
+    )
+
+    messages: list[Message] = [
+        Message(role="user", content="Think about it."),
+    ]
+
+    async for _ in strategy.aresponse_stream(
+        model=cast(Model, _FakeModel()),
+        messages=messages,
+        run_response=cast(
+            RunOutput,
+            SimpleNamespace(
+                session_id="00000000-0000-0000-0000-000000000001",
+                run_id="00000000-0000-0000-0000-000000000002",
+            ),
+        ),
+    ):
+        pass
+
+    assert len(messages) == 2
+    assistant_msg = messages[1]
+    assert assistant_msg.role == "assistant"
+    assert assistant_msg.content == "Done."
+    assert assistant_msg.reasoning_content == "Let me think..."

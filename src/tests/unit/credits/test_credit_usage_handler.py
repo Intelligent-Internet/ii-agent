@@ -220,6 +220,20 @@ class TestBackendAwareBilling:
         expected = Decimal("0.04") * _USD_TO_CREDITS
         assert credits == expected
 
+    def test_a2a_strategy_provider_reported_copilot_zero_premium_requests(self) -> None:
+        """Copilot provider_reported: 0 premium requests (cached/small) = no charge."""
+        settings = AgentSettings(
+            a2a_billing_strategy="provider_reported",
+            a2a_copilot_premium_request_cost=0.04,
+            a2a_copilot_multipliers={"claude-sonnet": 1.0},
+        )
+        handler = _make_handler(agent_settings=settings)
+        event = _a2a_model_event(premium_requests=0)
+
+        credits = handler._calculate_credits_for_event(event)
+
+        assert credits == Decimal("0")
+
     def test_a2a_strategy_provider_reported_copilot_opus_multiplier(self) -> None:
         """Copilot provider_reported: Opus 3× multiplier applied correctly."""
         settings = AgentSettings(
@@ -286,3 +300,85 @@ class TestBackendAwareBilling:
 
         mult = handler._resolve_copilot_multiplier("unknown-model-xyz")
         assert mult == 1.0
+
+
+# ---------------------------------------------------------------------------
+# Non-zero premium-request and multiplier matrix
+# ---------------------------------------------------------------------------
+
+
+class TestCopilotPremiumRequestMultiplierMatrix:
+    """Parametrised tests for Copilot premium-request billing with multipliers."""
+
+    @pytest.mark.parametrize(
+        "model_id, premium_requests, multipliers, expected_usd",
+        [
+            # 2 premium reqs × sonnet 1.0 × $0.04 = $0.08
+            (
+                "claude-sonnet-4-20250514",
+                2,
+                {"claude-sonnet": 1.0},
+                Decimal("0.08"),
+            ),
+            # 5 premium reqs × opus 3.0 × $0.04 = $0.60
+            (
+                "claude-opus-4-6",
+                5,
+                {"claude-opus": 3.0},
+                Decimal("0.60"),
+            ),
+            # 1 premium req × custom 2.5 × $0.04 = $0.10
+            (
+                "claude-sonnet-4-6-20260101",
+                1,
+                {"claude-sonnet-4-6": 2.5},
+                Decimal("0.10"),
+            ),
+            # Model not in map → default 1.0: 3 reqs × 1.0 × $0.04 = $0.12
+            (
+                "llama-unknown-70b",
+                3,
+                {"claude-sonnet": 1.0},
+                Decimal("0.12"),
+            ),
+        ],
+        ids=["sonnet-2reqs", "opus-5reqs", "custom-multiplier", "unknown-model-fallback"],
+    )
+    def test_premium_request_multiplier_combinations(
+        self,
+        model_id: str,
+        premium_requests: int,
+        multipliers: dict,
+        expected_usd: Decimal,
+    ) -> None:
+        settings = AgentSettings(
+            a2a_billing_strategy="provider_reported",
+            a2a_copilot_premium_request_cost=0.04,
+            a2a_copilot_multipliers=multipliers,
+        )
+        handler = _make_handler(agent_settings=settings)
+        event = _a2a_model_event(
+            model_id=model_id,
+            premium_requests=premium_requests,
+        )
+
+        credits = handler._calculate_credits_for_event(event)
+
+        expected = expected_usd * _USD_TO_CREDITS
+        assert credits == expected
+
+    def test_custom_overage_price(self) -> None:
+        """Non-default overage price ($0.10) applied correctly."""
+        settings = AgentSettings(
+            a2a_billing_strategy="provider_reported",
+            a2a_copilot_premium_request_cost=0.10,
+            a2a_copilot_multipliers={"claude-sonnet": 1.0},
+        )
+        handler = _make_handler(agent_settings=settings)
+        event = _a2a_model_event(premium_requests=2)
+
+        credits = handler._calculate_credits_for_event(event)
+
+        # 2 × 1.0 × $0.10 = $0.20
+        expected = Decimal("0.20") * _USD_TO_CREDITS
+        assert credits == expected

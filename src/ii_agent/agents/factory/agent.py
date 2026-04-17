@@ -243,7 +243,7 @@ class AgentFactory:
         if self.config.agent.inner_loop_mode == "a2a":
             compat_warning = check_model_backend_compat(model.id, self.config.agent.a2a_backend)
             if compat_warning:
-                logger.warning("A2A backend/model mismatch: %s", compat_warning)
+                logger.warning(f"A2A backend/model mismatch: {compat_warning}")
 
         # Create the agent
         agent = IIAgent(

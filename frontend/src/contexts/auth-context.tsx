@@ -42,7 +42,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             dispatch(setAvailableModels(data?.models || []))
 
             if (data?.models?.length) {
-                const firstModel = data.models[0]
+                const defaultModel = data.models.find((m) => m.is_default) || data.models[0]
 
                 const state = store.getState()
                 const currentSelectedChatModel = selectSelectedChatModel(state)
@@ -58,12 +58,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
                 // Set default for chat model if not set or no longer available
                 if (!currentSelectedChatModel || !selectedChatModelStillAvailable) {
-                    dispatch(setSelectedChatModel(firstModel.id))
+                    dispatch(setSelectedChatModel(defaultModel.id))
                 }
 
                 // Set default for agent model if not set or no longer available
                 if (!currentSelectedAgentModel || !selectedAgentModelStillAvailable) {
-                    dispatch(setSelectedAgentModel(firstModel.id))
+                    dispatch(setSelectedAgentModel(defaultModel.id))
                 }
             }
         } catch (error) {

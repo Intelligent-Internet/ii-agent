@@ -24,5 +24,11 @@ FROM node:22-alpine AS runner
 WORKDIR /app
 RUN npm install -g serve
 COPY --from=builder /app/dist ./dist
+
+# Build manifest — written by stack_control.sh at build time.
+# Inspect with: docker exec <container> cat /app/build-manifest.json
+ARG BUILD_MANIFEST='{}'
+RUN printf '%s\n' "$BUILD_MANIFEST" > /app/build-manifest.json
+
 EXPOSE 3000
 CMD ["serve", "-s", "dist", "-l", "3000"]

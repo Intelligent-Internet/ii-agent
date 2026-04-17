@@ -1334,8 +1334,7 @@ class Model(ABC):
                     cleanup_result, asyncio.CancelledError
                 ):
                     logger.debug(
-                        "Async generator task finished during cleanup with error: %s",
-                        cleanup_result,
+                        f"Async generator task finished during cleanup with error: {cleanup_result}"
                     )
 
         try:

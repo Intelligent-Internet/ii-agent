@@ -433,6 +433,7 @@ class LLMModelInfo(BaseModel):
     source: str = "system"
     base_url: str | None = None
     pricing: PricingInfo | None = None
+    is_default: bool = False
 
 
 class LLMModelList(BaseModel):

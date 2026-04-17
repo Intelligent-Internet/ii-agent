@@ -980,6 +980,8 @@ AgentAppEvent: TypeAlias = Union[
     AgentContinueEvent,
     AgentPromptGeneratedEvent,
     DelegationFallbackEvent,
+    CompactionAuthorityEvent,
+    CompactionSkippedEvent,
 ]
 
 SessionAppEvent: TypeAlias = Union[

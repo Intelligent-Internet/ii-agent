@@ -100,9 +100,7 @@ class SandboxService:
                 sandbox_mgr = await self._connect_provider(record)
             except SandboxNotFoundException:
                 logger.warning(
-                    "Sandbox container %s gone for session %s — marking deleted and creating new one",
-                    record.provider_sandbox_id,
-                    session_id,
+                    f"Sandbox container {record.provider_sandbox_id} gone for session {session_id} — marking deleted and creating new one"
                 )
                 await self._sandbox_repo.update_status(db, record.id, SandboxStatus.DELETED)
                 provider = self._resolve_provider()
@@ -298,9 +296,7 @@ class SandboxService:
 
             if stale_session_names:
                 logger.info(
-                    "Pruning stale PTY sessions for sandbox %s: %s",
-                    sandbox.sandbox_id,
-                    stale_session_names,
+                    f"Pruning stale PTY sessions for sandbox {sandbox.sandbox_id}: {stale_session_names}"
                 )
                 await self._save_shell_sessions(
                     sandbox.sandbox_id,
@@ -631,10 +627,7 @@ class SandboxService:
                 sessions[session_name] = ShellSessionRecord.model_validate(raw_record)
             except Exception as exc:  # noqa: BLE001
                 logger.warning(
-                    "Invalid shell session metadata for sandbox %s session %s: %s",
-                    sandbox_id,
-                    session_name,
-                    exc,
+                    f"Invalid shell session metadata for sandbox {sandbox_id} session {session_name}: {exc}"
                 )
         return sessions
 
@@ -702,9 +695,7 @@ class SandboxService:
             )
             if _usable(parent_record):
                 logger.info(
-                    "Session %s sharing sandbox from parent %s",
-                    session_id,
-                    session.parent_session_id,
+                    f"Session {session_id} sharing sandbox from parent {session.parent_session_id}"
                 )
                 return parent_record
 

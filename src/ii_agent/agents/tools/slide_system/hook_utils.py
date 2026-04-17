@@ -31,7 +31,7 @@ def _build_storage():
     try:
         return get_storage()
     except Exception as exc:  # pragma: no cover - defensive
-        logger.warning("Slide content processing skipped: %s", exc)
+        logger.warning(f"Slide content processing skipped: {exc}")
         return None
 
 
@@ -229,7 +229,7 @@ async def process_slide_content(
 
         return user_display_content
     except Exception as exc:  # pragma: no cover - defensive
-        logger.error("Error processing slide content for %s: %s", tool_name, exc)
+        logger.error(f"Error processing slide content for {tool_name}: {exc}")
         return user_display_content
 
 
@@ -268,8 +268,5 @@ async def persist_slide_tool_result(
                 )
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning(
-            "Failed to persist slide tool result for session %s (%s): %s",
-            normalized_session_id,
-            tool_name,
-            exc,
+            f"Failed to persist slide tool result for session {normalized_session_id} ({tool_name}): {exc}"
         )

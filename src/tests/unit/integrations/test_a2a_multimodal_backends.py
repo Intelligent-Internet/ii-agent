@@ -218,7 +218,14 @@ class TestPartsToAttachments:
         for p in temps:
             os.unlink(p)
 
-    def test_remote_url_skipped(self):
+    def test_remote_url_downloaded(self):
+        """Remote HTTP URLs should be downloaded to temp files."""
+        import unittest.mock as mock
+
+        fake_response = mock.MagicMock()
+        fake_response.content = b"fake-image-bytes"
+        fake_response.raise_for_status = mock.MagicMock()
+
         parts = [
             Part(
                 root=FilePart(
@@ -228,7 +235,41 @@ class TestPartsToAttachments:
                 )
             )
         ]
-        attachments, temps = _parts_to_attachments(parts)
+        with mock.patch("httpx.get", return_value=fake_response) as mock_get:
+            attachments, temps = _parts_to_attachments(parts)
+
+        mock_get.assert_called_once_with(
+            "https://example.com/img.png", timeout=30.0, follow_redirects=True
+        )
+        assert len(attachments) == 1
+        assert attachments[0]["type"] == "file"
+        assert attachments[0]["path"].endswith(".png")
+        assert len(temps) == 1
+        # Verify content was written
+        with open(temps[0], "rb") as f:
+            assert f.read() == b"fake-image-bytes"
+        # Cleanup
+        import os
+
+        for p in temps:
+            os.unlink(p)
+
+    def test_remote_url_download_failure(self):
+        """Failed remote URL download should be logged and skipped gracefully."""
+        import unittest.mock as mock
+
+        parts = [
+            Part(
+                root=FilePart(
+                    file=FileWithUri(
+                        name="img", uri="https://example.com/img.png", mime_type="image/png"
+                    )
+                )
+            )
+        ]
+        with mock.patch("httpx.get", side_effect=Exception("connection refused")):
+            attachments, temps = _parts_to_attachments(parts)
+
         assert attachments == []
         assert temps == []
 

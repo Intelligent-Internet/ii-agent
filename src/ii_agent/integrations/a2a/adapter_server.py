@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import ipaddress
 import json
 import logging
 import threading
@@ -9,6 +10,7 @@ import time as _time
 import uuid
 from collections.abc import AsyncIterator
 from typing import Any, Optional
+from urllib.parse import urlparse
 
 from fastapi import Body, FastAPI
 from fastapi.responses import JSONResponse
@@ -28,6 +30,7 @@ from ii_agent.integrations.a2a.extension_utils import (
 )
 from ii_agent.integrations.a2a.multimodal import (
     build_conversation_context,
+    extract_historical_image_parts,
     extract_user_content,
     has_multimodal_parts,
 )
@@ -56,6 +59,58 @@ class ToolResultBody(BaseModel):
 
     result: str = Field(default="", description="Tool execution result text.")
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+# ---------------------------------------------------------------------------
+# URL validation for SSRF protection
+# ---------------------------------------------------------------------------
+_PRIVATE_IP_RANGES = [
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("172.16.0.0/12"),
+    ipaddress.ip_network("192.168.0.0/16"),
+    ipaddress.ip_network("127.0.0.0/8"),
+    ipaddress.ip_network("169.254.0.0/16"),  # link-local
+    ipaddress.ip_network("::1/128"),  # IPv6 loopback
+    ipaddress.ip_network("fc00::/7"),  # IPv6 private
+    ipaddress.ip_network("fe80::/10"),  # IPv6 link-local
+]
+
+
+def _is_safe_url(url: str) -> tuple[bool, str]:
+    """Validate URL to prevent SSRF attacks.
+
+    Returns (is_safe, error_message). If is_safe is True, error_message is empty.
+    """
+    try:
+        parsed = urlparse(url)
+    except Exception:
+        return False, "Invalid URL format"
+
+    # Only allow http/https schemes
+    if parsed.scheme not in ("http", "https"):
+        return False, f"Invalid scheme '{parsed.scheme}': only http/https allowed"
+
+    hostname = parsed.hostname
+    if not hostname:
+        return False, "URL must have a hostname"
+
+    # Block known dangerous hostnames
+    dangerous_hosts = {"metadata.google.internal", "169.254.169.254"}
+    if hostname.lower() in dangerous_hosts:
+        return False, f"Blocked hostname: {hostname}"
+
+    # Try to resolve as IP address and check against private ranges
+    try:
+        ip = ipaddress.ip_address(hostname)
+        for network in _PRIVATE_IP_RANGES:
+            if ip in network:
+                return False, f"Private/internal IP addresses are not allowed: {hostname}"
+    except ValueError:
+        # Not an IP address (it's a hostname) - allow it
+        # DNS rebinding attacks are harder to prevent here without async resolution
+        pass
+
+    return True, ""
 
 
 # A2ASendRequest is identical in shape; kept as a named alias for clarity.
@@ -500,6 +555,11 @@ def create_app(
         """Yield A2A SSE strings from the active backend or the simulated stream."""
         if backend is not None:
             prompt, parts = extract_user_content(req.messages)
+            # Include images from earlier user turns so the LLM retains
+            # visibility of previously uploaded images on follow-up questions.
+            historical_images = extract_historical_image_parts(req.messages)
+            if historical_images:
+                parts.extend(historical_images)
             # Prepend prior conversation turns so the Copilot SDK LLM
             # retains context across runs (each run creates a fresh SDK
             # session with no built-in history).
@@ -791,12 +851,20 @@ def create_app(
         base_url = str(body.get("url") or "").strip()
         if not base_url:
             return JSONResponse(status_code=422, content={"detail": "'url' is required"})
+
+        # SSRF protection: validate URL before making external request
+        is_safe, error_msg = _is_safe_url(base_url)
+        if not is_safe:
+            return JSONResponse(status_code=422, content={"detail": error_msg})
+
         try:
             card = await _registry.discover(base_url)
         except Exception as exc:
+            # Don't leak internal error details to client
+            logger.warning("Agent discovery failed for %s: %s", base_url, exc, exc_info=True)
             return JSONResponse(
                 status_code=502,
-                content={"detail": f"Discovery failed: {exc}"},
+                content={"detail": "Discovery failed: unable to fetch agent card"},
             )
         return JSONResponse(content=card.to_dict())
 

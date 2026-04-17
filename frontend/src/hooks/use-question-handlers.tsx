@@ -8,7 +8,7 @@ import {
     clearPlanModificationOptions,
     selectAvailableModels,
     selectMessages,
-    selectSelectedModel,
+    selectSelectedAgentModel,
     selectToolSettings,
     selectCurrentMessageFileIds,
     selectUploadedFiles,
@@ -64,7 +64,7 @@ export function useQuestionHandlers() {
     const { sessionId } = useParams()
 
     const messages = useAppSelector(selectMessages)
-    const selectedModelId = useAppSelector(selectSelectedModel)
+    const selectedModelId = useAppSelector(selectSelectedAgentModel)
     const availableModels = useAppSelector(selectAvailableModels)
     const toolSettings = useAppSelector(selectToolSettings)
     const currentMessageFileIds = useAppSelector(selectCurrentMessageFileIds)

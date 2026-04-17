@@ -422,7 +422,7 @@ echo $SHELL_PID > {shlex.quote(pid_path)}
                 f"{shlex.quote(record.log_path)} {shlex.quote(record.state_path)}"
             )
         except ShellOperationError:
-            logger.info("Shell process %s already exited for session %s", record.pid, session_name)
+            logger.info(f"Shell process {record.pid} already exited for session {session_name}")
 
     async def is_session_live(self, record: ShellSessionRecord) -> bool:
         try:

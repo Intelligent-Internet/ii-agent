@@ -10,11 +10,12 @@ import time
 import socketio
 
 BACKEND_URL = "http://localhost:8000"
-TOKEN = os.environ.get(
-    "TOKEN",
-    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiM2EzODQ1MmEtMWQ0ZS00MTIyLWE4YzYtNWNlNWM3OTkzNGVlIiwiZW1haWwiOiJkZXZAbG9jYWxob3N0Iiwicm9sZSI6InVzZXIiLCJ0eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzc4NDQ2OTg0LCJpYXQiOjE3NzU4NTQ5ODR9.-Y8dDmYHux8qlZwBdixMnczZ44C4vV5apImR_Fg9jbg",
-)
-USER_ID = "3a38452a-1d4e-4122-a8c6-5ce5c79934ee"
+TOKEN = os.environ.get("TOKEN", "")
+if not TOKEN:
+    print("ERROR: TOKEN environment variable is required.", file=sys.stderr)
+    print("Get a token by visiting http://localhost:8000/auth/dev/login", file=sys.stderr)
+    sys.exit(1)
+USER_ID = os.environ.get("USER_ID", "")
 
 PROMPT = os.environ.get(
     "PROMPT",

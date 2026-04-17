@@ -165,6 +165,9 @@ output/
 .shared/
 .gemini/
 
+# Local state
+.e2e_last_results.json
+
 # Local only scripts
 start_tool_server.sh
 a2a_agents.json

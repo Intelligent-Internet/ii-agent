@@ -27,9 +27,12 @@ export DISPLAY=:99
 export AGENT_BROWSER_HEADED=1
 sleep 1
 
-# Start x11vnc server
+# Start x11vnc server with generated password
 echo "Starting x11vnc..."
-x11vnc -display :99 -forever -nopw -shared -rfbport 5900 -bg -o /tmp/x11vnc.log
+VNC_PASSWORD=$(head -c 8 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 8)
+echo "$VNC_PASSWORD" > /tmp/.vnc_password
+x11vnc -display :99 -forever -passwdfile /tmp/.vnc_password -shared -rfbport 5900 -bg -o /tmp/x11vnc.log
+echo "VNC password: $VNC_PASSWORD (also saved to /tmp/.vnc_password)"
 sleep 1
 
 # Start window manager (needed for Chrome to render properly in VNC)
@@ -38,6 +41,7 @@ fluxbox &
 sleep 1
 
 # Start noVNC websockify proxy (serves VNC over WebSocket on port 6080)
+# Note: VNC password is required when connecting via noVNC
 echo "Starting noVNC on port 6080..."
 websockify --web=/usr/share/novnc 6080 localhost:5900 &
 sleep 1

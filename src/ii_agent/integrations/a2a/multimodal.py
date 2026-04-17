@@ -95,6 +95,51 @@ def extract_user_content(
     return text_prompt, parts
 
 
+def extract_historical_image_parts(messages: list[dict[str, Any]]) -> list[Part]:
+    """Collect image Parts from all user messages *except* the last one.
+
+    ``extract_user_content`` handles images from the latest user message.
+    This function picks up images from *prior* user turns so the LLM can
+    still see them on follow-up questions without re-upload.
+
+    Returns a (possibly empty) list of ``FilePart`` objects.
+    """
+    # Identify the index of the last non-system user message.
+    last_user_idx = -1
+    for i in range(len(messages) - 1, -1, -1):
+        role = str(messages[i].get("role") or "").lower()
+        if role == "user":
+            last_user_idx = i
+            break
+
+    parts: list[Part] = []
+    seen_ids: set[str] = set()
+
+    for idx, msg in enumerate(messages):
+        if idx == last_user_idx:
+            continue  # handled by extract_user_content
+        role = str(msg.get("role") or "").lower()
+        if role != "user":
+            continue
+
+        for img_dict in msg.get("images") or []:
+            img_id = img_dict.get("id") or ""
+            if img_id and img_id in seen_ids:
+                continue
+            part = _image_dict_to_part(img_dict)
+            if part is not None:
+                parts.append(part)
+                if img_id:
+                    seen_ids.add(img_id)
+
+    if parts:
+        logger.info(
+            f"[a2a:multimodal] extract_historical_image_parts: "
+            f"found {len(parts)} image(s) from prior user messages"
+        )
+    return parts
+
+
 def build_conversation_context(messages: list[dict[str, Any]]) -> str:
     """Build a structured text representation of prior conversation turns.
 

@@ -29,10 +29,49 @@ ENV_EXAMPLE="$ROOT_DIR/docker/.stack.env.local.example"
 PROJECT_NAME=${COMPOSE_PROJECT_NAME:-ii-agent-local}
 SANDBOX_IMAGE=${SANDBOX_DOCKER_IMAGE:-ii-agent-sandbox:latest}
 
+# Path where build manifest is stored inside every container image.
+BUILD_MANIFEST_PATH="/app/build-manifest.json"
+
 # ── Helpers ────────────────────────────────────────────────────────────────
 
 compose() {
   docker compose --project-name "$PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"
+}
+
+# Generate a JSON build manifest for baking into container images.
+# Usage: _generate_build_manifest <target> [build_type]
+#   target     - backend | frontend | sandbox
+#   build_type - image (default) | patch
+_generate_build_manifest() {
+  local target="${1:-unknown}"
+  local build_type="${2:-image}"
+  local ts commit full_commit branch dirty dirty_files_json
+
+  ts=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+  commit=$(git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || echo "unknown")
+  full_commit=$(git -C "$ROOT_DIR" rev-parse HEAD 2>/dev/null || echo "unknown")
+  branch=$(git -C "$ROOT_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+
+  dirty="false"
+  dirty_files_json="[]"
+  if ! git -C "$ROOT_DIR" diff --quiet HEAD 2>/dev/null; then
+    dirty="true"
+    local files
+    files=$(git -C "$ROOT_DIR" diff --name-only HEAD 2>/dev/null | head -30)
+    if [[ -n "$files" ]]; then
+      dirty_files_json="["
+      local first=true
+      while IFS= read -r f; do
+        [[ -z "$f" ]] && continue
+        [[ "$first" == true ]] && first=false || dirty_files_json+=","
+        dirty_files_json+="\"$f\""
+      done <<< "$files"
+      dirty_files_json+="]"
+    fi
+  fi
+
+  printf '{"build_type":"%s","target":"%s","timestamp":"%s","git_commit":"%s","git_commit_full":"%s","git_branch":"%s","dirty":%s,"dirty_files":%s}' \
+    "$build_type" "$target" "$ts" "$commit" "$full_commit" "$branch" "$dirty" "$dirty_files_json"
 }
 
 ensure_env() {
@@ -118,26 +157,30 @@ EOF
 build_compose_target() {
   local target="$1"
   local use_cache="$2"
+  local manifest
+  manifest=$(_generate_build_manifest "$target")
 
   set -o pipefail
   echo "[$target] Starting compose build"
   if [[ "$use_cache" == true ]]; then
-    compose build "$target" 2>&1 | sed -u "s/^/[$target] /"
+    compose build --build-arg "BUILD_MANIFEST=$manifest" "$target" 2>&1 | sed -u "s/^/[$target] /"
   else
-    compose build --no-cache "$target" 2>&1 | sed -u "s/^/[$target] /"
+    compose build --no-cache --build-arg "BUILD_MANIFEST=$manifest" "$target" 2>&1 | sed -u "s/^/[$target] /"
   fi
   echo "[$target] Build complete"
 }
 
 build_sandbox_target() {
   local use_cache="$1"
+  local manifest
+  manifest=$(_generate_build_manifest "sandbox")
 
   set -o pipefail
   echo "[sandbox] Starting Docker build for $SANDBOX_IMAGE"
   if [[ "$use_cache" == true ]]; then
-    docker build -t "$SANDBOX_IMAGE" -f "$ROOT_DIR/e2b.Dockerfile" "$ROOT_DIR" 2>&1 | sed -u 's/^/[sandbox] /'
+    docker build --build-arg "BUILD_MANIFEST=$manifest" -t "$SANDBOX_IMAGE" -f "$ROOT_DIR/e2b.Dockerfile" "$ROOT_DIR" 2>&1 | sed -u 's/^/[sandbox] /'
   else
-    docker build --no-cache -t "$SANDBOX_IMAGE" -f "$ROOT_DIR/e2b.Dockerfile" "$ROOT_DIR" 2>&1 | sed -u 's/^/[sandbox] /'
+    docker build --no-cache --build-arg "BUILD_MANIFEST=$manifest" -t "$SANDBOX_IMAGE" -f "$ROOT_DIR/e2b.Dockerfile" "$ROOT_DIR" 2>&1 | sed -u 's/^/[sandbox] /'
   fi
   local image_date
   image_date=$(docker images "$SANDBOX_IMAGE" --format '{{.CreatedAt}}' | head -1)
@@ -388,6 +431,12 @@ host_mtimes:
 ${mtimes}
 "
       docker exec -i "$name" bash -c 'cat >> /app/ii_sandbox/patch-manifest.log' <<< "$manifest_entry"
+
+      # Overwrite the build manifest so `cat /app/build-manifest.json` always
+      # reflects the current state of the code inside this container.
+      local build_manifest
+      build_manifest=$(_generate_build_manifest "sandbox" "patch")
+      echo "$build_manifest" | docker exec -i "$name" bash -c 'cat > /app/build-manifest.json'
     fi
 
     # Restart Python services so they pick up the new code
@@ -440,6 +489,8 @@ ${mtimes}
   echo ""
   echo "Patch manifest: /app/ii_sandbox/patch-manifest.log  (inside each sandbox container)"
   echo "  View with: docker exec <container> cat /app/ii_sandbox/patch-manifest.log"
+  echo "Build manifest: /app/build-manifest.json  (overwritten by patch — reflects current state)"
+  echo "  View with: docker exec <container> cat /app/build-manifest.json"
   echo "  This file does not survive a full container rebuild."
 }
 
@@ -466,11 +517,25 @@ cmd_restart() {
   cmd_status
 }
 
+REBUILD_LOCK="/tmp/.ii-agent-rebuild-lock"
+
 cmd_rebuild() {
   ensure_env
   echo "Rebuilding (no cache) and restarting ii-agent local stack..."
+
+  # Prevent .bashrc autostart from creating containers with the old image
+  # while the rebuild is in progress. The lock is removed on exit (success or failure).
+  touch "$REBUILD_LOCK"
+  trap 'rm -f "$REBUILD_LOCK"' EXIT
+
+  # Generate a manifest for whichever services are being rebuilt.
+  # If specific services are listed, tag the first; otherwise tag "all".
+  local rebuild_target="${1:-all}"
+  local manifest
+  manifest=$(_generate_build_manifest "$rebuild_target")
+
   compose down
-  compose build --no-cache "$@"
+  compose build --no-cache --build-arg "BUILD_MANIFEST=$manifest" "$@"
   compose up -d
   echo ""
   cmd_status
@@ -492,18 +557,93 @@ cmd_logs() {
   compose logs "$@"
 }
 
+print_cleanup_help() {
+  cat <<EOF
+Usage:
+  scripts/stack_control.sh cleanup [--force] [--dry-run]
+
+Options:
+  --force   Remove all sandbox containers, including those with session metadata
+  --dry-run Show which containers would be removed without deleting anything
+  -h, --help Show this help message
+EOF
+}
+
 cmd_cleanup() {
+  local force=false
+  local dry_run=false
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --force)
+        force=true
+        ;;
+      --dry-run)
+        dry_run=true
+        ;;
+      -h|--help)
+        print_cleanup_help
+        return 0
+        ;;
+      *)
+        echo "Unknown cleanup option: $1"
+        print_cleanup_help
+        return 1
+        ;;
+    esac
+    shift
+  done
+
   echo "Removing stale sandbox containers..."
   local containers
-  containers=$(docker ps -a --filter "label=ii-agent.sandbox=true" -q)
+  containers=$(docker ps -a --filter "label=ii-agent.sandbox=true" --format '{{.ID}}')
   if [[ -z "$containers" ]]; then
     echo "No sandbox containers found."
     return
   fi
-  local count
-  count=$(echo "$containers" | wc -l)
-  echo "Found $count sandbox container(s). Removing..."
-  echo "$containers" | xargs docker rm -f
+
+  local orphaned=()
+  local preserved=()
+  local container_id
+
+  while IFS= read -r container_id; do
+    if [[ -z "$container_id" ]]; then
+      continue
+    fi
+    local session_id
+    session_id=$(docker inspect --format '{{ index .Config.Labels "ii-agent.session-id" }}' "$container_id" 2>/dev/null || true)
+    if [[ -z "$session_id" || "$session_id" == "<no value>" ]]; then
+      orphaned+=("$container_id")
+    else
+      preserved+=("$container_id")
+    fi
+  done <<< "$containers"
+
+  local to_remove=()
+  if [[ "$force" == true ]]; then
+    echo "Force deletion enabled; removing all sandbox containers regardless of session metadata."
+    while IFS= read -r container_id; do
+      if [[ -n "$container_id" ]]; then
+        to_remove+=("$container_id")
+      fi
+    done <<< "$containers"
+  else
+    to_remove=("${orphaned[@]}")
+  fi
+
+  if [[ ${#to_remove[@]} -eq 0 ]]; then
+    echo "No orphaned sandbox containers found."
+    echo "Preserving ${#preserved[@]} sandbox container(s) tied to sessions."
+    return
+  fi
+
+  echo "Found ${#to_remove[@]} sandbox container(s) to remove."
+  if [[ "$dry_run" == true ]]; then
+    printf '%s\n' "${to_remove[@]}"
+    return
+  fi
+
+  printf '%s\n' "${to_remove[@]}" | xargs docker rm -f
   echo "Done."
 }
 

@@ -50,11 +50,21 @@ async def proxy_download(path: str) -> StreamingResponse:
     except StorageObjectNotFoundError:
         raise HTTPException(status_code=404, detail="Not found")
 
+    # Determine content size so the response includes Content-Length
+    # instead of chunked transfer encoding (fixes PDF/media rendering
+    # in clients that require a known content length).
+    data.seek(0, 2)
+    size = data.tell()
+    data.seek(0)
+
     content_type = mimetypes.guess_type(path)[0] or "application/octet-stream"
     return StreamingResponse(
         content=data,
         media_type=content_type,
-        headers={"Cache-Control": "public, max-age=86400"},
+        headers={
+            "Cache-Control": "public, max-age=86400",
+            "Content-Length": str(size),
+        },
     )
 
 
@@ -79,8 +89,13 @@ async def proxy_upload(
         raise HTTPException(status_code=409, detail="Asset upload already completed or failed")
 
     content_length = request.headers.get("content-length")
-    if content_length and int(content_length) > _MAX_UPLOAD_SIZE:
-        raise HTTPException(status_code=413, detail="File too large")
+    if content_length:
+        try:
+            length = int(content_length)
+            if length > _MAX_UPLOAD_SIZE:
+                raise HTTPException(status_code=413, detail="File too large")
+        except ValueError:
+            pass  # Invalid content-length header, will check body size below
 
     content_type = request.headers.get("content-type", "application/octet-stream")
     body = await request.body()
@@ -90,5 +105,9 @@ async def proxy_upload(
 
     storage = get_storage()
     await storage.write(asset.storage_path, io.BytesIO(body), content_type)
+
+    # Transition asset to COMPLETE state
+    asset.upload_status = UploadStatus.COMPLETE
+    await db.commit()
 
     return Response(status_code=200)

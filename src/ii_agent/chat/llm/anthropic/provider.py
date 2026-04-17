@@ -93,7 +93,7 @@ class FileResponseObject(BaseModel):
 
     id: str
     provider_file_id: str
-    provider: Literal["openai", "anthropic"]
+    provider: str
     content_type: str
     file_name: str
     file_size: Optional[int] = 0
@@ -157,7 +157,7 @@ class AnthropicProvider(LLMClient):
                     raw_file_obj = uploaded_file.model_dump(mode="json")
 
                 return FileResponseObject(
-                    id=file_info.id,
+                    id=str(file_info.id),
                     provider_file_id=uploaded_file.id,
                     provider=Provider.ANTHROPIC.value,
                     content_type=file_info.content_type,
@@ -254,7 +254,7 @@ class AnthropicProvider(LLMClient):
                 if file_upload:
                     all_file_responses.append(
                         FileResponseObject(
-                            id=file_id,
+                            id=str(file_id),
                             provider_file_id=pf.provider_file_id,
                             provider=Provider.ANTHROPIC.value,
                             content_type=file_upload.content_type,

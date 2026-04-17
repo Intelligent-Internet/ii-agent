@@ -166,10 +166,7 @@ class PlanHandler(BaseCommandHandler[PlanCommandContent]):
                     task_type=TaskType.AGENT_RUN,
                 )
             except TaskConflictException:
-                logger.warning(
-                    "Duplicate task claim in plan for session %s",
-                    session_info.id,
-                )
+                logger.warning(f"Duplicate task claim in plan for session {session_info.id}")
                 await self._send_error_event(
                     session_info.id,
                     message="This operation has already been submitted.",

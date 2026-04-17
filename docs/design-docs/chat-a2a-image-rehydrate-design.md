@@ -1,7 +1,7 @@
 # Chat A2A Image Rehydration Design
 
 > **Date**: 2026-04-14
-> **Status**: Implemented (As Built)
+> **Status**: Superseded — see As-Built Addendum below
 > **Scope**: Chat mode (`/v1/chat/conversations`) when `AGENT_CHAT_INNER_LOOP_MODE=a2a`
 > **Related**:
 > - [chat-a2a-inner-loop-integration-assessment.md](chat-a2a-inner-loop-integration-assessment.md)
@@ -437,3 +437,55 @@ Resolved by this revision:
 - [x] Unit + integration test coverage approved
 - [x] Rollout strategy approved
 - [x] Config-only control approved (no user-facing toggle)
+
+---
+
+## As-Built Addendum (2026-04-17)
+
+> The original design proposed a `rehydrate_a2a_images()` function with config-driven
+> cap policies, serialized payload safety checks, and a phased rollout. **That design
+> was never implemented.** The root cause and fix turned out to be simpler.
+
+### Root Cause
+
+`extract_user_content()` in `multimodal.py` only extracts images from the **last**
+user message (`break` on first user hit when iterating in reverse). Meanwhile,
+`build_conversation_context()` converts all prior messages to text-only, replacing
+image references with `[Attached image: <alt>]` placeholders. On turn 2+, the LLM
+never received the actual prior image bytes.
+
+### Actual Implementation
+
+**New function: `extract_historical_image_parts()`** in
+`src/ii_agent/integrations/a2a/multimodal.py`
+
+- Iterates all user messages **except the last** (which is handled by
+  `extract_user_content()`).
+- Collects image dicts via `_image_dict_to_part()`.
+- Deduplicates by image `id` using a `seen_ids` set.
+- Returns `list[Part]`.
+
+**Integration point:** `adapter_server.py` `_event_source()`
+
+After calling `extract_user_content()` and before `build_conversation_context()`:
+
+```python
+historical_images = extract_historical_image_parts(req.messages)
+if historical_images:
+    parts.extend(historical_images)
+```
+
+### Test Coverage
+
+- 9 unit tests in `TestExtractHistoricalImageParts` (`test_a2a_multimodal.py`)
+- E2E coverage via `IMG-02` (chat mode) and `IMG-03` (agent mode) multi-turn image retention tests
+
+### Key Differences from Original Design
+
+| Aspect | Original Design | As-Built |
+|--------|----------------|----------|
+| Function | `rehydrate_a2a_images()` | `extract_historical_image_parts()` |
+| Location | Service layer (turn loop) | Adapter layer (`multimodal.py`) |
+| Cap policy | Config-driven `max_images`, `max_payload_bytes` | No cap (all prior images included) |
+| Config | `AgentSettings.image_rehydration` | No config needed |
+| Complexity | High (phased rollout, feature flags) | Low (simple extraction + dedup) |

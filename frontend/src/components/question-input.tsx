@@ -37,7 +37,8 @@ import {
     selectQuestionMode,
     selectRequireClearFiles,
     selectSelectedFeature,
-    selectSelectedModel,
+    selectSelectedChatModel,
+    selectSelectedAgentModel,
     selectSelectedSlideTemplate,
     selectShouldFocusInput,
     selectSubscriptionPlan,
@@ -178,7 +179,11 @@ const QuestionInput = ({
     const questionMode = useAppSelector(selectQuestionMode)
     const buildMode = useAppSelector(selectBuildMode)
     const availableModels = useAppSelector(selectAvailableModels)
-    const selectedModel = useAppSelector(selectSelectedModel)
+    const selectedChatModel = useAppSelector(selectSelectedChatModel)
+    const selectedAgentModel = useAppSelector(selectSelectedAgentModel)
+    const selectedModel = questionMode === QUESTION_MODE.CHAT
+        ? selectedChatModel
+        : selectedAgentModel
     const subscriptionPlan = useAppSelector(selectSubscriptionPlan)
     const councilPreference = useAppSelector(selectCouncilPreference)
     const isUploading = useAppSelector((state) => state.files.isUploading)

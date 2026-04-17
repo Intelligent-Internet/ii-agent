@@ -142,6 +142,16 @@ class SandboxSettings(BaseSettings):
         gt=0,
     )
 
+    max_concurrent_sandboxes: int = Field(
+        default=0,
+        description=(
+            "Maximum number of concurrent sandbox containers allowed. "
+            "0 disables the limit. When the limit is reached, new sandbox "
+            "creation is rejected with a clear error."
+        ),
+        ge=0,
+    )
+
     backend_url: str = Field(
         default="http://backend:8000",
         description="Backend URL for orphan cleanup session verification",

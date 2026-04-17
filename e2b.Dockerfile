@@ -221,5 +221,10 @@ WORKDIR /home/user
 ENV SANDBOX_ADAPTER_PORT=18100
 EXPOSE 18100
 
+# Build manifest — written by stack_control.sh at build time.
+# Inspect with: docker exec <container> cat /app/build-manifest.json
+ARG BUILD_MANIFEST='{}'
+RUN printf '%s\n' "$BUILD_MANIFEST" > /app/build-manifest.json
+
 ENTRYPOINT ["/app/entrypoint.sh"]
 CMD ["bash", "/app/start-services.sh"]
