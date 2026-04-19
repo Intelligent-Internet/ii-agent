@@ -80,20 +80,35 @@ def test_build_inner_loop_strategy_a2a_with_sandbox_uses_url_factory() -> None:
     assert strategy.context_reuse is False
 
 
-def test_build_inner_loop_strategy_a2a_with_url_returns_a2a_strategy() -> None:
+def test_build_inner_loop_strategy_a2a_with_url_no_sandbox_uses_deferred_not_static() -> None:
+    """When a2a_agent_url is set but no sandbox is provided, the factory MUST
+    use the deferred sandbox path — NOT the static URL.  Agent sessions always
+    create per-sandbox adapters whose env vars carry session-specific config
+    (e.g. long-horizon timeouts for deep_research).  Using the static sidecar
+    URL would bypass per-sandbox timeouts.
+
+    Regression test for: Copilot CLI timed out after 900s on a deep_research
+    session because the factory short-circuited to the shared sidecar adapter
+    (a2a_agent_url) instead of the per-sandbox adapter that had the 3600s
+    long-horizon timeout.
+    """
     factory = AgentFactory(
         _make_factory_config(
             mode="a2a",
-            url="http://localhost:9001",
+            url="http://a2a-adapter:18100",
             timeout=12.5,
             fallback=False,
             context_reuse=False,
         )
     )
 
-    strategy = factory._build_inner_loop_strategy()
+    strategy = factory._build_inner_loop_strategy(sandbox=None)
 
     assert isinstance(strategy, A2AInnerLoop)
+    # Must be deferred (url_factory), NOT static URL to the sidecar.
+    assert strategy.client._static_url is None
+    assert strategy.client._url_factory is not None
+    assert strategy._sandbox_ref == [None]
     assert strategy.fallback_to_native is False
     assert strategy.context_reuse is False
     assert strategy.client._timeout.connect == 12.5

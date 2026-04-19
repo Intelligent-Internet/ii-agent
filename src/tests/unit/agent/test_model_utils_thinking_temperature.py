@@ -17,9 +17,12 @@ every fallback attempt 400-loop until retries are exhausted.
 
 from __future__ import annotations
 
+import pytest
+
 from ii_agent.agents.models.utils import (
     _build_anthropic_direct,
     _build_anthropic_vertex,
+    _is_opus_4_7_or_later,
 )
 from ii_agent.core.config.llm_config import LLMConfig
 from ii_agent.settings.llm import Provider
@@ -91,3 +94,40 @@ class TestBuildAnthropicVertex:
         params = model.get_request_params()
         assert "thinking" in params
         assert "temperature" not in params
+
+
+class TestIsOpus47OrLater:
+    """Tests for ``_is_opus_4_7_or_later`` model-id detection."""
+
+    @pytest.mark.parametrize(
+        "model_id",
+        [
+            "claude-opus-4-7",
+            "claude-opus-4-7-20260415",
+            "claude-opus-4-7@20260415",
+            "Claude-Opus-4-7",
+            "CLAUDE-OPUS-4-7",
+            "anthropic.claude-opus-4-7",
+            "anthropic.claude-opus-4-7-v1:0",
+            "Anthropic.Claude-Opus-4-7",
+        ],
+    )
+    def test_matches_opus_4_7_variants(self, model_id: str) -> None:
+        assert _is_opus_4_7_or_later(model_id) is True
+
+    @pytest.mark.parametrize(
+        "model_id",
+        [
+            "claude-opus-4-6",
+            "claude-opus-4-6-20260301",
+            "claude-sonnet-4-7",
+            "claude-sonnet-4-5-20250929",
+            "gpt-4o",
+            "",
+        ],
+    )
+    def test_rejects_non_opus_4_7(self, model_id: str) -> None:
+        assert _is_opus_4_7_or_later(model_id) is False
+
+    def test_handles_none_input(self) -> None:
+        assert _is_opus_4_7_or_later(None) is False

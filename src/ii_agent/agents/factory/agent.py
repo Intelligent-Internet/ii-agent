@@ -63,23 +63,17 @@ class AgentFactory:
                 context_reuse=self.config.agent.a2a_context_reuse,
             )
 
-        # External agent URL override (non-sandbox path, e.g. development or
-        # an externally managed A2A agent).
-        if self.config.agent.a2a_agent_url:
-            client = IIAgentA2AClient(
-                agent_url=self.config.agent.a2a_agent_url,
-                timeout=self.config.agent.a2a_timeout_seconds,
-            )
-            return A2AInnerLoop(
-                client=client,
-                fallback_to_native=self.config.agent.a2a_fallback_to_native,
-                context_reuse=self.config.agent.a2a_context_reuse,
-            )
-
         # Deferred sandbox path: sandbox will be lazily initialized after agent
         # construction (e.g. when the first tool needs it).  Create the A2A
         # strategy now with a url_factory that reads the strategy's own
         # _sandbox_ref — the agent's sandbox setter will fill ref[0] later.
+        #
+        # This MUST be evaluated before the a2a_agent_url fallback below.
+        # Agent sessions always create per-sandbox adapters whose env vars
+        # carry session-specific config (e.g. long-horizon timeouts for
+        # deep_research).  If a2a_agent_url were checked first it would
+        # short-circuit to the shared sidecar adapter — which has only the
+        # global timeout — defeating the per-sandbox long-horizon override.
         #
         # We need a two-phase init: build the deferred URL closure first,
         # create the strategy, then bind the closure to the strategy's ref.
