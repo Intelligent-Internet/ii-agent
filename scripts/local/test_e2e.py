@@ -440,10 +440,15 @@ def find_model_override_log(logs: str, *, expected_model: str, expected_context:
 
 
 async def ensure_a2a_adapter_warm() -> tuple[bool, str]:
-    """Ensure a healthy local A2A adapter exists before chat-path assertions."""
+    """Ensure a healthy A2A adapter exists before chat-path assertions.
+
+    Chat A2A is sandbox-independent and uses the standalone `a2a-adapter`
+    sidecar (docker-compose.local.yaml).  We just confirm the backend has
+    seen any A2A streaming activity, or kick off a tiny warm-up call.
+    """
     try:
         logs = await get_backend_logs_since(60)
-        if "Auto-discovered sandbox A2A adapter" in logs or "[a2a:stream]" in logs:
+        if "[a2a:stream]" in logs or "A2A inner-loop enabled" in logs:
             return True, "existing adapter evidence found"
 
         warmup = await agent_query(
@@ -1152,9 +1157,7 @@ async def test_img_chat_attachment() -> TestResult:
             return t
 
         content1 = r1["content"].lower()
-        mentions_color = any(
-            c in content1 for c in ("red", "blue", "gradient", "color", "purple")
-        )
+        mentions_color = any(c in content1 for c in ("red", "blue", "gradient", "color", "purple"))
         if not mentions_color:
             t.status = TestStatus.FAIL
             t.notes = f"Turn 1: no color mention — image may not have loaded: {r1['content'][:200]}"
@@ -1244,7 +1247,9 @@ async def test_img_agent_attachment() -> TestResult:
         sees_image = any(c in resp1_lower for c in ("red", "blue", "gradient", "color"))
         if not sees_image:
             t.status = TestStatus.FAIL
-            t.notes = f"Turn 1: agent did not describe image colors: {r1.get('response_text', '')[:200]}"
+            t.notes = (
+                f"Turn 1: agent did not describe image colors: {r1.get('response_text', '')[:200]}"
+            )
             t.elapsed = time.monotonic() - start
             return t
 

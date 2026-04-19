@@ -87,18 +87,23 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 RUN curl -fsSL https://code-server.dev/install.sh | sh
 
 # GitHub CLI (gh) — required by the Copilot A2A backend (`gh copilot agent`)
+# Pinned: update gh version when upgrading github-copilot-sdk compatibility.
+ARG GH_CLI_VERSION=2.90.0
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
   --mount=type=cache,target=/var/lib/apt,sharing=locked \
   curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
     -o /usr/share/keyrings/githubcli-archive-keyring.gpg && \
   echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
     > /etc/apt/sources.list.d/github-cli.list && \
-  apt-get update && apt-get install -y gh && \
+  apt-get update && apt-get install -y gh=${GH_CLI_VERSION} && \
   rm -rf /var/lib/apt/lists/*
 
 # Optimization: Use npm cache mount and install playwright package and system deps as root
+# Pinned: update versions together when upgrading A2A backend compatibility.
+#   @anthropic-ai/claude-code — required by claude-code A2A backend
+#   @intelligent-internet/codex — required by codex A2A backend
 RUN --mount=type=cache,target=/root/.npm \
-  npm install -g agent-browser @intelligent-internet/codex @ast-grep/cli @anthropic-ai/claude-code
+  npm install -g agent-browser @intelligent-internet/codex@0.1.0 @ast-grep/cli @anthropic-ai/claude-code@2.1.114
 
 RUN --mount=type=cache,target=/root/.npm \
   npm install -g vercel

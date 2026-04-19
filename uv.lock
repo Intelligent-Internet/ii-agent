@@ -2568,7 +2568,6 @@ name = "ii-agent"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
-    { name = "a2a-sdk" },
     { name = "aiohttp" },
     { name = "aiosqlite" },
     { name = "alembic" },
@@ -2593,8 +2592,6 @@ dependencies = [
     { name = "fastapi-sso" },
     { name = "fastmcp" },
     { name = "gcloud-aio-storage" },
-    { name = "github-copilot-sdk", version = "0.1.25", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "github-copilot-sdk", version = "0.2.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "google-api-python-client" },
     { name = "google-auth-oauthlib" },
     { name = "google-cloud-aiplatform" },
@@ -2659,6 +2656,11 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+a2a = [
+    { name = "a2a-sdk" },
+    { name = "github-copilot-sdk", version = "0.1.25", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "github-copilot-sdk", version = "0.2.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+]
 gaia = [
     { name = "datasets" },
     { name = "huggingface-hub" },
@@ -2677,7 +2679,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "a2a-sdk", specifier = "==0.3.25" },
+    { name = "a2a-sdk", marker = "extra == 'a2a'", specifier = "==0.3.25" },
     { name = "aiohttp", specifier = ">=3.11.18" },
     { name = "aiosqlite", specifier = ">=0.21.0" },
     { name = "alembic", specifier = ">=1.16.1" },
@@ -2703,7 +2705,7 @@ requires-dist = [
     { name = "fastapi-sso", specifier = ">=0.16.0" },
     { name = "fastmcp", specifier = "==2.10.6" },
     { name = "gcloud-aio-storage", specifier = "==9.5.0" },
-    { name = "github-copilot-sdk", specifier = ">=0.1.25" },
+    { name = "github-copilot-sdk", marker = "extra == 'a2a'", specifier = ">=0.1.25" },
     { name = "google-api-python-client", specifier = ">=2.187.0" },
     { name = "google-auth-oauthlib", specifier = ">=1.2.2" },
     { name = "google-cloud-aiplatform", specifier = ">=1.133.0" },
@@ -2771,7 +2773,7 @@ requires-dist = [
     { name = "weasyprint", specifier = ">=66.0" },
     { name = "youtube-transcript-api", specifier = ">=1.0.3" },
 ]
-provides-extras = ["gaia"]
+provides-extras = ["a2a", "gaia"]
 
 [package.metadata.requires-dev]
 dev = [

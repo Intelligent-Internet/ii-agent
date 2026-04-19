@@ -21,6 +21,7 @@ DEFAULT_TOKEN_THRESHOLD = 150_000
 # Models with larger context windows can have higher thresholds
 MODEL_TOKEN_THRESHOLDS: Dict[str, int] = {
     # Anthropic Claude models
+    "claude-opus-4-7": 200_000,
     "claude-sonnet-4-6": 200_000,
     "claude-sonnet-4": 200_000,
     "claude-sonnet-4-5": 200_000,

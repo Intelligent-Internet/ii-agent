@@ -187,6 +187,78 @@ def create_lifespan(sio: socketio.AsyncServer):
         # 8. Cron scheduler
         start_scheduler()
 
+        # 8b. A2A inner-loop startup validation
+        try:
+            from ii_agent.core.config.settings import get_settings as _get_a2a_settings
+
+            _a2a_cfg = _get_a2a_settings().agent
+            _a2a_modes = (_a2a_cfg.inner_loop_mode, _a2a_cfg.chat_inner_loop_mode)
+            if "a2a" in _a2a_modes:
+                # Check that optional extras are installed
+                from ii_agent.integrations.a2a import require_a2a_extras
+
+                require_a2a_extras()
+
+                # Warn about the active backend and required credentials
+                _backend = _a2a_cfg.a2a_backend
+                _cred_map = {
+                    "copilot": "GITHUB_TOKEN / GH_TOKEN (or 'gh auth login')",
+                    "claude-code": "ANTHROPIC_API_KEY",
+                    "codex": "OPENAI_API_KEY",
+                }
+                logger.info(
+                    "A2A inner-loop enabled: backend=%s, fallback=%s, timeout=%ss. "
+                    "Required credentials: %s",
+                    _backend,
+                    _a2a_cfg.a2a_fallback_to_native,
+                    _a2a_cfg.a2a_timeout_seconds,
+                    _cred_map.get(_backend, "unknown"),
+                )
+
+                # Validate per-mode A2A configuration.
+                #
+                # Agent A2A: per-session adapter URL via sandbox.expose_port()
+                # works in BOTH local Docker and cloud E2B (every sandbox
+                # ships the adapter via docker/sandbox/start-services.sh).
+                # AGENT_A2A_AGENT_URL is only needed if the operator wants
+                # to override that with an external adapter.
+                #
+                # Chat A2A: chat sessions do NOT own sandboxes; the chat
+                # A2A loop is a stateless protocol bridge to a single
+                # adapter URL.  AGENT_A2A_AGENT_URL is REQUIRED.  The
+                # local Docker stack ships an `a2a-adapter` sidecar
+                # (docker/docker-compose.local.yaml) that auto-populates
+                # the URL.  See docs/design-docs/chat-a2a-adapter-sidecar.md.
+                if _a2a_cfg.chat_inner_loop_mode == "a2a" and not _a2a_cfg.a2a_agent_url:
+                    _msg = (
+                        "AGENT_CHAT_INNER_LOOP_MODE=a2a but "
+                        "AGENT_A2A_AGENT_URL is not set. Chat A2A is "
+                        "sandbox-independent by design and requires an "
+                        "explicit adapter URL. Without it, every chat "
+                        "request will silently fall back to the native "
+                        "LLM and incur direct provider charges (10x+ "
+                        "the Copilot subscription cost). The local "
+                        "Docker stack ships an a2a-adapter sidecar at "
+                        "http://a2a-adapter:18100 — set this URL or "
+                        "deploy your own adapter. See "
+                        "docs/design-docs/chat-a2a-adapter-sidecar.md."
+                    )
+                    if _a2a_cfg.a2a_chat_strict:
+                        logger.error(_msg)
+                        raise RuntimeError(_msg)
+                    logger.error(_msg)
+                elif _a2a_cfg.chat_inner_loop_mode == "a2a" and _a2a_cfg.a2a_agent_url:
+                    logger.info(
+                        "AGENT_CHAT_INNER_LOOP_MODE=a2a, adapter URL: %s",
+                        _a2a_cfg.a2a_agent_url,
+                    )
+        except RuntimeError as exc:
+            # require_a2a_extras raises RuntimeError when packages are missing
+            logger.error("A2A startup validation failed: %s", exc)
+            raise
+        except Exception as exc:
+            logger.warning("A2A startup validation skipped: %s", exc)
+
         # 9. Docker sandbox: scan existing containers to reclaim ports
         try:
             from ii_agent.core.config.settings import get_settings as _get_settings
@@ -195,6 +267,17 @@ def create_lifespan(sio: socketio.AsyncServer):
             if _settings.sandbox.local_mode:
                 from ii_agent.agents.sandboxes.docker import DockerSandbox
                 from ii_agent.agents.sandboxes.port_manager import PortPoolManager
+
+                # 9a. Docker socket permission diagnostic
+                _sock_path = DockerSandbox._resolve_docker_socket()
+                if _sock_path:
+                    if not os.access(_sock_path, os.R_OK | os.W_OK):
+                        logger.error(
+                            "Docker socket at %s exists but is not accessible. "
+                            "Add your user to the 'docker' group: "
+                            "sudo usermod -aG docker $USER && newgrp docker",
+                            _sock_path,
+                        )
 
                 try:
                     docker_client = DockerSandbox._get_docker_client()
@@ -216,6 +299,28 @@ def create_lifespan(sio: socketio.AsyncServer):
         yield
 
         # ── Shutdown (reverse order) ───────────────────────────────────
+
+        # Drain running sandboxes: give in-flight turns a grace period
+        # before the infrastructure (Redis, DB) goes away.
+        if _settings.sandbox.local_mode:
+            try:
+                import asyncio
+
+                from ii_agent.agents.sandboxes.docker import DockerSandbox
+
+                running = DockerSandbox.list_sandboxes()
+                active = [s for s in running if s["status"] == "running"]
+                if active:
+                    grace_seconds = 10
+                    logger.info(
+                        "Graceful shutdown: %d sandbox(es) still running, "
+                        "waiting %ds for in-flight turns to complete",
+                        len(active),
+                        grace_seconds,
+                    )
+                    await asyncio.sleep(grace_seconds)
+            except Exception as exc:
+                logger.debug("Sandbox drain skipped: %s", exc)
 
         # Stop orphan cleanup first
         try:

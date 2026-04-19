@@ -50,7 +50,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
     --mount=type=ssh \
     mkdir -p /root/.ssh && ssh-keyscan github.com >> /root/.ssh/known_hosts && \
-    uv sync --locked --no-install-project --no-dev
+    uv sync --locked --no-install-project --no-dev --extra a2a
 
 # Install only headless shell (no full Chromium browser — saves ~600MB)
 # --with-deps installs required system libraries
@@ -73,7 +73,7 @@ COPY docker/backend/entrypoint.sh /entrypoint.sh
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=ssh \
     mkdir -p /root/.ssh && ssh-keyscan github.com >> /root/.ssh/known_hosts && \
-    uv sync --locked --no-dev
+    uv sync --locked --no-dev --extra a2a
 
 # Remove build-only tools not needed at runtime
 RUN apt-get purge -y --auto-remove openssh-client git \

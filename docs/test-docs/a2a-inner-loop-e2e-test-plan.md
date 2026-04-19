@@ -194,8 +194,17 @@ Track each test execution with timestamp, result, and notes.
 > **Runner**: `python3 tmp/test_e2e_expanded.py` (supports `TEST_CATEGORY`
 > and `TEST_ID` env-var filters)
 >
-> **Key finding**: A2A inner loop applies to **agent mode only**. Chat mode
-> uses `LLMTurnLoopService` → provider `stream()` directly — no inner loop.
+> **Key finding (UPDATED 2026-04-18):** A2A inner loop applies to **both
+> agent mode and chat mode**. Agent mode uses a per-sandbox adapter via
+> `sandbox.expose_port(18100)`. Chat mode uses a single shared adapter
+> service whose URL is configured via `AGENT_A2A_AGENT_URL` (the local
+> Docker stack ships an `a2a-adapter` sidecar that auto-populates this).
+> See [chat-a2a-adapter-sidecar.md](../design-docs/chat-a2a-adapter-sidecar.md).
+>
+> The pre-2026-04-18 statement in this slot — "chat mode uses
+> `LLMTurnLoopService` directly, no inner loop" — was correct only for the
+> `AGENT_CHAT_INNER_LOOP_MODE=direct` (default-direct) configuration. With
+> `AGENT_CHAT_INNER_LOOP_MODE=a2a` chat routes through `A2AChatTurnLoop`.
 
 ### Expanded Category 1: Infrastructure
 

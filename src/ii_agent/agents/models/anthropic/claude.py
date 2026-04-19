@@ -628,7 +628,18 @@ class Claude(Model):
             _request_params["max_tokens"] = self.max_tokens
         if self.thinking:
             _request_params["thinking"] = self.thinking
-        if self.temperature:
+            # Extended thinking forbids temperature modifications.  Only
+            # temperature=1 (the API default) is legal — omitting the field
+            # entirely is the safest behaviour.  Silently dropping a
+            # configured non-1 temperature prevents the native-LLM fallback
+            # path from 400-looping on every retry.
+            if self.temperature is not None and self.temperature != 1:
+                logger.debug(
+                    "Dropping temperature=%s because extended thinking is enabled "
+                    "(Anthropic requires temperature=1 when thinking is on).",
+                    self.temperature,
+                )
+        elif self.temperature is not None:
             _request_params["temperature"] = self.temperature
         if self.stop_sequences:
             _request_params["stop_sequences"] = self.stop_sequences

@@ -83,84 +83,72 @@ ChatMessageHistoryServiceDep = Annotated[
 
 # ==================== ChatService ====================
 
-# Shared A2A resources — created once, reused across requests so the circuit
-# breaker accumulates failures correctly and the HTTP client is reused.
-# The client is automatically refreshed when the sandbox container changes.
+# ============================================================================
+# A2A chat loop singleton — URL resolution
+#
+# Chat sessions do **not** own sandboxes.  The chat-mode A2A inner loop
+# is a stateless protocol bridge to a single A2A adapter HTTP endpoint
+# configured by the operator.
+#
+# Design intent: chat A2A must work **regardless of sandbox presence**.
+# Native fallback is reserved for genuine A2A failures only — circuit
+# breaker open, rate limits, transport errors at request time — never
+# for "no adapter URL configured" or "no sandbox running".  Silent
+# fallback in those misconfiguration cases routes traffic to the
+# expensive native LLM (10×+ Copilot subscription cost) and produces
+# surprise upstream API charges.  See:
+#   - docs/design-docs/a2a-inner-loop-url-resolution.md
+#   - docs/design-docs/chat-a2a-adapter-sidecar.md
+#
+# Deployment expectation:
+#   * Local Docker stack: docker-compose.local.yaml ships an
+#     ``a2a-adapter`` sidecar service.  Backend defaults
+#     ``AGENT_A2A_AGENT_URL=http://a2a-adapter:18100``.
+#   * Cloud / E2B: operator deploys an adapter service and sets
+#     ``AGENT_A2A_AGENT_URL`` explicitly.
+#
+# Misconfiguration handling (this module):
+#   * URL missing at startup with chat_inner_loop_mode=a2a → loud
+#     ERROR log; if AGENT_A2A_CHAT_STRICT=true the lifespan crashes
+#     the process (preferred).
+#   * URL missing at request time → A2AAdapterUnavailableError raised
+#     to the caller (HTTP 503) when strict=true; loud ERROR + native
+#     fallback when strict=false (back-compat default).
+#
+# Agent-mode A2A is independent: it resolves the adapter URL per-session
+# via ``sandbox.expose_port(ADAPTER_CONTAINER_PORT)`` (see
+# ``AgentFactory._build_inner_loop_strategy``).  Agents may also use the
+# shared sidecar by setting ``AGENT_A2A_AGENT_URL``.
+# ============================================================================
+
 _a2a_chat_client = None
 _a2a_chat_circuit_breaker = None
 _a2a_chat_client_url: str | None = None  # tracks URL the client was created with
 
 
-def _discover_sandbox_adapter_url() -> str | None:
-    """Auto-discover a running ii-sandbox A2A adapter for local development.
+def _resolve_chat_a2a_url() -> str | None:
+    """Resolve the chat-mode A2A adapter URL.
 
-    When AGENT_A2A_AGENT_URL is not explicitly set, this finds any running
-    sandbox container and returns its adapter endpoint via Docker networking
-    (container_name:18100).  Uses the Docker socket API directly since Docker
-    CLI may not be available inside the backend container.
+    Returns the configured ``AGENT_A2A_AGENT_URL`` when chat A2A is
+    enabled, else ``None``.  No discovery, no probing — chat A2A is
+    sandbox-independent by design and operators are responsible for
+    pointing it at a reachable adapter (see module docstring).
     """
+    from ii_agent.core.config.settings import get_settings
 
-    try:
-        # Use Unix socket via a custom opener
-        import http.client
-        import socket as _socket
+    settings = get_settings()
+    if settings.agent.chat_inner_loop_mode != "a2a":
+        return None
 
-        class _UnixHTTPConnection(http.client.HTTPConnection):
-            def connect(self):
-                self.sock = _socket.socket(_socket.AF_UNIX, _socket.SOCK_STREAM)
-                self.sock.connect("/var/run/docker.sock")
-
-        conn = _UnixHTTPConnection("localhost")
-        conn.request(
-            "GET",
-            '/containers/json?filters={"name":["ii-sandbox"]}',
-        )
-        resp = conn.getresponse()
-        if resp.status == 200:
-            import json
-
-            containers = json.loads(resp.read())
-            containers = sorted(
-                (c for c in containers if c.get("State") == "running"),
-                key=lambda c: c.get("Created", 0),
-                reverse=True,
-            )
-
-            for c in containers:
-                names = c.get("Names", [])
-                if not names:
-                    continue
-
-                name = names[0].lstrip("/")
-                url = f"http://{name}:18100"
-
-                # Skip stale sandbox containers whose adapter port is not
-                # actually listening; otherwise chat/council can bind to a
-                # dead container and every A2A request fails immediately.
-                try:
-                    probe = _socket.create_connection((name, 18100), timeout=0.5)
-                    probe.close()
-                except OSError as exc:
-                    logger.info(
-                        "Ignoring sandbox without reachable A2A adapter (%s): %s",
-                        name,
-                        exc,
-                    )
-                    continue
-
-                logger.info("Auto-discovered sandbox A2A adapter: %s", url)
-                return url
-    except Exception as exc:
-        logger.debug("Sandbox adapter auto-discovery failed: %s", exc)
-    return None
+    return settings.agent.a2a_agent_url or None
 
 
 def _get_shared_a2a_resources():
     """Lazily create the shared A2A client and circuit breaker singletons.
 
-    If the sandbox container has changed (different URL from discovery), the
-    stale client is replaced so council and chat don't route to a dead
-    container.
+    If the resolved URL changes between calls (sandbox container recycled
+    in dev), the stale client is replaced so chat doesn't keep talking to
+    a dead endpoint.
     """
     global _a2a_chat_client, _a2a_chat_circuit_breaker, _a2a_chat_client_url
 
@@ -168,26 +156,38 @@ def _get_shared_a2a_resources():
     from ii_agent.integrations.a2a.as_client import IIAgentA2AClient
     from ii_agent.integrations.a2a.circuit_breaker import CircuitBreaker
 
-    settings = get_settings()
-    agent_settings = settings.agent
+    agent_settings = get_settings().agent
 
     if agent_settings.chat_inner_loop_mode != "a2a":
         return None, None
 
-    client_url = agent_settings.a2a_agent_url
+    client_url = _resolve_chat_a2a_url()
     if not client_url:
-        client_url = _discover_sandbox_adapter_url()
-    if not client_url:
-        logger.warning(
-            "chat_inner_loop_mode=a2a but AGENT_A2A_AGENT_URL is not set and "
-            "no sandbox adapter found; falling back to direct LLM"
+        # Loud, actionable error — silent fallback to direct LLM has
+        # caused unexpected upstream API charges in the past.
+        logger.error(
+            "chat_inner_loop_mode=a2a but NO A2A adapter URL is "
+            "available (AGENT_A2A_AGENT_URL not set, and no local "
+            "sandbox adapter discoverable). Falling back to native LLM "
+            "for this request — this WILL incur direct provider "
+            "charges. Set AGENT_A2A_AGENT_URL or start a sandbox; set "
+            "AGENT_A2A_CHAT_STRICT=true to crash instead of falling "
+            "back. See docs/design-docs/a2a-inner-loop-url-resolution.md."
         )
+        if agent_settings.a2a_chat_strict:
+            from ii_agent.integrations.a2a.exceptions import A2AAdapterUnavailableError
+
+            raise A2AAdapterUnavailableError(
+                "A2A chat adapter unavailable and AGENT_A2A_CHAT_STRICT=true; "
+                "refusing to silently fall back to native LLM."
+            )
         return None, None
 
-    # If the discovered URL changed (sandbox recycled), recreate the client
+    # Refresh the client if the resolved URL changed (e.g. a dev
+    # restarted the sandbox and got a new container name).
     if _a2a_chat_client is not None and _a2a_chat_client_url != client_url:
         logger.info(
-            "Sandbox adapter URL changed (%s -> %s), refreshing A2A client",
+            "A2A adapter URL changed (%s -> %s); refreshing chat client",
             _a2a_chat_client_url,
             client_url,
         )
@@ -219,9 +219,7 @@ def _build_a2a_chat_loop(
     if client is None or circuit_breaker is None:
         return None
 
-    settings = get_settings()
-    agent_settings = settings.agent
-
+    agent_settings = get_settings().agent
     return A2AChatTurnLoop(
         client=client,
         circuit_breaker=circuit_breaker,

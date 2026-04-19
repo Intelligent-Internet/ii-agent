@@ -93,42 +93,70 @@ Commands:
   start                        Start all services
   stop                         Stop all services
   restart                      Restart all services (picks up env changes)
-  rebuild [service ...]        Rebuild compose services with no cache and restart
-  build [targets ...] [flags]  Build backend/frontend/sandbox in parallel
-  build-sandbox [--quick]      Build the sandbox image only
+  rebuild [service ...]        Rebuild compose services (no cache) and restart
+  build [targets ...] [flags]  Build backend/frontend/sandbox targets in parallel
+  build-sandbox [--quick]      Build the sandbox image only (alias for build sandbox)
   patch-sandbox [--no-restart] Hot-patch source into running sandbox containers
   status                       Show running containers and URLs
   logs [service] [-f]          View logs for the full stack or a single service
   cleanup                      Remove stale sandbox containers
   setup                        Create docker/.stack.env.local from template
 
-Build targets:
-  backend    FastAPI app, agent runtime, billing, APIs
-  frontend   Chat UI and web client
-  sandbox    Tool execution / code sandbox image
+--- TWO BUILD COMMANDS — IMPORTANT DISTINCTION ---
+
+  rebuild [service ...]   Wraps docker compose build + compose up. Only accepts
+                          COMPOSE service names: backend, frontend, a2a-adapter,
+                          postgres, redis, minio. Does NOT accept 'sandbox' —
+                          the sandbox is a standalone Docker image (e2b.Dockerfile),
+                          not a compose service.
+
+  build [targets ...]     Builds any combination of backend, frontend, and sandbox
+                          in parallel, but does NOT restart running containers.
+                          After a 'build', run 'restart' to pick up the new images.
+                          Sandbox is ONLY buildable via this command (or build-sandbox).
+
+  Quick rule:
+    Changed src/ code?      → build backend  (then restart)
+    Changed frontend/?      → build frontend  (then restart)
+    Changed e2b.Dockerfile  → build sandbox  (then restart)
+    Changed both backend +  → build backend sandbox  (then restart)
+      sandbox?
+    Need immediate restart? → rebuild backend  (build + restart in one step,
+                               compose services only, sandbox NOT supported)
+
+Build targets (for 'build' command only):
+  backend    FastAPI app, agent runtime, billing, APIs  [compose service]
+  frontend   Chat UI and web client                     [compose service]
+  sandbox    Tool execution / A2A adapter image         [standalone Docker image]
   all        Alias for backend frontend sandbox
 
 Build flags:
-  --no-cache   Full rebuild without cache for selected targets
+  --no-cache   Full rebuild without layer cache
   --quick      Prefer cache (useful for rapid sandbox iteration)
   -h, --help   Show command help
 
+Service start-up dependency order (enforced by Docker Compose healthchecks):
+  postgres, redis, minio  →  a2a-adapter  →  backend  →  frontend
+  The backend will stay in 'Created' state if a2a-adapter is unhealthy.
+
 Agent-focused use cases:
   scripts/stack_control.sh build backend
-      Rebuild the backend when changing agent logic, routing, billing, or APIs.
+      Rebuild the backend image after changing agent logic, routing, or APIs.
+      Run 'restart' afterwards, or use 'rebuild backend' to do both in one step.
 
-  scripts/stack_control.sh build frontend backend
-      Rebuild both UI and API together when chat contracts or UX flows change.
+  scripts/stack_control.sh rebuild backend
+      Build and immediately restart the backend (compose down + build + up).
+      Use this for a clean in-place restart with the new image.
 
   scripts/stack_control.sh build sandbox --quick
-      Fast iteration when changing tool execution, A2A adapter, or sandbox code.
+      Fast sandbox iteration (uses layer cache). Then run 'restart' to apply.
+
+  scripts/stack_control.sh build backend sandbox --no-cache
+      Rebuild both backend and sandbox images from scratch in parallel.
+      Run 'restart' afterwards to apply both.
 
   scripts/stack_control.sh build all --no-cache
-      Clean parallel rebuild of the full local agent stack.
-
-Notes:
-  - The build command runs selected targets in parallel and returns non-zero if any target fails.
-  - Use rebuild when you want compose services rebuilt and then restarted.
+      Clean rebuild of the full local agent stack.
 EOF
 }
 
@@ -138,19 +166,31 @@ Usage:
   scripts/stack_control.sh build [targets ...] [--no-cache] [--quick]
 
 Targets:
-  backend | frontend | sandbox | all
+  backend    Compose service — FastAPI app, agent runtime, billing, APIs
+  frontend   Compose service — Chat UI and web client
+  sandbox    Standalone Docker image (e2b.Dockerfile) — NOT a compose service
+  all        Alias for backend frontend sandbox
+
+NOTE: 'build' only builds images. Running containers are NOT restarted.
+  Run 'scripts/stack_control.sh restart' after building to apply changes.
+  Or use 'rebuild' (backend/frontend only) to build + restart in one step.
+
+NOTE: 'sandbox' is NOT accepted by 'rebuild'. It must be built via 'build sandbox'
+  or 'build-sandbox', then restarted with 'restart' or 'restart a2a-adapter'.
 
 Examples:
-  scripts/stack_control.sh build backend
-  scripts/stack_control.sh build frontend backend
-  scripts/stack_control.sh build backend sandbox --quick
-  scripts/stack_control.sh build all --no-cache
+  scripts/stack_control.sh build backend              # build, then restart manually
+  scripts/stack_control.sh rebuild backend            # build + restart in one step
+  scripts/stack_control.sh build sandbox              # build sandbox image
+  scripts/stack_control.sh build backend sandbox      # build both in parallel
+  scripts/stack_control.sh build backend sandbox --quick   # with layer cache
+  scripts/stack_control.sh build all --no-cache       # full clean rebuild
 
 Agent-focused guidance:
   - Pick backend for agent runtime, billing, API, or orchestration changes.
   - Pick frontend for chat UX or client integration changes.
-  - Pick sandbox for tool bridge, code execution, or adapter environment changes.
-  - Combine targets in one command to rebuild the exact surfaces touched by your change.
+  - Pick sandbox for e2b.Dockerfile, start-services.sh, or adapter env changes.
+  - Combine targets to rebuild exactly the surfaces touched by your change.
 EOF
 }
 
@@ -517,17 +557,9 @@ cmd_restart() {
   cmd_status
 }
 
-REBUILD_LOCK="/tmp/.ii-agent-rebuild-lock"
-
 cmd_rebuild() {
   ensure_env
   echo "Rebuilding (no cache) and restarting ii-agent local stack..."
-
-  # Prevent .bashrc autostart from creating containers with the old image
-  # while the rebuild is in progress. The lock is removed on exit (success or failure).
-  touch "$REBUILD_LOCK"
-  trap 'rm -f "$REBUILD_LOCK"' EXIT
-
   # Generate a manifest for whichever services are being rebuilt.
   # If specific services are listed, tag the first; otherwise tag "all".
   local rebuild_target="${1:-all}"

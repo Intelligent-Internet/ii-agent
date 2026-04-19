@@ -9,7 +9,10 @@ import tempfile
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from a2a.types import (
+
+a2a_types = pytest.importorskip("a2a.types", reason="a2a-sdk not installed")
+
+from a2a.types import (  # noqa: E402
     FilePart,
     FileWithBytes,
     FileWithUri,
@@ -17,14 +20,14 @@ from a2a.types import (
     TextPart,
 )
 
-from ii_agent.integrations.a2a.claude_code_backend import (
+from ii_agent.integrations.a2a.claude_code_backend import (  # noqa: E402
     ClaudeCodeBackend,
     ClaudeCodeConfig,
     _cleanup_temp_files,
     _extract_image_paths_from_parts,
 )
-from ii_agent.integrations.a2a.codex_backend import CodexBackend, CodexConfig
-from ii_agent.integrations.a2a.copilot_backend import (
+from ii_agent.integrations.a2a.codex_backend import CodexBackend, CodexConfig  # noqa: E402
+from ii_agent.integrations.a2a.copilot_backend import (  # noqa: E402
     CopilotBackend,
     CopilotConfig,
     _parts_to_attachments,

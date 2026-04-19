@@ -53,34 +53,73 @@ async def run_orphan_cleanup_loop(config: Optional[Settings] = None) -> None:
     the configured ``stale_sandbox_pause_seconds``.  Paused containers
     retain their filesystem state and can be resumed without data loss by
     ``reconnect_or_create()`` on the next session access.
+
+    In multi-worker deployments a Redis advisory lock (``sandbox:cleanup:lock``,
+    5-minute TTL) prevents concurrent sweeps from racing on container removal.
+    When Redis is unavailable the sweep proceeds with a warning.
     """
     cfg = config or get_settings()
     interval = cfg.sandbox.orphan_cleanup_interval_seconds
 
     while True:
         try:
-            # R5: Run cleanup BEFORE sleeping so the first sweep is immediate
-            expired = await _soft_delete_expired_sessions()
-            cleaned = await _cleanup_orphans(cfg)
-            paused = await _pause_stale_sandboxes(cfg)
-            zombies = await _cleanup_docker_zombies()
-            volumes = await _cleanup_orphaned_volumes()
-            timed_out = await _kill_timed_out_sandboxes()
-            if (
-                cleaned > 0
-                or paused > 0
-                or zombies > 0
-                or expired > 0
-                or volumes > 0
-                or timed_out > 0
-            ):
-                logger.info(
-                    f"Orphan cleanup sweep: expired={expired} sessions, removed={cleaned} orphaned, "
-                    f"paused={paused} stale, reaped={zombies} docker zombies, "
-                    f"volumes={volumes} orphaned, timed_out={timed_out} killed"
+            # Acquire advisory lock if Redis is available
+            _lock_held = False
+            _redis = None
+            try:
+                from ii_agent.core.redis.client import get_redis_client
+
+                _redis = get_redis_client()
+                _lock_held = bool(
+                    await _redis.set(
+                        "sandbox:cleanup:lock",
+                        "1",
+                        nx=True,
+                        ex=300,  # 5-minute TTL
+                    )
                 )
-            else:
-                logger.debug("Orphan cleanup sweep completed: nothing to clean")
+                if not _lock_held:
+                    logger.debug("Orphan cleanup: another worker holds the lock, skipping sweep")
+                    await asyncio.sleep(interval)
+                    continue
+            except Exception as exc:
+                logger.warning(
+                    "Orphan cleanup: Redis advisory lock unavailable (%s); "
+                    "proceeding without lock (safe in single-worker deployments)",
+                    exc,
+                )
+
+            try:
+                # R5: Run cleanup BEFORE sleeping so the first sweep is immediate
+                expired = await _soft_delete_expired_sessions()
+                cleaned = await _cleanup_orphans(cfg)
+                paused = await _pause_stale_sandboxes(cfg)
+                zombies = await _cleanup_docker_zombies()
+                volumes = await _cleanup_orphaned_volumes()
+                timed_out = await _kill_timed_out_sandboxes()
+                if (
+                    cleaned > 0
+                    or paused > 0
+                    or zombies > 0
+                    or expired > 0
+                    or volumes > 0
+                    or timed_out > 0
+                ):
+                    logger.info(
+                        f"Orphan cleanup sweep: expired={expired} sessions, removed={cleaned} orphaned, "
+                        f"paused={paused} stale, reaped={zombies} docker zombies, "
+                        f"volumes={volumes} orphaned, timed_out={timed_out} killed"
+                    )
+                else:
+                    logger.debug("Orphan cleanup sweep completed: nothing to clean")
+            finally:
+                # Release advisory lock
+                if _lock_held and _redis is not None:
+                    try:
+                        await _redis.delete("sandbox:cleanup:lock")
+                    except Exception:
+                        pass  # TTL will expire
+
             await asyncio.sleep(interval)
         except asyncio.CancelledError:
             logger.info("Orphan cleanup task cancelled")

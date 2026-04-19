@@ -24,13 +24,15 @@ from typing import Any
 
 import pytest
 
-from a2a.types import TaskArtifactUpdateEvent, TaskState, TaskStatusUpdateEvent
+a2a_types = pytest.importorskip("a2a.types", reason="a2a-sdk not installed")
 
-from ii_agent.agents.inner_loop import A2AInnerLoop
-from ii_agent.agents.models.response import ModelResponse
-from ii_agent.integrations.a2a.as_client import A2AStreamEvent
-from ii_agent.integrations.a2a.event_stream_adapter import EventStreamAdapter
-from ii_agent.realtime.events.app_events import EventType
+from a2a.types import TaskArtifactUpdateEvent, TaskState, TaskStatusUpdateEvent  # noqa: E402
+
+from ii_agent.agents.inner_loop import A2AInnerLoop  # noqa: E402
+from ii_agent.agents.models.response import ModelResponse  # noqa: E402
+from ii_agent.integrations.a2a.as_client import A2AStreamEvent  # noqa: E402
+from ii_agent.integrations.a2a.event_stream_adapter import EventStreamAdapter  # noqa: E402
+from ii_agent.realtime.events.app_events import EventType  # noqa: E402
 
 
 pytestmark = pytest.mark.unit

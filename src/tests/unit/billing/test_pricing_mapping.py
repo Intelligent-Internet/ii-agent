@@ -41,6 +41,7 @@ def test_pricing_case_insensitive():
 @pytest.mark.parametrize(
     "model_id,expected_input,expected_output",
     [
+        ("claude-opus-4-7", 5.0, 25.0),
         ("claude-opus-4-6", 5.0, 25.0),
         ("claude-opus-4-5", 5.0, 25.0),
         ("claude-sonnet-4-5", 3.0, 15.0),

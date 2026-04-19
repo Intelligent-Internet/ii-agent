@@ -559,6 +559,11 @@ class CopilotBackend:
         :class:`CopilotConfig` instance with CLI path, auth, and tuning.
     """
 
+    # Maximum number of cached Copilot sessions.  Once the cap is reached the
+    # oldest (least-recently-used) session is evicted.  This prevents unbounded
+    # memory growth in long-running adapter processes with high session churn.
+    _MAX_SESSIONS = 1000
+
     def __init__(self, config: CopilotConfig) -> None:
         self.config = config
         self._client: Any | None = None  # copilot.CopilotClient
@@ -804,6 +809,21 @@ class CopilotBackend:
         session = await client.create_session(session_kwargs)
         self._sessions[context_id] = session.session_id
         self._session_tool_count[context_id] = len(tool_schemas) if tool_schemas else 0
+
+        # Enforce LRU cap: evict the oldest session(s) if we exceeded the limit.
+        while len(self._sessions) > self._MAX_SESSIONS:
+            oldest_ctx = min(
+                self._session_last_used,
+                key=self._session_last_used.get,  # type: ignore[arg-type]
+                default=None,
+            )
+            if oldest_ctx is None:
+                break
+            self._sessions.pop(oldest_ctx, None)
+            self._session_last_used.pop(oldest_ctx, None)
+            self._session_tool_count.pop(oldest_ctx, None)
+            logger.debug("CopilotBackend: evicted LRU session for context %s", oldest_ctx)
+
         logger.info(
             "CopilotBackend: created session %s for context %s (tools=%d)",
             session.session_id,

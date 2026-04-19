@@ -182,6 +182,18 @@ class SandboxSettings(BaseSettings):
         ),
     )
 
+    docker_socket_path: Optional[str] = Field(
+        default=None,
+        description=(
+            "Path to the Docker daemon socket. When None (default), auto-detects "
+            "from standard locations: /var/run/docker.sock, "
+            "~/.colima/default/docker.sock, ~/.orbstack/run/docker.sock, "
+            "$XDG_RUNTIME_DIR/podman/podman.sock. "
+            "Set explicitly via SANDBOX_DOCKER_SOCKET_PATH when using a "
+            "non-standard Docker installation."
+        ),
+    )
+
     def validate_for_provider(self) -> None:
         """Validate configuration for the selected provider.
 

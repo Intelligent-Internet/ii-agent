@@ -95,7 +95,7 @@ class ChatService:
         """Choose between A2A and direct turn loops.
 
         Falls back to the direct loop when:
-        - No A2A loop configured
+        - No A2A loop or factory configured
         - Council mode is active (uses its own multi-model execution path
           with per-member A2A/direct routing — see ``CouncilService``)
         - BYOK model in cloud deployment (user pays own API bill)
@@ -115,11 +115,10 @@ class ChatService:
         ``AGENT_CHAT_INNER_LOOP_MODE=a2a``.  All compatible models route
         through A2A regardless of ``config_type``.
         """
-        if self._a2a_loop is None:
-            logger.info("turn-loop-select: direct (no A2A loop configured)")
-            return self._llm_loop
-
-        # Council uses parallel direct LLM calls — incompatible with A2A
+        # Fast-path early returns that don't need an A2A loop.
+        # Council uses parallel direct LLM calls — incompatible with the
+        # standard A2A loop (council uses the A2A *client* directly, not
+        # the loop, and wires it up in stream_council_chat_response).
         council = getattr(chat_request, "council_preferences", None)
         if council and getattr(council, "enabled", False):
             logger.info("turn-loop-select: direct (council mode active)")
@@ -144,6 +143,11 @@ class ChatService:
         media = getattr(chat_request, "media_preferences", None)
         if media and getattr(media, "type", None) == "storybook":
             logger.info("turn-loop-select: direct (storybook media)")
+            return self._llm_loop
+
+        # Resolve the A2A loop (legacy directly-injected singleton).
+        if self._a2a_loop is None:
+            logger.info("turn-loop-select: direct (no A2A loop available)")
             return self._llm_loop
 
         logger.info("turn-loop-select: a2a")
@@ -523,8 +527,11 @@ class ChatService:
         provider = LLMProviderFactory.create_provider(model_config)
         is_code_interpreter_enabled = bool(tools and tools.get("code_interpreter"))
 
-        # Phase 3: Run LLM turn loop (loop manages its own DB sessions)
-        loop = self._select_turn_loop(model_config=model_config, chat_request=chat_request)
+        # Phase 3: Run LLM turn loop (loop manages its own DB sessions).
+        loop = self._select_turn_loop(
+            model_config=model_config,
+            chat_request=chat_request,
+        )
         try:
             async for event in loop.run(
                 messages=messages,

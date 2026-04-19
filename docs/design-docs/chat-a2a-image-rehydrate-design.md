@@ -489,3 +489,48 @@ if historical_images:
 | Cap policy | Config-driven `max_images`, `max_payload_bytes` | No cap (all prior images included) |
 | Config | `AgentSettings.image_rehydration` | No config needed |
 | Complexity | High (phased rollout, feature flags) | Low (simple extraction + dedup) |
+
+### Scope: A2A vs Native Inner Loop
+
+The fixes in this document apply **only to the A2A chat path**. The native inner loop
+(raw provider keys: Anthropic, OpenAI, etc.) does not need — and does not use — any of
+these mechanisms, because native providers receive the full conversation history
+(including all prior `BinaryContent` parts) in every request.
+
+```mermaid
+%%{init: {'theme':'base', 'themeVariables': {'fontFamily': 'Arial, sans-serif', 'fontSize': '13px', 'fontWeight': 'normal'}}}%%
+flowchart LR
+    subgraph shared["Shared (both paths)"]
+        A[File Upload] --> B[BinaryContent created]
+        B --> C[Stored in DB as JSONB]
+        C --> D[Context loaded with all parts]
+    end
+
+    subgraph native["Native Path"]
+        D --> E[Full messages sent to<br/>Anthropic/OpenAI API]
+        E --> F["Images visible in<br/>all turns"]
+    end
+
+    subgraph a2a["A2A Path (fixes here)"]
+        D --> G["_build_a2a_messages<br/>(serialize BinaryContent)"]
+        G --> H["extract_historical_image_parts<br/>(collect prior-turn images)"]
+        H --> I["Rehydration<br/>(file_ids to BinaryContent)"]
+        I --> J[Stateless backend<br/>receives everything]
+        J --> K["Images visible in<br/>all turns"]
+    end
+
+    classDef primary fill:#4a90d9,stroke:#2c6cb0,stroke-width:2px
+    classDef fix fill:#e8a838,stroke:#c08828,stroke-width:2px
+    classDef good fill:#4caf50,stroke:#388e3c,stroke-width:2px
+    class A,B,C,D,E primary
+    class G,H,I fix
+    class F,K good
+```
+
+**Why native is unaffected:** The native provider API call includes every prior
+message with its `BinaryContent` intact (decoded from base64 JSONB storage by
+`MessageService._db_message_to_message()`), so there is no stateless session
+boundary to cross. The three A2A-specific steps (serialization, historical image
+extraction, rehydration) exist solely to compensate for A2A backends like
+Copilot SDK that create a fresh session per run with no built-in conversation
+memory.

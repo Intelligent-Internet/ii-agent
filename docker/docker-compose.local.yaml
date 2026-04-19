@@ -74,6 +74,58 @@ services:
       timeout: 5s
       retries: 5
 
+  # ── A2A adapter sidecar ──────────────────────────────────────────────
+  # Standalone A2A adapter shared by chat AND agent inner loops.
+  #
+  # Why a sidecar instead of relying on per-session sandbox adapters:
+  #   * Chat sessions do NOT own sandboxes.  Without this service, chat
+  #     A2A had no endpoint and silently fell back to direct
+  #     Anthropic/OpenAI calls (10× more expensive than the Copilot
+  #     subscription).  See docs/design-docs/chat-a2a-adapter-sidecar.md.
+  #   * Agent sessions still benefit (cheaper than per-sandbox adapter
+  #     startup) and may continue to use their in-sandbox adapter when
+  #     the sandbox is online.
+  #
+  # Image: reuses ii-agent-sandbox:latest because it already ships the
+  # adapter module + Copilot/Claude/Codex CLI tooling.  Container is
+  # short-lived: only the adapter listens; no Xvfb, no VNC, no MCP.
+  a2a-adapter:
+    image: ${SANDBOX_DOCKER_IMAGE:-ii-agent-sandbox:latest}
+    init: true
+    restart: unless-stopped
+    user: "1001:1001"
+    working_dir: /home/user
+    env_file:
+      - .stack.env.local
+    environment:
+      HOME: /home/user
+      PATH: /home/user/.bun/bin:/app/ii_sandbox/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+      # Adapter selects backend per request via metadata; default is
+      # taken from AGENT_A2A_BACKEND in .stack.env.local.
+      SANDBOX_ADAPTER_BACKEND: ${AGENT_A2A_BACKEND:-copilot}
+      SANDBOX_ADAPTER_PORT: "18100"
+      # Per-turn wall-clock timeouts (seconds) for each CLI backend.
+      # The historical 300 s default tripped long deep-research turns;
+      # 900 s (15 min) is a safer floor.  Override in .stack.env.local.
+      A2A_COPILOT_TIMEOUT: ${A2A_COPILOT_TIMEOUT:-900}
+      A2A_CLAUDE_CODE_TIMEOUT: ${A2A_CLAUDE_CODE_TIMEOUT:-900}
+      A2A_CODEX_TIMEOUT: ${A2A_CODEX_TIMEOUT:-900}
+    # Read-only adapter — no workspace, no shared volume.  All state
+    # lives in memory in the adapter task store.
+    command: >
+      python -m ii_agent.integrations.a2a.adapter_server
+      --host 0.0.0.0
+      --port 18100
+      --backend ${AGENT_A2A_BACKEND:-copilot}
+    expose:
+      - "18100"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:18100/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
   frontend:
     build:
       context: ..
@@ -108,11 +160,18 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+      a2a-adapter:
+        condition: service_healthy
     env_file:
       - .stack.env.local
     environment:
       DATABASE_URL: ${DATABASE_URL}
       REDIS_SESSION_URL: redis://redis:6379/1
+      # ── A2A inner-loop adapter ──
+      # Default to the sidecar so chat A2A is sandbox-independent.
+      # Operators can override via .stack.env.local for an external
+      # adapter (production) or to disable (set AGENT_CHAT_INNER_LOOP_MODE=direct).
+      AGENT_A2A_AGENT_URL: ${AGENT_A2A_AGENT_URL:-http://a2a-adapter:18100}
       # ── Docker sandbox provider ──
       SANDBOX_PROVIDER: docker
       SANDBOX_DOCKER_IMAGE: ${SANDBOX_DOCKER_IMAGE:-ii-agent-sandbox:latest}

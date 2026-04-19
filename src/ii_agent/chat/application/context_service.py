@@ -28,6 +28,7 @@ CONTEXT_WINDOWS = {
     # OpenAI Models - https://platform.openai.com/docs/models/gpt-5
     "gpt-5": 200000,
     # Anthropic Models
+    "claude-opus-4-7": 200000,
     "claude-opus-4-5@20251101": 200000,
     "claude-sonnet-4-5@20250929": 200000,
     "claude-sonnet-4@20250514": 200000,

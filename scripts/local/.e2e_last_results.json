@@ -1,278 +1,278 @@
 {
-  "timestamp": 1776434181.8079538,
+  "timestamp": 1776560269.6079168,
   "results": [
     {
       "test_id": "INF-01",
       "name": "Backend health check",
       "status": "PASS",
       "notes": "status=ok, chat_loop=a2a, agent_loop=a2a, a2a_backend=copilot",
-      "elapsed": 0.12659868199989432
+      "elapsed": 1.217216794990236
     },
     {
       "test_id": "INF-02",
       "name": "LLM models available",
       "status": "PASS",
       "notes": "8 models: claude-sonnet-4-6, claude-opus-4-6, claude-sonnet-4-5-20250929, gpt-4o, gpt-4o, claude-sonnet-4-5-20250929, claude-opus-4-6, claude-sonnet-4-6",
-      "elapsed": 0.13867615100025432
+      "elapsed": 0.20120362102170475
     },
     {
       "test_id": "INF-03",
       "name": "Sandbox container running",
       "status": "PASS",
-      "notes": "Running: ii-sandbox-f734ed6f-425, ii-sandbox-aa6c6e93-f25, ii-sandbox-43308850-841, ii-sandbox-ecf02d08-047, ii-sandbox-2a239589-589, ii-sandbox-f73b7da9-f5f, ii-sandbox-318c4415-46e, ii-sandbox-1354b6dd-41c, ii-sandbox-3504bb47-9cc, ii-sandbox-d8b0c9d0-bcf, ii-sandbox-93f28ded-14e, ii-sandbox-4b4fa3f5-35a, ii-sandbox-adb94f25-cb5, ii-sandbox-3833372c-dbf, ii-sandbox-6ea9edec-127, ii-sandbox-c809e3d5-44a, ii-sandbox-75a6c878-849, ii-sandbox-281f0ce6-c1f, ii-sandbox-27ad2cdc-9e8",
-      "elapsed": 0.15034997199836653
+      "notes": "No sandbox running (created on demand)",
+      "elapsed": 0.18293832201743498
     },
     {
       "test_id": "CHAT-01",
       "name": "Chat basic \u2014 Anthropic",
       "status": "PASS",
-      "notes": "Response: 4 | session=6c70b4c1-5ec7-4d5b-a2da-37b88e414864",
-      "elapsed": 4.051110802000039
+      "notes": "Response: 4 | session=3ba079fc-2970-4db2-8b6d-9b8c6f6c2c86",
+      "elapsed": 31.32975289100432
     },
     {
       "test_id": "CHAT-02",
       "name": "Chat basic \u2014 OpenAI",
       "status": "PASS",
-      "notes": "Response: 8 | session=740d2cb0-092e-4b11-a094-a563296170ee",
-      "elapsed": 4.4778420829970855
+      "notes": "Response: 8 | session=0a888afc-9d87-4807-86b1-68bceaecdaff",
+      "elapsed": 2.290540615998907
     },
     {
       "test_id": "CHAT-03",
       "name": "Chat multi-turn context",
       "status": "PASS",
-      "notes": "Context preserved. Turn 2: Your favorite planet is Neptune! \ud83d\udd35",
-      "elapsed": 4.71446214900061
+      "notes": "Context preserved. Turn 2: Your favorite planet is **Neptune**! \ud83d\udd35",
+      "elapsed": 4.432702182995854
     },
     {
       "test_id": "CHAT-04",
       "name": "Chat web search tool",
       "status": "PASS",
-      "notes": "Tool invoked: False | Response: The page isn't returning the actual numbers directly. Based on well-established data:\n\n**Iceland's population is approximately 380,000\u2013390,000 people*",
-      "elapsed": 22.871318382996833
+      "notes": "Tool invoked: False | Response: Iceland's population is approximately **390,000 people** (as of 2025), making it one of the most sparsely populated countries in Europe.",
+      "elapsed": 7.5756690870039165
     },
     {
       "test_id": "CHAT-05",
       "name": "Chat long streaming response",
       "status": "PASS",
-      "notes": "Response length: 1386 chars, done=True",
-      "elapsed": 9.746714427994448
+      "notes": "Response length: 1458 chars, done=True",
+      "elapsed": 10.145235753007
     },
     {
       "test_id": "CHAT-06",
       "name": "Chat stop conversation",
       "status": "PASS",
-      "notes": "Response collected (6838 chars), done=True",
-      "elapsed": 36.822462715004804
+      "notes": "Response collected (6647 chars), done=True",
+      "elapsed": 31.44049123901641
     },
     {
       "test_id": "IMG-01",
       "name": "Image upload flow",
       "status": "PASS",
-      "notes": "Asset ID: a16fb509-3db6-4c38-9b03-8d6b15dfaeee",
-      "elapsed": 0.5763452909959597
+      "notes": "Asset ID: 3924c79c-54e3-4a8c-98cc-9cbc23de8387",
+      "elapsed": 0.5262720589817036
     },
     {
       "test_id": "IMG-02",
       "name": "Chat image multi-turn retention",
       "status": "PASS",
-      "notes": "Image retained across turns. Turn 1: The image is a small horizontal gradient with:\n- **Left side**: Red\n- **Right si... | Turn 2: Based on my previous analysis of your image:\n\n- **Left side**: Red\n- **Right sid...",
-      "elapsed": 11.718303280002146
+      "notes": "Image retained across turns. Turn 1: The image shows a horizontal gradient with:\n- **Left side**: Red\n- **Right side*... | Turn 2: - **Left side**: Red\n- **Right side**: Blue...",
+      "elapsed": 13.007864681014325
     },
     {
       "test_id": "IMG-03",
       "name": "Agent image multi-turn retention",
       "status": "PASS",
-      "notes": "Image retained across agent turns. Turn 1: The image shows a gradient with the following colors from **left to right**:\n\n- ... | Turn 2: Based on the image from your previous message:\n\n- **Left side**: Blue\n- **Right ...",
-      "elapsed": 27.90714173000015
+      "notes": "Image retained across agent turns. Turn 1: The gradient runs **left to right** with the following colors:\n\n- **Left side:**... | Turn 2: - **Left side:** Blue\n- **Right side:** Red...",
+      "elapsed": 38.43001977697713
     },
     {
       "test_id": "WEB-01",
       "name": "Agent web search",
       "status": "PASS",
-      "notes": "Completed. Tool used: False. Response: **Python 3.13.0 was released on October 7, 2024.**\n\nIt is a stable release featuring notable additions such as an improved interactive interpreter (with multi-line editing and color support), an exper",
-      "elapsed": 25.64966466700571
+      "notes": "Completed. Tool used: False. Response: **Python 3.13.0 was released on October 7, 2024.**\n\nKey highlights of the release:\n- **New interactive REPL** with multiline editing and color support\n- **Experimental free-threaded mode** (no GIL) vi",
+      "elapsed": 18.161170475999825
     },
     {
       "test_id": "WEB-02",
       "name": "Agent browser navigation",
       "status": "PASS",
-      "notes": "Completed. Browser used: False. Response: The heading text on example.com is:\n\n> **Example Domain**",
-      "elapsed": 55.77682099700178
+      "notes": "Completed. Browser used: False. Response: The heading text on **example.com** is:\n\n> **Example Domain**",
+      "elapsed": 15.666542683000444
     },
     {
       "test_id": "CODE-01",
       "name": "Agent code execution",
       "status": "PASS",
-      "notes": "Completed with 0 tool calls. Response: Output:\n```\n0\n1\n1\n2\n3\n5\n8\n13\n21\n34\n```",
-      "elapsed": 21.378056764995563
+      "notes": "Completed with 2 tool calls. Response: The file `/workspace/fib.py` is created and the output is:\n\n```\n0\n1\n1\n2\n3\n5\n8\n13\n21\n34\n```",
+      "elapsed": 25.14085371600231
     },
     {
       "test_id": "CODE-02",
       "name": "Agent multi-file project",
       "status": "PASS",
       "notes": "Completed. Output has '15': True. Response: Output: `15` \u2713",
-      "elapsed": 22.672508026997093
+      "elapsed": 17.42280782700982
     },
     {
       "test_id": "SESS-01",
       "name": "List sessions",
       "status": "PASS",
       "notes": "Found 20 sessions",
-      "elapsed": 0.07784115599497454
+      "elapsed": 0.08284134298446588
     },
     {
       "test_id": "SESS-02",
       "name": "Session events retrieval",
       "status": "PASS",
-      "notes": "Session 638db936-e082-4786-8913-2c8f56074b56: 5 events",
-      "elapsed": 16.100181288005842
+      "notes": "Session 8070e54f-edbb-4d46-a2ba-b741c4c069eb: 5 events",
+      "elapsed": 12.190976598009001
     },
     {
       "test_id": "SESS-03",
       "name": "Session pin/unpin",
       "status": "PASS",
-      "notes": "Pinned session 9b9895e0-d700-4224-9e4c-b238e9294ec4. Pins list: 200",
-      "elapsed": 11.768350851998548
+      "notes": "Pinned session 23030c09-c87f-4ad5-b9a4-b3f3894e8510. Pins list: 200",
+      "elapsed": 11.05073951400118
     },
     {
       "test_id": "SESS-04",
       "name": "Session fork",
       "status": "PASS",
-      "notes": "Forked 0599961f-ea74-40d6-83b4-fb6dcca01315 \u2192 fe74b6b0-b2ec-4aa5-9926-fcab0683a16b",
-      "elapsed": 62.25436732699745
+      "notes": "Forked 4e1c0a28-6b75-4aa9-b8ed-7ced3dedae73 \u2192 7f055cb2-07d7-4e44-b0ca-556592f18e41",
+      "elapsed": 62.661004029010655
     },
     {
       "test_id": "AGEN-01",
       "name": "Agent multi-turn context",
       "status": "PASS",
-      "notes": "Context preserved! Response: Your cat's name is Muffin! \ud83d\udc31",
-      "elapsed": 18.28805078699952
+      "notes": "Context preserved! Response: Your cat's name is Muffin. \ud83d\udc31",
+      "elapsed": 27.265716505993623
     },
     {
       "test_id": "AGEN-02",
       "name": "Agent multi-turn tool use",
       "status": "PASS",
       "notes": "File created and read back correctly. Response: The file `/workspace/data.txt` contains:\n\n```\nHello E2E Test\n```",
-      "elapsed": 25.016068856995844
+      "elapsed": 33.992419037997024
     },
     {
       "test_id": "XFEAT-01",
       "name": "Web search + file save",
       "status": "PASS",
-      "notes": "Completed with 4 tool calls. Response: File written and confirmed. Here's the summary saved to `/workspace/fastapi_summary.txt`:\n\n> FastAPI is a modern, high-performance web framework for building APIs with Python, leveraging standard Pyth",
-      "elapsed": 45.27576897799736
+      "notes": "Completed with 4 tool calls. Response: File written and confirmed at `/workspace/fastapi_summary.txt`. Here's the summary:\n\n> **FastAPI** is a modern, high-performance Python web framework for building APIs, leveraging standard Python type",
+      "elapsed": 34.47959866799647
     },
     {
       "test_id": "XFEAT-02",
       "name": "Chat vs agent independence",
       "status": "PASS",
-      "notes": "Chat session: dc486f03-3e44-45d4-9d06-5cae310d64af, Agent session: 7aea8966-eac3-442b-b5cc-edcd701fa502. Agent knows '42': False (should be False for proper isolation)",
-      "elapsed": 18.139447032001044
+      "notes": "Chat session: 59173aa1-97d1-4ff3-8100-e71e3eebf582, Agent session: 31b4daed-bac2-477c-ba80-3d12ac6b9c1b. Agent knows '42': False (should be False for proper isolation)",
+      "elapsed": 18.653843722015154
     },
     {
       "test_id": "HIST-01",
       "name": "Chat message history",
       "status": "PASS",
-      "notes": "Session c867effa-3efd-421d-88b0-242e6604c472: 2 messages. Keys: ['messages', 'has_more', 'total_count']",
-      "elapsed": 5.399393584004429
+      "notes": "Session b11b673c-dbdd-414d-97db-0a7ea3d8facf: 2 messages. Keys: ['messages', 'has_more', 'total_count']",
+      "elapsed": 3.2947106789797544
     },
     {
       "test_id": "CNCL-01",
       "name": "Council mode basic 2-model run",
       "status": "PASS",
-      "notes": "2 members started, 2 completed, 1 synthesis. Has '56' in member output: True. Session: 6510ea0f-76d2-469b-b459-6d78556a1342",
-      "elapsed": 5.804561246994126
+      "notes": "2 members started, 2 completed, 1 synthesis. Has '56' in member output: True. Session: 2928f26f-b039-48fb-a762-a3e975ed1442",
+      "elapsed": 11.685250505979639
     },
     {
       "test_id": "CNCL-02",
       "name": "Council mode validation (< 2 models)",
       "status": "PASS",
       "notes": "Correctly rejected: Council mode requires at least 2 models",
-      "elapsed": 0.1217949089987087
+      "elapsed": 0.2148717179952655
     },
     {
       "test_id": "CNCL-03",
       "name": "Council mode billing (usage events)",
       "status": "PASS",
-      "notes": "Members: 2, Synthesis: 1, Usage events: 0, Session: 3df08f37-7044-4caf-8eb9-fe57095e68ac",
-      "elapsed": 4.550852374995884
+      "notes": "Members: 2, Synthesis: 1, Usage events: 0, Session: 51b770b9-1341-45ba-9522-ee7f780ea939",
+      "elapsed": 3.6837412349996157
     },
     {
       "test_id": "A2A-01",
       "name": "A2A config active in health endpoint",
       "status": "PASS",
       "notes": "chat_loop=a2a, agent_loop=a2a, backend=copilot",
-      "elapsed": 0.031276959998649545
+      "elapsed": 0.03555827200761996
     },
     {
       "test_id": "A2A-02",
       "name": "Chat uses A2A turn loop (log check)",
       "status": "PASS",
       "notes": "Backend logs confirm 'turn-loop-select: a2a'. Response: 4",
-      "elapsed": 2.1645299649972003
+      "elapsed": 7.020199927006615
     },
     {
       "test_id": "A2A-03",
       "name": "Agent uses A2A inner loop (log check)",
       "status": "PASS",
       "notes": "Backend logs contain A2A evidence. Response: Tokyo",
-      "elapsed": 14.613201815998764
+      "elapsed": 14.74145027398481
     },
     {
       "test_id": "A2A-04",
       "name": "Council uses A2A for member inference",
       "status": "PASS",
       "notes": "Council completed with 2 members via A2A",
-      "elapsed": 5.030301573999168
+      "elapsed": 3.724860260001151
     },
     {
       "test_id": "A2A-05",
       "name": "Chat selected model reaches A2A runtime",
       "status": "PASS",
       "notes": "Chat selection confirmed in A2A logs: claude-opus-4-6 (anthropic-opus-4-6)",
-      "elapsed": 6.2852379260002635
+      "elapsed": 2.4858119629789144
     },
     {
       "test_id": "A2A-06",
       "name": "Agent selected model reaches A2A runtime",
       "status": "PASS",
       "notes": "Agent selection confirmed in A2A logs: claude-opus-4-6 (anthropic-opus-4-6)",
-      "elapsed": 17.66933797999809
+      "elapsed": 14.308103432005737
     },
     {
       "test_id": "SBOX-01",
       "name": "FK constraint on session_id",
       "status": "PASS",
       "notes": "FK constraint correctly rejected orphaned sandbox INSERT",
-      "elapsed": 0.367957116002799
+      "elapsed": 1.8433778950129636
     },
     {
       "test_id": "SBOX-02",
       "name": "Port pool overflow protection",
       "status": "PASS",
       "notes": "Port overflow guard active in create(). Full exhaustion test deferred (would require 142+ sandboxes).",
-      "elapsed": 0.03218762599863112
+      "elapsed": 0.04300873097963631
     },
     {
       "test_id": "SBOX-03",
       "name": "Orphaned volume cleanup",
       "status": "PASS",
-      "notes": "Orphaned volume ii-sandbox-workspace-orphan-e2e-215feb62-7d5 was removed by cleanup sweep",
-      "elapsed": 56.7292851730017
+      "notes": "Orphaned volume ii-sandbox-workspace-orphan-e2e-f4562fdc-875 was removed by cleanup sweep",
+      "elapsed": 5.970391420996748
     },
     {
       "test_id": "SBOX-04",
       "name": "Persistent timeout_at column",
       "status": "PASS",
       "notes": "timeout_at column exists in agent_sandboxes table",
-      "elapsed": 0.6074348020047182
+      "elapsed": 1.0436921509972308
     },
     {
       "test_id": "SBOX-05",
       "name": "Cleanup loop active (6 stages)",
       "status": "PASS",
       "notes": "Orphan cleanup loop confirmed active in backend logs",
-      "elapsed": 0.13360935400123708
+      "elapsed": 0.17274898799951188
     }
   ]
 }

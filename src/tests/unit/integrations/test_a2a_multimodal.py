@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import base64
 
+import pytest
 
-from a2a.types import (
+a2a_types = pytest.importorskip("a2a.types", reason="a2a-sdk not installed")
+
+from a2a.types import (  # noqa: E402
     DataPart,
     FilePart,
     FileWithBytes,
@@ -14,7 +17,7 @@ from a2a.types import (
     TextPart,
 )
 
-from ii_agent.integrations.a2a.multimodal import (
+from ii_agent.integrations.a2a.multimodal import (  # noqa: E402
     build_conversation_context,
     content_to_parts,
     extract_historical_image_parts,

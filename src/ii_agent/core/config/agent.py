@@ -119,6 +119,26 @@ class AgentSettings(BaseSettings):
         description="Fallback to native model execution when A2A path fails",
     )
 
+    a2a_chat_strict: bool = Field(
+        default=True,
+        description=(
+            "When AGENT_CHAT_INNER_LOOP_MODE=a2a, treat any inability to "
+            "reach the A2A adapter as a hard failure rather than silently "
+            "serving the request via the native LLM. "
+            "When True (default): (a) startup CRASHES if "
+            "AGENT_A2A_AGENT_URL is not set; (b) at request time, a "
+            "missing/unreachable adapter raises HTTP 503 to the caller "
+            "instead of falling back to the native LLM. "
+            "Native fallback is reserved for genuine A2A failures only "
+            "(circuit breaker open, rate limits, transport errors at "
+            "request time) — see a2a_fallback_to_native. "
+            "Set False ONLY if you intentionally want chat to silently "
+            "spend on direct provider API calls when the adapter is "
+            "misconfigured. "
+            "Env: AGENT_A2A_CHAT_STRICT"
+        ),
+    )
+
     a2a_context_reuse: bool = Field(
         default=True,
         description="Reuse A2A context identifiers across turns",

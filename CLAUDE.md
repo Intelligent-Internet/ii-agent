@@ -610,6 +610,51 @@ The sandbox cleanup loop (`agents/sandboxes/orphan_cleanup.py`) runs every 60 se
 
 **Design docs:** [`sandbox-lifecycle-assessment.md`](docs/design-docs/sandbox-lifecycle-assessment.md), [`sandbox-accumulation-root-cause-analysis.md`](docs/design-docs/sandbox-accumulation-root-cause-analysis.md)
 
+### Docker Sandbox Local Mode
+
+When `SANDBOX_PROVIDER=docker` and `SANDBOX_LOCAL_MODE=true`, sandboxes run as local Docker containers instead of E2B cloud instances.
+
+**Container hardening (applied in `agents/sandboxes/docker.py`):**
+- `read_only=True` with tmpfs mounts (`/tmp`, `/var/tmp`, `/run`, `/home/user`)
+- `cap_drop=ALL`, selective `cap_add` (CHOWN, SETUID, SETGID, DAC_OVERRIDE, FOWNER)
+- `no-new-privileges`, `mem_limit=3GB`, `pids_limit=512`
+- Docker socket auto-detection: `DOCKER_SOCK_PATH` env var, or auto-probes `/var/run/docker.sock`, Colima, OrbStack, Podman sockets
+
+**Orphan cleanup distributed lock:** `run_orphan_cleanup_loop` acquires a Redis advisory lock (`sandbox:cleanup:lock`, 5-min TTL, `SET NX EX`) so only one backend instance runs cleanup at a time.
+
+**Graceful shutdown:** On SIGTERM, the backend waits 10s for in-flight sandbox turns to complete before shutting down Redis/DB connections.
+
+### A2A Inner Loop
+
+The A2A inner loop replaces direct LLM calls with an adapter server that proxies the A2A protocol to a backend CLI (Copilot, Claude Code, Codex). **Two deployment topologies, do not confuse them:**
+
+- **Agent A2A** — adapter runs **inside each sandbox container** (started by `docker/sandbox/start-services.sh`). Each agent run owns a sandbox and resolves its adapter URL via `sandbox.expose_port(18100)`. Per-session, per-sandbox.
+- **Chat A2A** — chat sessions do NOT own sandboxes. The adapter runs as a **standalone sidecar** (`a2a-adapter` service in `docker/docker-compose.local.yaml`) and the backend resolves its URL **only** from `AGENT_A2A_AGENT_URL`. Sandbox-independent by design.
+
+```
+ChatService → A2AChatTurnLoop.run() → IIAgentA2AClient.astream()
+                                    → ChatA2AEventTranslator.translate()
+                                    → tool bridging via ChatToolService
+                                    → billing via pubsub (billing_backend="a2a:<backend>")
+```
+
+**Configuration:** Set `AGENT_CHAT_INNER_LOOP_MODE=a2a` to enable. Backends: `copilot` (default), `claude-code`, `codex`, `simulate` (mock).
+
+**Two failure classes (do not conflate):**
+
+- **Misconfig** — `AGENT_A2A_AGENT_URL` unset while chat A2A enabled. With `AGENT_A2A_CHAT_STRICT=true` (default since 2026-04-18) the backend **crashes at startup** with an actionable error. This is intentional: silent fallback to native LLM has historically caused unexpected 10×+ provider charges. With strict=false the backend logs ERROR and falls back to native (legacy back-compat only).
+- **Runtime A2A failure** — circuit breaker open, rate-limit `session.error`, transport error mid-stream. With `AGENT_A2A_FALLBACK_TO_NATIVE=true` (default) chat transparently falls back to direct LLM for that turn. No double-billing because A2A billing only fires after stream completion.
+
+The two settings gate orthogonal concerns: `a2a_chat_strict` covers "did the operator configure me?"; `a2a_fallback_to_native` covers "should I tolerate runtime failures?".
+
+**Optional dependencies:** `a2a-sdk` and `github-copilot-sdk` are in `[project.optional-dependencies.a2a]`. Install with `pip install -e ".[a2a]"`. The sandbox image and the `a2a-adapter` sidecar always have them (via `docker/sandbox/pyproject.toml`).
+
+**Startup validation (lifespan step 8b):** When `inner_loop_mode=a2a` or `chat_inner_loop_mode=a2a`, the backend validates that `a2a-sdk` is importable, logs active backend + required credentials, and — for chat A2A under strict mode — raises `RuntimeError` if `AGENT_A2A_AGENT_URL` is unset.
+
+**Key files:** `chat/application/a2a_turn_loop_service.py` (turn loop), `integrations/a2a/as_client.py` (HTTP streaming client), `integrations/a2a/circuit_breaker.py`, `integrations/a2a/adapter_server.py` (adapter binary, used by both sidecar and per-sandbox), `integrations/a2a/exceptions.py` (`A2AAdapterUnavailableError` → HTTP 503), `chat/api/dependencies.py` (DI wiring; **must not** probe Docker / discover sandboxes — enforced by `test_no_docker_socket_probing`).
+
+**Deployment contract:** [docs/design-docs/chat-a2a-adapter-sidecar.md](docs/design-docs/chat-a2a-adapter-sidecar.md)
+
 ### Import Patterns
 
 ```python

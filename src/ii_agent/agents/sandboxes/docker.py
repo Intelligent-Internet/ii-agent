@@ -169,12 +169,55 @@ class DockerSandbox(Sandbox):
 
     @classmethod
     def _get_docker_client(cls) -> docker.DockerClient:
-        """Get or create a Docker client singleton (thread-safe)."""
+        """Get or create a Docker client singleton (thread-safe).
+
+        Uses ``SANDBOX_DOCKER_SOCKET_PATH`` if set, otherwise auto-detects
+        from standard locations (Linux default, Colima, OrbStack, Podman).
+        """
         if cls._docker_client is None:
             with cls._docker_client_lock:
                 if cls._docker_client is None:
-                    cls._docker_client = docker.from_env()
+                    socket_path = cls._resolve_docker_socket()
+                    if socket_path:
+                        cls._docker_client = docker.DockerClient(base_url=f"unix://{socket_path}")
+                    else:
+                        cls._docker_client = docker.from_env()
         return cls._docker_client
+
+    @staticmethod
+    def _resolve_docker_socket() -> str | None:
+        """Return the Docker socket path, or None to fall back to ``from_env()``.
+
+        Resolution order:
+        1. ``SANDBOX_DOCKER_SOCKET_PATH`` config / env var (explicit override).
+        2. Auto-detect from well-known locations.
+        """
+        import os
+        import pathlib
+
+        from ii_agent.core.config.settings import get_settings
+
+        configured = get_settings().sandbox.docker_socket_path
+        if configured:
+            return configured
+
+        # Auto-detect common non-default socket locations
+        home = pathlib.Path.home()
+        candidates = [
+            pathlib.Path("/var/run/docker.sock"),  # Linux default
+            home / ".colima" / "default" / "docker.sock",  # Colima (macOS)
+            home / ".orbstack" / "run" / "docker.sock",  # OrbStack (macOS)
+        ]
+        # Podman: $XDG_RUNTIME_DIR/podman/podman.sock
+        xdg = os.environ.get("XDG_RUNTIME_DIR")
+        if xdg:
+            candidates.append(pathlib.Path(xdg) / "podman" / "podman.sock")
+
+        for sock in candidates:
+            if sock.exists():
+                return str(sock)
+
+        return None  # fall back to docker.from_env()
 
     # ── Info ──────────────────────────────────────────────────────────────
 
@@ -334,7 +377,13 @@ class DockerSandbox(Sandbox):
                 security_opt=["no-new-privileges"],
                 cap_drop=["ALL"],
                 cap_add=["CHOWN", "SETUID", "SETGID", "DAC_OVERRIDE", "FOWNER"],
-                read_only=False,
+                read_only=True,
+                tmpfs={
+                    "/tmp": "size=512m",
+                    "/var/tmp": "size=256m",
+                    "/run": "size=64m",
+                    "/home/user": "size=1024m,uid=1001,gid=1001,exec",
+                },
                 network=network,
                 extra_hosts={"host.docker.internal": "host-gateway"},
             )
@@ -408,6 +457,15 @@ class DockerSandbox(Sandbox):
             keys_to_forward.update(token_keys)
 
         for key in keys_to_forward:
+            value = os.environ.get(key, "")
+            if value:
+                env[key] = value
+
+        # Forward per-turn adapter timeouts so long deep-research turns
+        # don't hit the historical 300 s default baked into the backends.
+        # Only forward when the operator has set them explicitly — the
+        # adapter_server itself picks a safe default (900 s) otherwise.
+        for key in ("A2A_COPILOT_TIMEOUT", "A2A_CLAUDE_CODE_TIMEOUT", "A2A_CODEX_TIMEOUT"):
             value = os.environ.get(key, "")
             if value:
                 env[key] = value

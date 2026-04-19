@@ -5,7 +5,17 @@ from ii_agent.settings.llm.types import ApiType
 
 
 def _build_anthropic_direct(api_key: str | None, llm_config: LLMConfig) -> Model:
-    """Build an Anthropic Claude model using the direct API."""
+    """Build an Anthropic Claude model using the direct API.
+
+    Extended thinking is enabled unconditionally here, which means Anthropic
+    forbids any ``temperature`` value other than 1 (the API default).  We
+    therefore do NOT forward ``llm_config.temperature`` — passing a non-1
+    value would cause every request to fail with HTTP 400
+    ``invalid_request_error`` (``temperature may only be set to 1 when
+    thinking is enabled``) and break the native-fallback path.  See
+    https://docs.claude.com/en/docs/build-with-claude/extended-thinking
+    #important-considerations-when-using-extended-thinking
+    """
     from ii_agent.agents.models.anthropic.claude import Claude
 
     client_params = {}
@@ -14,9 +24,9 @@ def _build_anthropic_direct(api_key: str | None, llm_config: LLMConfig) -> Model
 
     return Claude(
         id=llm_config.model,
-        api_key=api_key,
-        temperature=llm_config.temperature,
+        # temperature intentionally omitted — incompatible with thinking=enabled
         thinking={"type": "enabled", "budget_tokens": 16_000},
+        api_key=api_key,
         max_tokens=32_000,
         betas=["interleaved-thinking-2025-05-14"],
         cache_conversation=True,
@@ -29,7 +39,10 @@ def _build_anthropic_direct(api_key: str | None, llm_config: LLMConfig) -> Model
 
 
 def _build_anthropic_vertex(api_key: str | None, llm_config: LLMConfig) -> Model:
-    """Build an Anthropic Claude model routed through VertexAI."""
+    """Build an Anthropic Claude model routed through VertexAI.
+
+    See :func:`_build_anthropic_direct` for why ``temperature`` is omitted.
+    """
     from ii_agent.agents.models.vertexai.claude import Claude as VertexAIClaude
 
     client_params = {}
@@ -41,7 +54,7 @@ def _build_anthropic_vertex(api_key: str | None, llm_config: LLMConfig) -> Model
         api_key=api_key,
         project_id=llm_config.vertex_project_id,
         region=llm_config.vertex_region,
-        temperature=llm_config.temperature,
+        # temperature intentionally omitted — incompatible with thinking=enabled
         betas=["interleaved-thinking-2025-05-14"],
         timeout=600.0,
         thinking={"type": "enabled", "budget_tokens": 16_000},

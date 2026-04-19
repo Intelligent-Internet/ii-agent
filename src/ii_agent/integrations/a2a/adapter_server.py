@@ -286,6 +286,38 @@ _TASK_INPUT_QUEUES: dict[str, asyncio.Queue[dict[str, Any]]] = {}
 _INPUT_REQUIRED_TIMEOUT: float = 300.0
 
 
+def _backend_timeout_from_env(var_name: str, default: float) -> float:
+    """Read a per-turn timeout (seconds) for a CLI backend from an env var.
+
+    Falls back to *default* when the env var is unset, empty, non-numeric,
+    or non-positive.  The hard-coded 300 s default baked into the
+    Copilot/Claude-Code/Codex backends tripped long deep-research turns
+    (multi-step tool chains routinely exceed 5 minutes); this helper lets
+    operators tune the budget per backend without patching the image.
+    """
+    import os
+
+    raw = os.environ.get(var_name, "").strip()
+    if not raw:
+        return default
+    try:
+        value = float(raw)
+    except ValueError:
+        logging.getLogger(__name__).warning(
+            "Ignoring invalid %s=%r (expected float seconds); using %.0fs",
+            var_name,
+            raw,
+            default,
+        )
+        return default
+    if value <= 0:
+        logging.getLogger(__name__).warning(
+            "Ignoring non-positive %s=%r; using %.0fs", var_name, raw, default
+        )
+        return default
+    return value
+
+
 def _extract_last_user_text(messages: list[dict[str, Any]]) -> str:
     """Extract a plain-text prompt from the latest user message payload."""
 
@@ -970,6 +1002,9 @@ def main() -> None:
         frozenset(_parse_allowed_keys(api_keys_csv)) if api_keys_csv else None
     )
 
+    def _timeout_from_env(var_name: str, default: float) -> float:
+        return _backend_timeout_from_env(var_name, default)
+
     if args.backend == "claude-code":
         from ii_agent.integrations.a2a.claude_code_backend import (
             ClaudeCodeBackend,
@@ -979,7 +1014,11 @@ def main() -> None:
         api_key = os.environ.get("ANTHROPIC_API_KEY", "")
         if not api_key:
             parser.error("--backend claude-code requires ANTHROPIC_API_KEY to be set")
-        _backend = ClaudeCodeBackend(ClaudeCodeConfig(api_key=api_key))
+        cc_timeout = _timeout_from_env("A2A_CLAUDE_CODE_TIMEOUT", 900.0)
+        _backend = ClaudeCodeBackend(ClaudeCodeConfig(api_key=api_key, timeout=cc_timeout))
+        logging.getLogger(__name__).info(
+            "claude-code backend configured with per-turn timeout=%.0fs", cc_timeout
+        )
         _app = create_app(backend=_backend, allowed_keys=allowed_keys)
     elif args.backend == "codex":
         from ii_agent.integrations.a2a.codex_backend import CodexBackend, CodexConfig
@@ -987,14 +1026,24 @@ def main() -> None:
         api_key = os.environ.get("OPENAI_API_KEY", "")
         if not api_key:
             parser.error("--backend codex requires OPENAI_API_KEY to be set")
-        _backend = CodexBackend(CodexConfig(api_key=api_key))
+        cx_timeout = _timeout_from_env("A2A_CODEX_TIMEOUT", 900.0)
+        _backend = CodexBackend(CodexConfig(api_key=api_key, timeout=cx_timeout))
+        logging.getLogger(__name__).info(
+            "codex backend configured with per-turn timeout=%.0fs", cx_timeout
+        )
         _app = create_app(backend=_backend, allowed_keys=allowed_keys)
     elif args.backend == "copilot":
         from ii_agent.integrations.a2a.copilot_backend import CopilotBackend, CopilotConfig
 
         github_token = os.environ.get("GITHUB_TOKEN", "") or os.environ.get("GH_TOKEN", "")
         # Empty token is acceptable — CopilotBackend falls back to 'gh auth' login.
-        _backend = CopilotBackend(CopilotConfig(github_token=github_token))
+        cp_timeout = _timeout_from_env("A2A_COPILOT_TIMEOUT", 900.0)
+        _backend = CopilotBackend(
+            CopilotConfig(github_token=github_token, timeout=cp_timeout)
+        )
+        logging.getLogger(__name__).info(
+            "copilot backend configured with per-turn timeout=%.0fs", cp_timeout
+        )
         _app = create_app(backend=_backend, allowed_keys=allowed_keys)
     else:
         _app = create_app(allowed_keys=allowed_keys)

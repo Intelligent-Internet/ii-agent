@@ -198,7 +198,7 @@ class SessionService:
     async def _publish_session_deleted_event(
         self, db: AsyncSession, session_id: uuid.UUID, user_id: uuid.UUID
     ) -> None:
-        """Persist a SessionDeletedEvent for observability."""
+        """Persist a SessionDeletedEvent for observability and clean up session resources."""
         event = ApplicationEvent(
             session_id=session_id,
             user_id=user_id,
@@ -207,6 +207,14 @@ class SessionService:
             content={"session_id": str(session_id), "user_id": str(user_id)},
         )
         await self._event_repo.save(db, event)
+
+        # Clean up the in-process compaction lock to prevent unbounded dict growth.
+        try:
+            from ii_agent.chat.application.compaction_lock import remove_session_lock
+
+            remove_session_lock(session_id)
+        except Exception:
+            pass  # Best-effort; lock is a thin asyncio.Lock, not critical
 
     async def soft_delete_session(
         self, db: AsyncSession, session_id: uuid.UUID, user_id: uuid.UUID

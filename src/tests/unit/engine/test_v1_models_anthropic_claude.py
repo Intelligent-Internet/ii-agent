@@ -537,6 +537,38 @@ class TestClaudeGetRequestParams:
         c = Claude(thinking={"type": "enabled", "budget_tokens": 1024})
         assert "thinking" in c.get_request_params()
 
+    def test_temperature_dropped_when_thinking_enabled(self):
+        """Anthropic rejects non-1 temperature when extended thinking is on.
+
+        ``get_request_params`` must silently drop a configured non-1
+        temperature to protect the native-LLM fallback path from
+        400-looping on ``invalid_request_error: temperature may only be
+        set to 1 when thinking is enabled``.
+        """
+        c = Claude(
+            thinking={"type": "enabled", "budget_tokens": 1024},
+            temperature=0.5,
+        )
+        params = c.get_request_params()
+        assert params.get("thinking") == {"type": "enabled", "budget_tokens": 1024}
+        assert "temperature" not in params
+
+    def test_temperature_equal_one_allowed_with_thinking(self):
+        """temperature=1 is the only legal value when thinking is enabled,
+        but the adapter choice is to omit the parameter (same effective result).
+        """
+        c = Claude(
+            thinking={"type": "enabled", "budget_tokens": 1024},
+            temperature=1,
+        )
+        params = c.get_request_params()
+        # temperature=1 is the API default; omitting is equivalent and simpler.
+        assert "temperature" not in params
+
+    def test_temperature_kept_when_thinking_disabled(self):
+        c = Claude(thinking=None, temperature=0.5)
+        assert c.get_request_params()["temperature"] == 0.5
+
     def test_skills_adds_container(self):
         c = Claude(skills=[{"type": "anthropic", "skill_id": "pptx", "version": "latest"}])
         params = c.get_request_params()

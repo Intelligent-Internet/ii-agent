@@ -159,7 +159,10 @@ class TestDockerSandboxMocked:
     def test_get_docker_client_singleton(self):
         DockerSandbox._docker_client = None
 
-        with patch("ii_agent.agents.sandboxes.docker.docker") as mock_docker:
+        with (
+            patch("ii_agent.agents.sandboxes.docker.docker") as mock_docker,
+            patch.object(DockerSandbox, "_resolve_docker_socket", return_value=None),
+        ):
             mock_client = MagicMock()
             mock_docker.from_env.return_value = mock_client
 

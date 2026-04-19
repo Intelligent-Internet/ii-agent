@@ -526,6 +526,23 @@ adapter and CoPilot CLI.
 subsequent turns in the same session. Cold start (~5-10s) is acceptable for the first turn
 since users already experience initial response latency.
 
+> ⚠️ **HISTORICAL — NOT IMPLEMENTED.** This section captures the original
+> assessment. The recommendation above (Option A, per-session sandbox) was
+> **rejected** when the implementation landed. Production ships **Option C
+> (external sidecar adapter)** because:
+>
+> - The adapter is a stateless HTTP/SSE protocol bridge. Spinning up a
+>   sandbox per chat session purely to host a proxy is wasteful.
+> - Sandbox lifecycle (idle pause, orphan cleanup, timeout) is unrelated
+>   to chat A2A and would couple two independent concerns.
+> - One sidecar serves N chat sessions with no per-session cold start.
+> - The intermediate "opportunistic sandbox-discovery" hybrid that did
+>   ship between Apr 13 and Apr 18 caused silent native-LLM fallback
+>   (10×+ cost) and was removed.
+>
+> See [chat-a2a-adapter-sidecar.md](chat-a2a-adapter-sidecar.md) for the
+> implemented design.
+
 ### 5. Configuration
 
 New settings in `core/config/chat.py` or extend existing `AgentSettings`:

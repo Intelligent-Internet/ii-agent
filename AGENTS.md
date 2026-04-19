@@ -237,7 +237,10 @@ WebSocket (Socket.IO)
 - **Redis optional**: All Redis usage has in-memory fallbacks for single-worker deployments.
 - **Billing via reservations**: All billable work uses reserve -> settle -> release, never direct deductions.
 - **GCS/MinIO for storage**: File uploads, media, and slides use Google Cloud Storage (prod) or MinIO (local Docker) with signed or proxied URLs.
-- **E2B/Docker for sandboxes**: Code execution happens in isolated E2B (cloud) or Docker (local) sandbox environments.
+- **E2B/Docker for sandboxes**: Code execution happens in isolated E2B (cloud) or Docker (local) sandbox environments. Docker sandboxes use `read_only=True` + tmpfs.
+- **A2A optional extras**: `a2a-sdk` and `github-copilot-sdk` are optional deps (`pip install -e ".[a2a]"`). Backend runs without them; adapter server inside sandbox always has them.
+- **Chat A2A is sandbox-independent**: When `AGENT_CHAT_INNER_LOOP_MODE=a2a`, set `AGENT_A2A_AGENT_URL` to a standalone adapter (the local Docker stack ships an `a2a-adapter` sidecar at `http://a2a-adapter:18100`). With `AGENT_A2A_CHAT_STRICT=true` (default) a missing URL **crashes the backend at startup** — silent native-LLM fallback has historically cost real money. See [docs/design-docs/chat-a2a-adapter-sidecar.md](docs/design-docs/chat-a2a-adapter-sidecar.md).
+- **A2A fallback**: Genuine runtime A2A failures (circuit breaker open, rate-limit `session.error`, transport error) transparently fall back to native LLM when `AGENT_A2A_FALLBACK_TO_NATIVE=true` (default). No double-billing. Misconfig is gated separately by `AGENT_A2A_CHAT_STRICT`.
 
 ## Where to Look
 

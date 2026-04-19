@@ -72,14 +72,19 @@ tmux new-session -d -s code-server-system-never-kill -c /workspace 'code-server 
 #   codex       - OpenAI Codex CLI subprocess (requires OPENAI_API_KEY)
 SANDBOX_ADAPTER_PORT="${SANDBOX_ADAPTER_PORT:-18100}"
 SANDBOX_ADAPTER_BACKEND="${SANDBOX_ADAPTER_BACKEND:-simulate}"
+ADAPTER_LOG_DIR="/workspace/.ii-agent"
+ADAPTER_LOG="${ADAPTER_LOG_DIR}/adapter.log"
+mkdir -p "${ADAPTER_LOG_DIR}"
 echo "Starting A2A adapter on port ${SANDBOX_ADAPTER_PORT} (backend=${SANDBOX_ADAPTER_BACKEND})..."
+echo "Adapter logs: ${ADAPTER_LOG}"
 tmux new-session -d -s copilot-adapter-system-never-kill -c /workspace \
   "while true; do \
      DISPLAY=:99 AGENT_BROWSER_HEADED=1 \
      python -m ii_agent.integrations.a2a.adapter_server \
        --host 0.0.0.0 --port ${SANDBOX_ADAPTER_PORT} \
-       --backend ${SANDBOX_ADAPTER_BACKEND}; \
-     echo 'A2A adapter exited, restarting in 2s...'; \
+       --backend ${SANDBOX_ADAPTER_BACKEND} 2>&1 \
+       | tee -a ${ADAPTER_LOG}; \
+     echo 'A2A adapter exited, restarting in 2s...' | tee -a ${ADAPTER_LOG}; \
      sleep 2; \
    done"
 

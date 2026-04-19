@@ -197,8 +197,10 @@ Empirical finding (April 2026): a Claude Opus 4.6 agentic task costing ~$40 via 
 2. **`is_user_key` takes priority.** If the user provides their own API key, no LLM billing occurs regardless of strategy.
 3. **Balance exhaustion still cancels runs.** Even under `provider_reported` or `none`, the balance check runs after every deduction. Under `none`, no deduction means no cancellation — the run continues until the turn limit or explicit cancellation.
 4. **Multiplier table is hot-configurable.** `AGENT_A2A_COPILOT_MULTIPLIERS` accepts a JSON object and can be updated without code changes or restarts (on next `AgentSettings` instantiation).
+5. **A2A is the cheap path; native is the failure-mode fallback.** When `AGENT_CHAT_INNER_LOOP_MODE=a2a` is configured, every chat turn that silently falls back to the native LLM costs ~10×+ the Copilot subscription rate (see Cost Comparison above). Misconfiguration that causes silent fallback is therefore a financial-impact bug, not a UX bug. Production deployments **must** keep `AGENT_A2A_CHAT_STRICT=true` (default) so a missing `AGENT_A2A_AGENT_URL` crashes the backend at startup instead of silently routing every request to expensive native APIs. See [`chat-a2a-adapter-sidecar.md`](chat-a2a-adapter-sidecar.md) for the deployment contract.
 
 ## Related Documents
 
+- [`chat-a2a-adapter-sidecar.md`](chat-a2a-adapter-sidecar.md) — Chat A2A deployment contract; defines how operators configure the adapter URL and the strict-mode crash semantics that prevent silent native-LLM billing
 - [`inner-loop-competitor-analysis.md`](inner-loop-competitor-analysis.md) — Cost model comparison across Copilot, Claude Code, and Codex
 - [`a2a-inner-loop-parity-assessment.md`](a2a-inner-loop-parity-assessment.md) — Billing attribution verification status

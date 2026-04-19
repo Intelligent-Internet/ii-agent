@@ -793,61 +793,196 @@ class TestContextId:
 
 
 # ===================================================================
-# Shared A2A resources (circuit breaker singleton) tests
+# Chat A2A URL resolution tests
+#
+# Cover ``_resolve_chat_a2a_url`` priority: AGENT_A2A_AGENT_URL →
+# local Docker auto-discovery (gated) → None.  Cover
+# ``_get_shared_a2a_resources`` singleton + URL-change refresh.
 # ===================================================================
 
 
+def _reset_chat_a2a_singleton():
+    """Clear the chat-A2A module-level singleton between tests."""
+    from ii_agent.chat.api import dependencies as chat_deps
+
+    chat_deps._a2a_chat_client = None
+    chat_deps._a2a_chat_circuit_breaker = None
+    chat_deps._a2a_chat_client_url = None
+
+
+class TestResolveChatA2AURL:
+    def setup_method(self):
+        _reset_chat_a2a_singleton()
+
+    def _settings(self, *, chat_mode="a2a", url=None, local_mode=False, provider="docker"):
+        s = MagicMock()
+        s.agent.chat_inner_loop_mode = chat_mode
+        s.agent.a2a_agent_url = url
+        s.sandbox.local_mode = local_mode
+        s.sandbox.provider = provider
+        return s
+
+    def test_returns_none_when_chat_a2a_disabled(self):
+        from ii_agent.chat.api import dependencies as chat_deps
+
+        with patch(
+            "ii_agent.core.config.settings.get_settings",
+            return_value=self._settings(chat_mode="native"),
+        ):
+            assert chat_deps._resolve_chat_a2a_url() is None
+
+    def test_uses_explicit_url_when_set(self):
+        from ii_agent.chat.api import dependencies as chat_deps
+
+        with patch(
+            "ii_agent.core.config.settings.get_settings",
+            return_value=self._settings(url="http://adapter.example:18100"),
+        ):
+            assert chat_deps._resolve_chat_a2a_url() == "http://adapter.example:18100"
+
+    def test_explicit_url_wins(self):
+        from ii_agent.chat.api import dependencies as chat_deps
+
+        with patch(
+            "ii_agent.core.config.settings.get_settings",
+            return_value=self._settings(
+                url="http://adapter:18100", local_mode=True, provider="docker"
+            ),
+        ):
+            assert chat_deps._resolve_chat_a2a_url() == "http://adapter:18100"
+
+    def test_local_docker_without_url_returns_none(self):
+        """Sandbox auto-discovery has been removed; chat A2A is sandbox-independent."""
+        from ii_agent.chat.api import dependencies as chat_deps
+
+        with patch(
+            "ii_agent.core.config.settings.get_settings",
+            return_value=self._settings(local_mode=True, provider="docker"),
+        ):
+            assert chat_deps._resolve_chat_a2a_url() is None
+
+    def test_cloud_e2b_without_url_returns_none(self):
+        from ii_agent.chat.api import dependencies as chat_deps
+
+        with patch(
+            "ii_agent.core.config.settings.get_settings",
+            return_value=self._settings(local_mode=False, provider="e2b"),
+        ):
+            assert chat_deps._resolve_chat_a2a_url() is None
+
+    def test_local_non_docker_provider_returns_none(self):
+        from ii_agent.chat.api import dependencies as chat_deps
+
+        with patch(
+            "ii_agent.core.config.settings.get_settings",
+            return_value=self._settings(local_mode=True, provider="e2b"),
+        ):
+            assert chat_deps._resolve_chat_a2a_url() is None
+
+
 class TestSharedA2AResources:
-    """Verify the dependency factory shares CB + client across calls."""
+    def setup_method(self):
+        _reset_chat_a2a_singleton()
 
-    def test_shared_resources_returns_same_instances(self):
-        """Multiple calls to _get_shared_a2a_resources return the same objects."""
-        import ii_agent.chat.api.dependencies as deps
+    def _settings(self, *, chat_mode="a2a", url="http://adapter:18100", strict=False):
+        s = MagicMock()
+        s.agent.chat_inner_loop_mode = chat_mode
+        s.agent.a2a_agent_url = url
+        s.agent.a2a_timeout_seconds = 60
+        s.agent.a2a_chat_strict = strict
+        s.sandbox.local_mode = False
+        s.sandbox.provider = "docker"
+        return s
 
-        # Reset module-level singletons
-        deps._a2a_chat_client = None
-        deps._a2a_chat_circuit_breaker = None
+    def test_returns_none_when_disabled(self):
+        from ii_agent.chat.api import dependencies as chat_deps
 
-        mock_settings = MagicMock()
-        mock_settings.agent.chat_inner_loop_mode = "a2a"
-        mock_settings.agent.a2a_agent_url = "http://adapter:18100"
-        mock_settings.agent.a2a_timeout_seconds = 60
+        with patch(
+            "ii_agent.core.config.settings.get_settings",
+            return_value=self._settings(chat_mode="native"),
+        ):
+            client, cb = chat_deps._get_shared_a2a_resources()
+        assert client is None and cb is None
 
-        with patch("ii_agent.core.config.settings.get_settings", return_value=mock_settings):
-            with patch("ii_agent.integrations.a2a.as_client.IIAgentA2AClient") as mock_client_cls:
-                with patch(
-                    "ii_agent.integrations.a2a.circuit_breaker.CircuitBreaker"
-                ) as mock_cb_cls:
-                    mock_client_cls.return_value = MagicMock()
-                    mock_cb_cls.return_value = MagicMock()
+    def test_returns_none_when_no_url_resolvable_non_strict(self):
+        """With strict=False, missing URL returns (None, None) for legacy fallback."""
+        from ii_agent.chat.api import dependencies as chat_deps
 
-                    client1, cb1 = deps._get_shared_a2a_resources()
-                    client2, cb2 = deps._get_shared_a2a_resources()
+        with patch(
+            "ii_agent.core.config.settings.get_settings",
+            return_value=self._settings(url=None, strict=False),
+        ):
+            client, cb = chat_deps._get_shared_a2a_resources()
+        assert client is None and cb is None
 
-                    assert client1 is client2
-                    assert cb1 is cb2
-                    # Only one instance created
-                    mock_client_cls.assert_called_once()
-                    mock_cb_cls.assert_called_once()
+    def test_strict_mode_raises_when_url_missing(self):
+        """With strict=True (production default), missing URL must raise A2AAdapterUnavailableError
+        rather than silently returning (None, None) — silent fallback to direct LLM
+        was the architectural bug that caused unexpected upstream API charges."""
+        from ii_agent.chat.api import dependencies as chat_deps
+        from ii_agent.integrations.a2a.exceptions import A2AAdapterUnavailableError
 
-        # Cleanup
-        deps._a2a_chat_client = None
-        deps._a2a_chat_circuit_breaker = None
+        with patch(
+            "ii_agent.core.config.settings.get_settings",
+            return_value=self._settings(url=None, strict=True),
+        ):
+            with pytest.raises(A2AAdapterUnavailableError):
+                chat_deps._get_shared_a2a_resources()
 
-    def test_shared_resources_returns_none_when_direct_mode(self):
-        """When mode is 'direct', returns (None, None)."""
-        import ii_agent.chat.api.dependencies as deps
+    def test_no_docker_socket_probing(self):
+        """Regression guard: chat A2A is sandbox-independent and MUST NOT probe
+        Docker (or any other infrastructure) to discover an adapter URL.  If
+        this test fails, someone has re-introduced sandbox auto-discovery,
+        which is the architectural bug that produced silent native-LLM
+        fallback and unexpected upstream API charges.  See
+        docs/design-docs/chat-a2a-adapter-sidecar.md."""
+        import inspect
 
-        deps._a2a_chat_client = None
-        deps._a2a_chat_circuit_breaker = None
+        from ii_agent.chat.api import dependencies as chat_deps
 
-        mock_settings = MagicMock()
-        mock_settings.agent.chat_inner_loop_mode = "direct"
+        src = inspect.getsource(chat_deps)
+        forbidden = (
+            "_discover_local_sandbox_adapter_url",
+            "docker.from_env",
+            "ii-sandbox-",  # container-name probing
+            "/var/run/docker.sock",
+        )
+        for token in forbidden:
+            assert token not in src, (
+                f"chat/api/dependencies.py contains forbidden token {token!r}: "
+                "chat A2A must not perform sandbox/Docker discovery. "
+                "See docs/design-docs/chat-a2a-adapter-sidecar.md."
+            )
 
-        with patch("ii_agent.core.config.settings.get_settings", return_value=mock_settings):
-            client, cb = deps._get_shared_a2a_resources()
-            assert client is None
-            assert cb is None
+    def test_creates_and_reuses_singleton(self):
+        from ii_agent.chat.api import dependencies as chat_deps
+
+        with patch(
+            "ii_agent.core.config.settings.get_settings",
+            return_value=self._settings(),
+        ):
+            c1, b1 = chat_deps._get_shared_a2a_resources()
+            c2, b2 = chat_deps._get_shared_a2a_resources()
+        assert c1 is not None and c1 is c2
+        assert b1 is not None and b1 is b2
+
+    def test_refreshes_client_when_url_changes(self):
+        """Sandbox container recycled in dev → new URL → new client."""
+        from ii_agent.chat.api import dependencies as chat_deps
+
+        s1 = self._settings(url="http://ii-sandbox-aaa:18100")
+        s2 = self._settings(url="http://ii-sandbox-bbb:18100")
+
+        with patch("ii_agent.core.config.settings.get_settings", return_value=s1):
+            c1, _ = chat_deps._get_shared_a2a_resources()
+        with patch("ii_agent.core.config.settings.get_settings", return_value=s2):
+            c2, _ = chat_deps._get_shared_a2a_resources()
+
+        assert c1 is not c2
+        assert chat_deps._a2a_chat_client_url == "http://ii-sandbox-bbb:18100"
+
+
+# ===================================================================
 
 
 # ===================================================================
