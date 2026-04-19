@@ -206,6 +206,8 @@ class TestE2BSandboxToSandboxStatusR4:
 
         with pytest.raises(AttributeError):
             E2BSandbox._to_sandbox_status("some_unknown_state")
+
+
 # ---------------------------------------------------------------------------
 # E2BSandbox.get_info
 # ---------------------------------------------------------------------------
@@ -254,231 +256,6 @@ class TestE2BSandboxGetInfoR4:
 
 
 # ---------------------------------------------------------------------------
-# MCPClient tests
-# NOTE: These tests import ii_agent.agents.sandboxes.client which was removed.
-# Skipped until the MCPClient is reintroduced or the sandbox_client module is
-# restored.  The MCP functionality now lives in the MCP server inside the
-# sandbox container (ii_server.mcp.server).
-# ---------------------------------------------------------------------------
-
-_has_sandbox_client = False
-try:
-    from ii_agent.agents.sandboxes.client import MCPClient  # noqa: F401
-
-    _has_sandbox_client = True
-except ImportError:
-    pass
-
-
-@pytest.mark.skipif(not _has_sandbox_client, reason="sandbox_client module removed")
-class TestMCPClientR4:
-    def test_init_sets_server_url(self):
-        from ii_agent.agents.sandboxes.client import MCPClient
-
-        with patch("ii_agent.agents.sandboxes.sandbox_client.Client.__init__", return_value=None):
-            client = MCPClient("http://sandbox-server:8080")
-            assert client.server_url == "http://sandbox-server:8080"
-
-    def test_init_appends_mcp_path(self):
-        from ii_agent.agents.sandboxes.client import MCPClient
-
-        with patch(
-            "ii_agent.agents.sandboxes.sandbox_client.Client.__init__", return_value=None
-        ) as mock_init:
-            client = MCPClient("http://sandbox-server:8080")
-            # Verify parent called with /mcp/ appended
-            mock_init.assert_called_once_with("http://sandbox-server:8080/mcp/")
-
-    @pytest.mark.asyncio
-    async def test_register_custom_mcp_raises_when_not_initialized(self):
-        from ii_agent.agents.sandboxes.client import MCPClient
-
-        with patch("ii_agent.agents.sandboxes.sandbox_client.Client.__init__", return_value=None):
-            client = MCPClient("http://server:8080")
-            client.http_session = None
-        with pytest.raises(Exception, match="not initialized"):
-            await client.register_custom_mcp({"key": "value"})
-
-    @pytest.mark.asyncio
-    async def test_register_custom_mcp_raises_on_non_200(self):
-        from ii_agent.agents.sandboxes.client import MCPClient
-
-        with patch("ii_agent.agents.sandboxes.sandbox_client.Client.__init__", return_value=None):
-            client = MCPClient("http://server:8080")
-        mock_http = AsyncMock()
-        mock_response = MagicMock()
-        mock_response.status_code = 500
-        mock_response.text = "Server Error"
-        mock_http.post = AsyncMock(return_value=mock_response)
-        client.http_session = mock_http
-        with pytest.raises(Exception, match="Failed to register custom mcp"):
-            await client.register_custom_mcp({"config": "data"})
-
-    @pytest.mark.asyncio
-    async def test_register_custom_mcp_returns_json_on_200(self):
-        from ii_agent.agents.sandboxes.client import MCPClient
-
-        with patch("ii_agent.agents.sandboxes.sandbox_client.Client.__init__", return_value=None):
-            client = MCPClient("http://server:8080")
-        mock_http = AsyncMock()
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {"status": "ok"}
-        mock_http.post = AsyncMock(return_value=mock_response)
-        client.http_session = mock_http
-        result = await client.register_custom_mcp({"config": "data"})
-        assert result == {"status": "ok"}
-
-    @pytest.mark.asyncio
-    async def test_register_codex_raises_on_non_200(self):
-        from ii_agent.agents.sandboxes.client import MCPClient
-
-        with patch("ii_agent.agents.sandboxes.sandbox_client.Client.__init__", return_value=None):
-            client = MCPClient("http://server:8080")
-        mock_http = AsyncMock()
-        mock_response = MagicMock()
-        mock_response.status_code = 400
-        mock_response.text = "Bad Request"
-        mock_http.post = AsyncMock(return_value=mock_response)
-        client.http_session = mock_http
-        with pytest.raises(Exception, match="Failed to register codex"):
-            await client.register_codex()
-
-    @pytest.mark.asyncio
-    async def test_register_codex_returns_json_on_200(self):
-        from ii_agent.agents.sandboxes.client import MCPClient
-
-        with patch("ii_agent.agents.sandboxes.sandbox_client.Client.__init__", return_value=None):
-            client = MCPClient("http://server:8080")
-        mock_http = AsyncMock()
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {"codex": "registered"}
-        mock_http.post = AsyncMock(return_value=mock_response)
-        client.http_session = mock_http
-        result = await client.register_codex()
-        assert result == {"codex": "registered"}
-
-    @pytest.mark.asyncio
-    async def test_set_tool_server_url_raises_on_non_200(self):
-        from ii_agent.agents.sandboxes.client import MCPClient
-
-        with patch("ii_agent.agents.sandboxes.sandbox_client.Client.__init__", return_value=None):
-            client = MCPClient("http://server:8080")
-        mock_http = AsyncMock()
-        mock_response = MagicMock()
-        mock_response.status_code = 500
-        mock_response.text = "Error"
-        mock_http.post = AsyncMock(return_value=mock_response)
-        client.http_session = mock_http
-        with pytest.raises(Exception, match="Failed to set tool server url"):
-            await client.set_tool_server_url("http://tool-server")
-
-    @pytest.mark.asyncio
-    async def test_set_tool_server_url_returns_json_on_200(self):
-        from ii_agent.agents.sandboxes.client import MCPClient
-
-        with patch("ii_agent.agents.sandboxes.sandbox_client.Client.__init__", return_value=None):
-            client = MCPClient("http://server:8080")
-        mock_http = AsyncMock()
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {"url_set": True}
-        mock_http.post = AsyncMock(return_value=mock_response)
-        client.http_session = mock_http
-        result = await client.set_tool_server_url("http://tool-server")
-        assert result == {"url_set": True}
-
-    @pytest.mark.asyncio
-    async def test_set_credential_raises_on_non_200(self):
-        from ii_agent.agents.sandboxes.client import MCPClient
-
-        with patch("ii_agent.agents.sandboxes.sandbox_client.Client.__init__", return_value=None):
-            client = MCPClient("http://server:8080")
-        mock_http = AsyncMock()
-        mock_response = MagicMock()
-        mock_response.status_code = 401
-        mock_response.text = "Unauthorized"
-        mock_http.post = AsyncMock(return_value=mock_response)
-        client.http_session = mock_http
-        with pytest.raises(Exception, match="Failed to set credential"):
-            await client.set_credential({"token": "bad"})
-
-    @pytest.mark.asyncio
-    async def test_set_credential_returns_json_on_200(self):
-        from ii_agent.agents.sandboxes.client import MCPClient
-
-        with patch("ii_agent.agents.sandboxes.sandbox_client.Client.__init__", return_value=None):
-            client = MCPClient("http://server:8080")
-        mock_http = AsyncMock()
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {"credential": "set"}
-        mock_http.post = AsyncMock(return_value=mock_response)
-        client.http_session = mock_http
-        result = await client.set_credential({"token": "valid"})
-        assert result == {"credential": "set"}
-
-
-# ---------------------------------------------------------------------------
-# MCPClient context manager
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.skipif(not _has_sandbox_client, reason="sandbox_client module removed")
-class TestMCPClientContextManagerR4:
-    @pytest.mark.asyncio
-    async def test_aenter_creates_http_session(self):
-        from ii_agent.agents.sandboxes.client import MCPClient
-
-        with (
-            patch("ii_agent.agents.sandboxes.sandbox_client.Client.__init__", return_value=None),
-            patch(
-                "ii_agent.agents.sandboxes.sandbox_client.Client.__aenter__",
-                new=AsyncMock(return_value=MagicMock()),
-            ),
-        ):
-            client = MCPClient("http://server:8080")
-            client.http_session = None
-            await client.__aenter__()
-            assert client.http_session is not None
-
-    @pytest.mark.asyncio
-    async def test_aexit_closes_http_session(self):
-        from ii_agent.agents.sandboxes.client import MCPClient
-
-        with (
-            patch("ii_agent.agents.sandboxes.sandbox_client.Client.__init__", return_value=None),
-            patch(
-                "ii_agent.agents.sandboxes.sandbox_client.Client.__aexit__",
-                new=AsyncMock(return_value=None),
-            ),
-        ):
-            client = MCPClient("http://server:8080")
-            mock_http = AsyncMock()
-            mock_http.aclose = AsyncMock()
-            client.http_session = mock_http
-            await client.__aexit__(None, None, None)
-            mock_http.aclose.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_aexit_handles_none_http_session(self):
-        from ii_agent.agents.sandboxes.client import MCPClient
-
-        with (
-            patch("ii_agent.agents.sandboxes.sandbox_client.Client.__init__", return_value=None),
-            patch(
-                "ii_agent.agents.sandboxes.sandbox_client.Client.__aexit__",
-                new=AsyncMock(return_value=None),
-            ),
-        ):
-            client = MCPClient("http://server:8080")
-            client.http_session = None
-            # Should not raise
-            await client.__aexit__(None, None, None)
-
-
-# ---------------------------------------------------------------------------
 # Sandbox exceptions
 # ---------------------------------------------------------------------------
 
@@ -504,9 +281,10 @@ class TestSandboxExceptionsR4:
         err = SandboxTimeoutException("my-sandbox", "create")
         assert "my-sandbox" in str(err)
         assert "create" in str(err)
-# SandboxAuthenticationError inherits status_code=500 from SandboxException.
+        # SandboxAuthenticationError inherits status_code=500 from SandboxException.
         # It could be overridden to 401 but currently isn't.
         assert err.status_code == 500
+
     def test_sandbox_operation_error(self):
         from ii_agent.agents.sandboxes.exceptions import SandboxOperationError
 

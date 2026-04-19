@@ -4,6 +4,22 @@ from ii_agent.settings.llm import Provider
 from ii_agent.settings.llm.types import ApiType
 
 
+def _is_opus_4_7_or_later(model_id: str) -> bool:
+    """Return True for Opus 4.7 or later model ids.
+
+    Opus 4.7 removed support for manual extended thinking
+    (``thinking: {type: "enabled", budget_tokens: N}`` returns HTTP 400).
+    These models require ``thinking: {type: "adaptive"}`` combined with
+    ``output_config: {"effort": ...}``. The check matches the base id
+    ``claude-opus-4-7`` as well as dated snapshots (``claude-opus-4-7-YYYYMMDD``)
+    and Vertex aliases (``claude-opus-4-7@YYYYMMDD``).
+
+    See https://platform.claude.com/docs/en/build-with-claude/adaptive-thinking
+    """
+    mid = (model_id or "").lower()
+    return mid.startswith("claude-opus-4-7") or mid.startswith("anthropic.claude-opus-4-7")
+
+
 def _build_anthropic_direct(api_key: str | None, llm_config: LLMConfig) -> Model:
     """Build an Anthropic Claude model using the direct API.
 
@@ -15,12 +31,37 @@ def _build_anthropic_direct(api_key: str | None, llm_config: LLMConfig) -> Model
     thinking is enabled``) and break the native-fallback path.  See
     https://docs.claude.com/en/docs/build-with-claude/extended-thinking
     #important-considerations-when-using-extended-thinking
+
+    Claude Opus 4.7 removed manual extended thinking; we use adaptive thinking
+    with the ``output_config.effort`` parameter instead. ``display`` defaults
+    to ``"omitted"`` on Opus 4.7, so we set it to ``"summarized"`` explicitly
+    to preserve the current behaviour of surfacing reasoning summaries.
     """
     from ii_agent.agents.models.anthropic.claude import Claude
 
     client_params = {}
     if llm_config.base_url:
         client_params["base_url"] = llm_config.base_url
+
+    if _is_opus_4_7_or_later(llm_config.model):
+        return Claude(
+            id=llm_config.model,
+            # temperature intentionally omitted — incompatible with thinking
+            thinking={"type": "adaptive", "display": "summarized"},
+            # effort replaces budget_tokens on Opus 4.7; xhigh is the docs'
+            # recommended starting point for coding/agentic workloads.
+            request_params={"output_config": {"effort": "xhigh"}},
+            api_key=api_key,
+            max_tokens=64_000,
+            # interleaved thinking is automatic with adaptive; beta header
+            # is deprecated and not required on Opus 4.7.
+            cache_conversation=True,
+            cache_system_prompt=True,
+            retries=llm_config.max_retries,
+            extended_cache_time=False,
+            timeout=600.0,
+            client_params=client_params or None,
+        )
 
     return Claude(
         id=llm_config.model,
@@ -41,13 +82,33 @@ def _build_anthropic_direct(api_key: str | None, llm_config: LLMConfig) -> Model
 def _build_anthropic_vertex(api_key: str | None, llm_config: LLMConfig) -> Model:
     """Build an Anthropic Claude model routed through VertexAI.
 
-    See :func:`_build_anthropic_direct` for why ``temperature`` is omitted.
+    See :func:`_build_anthropic_direct` for why ``temperature`` is omitted
+    and for the Opus 4.7 adaptive-thinking branch.
     """
     from ii_agent.agents.models.vertexai.claude import Claude as VertexAIClaude
 
     client_params = {}
     if llm_config.base_url:
         client_params["base_url"] = llm_config.base_url
+
+    if _is_opus_4_7_or_later(llm_config.model):
+        return VertexAIClaude(
+            id=llm_config.model,
+            api_key=api_key,
+            project_id=llm_config.vertex_project_id,
+            region=llm_config.vertex_region,
+            # temperature intentionally omitted — incompatible with thinking
+            timeout=600.0,
+            thinking={"type": "adaptive", "display": "summarized"},
+            request_params={"output_config": {"effort": "xhigh"}},
+            cache_conversation=True,
+            retries=llm_config.max_retries,
+            base_url=llm_config.base_url,
+            max_tokens=64_000,
+            cache_system_prompt=True,
+            extended_cache_time=False,
+            client_params=client_params or None,
+        )
 
     return VertexAIClaude(
         id=llm_config.model,

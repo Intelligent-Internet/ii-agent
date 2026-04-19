@@ -1592,6 +1592,8 @@ class TestA2AAdapterEnv:
     def _cfg(self, backend: str = "copilot") -> MagicMock:
         cfg = MagicMock()
         cfg.agent.a2a_backend = backend
+        cfg.agent.a2a_adapter_timeout_long_horizon = 3600
+        cfg.agent.a2a_adapter_long_horizon_agent_kinds = {"deep_research"}
         return cfg
 
     def test_returns_backend_key(self):
@@ -1637,3 +1639,30 @@ class TestA2AAdapterEnv:
         assert env["GITHUB_TOKEN"] == "ghp_1"
         assert env["ANTHROPIC_API_KEY"] == "sk-ant-2"
         assert env["OPENAI_API_KEY"] == "sk-oai-3"
+
+    @patch.dict("os.environ", {}, clear=True)
+    def test_long_horizon_agent_kind_overrides_timeouts(self):
+        """deep_research agent kind gets the long-horizon adapter timeout."""
+        env = DockerSandbox._a2a_adapter_env(
+            self._cfg("copilot"), metadata={"agent_kind": "deep_research"}
+        )
+        assert env["A2A_COPILOT_TIMEOUT"] == "3600"
+        assert env["A2A_CLAUDE_CODE_TIMEOUT"] == "3600"
+        assert env["A2A_CODEX_TIMEOUT"] == "3600"
+
+    @patch.dict("os.environ", {"A2A_COPILOT_TIMEOUT": "900"}, clear=True)
+    def test_non_long_horizon_agent_kind_does_not_override(self):
+        """Non-long-horizon agent kinds keep the operator-configured timeout."""
+        env = DockerSandbox._a2a_adapter_env(
+            self._cfg("copilot"), metadata={"agent_kind": "general"}
+        )
+        assert env["A2A_COPILOT_TIMEOUT"] == "900"
+        # Other backends' timeouts are not set when env is unset and not long-horizon.
+        assert "A2A_CLAUDE_CODE_TIMEOUT" not in env
+        assert "A2A_CODEX_TIMEOUT" not in env
+
+    @patch.dict("os.environ", {"A2A_COPILOT_TIMEOUT": "900"}, clear=True)
+    def test_missing_metadata_does_not_override(self):
+        """Missing/None metadata behaves as non-long-horizon."""
+        env = DockerSandbox._a2a_adapter_env(self._cfg("copilot"))
+        assert env["A2A_COPILOT_TIMEOUT"] == "900"

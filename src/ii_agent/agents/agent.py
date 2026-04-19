@@ -123,6 +123,33 @@ from ii_agent.agents.tools.base import AgentAsTool, BaseAgentTool
 from ii_agent.core.logger import logger
 
 
+def _agent_kind_from_name(name: str | None) -> str | None:
+    """Return the ``AgentType`` value encoded in the agent's ``name``, if any.
+
+    The factory names primary agents as ``"{AgentType.value}_agent"``
+    (see ``agents/factory/agent.py``).  Subagent / tool-owned agents use
+    different names (e.g. ``task_agent``, connector tool names) which must
+    NOT be treated as ``AgentType`` values.  This helper strips the
+    ``_agent`` suffix and validates the candidate against the enum — only
+    recognised ``AgentType`` values are returned, everything else maps to
+    ``None``.
+
+    Used by ``_ensure_sandbox_for_inner_loop`` to thread ``agent_kind`` into
+    sandbox metadata so the Docker provider can apply the long-horizon
+    adapter timeout to research-class agents.
+    """
+    if not name or not name.endswith("_agent"):
+        return None
+    candidate = name[: -len("_agent")]
+    # Lazy import avoids a circular import at module load time.
+    from ii_agent.agents.types import AgentType
+
+    try:
+        return AgentType(candidate).value
+    except ValueError:
+        return None
+
+
 @dataclass
 class IIAgent:
     user_id: str
@@ -496,11 +523,17 @@ class IIAgent:
                 self.session_id,
             )
             sandbox_service = get_app_container().sandbox_service
+            # Derive agent_kind from the agent name (e.g. "deep_research_agent"
+            # -> "deep_research") so the sandbox provider can apply the
+            # long-horizon adapter timeout for research-class agents.
+            agent_kind = _agent_kind_from_name(self.name)
+            sandbox_metadata = {"agent_kind": agent_kind} if agent_kind else None
             async with get_db_session_local() as db:
                 sandbox = await sandbox_service.init_sandbox(
                     db,
                     session_id=_uuid.UUID(self.session_id),
                     user_id=_uuid.UUID(self.user_id),
+                    metadata=sandbox_metadata,
                 )
 
             self.sandbox = sandbox  # triggers setter → wires _sandbox_ref[0]

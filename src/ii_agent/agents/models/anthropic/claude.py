@@ -761,11 +761,16 @@ class Claude(Model):
 
             # for non stream, max_tokens params will response error:
             request_kwargs.pop("max_tokens", None)
-            if request_kwargs.get("thinking"):
-                request_kwargs["thinking"] = {
-                    "type": "enabled",
-                    "budget_tokens": 8192,
-                }
+            thinking_cfg = request_kwargs.get("thinking")
+            if thinking_cfg:
+                # Preserve adaptive thinking (required on Opus 4.7+; manual
+                # enabled+budget_tokens returns HTTP 400 on that model).
+                # Only shrink budget for legacy "enabled" mode on non-stream.
+                if thinking_cfg.get("type") == "enabled":
+                    request_kwargs["thinking"] = {
+                        "type": "enabled",
+                        "budget_tokens": 8192,
+                    }
 
             assistant_message.metrics.start_timer()
             provider_response = await self.get_async_client().beta.messages.create(

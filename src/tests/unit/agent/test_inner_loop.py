@@ -460,6 +460,98 @@ async def test_a2a_inner_loop_releases_compaction_lock_after_stream() -> None:
 
 
 @pytest.mark.asyncio
+async def test_a2a_inner_loop_releases_compaction_lock_on_consumer_aclose() -> None:
+    """Regression: consumer aclose() at the CompactionAuthorityEvent yield must release the lock.
+
+    Before the fix, ``_lock.acquire()`` and ``yield CompactionAuthorityEvent(...)`` ran
+    outside the ``try/finally`` block.  If the consumer called ``aclose()`` while the
+    generator was suspended at that yield (e.g. during a cancellation-driven cleanup),
+    ``GeneratorExit`` was injected before the ``try`` block was entered, the
+    ``finally`` block never ran, and the in-memory asyncio.Lock leaked -- deadlocking
+    every subsequent turn on the same session until the backend restarted.
+    """
+    from ii_agent.chat.application.compaction_lock import _locks, is_compaction_locked
+    from ii_agent.realtime.events.app_events import CompactionAuthorityEvent
+    import uuid
+
+    _locks.clear()
+
+    session_uuid = uuid.UUID("00000000-0000-0000-0000-0000000c1000")
+    strategy = A2AInnerLoop(
+        client=cast(
+            IIAgentA2AClient,
+            _FakeA2AClient(events=[A2AStreamEvent(event_type="text_delta", data={"text": "x"})]),
+        ),
+    )
+
+    gen = strategy.aresponse_stream(
+        model=cast(Model, _FakeModel()),
+        messages=[],
+        run_response=cast(
+            RunOutput,
+            SimpleNamespace(
+                session_id=session_uuid,
+                run_id="00000000-0000-0000-0000-0000000c1001",
+            ),
+        ),
+    )
+
+    # Advance until we receive the CompactionAuthorityEvent.  The generator
+    # is now suspended at that yield (the original bug's leak point).
+    first_event = await gen.__anext__()
+    assert isinstance(first_event, CompactionAuthorityEvent)
+    assert is_compaction_locked(session_uuid)
+
+    # Consumer bails out (simulates the cancellation-driven cleanup that
+    # propagates an exception out of the outer ``async for`` and triggers
+    # aclose() on this generator).
+    await gen.aclose()
+
+    # The lock MUST be released so subsequent turns on this session do not
+    # block forever on acquire().
+    assert not is_compaction_locked(session_uuid), (
+        "compaction lock leaked after consumer aclose() -- subsequent turns "
+        "on this session will deadlock"
+    )
+
+    _locks.clear()
+
+
+@pytest.mark.asyncio
+async def test_a2a_inner_loop_releases_compaction_lock_on_client_failure() -> None:
+    """Lock must be released even if client.astream raises before any events."""
+    from ii_agent.chat.application.compaction_lock import _locks, is_compaction_locked
+    import uuid
+
+    _locks.clear()
+
+    session_uuid = uuid.UUID("00000000-0000-0000-0000-0000000c1002")
+    strategy = A2AInnerLoop(
+        client=cast(IIAgentA2AClient, _FakeA2AClient(fail=True)),
+        fallback_to_native=False,
+    )
+
+    from ii_agent.agents.exceptions import ModelProviderError
+
+    with pytest.raises(ModelProviderError):
+        async for _ in strategy.aresponse_stream(
+            model=cast(Model, _FakeModel()),
+            messages=[],
+            run_response=cast(
+                RunOutput,
+                SimpleNamespace(
+                    session_id=session_uuid,
+                    run_id="00000000-0000-0000-0000-0000000c1003",
+                ),
+            ),
+        ):
+            pass
+
+    assert not is_compaction_locked(session_uuid)
+    _locks.clear()
+
+
+@pytest.mark.asyncio
 async def test_a2a_inner_loop_no_lock_when_no_session_id() -> None:
     """No compaction event should be emitted when session_id is absent."""
     from ii_agent.realtime.events.app_events import CompactionAuthorityEvent

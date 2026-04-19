@@ -208,25 +208,35 @@ class A2AInnerLoop:
         # --- Main A2A call ---
         # Acquire the per-session compaction lock to prevent native
         # summarization from running while the CLI backend is active.
+        #
+        # IMPORTANT: lock acquisition and the CompactionAuthorityEvent yield
+        # MUST live inside the ``try`` block.  If the consumer calls
+        # ``aclose()`` on this generator (e.g. cancellation path) while we
+        # are suspended at the yield, Python injects ``GeneratorExit`` at the
+        # suspension point.  Any acquire/yield outside the try would skip the
+        # ``finally`` block and leak the in-memory asyncio.Lock, deadlocking
+        # every subsequent turn on the same session until backend restart.
         session_uuid = getattr(run_response, "session_id", None)
         _lock = None
-        if session_uuid is not None:
-            from ii_agent.chat.application.compaction_lock import _get_lock
-
-            _lock = _get_lock(session_uuid)
-            await _lock.acquire()
-            # Emit compaction authority telemetry so logs attribute
-            # any subsequent compaction to the A2A backend.
-            yield CompactionAuthorityEvent(
-                group=EventGroup.AGENT,
-                session_id=session_uuid,
-                run_id=getattr(run_response, "run_id", None),
-                authority="a2a",
-                context_id=context_id,
-                compaction_locked=True,
-                content={"authority": "a2a", "context_id": context_id},
-            )
+        _lock_acquired = False
         try:
+            if session_uuid is not None:
+                from ii_agent.chat.application.compaction_lock import _get_lock
+
+                _lock = _get_lock(session_uuid)
+                await _lock.acquire()
+                _lock_acquired = True
+                # Emit compaction authority telemetry so logs attribute
+                # any subsequent compaction to the A2A backend.
+                yield CompactionAuthorityEvent(
+                    group=EventGroup.AGENT,
+                    session_id=session_uuid,
+                    run_id=getattr(run_response, "run_id", None),
+                    authority="a2a",
+                    context_id=context_id,
+                    compaction_locked=True,
+                    content={"authority": "a2a", "context_id": context_id},
+                )
             run_id = getattr(run_response, "run_id", None)
             adapter_task_id: Optional[str] = None
 
@@ -434,8 +444,22 @@ class A2AInnerLoop:
             ):
                 yield fallback_event
         finally:
-            if _lock is not None and _lock.locked():
-                _lock.release()
+            # Only release if we successfully acquired in this call.
+            # ``_lock.locked()`` alone is unsafe because the lock may be
+            # held by a different task, and calling release() on an
+            # unacquired (or foreign-held) asyncio.Lock raises RuntimeError.
+            if _lock_acquired and _lock is not None:
+                try:
+                    _lock.release()
+                except RuntimeError:
+                    # Defensive: lock state diverged (e.g. already released
+                    # by a nested path).  Log and move on -- never let
+                    # cleanup errors mask the original exception.
+                    logger.warning(
+                        "A2A inner loop: compaction lock release raised RuntimeError "
+                        "(session=%s) -- treating as released",
+                        session_uuid,
+                    )
 
     # ------------------------------------------------------------------
     # Tool bridge: execute bridged tools locally and return results

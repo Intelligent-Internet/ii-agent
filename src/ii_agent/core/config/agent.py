@@ -207,6 +207,33 @@ class AgentSettings(BaseSettings):
         ),
     )
 
+    # ------------------------------------------------------------------
+    # A2A per-turn adapter timeouts (long-horizon override)
+    # ------------------------------------------------------------------
+    a2a_adapter_timeout_long_horizon: int = Field(
+        default=3600,
+        description=(
+            "Per-turn A2A adapter timeout (seconds) for long-horizon agent "
+            "kinds such as deep_research. Applied to the sandbox adapter's "
+            "A2A_COPILOT_TIMEOUT / A2A_CLAUDE_CODE_TIMEOUT / A2A_CODEX_TIMEOUT "
+            "only when the agent creating the sandbox is in "
+            "a2a_adapter_long_horizon_agent_kinds. Non-long-horizon agents "
+            "continue to use the adapter's own default (900s) or whatever the "
+            "operator set globally via A2A_COPILOT_TIMEOUT. "
+            "Env: AGENT_A2A_ADAPTER_TIMEOUT_LONG_HORIZON"
+        ),
+        gt=0,
+    )
+
+    a2a_adapter_long_horizon_agent_kinds: set[str] = Field(
+        default_factory=lambda: {"deep_research"},
+        description=(
+            "Set of AgentType values that should get the long-horizon adapter "
+            "timeout override (see a2a_adapter_timeout_long_horizon). "
+            "Env: AGENT_A2A_ADAPTER_LONG_HORIZON_AGENT_KINDS (comma-separated)"
+        ),
+    )
+
     def is_tool_allowed(self, tool_name: str) -> bool:
         """Check if a tool is allowed to execute without confirmation.
 

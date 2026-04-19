@@ -5,6 +5,7 @@ import asyncio
 import ipaddress
 import json
 import logging
+import os
 import threading
 import time as _time
 import uuid
@@ -295,8 +296,6 @@ def _backend_timeout_from_env(var_name: str, default: float) -> float:
     (multi-step tool chains routinely exceed 5 minutes); this helper lets
     operators tune the budget per backend without patching the image.
     """
-    import os
-
     raw = os.environ.get(var_name, "").strip()
     if not raw:
         return default
@@ -995,8 +994,6 @@ def main() -> None:
     except OSError:
         logging.getLogger(__name__).warning("Could not open /tmp/adapter.log for file logging")
 
-    import os
-
     api_keys_csv = os.environ.get("II_AGENT_A2A_API_KEYS", "").strip()
     allowed_keys: Optional[frozenset[str]] = (
         frozenset(_parse_allowed_keys(api_keys_csv)) if api_keys_csv else None
@@ -1038,9 +1035,7 @@ def main() -> None:
         github_token = os.environ.get("GITHUB_TOKEN", "") or os.environ.get("GH_TOKEN", "")
         # Empty token is acceptable — CopilotBackend falls back to 'gh auth' login.
         cp_timeout = _timeout_from_env("A2A_COPILOT_TIMEOUT", 900.0)
-        _backend = CopilotBackend(
-            CopilotConfig(github_token=github_token, timeout=cp_timeout)
-        )
+        _backend = CopilotBackend(CopilotConfig(github_token=github_token, timeout=cp_timeout))
         logging.getLogger(__name__).info(
             "copilot backend configured with per-turn timeout=%.0fs", cp_timeout
         )

@@ -356,7 +356,7 @@ class DockerSandbox(Sandbox):
             "WORKSPACE_DIR": "/workspace",
             "AGENT_BROWSER_HEADED": "1",
         }
-        sandbox_env.update(cls._a2a_adapter_env(cfg))
+        sandbox_env.update(cls._a2a_adapter_env(cfg, metadata=metadata))
 
         try:
             container = client.containers.run(
@@ -424,7 +424,10 @@ class DockerSandbox(Sandbox):
         return instance
 
     @staticmethod
-    def _a2a_adapter_env(cfg: "Settings") -> dict[str, str]:
+    def _a2a_adapter_env(
+        cfg: "Settings",
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> dict[str, str]:
         """Build environment variables for the sandbox A2A adapter.
 
         Forwards the configured adapter backend and the corresponding
@@ -434,6 +437,15 @@ class DockerSandbox(Sandbox):
         Tokens are read from the **backend process** environment (i.e. the
         env vars that docker-compose injects from ``.stack.env.local``).
         Only non-empty values are forwarded.
+
+        When ``metadata['agent_kind']`` matches one of
+        ``cfg.agent.a2a_adapter_long_horizon_agent_kinds`` (``deep_research``
+        by default), the per-turn adapter timeout env vars
+        (``A2A_COPILOT_TIMEOUT`` / ``A2A_CLAUDE_CODE_TIMEOUT`` /
+        ``A2A_CODEX_TIMEOUT``) are set to
+        ``cfg.agent.a2a_adapter_timeout_long_horizon`` (3600s by default).
+        Non-long-horizon agents keep whatever the operator configured
+        globally, or fall back to the adapter's own 900s default.
         """
         env: dict[str, str] = {}
 
@@ -461,14 +473,31 @@ class DockerSandbox(Sandbox):
             if value:
                 env[key] = value
 
-        # Forward per-turn adapter timeouts so long deep-research turns
-        # don't hit the historical 300 s default baked into the backends.
-        # Only forward when the operator has set them explicitly — the
-        # adapter_server itself picks a safe default (900 s) otherwise.
-        for key in ("A2A_COPILOT_TIMEOUT", "A2A_CLAUDE_CODE_TIMEOUT", "A2A_CODEX_TIMEOUT"):
-            value = os.environ.get(key, "")
-            if value:
-                env[key] = value
+        # Decide per-turn adapter timeout: long-horizon agent kinds
+        # (deep_research) override; everything else keeps the operator's
+        # global value if set, else the adapter default (900s).
+        agent_kind = (metadata or {}).get("agent_kind") if metadata else None
+        long_horizon_kinds = cfg.agent.a2a_adapter_long_horizon_agent_kinds
+        use_long_horizon = agent_kind is not None and str(agent_kind) in long_horizon_kinds
+
+        timeout_keys = (
+            "A2A_COPILOT_TIMEOUT",
+            "A2A_CLAUDE_CODE_TIMEOUT",
+            "A2A_CODEX_TIMEOUT",
+        )
+        if use_long_horizon:
+            long_value = str(int(cfg.agent.a2a_adapter_timeout_long_horizon))
+            for key in timeout_keys:
+                env[key] = long_value
+        else:
+            # Forward per-turn adapter timeouts so long deep-research turns
+            # don't hit the historical 300 s default baked into the backends.
+            # Only forward when the operator has set them explicitly — the
+            # adapter_server itself picks a safe default (900 s) otherwise.
+            for key in timeout_keys:
+                value = os.environ.get(key, "")
+                if value:
+                    env[key] = value
 
         return env
 

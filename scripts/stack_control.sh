@@ -38,40 +38,100 @@ compose() {
   docker compose --project-name "$PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"
 }
 
+# Escape a string for embedding inside a JSON string literal.
+# Handles backslash, double-quote, and control chars commonly seen in paths.
+_json_escape() {
+  local s="$1"
+  s="${s//\\/\\\\}"
+  s="${s//\"/\\\"}"
+  s="${s//$'\n'/\\n}"
+  s="${s//$'\r'/\\r}"
+  s="${s//$'\t'/\\t}"
+  printf '%s' "$s"
+}
+
 # Generate a JSON build manifest for baking into container images.
 # Usage: _generate_build_manifest <target> [build_type]
 #   target     - backend | frontend | sandbox
 #   build_type - image (default) | patch
+#
+# Manifest schema:
+#   {
+#     "build_type":       "image" | "patch",
+#     "target":           "backend" | "frontend" | "sandbox",
+#     "timestamp":        ISO-8601 UTC,
+#     "git_commit":       short HEAD sha,
+#     "git_commit_full":  full HEAD sha,
+#     "git_branch":       current branch,
+#     "dirty":            bool — any tracked file differs from HEAD,
+#     "dirty_files":      [                             # present-on-disk files only
+#       {"path": "<repo-relative>", "size": <bytes>, "sha256": "<hex>"},
+#       ...
+#     ],
+#     "dirty_files_deleted":   ["<path>", ...],         # in diff, missing on disk
+#     "dirty_files_truncated": bool                     # hit the DIRTY_FILE_CAP limit
+#   }
+#
+# The sha256+size allow a consumer to verify, file-by-file, whether a built
+# image's working-tree snapshot is byte-equivalent to the current working
+# tree, rather than guessing based on file names alone.
 _generate_build_manifest() {
   local target="${1:-unknown}"
   local build_type="${2:-image}"
-  local ts commit full_commit branch dirty dirty_files_json
+  local ts commit full_commit branch
+  local -r DIRTY_FILE_CAP=100
 
   ts=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
   commit=$(git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || echo "unknown")
   full_commit=$(git -C "$ROOT_DIR" rev-parse HEAD 2>/dev/null || echo "unknown")
   branch=$(git -C "$ROOT_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
 
-  dirty="false"
-  dirty_files_json="[]"
+  local dirty="false"
+  local dirty_files_json="[]"
+  local dirty_deleted_json="[]"
+  local truncated="false"
+
   if ! git -C "$ROOT_DIR" diff --quiet HEAD 2>/dev/null; then
     dirty="true"
-    local files
-    files=$(git -C "$ROOT_DIR" diff --name-only HEAD 2>/dev/null | head -30)
-    if [[ -n "$files" ]]; then
-      dirty_files_json="["
-      local first=true
-      while IFS= read -r f; do
-        [[ -z "$f" ]] && continue
-        [[ "$first" == true ]] && first=false || dirty_files_json+=","
-        dirty_files_json+="\"$f\""
-      done <<< "$files"
-      dirty_files_json+="]"
+    local -a all_files=()
+    local f
+    while IFS= read -r f; do
+      [[ -z "$f" ]] && continue
+      all_files+=("$f")
+    done < <(git -C "$ROOT_DIR" diff --name-only HEAD 2>/dev/null)
+
+    local total=${#all_files[@]}
+    if (( total > DIRTY_FILE_CAP )); then
+      truncated="true"
+      all_files=("${all_files[@]:0:$DIRTY_FILE_CAP}")
+    fi
+
+    local -a present_entries=()
+    local -a deleted_entries=()
+    local path size sha escaped_path
+    for f in "${all_files[@]}"; do
+      escaped_path=$(_json_escape "$f")
+      path="$ROOT_DIR/$f"
+      if [[ -f "$path" ]]; then
+        size=$(stat -c '%s' "$path" 2>/dev/null || echo "0")
+        sha=$(sha256sum "$path" 2>/dev/null | awk '{print $1}')
+        [[ -z "$sha" ]] && sha="unknown"
+        present_entries+=("{\"path\":\"$escaped_path\",\"size\":$size,\"sha256\":\"$sha\"}")
+      else
+        deleted_entries+=("\"$escaped_path\"")
+      fi
+    done
+
+    if (( ${#present_entries[@]} > 0 )); then
+      dirty_files_json="[$(IFS=,; echo "${present_entries[*]}")]"
+    fi
+    if (( ${#deleted_entries[@]} > 0 )); then
+      dirty_deleted_json="[$(IFS=,; echo "${deleted_entries[*]}")]"
     fi
   fi
 
-  printf '{"build_type":"%s","target":"%s","timestamp":"%s","git_commit":"%s","git_commit_full":"%s","git_branch":"%s","dirty":%s,"dirty_files":%s}' \
-    "$build_type" "$target" "$ts" "$commit" "$full_commit" "$branch" "$dirty" "$dirty_files_json"
+  printf '{"build_type":"%s","target":"%s","timestamp":"%s","git_commit":"%s","git_commit_full":"%s","git_branch":"%s","dirty":%s,"dirty_files":%s,"dirty_files_deleted":%s,"dirty_files_truncated":%s}' \
+    "$build_type" "$target" "$ts" "$commit" "$full_commit" "$branch" "$dirty" "$dirty_files_json" "$dirty_deleted_json" "$truncated"
 }
 
 ensure_env() {
@@ -100,6 +160,7 @@ Commands:
   status                       Show running containers and URLs
   logs [service] [-f]          View logs for the full stack or a single service
   cleanup                      Remove stale sandbox containers
+  verify [targets ...] [--all] Check baked build-manifest.json against working tree
   setup                        Create docker/.stack.env.local from template
 
 --- TWO BUILD COMMANDS — IMPORTANT DISTINCTION ---
@@ -679,6 +740,240 @@ cmd_cleanup() {
   echo "Done."
 }
 
+# ── verify ────────────────────────────────────────────────────────────────
+#
+# Compare the build manifest embedded in a container / image against the
+# current working tree.
+#
+# For each file the manifest recorded as "dirty at build time", we recompute
+# sha256 of the on-disk file and report OK / CHANGED / MISSING. We also
+# report whether the build commit matches the working-tree HEAD.
+#
+# This gives a precise "is this image stale?" signal — no guessing from
+# names alone.
+
+# Emit the raw manifest JSON for a given target to stdout.
+# target: backend | frontend | sandbox | a2a-adapter
+_read_manifest() {
+  local target="$1"
+  case "$target" in
+    backend|frontend|a2a-adapter)
+      local container="ii-agent-local-${target}-1"
+      docker exec "$container" cat "$BUILD_MANIFEST_PATH" 2>/dev/null
+      ;;
+    sandbox)
+      local image="${SANDBOX_DOCKER_IMAGE:-ii-agent-sandbox:latest}"
+      docker run --rm --entrypoint cat "$image" "$BUILD_MANIFEST_PATH" 2>/dev/null
+      ;;
+    *)
+      echo "ERROR: unknown verify target: $target" >&2
+      echo "Valid targets: backend frontend sandbox a2a-adapter" >&2
+      return 2
+      ;;
+  esac
+}
+
+cmd_verify() {
+  local targets=()
+  local show_all=false
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -a|--all)     show_all=true; shift ;;
+      -h|--help)
+        cat <<EOF
+Usage: scripts/stack_control.sh verify [--all] [target ...]
+
+Compare a container/image's baked build-manifest.json against the current
+working tree. Reports per-file sha256 drift and whether the image's commit
+matches HEAD.
+
+Targets (default: backend sandbox):
+  backend       ii-agent-local-backend-1 container
+  frontend      ii-agent-local-frontend-1 container
+  sandbox       ii-agent-sandbox:latest image
+  a2a-adapter   ii-agent-local-a2a-adapter-1 container
+  all           all four of the above
+
+Options:
+  --all, -a     List every file (default: only drifted/missing files)
+  -h, --help    Show this help
+EOF
+        return 0
+        ;;
+      all)           targets=(backend frontend sandbox a2a-adapter); shift ;;
+      backend|frontend|sandbox|a2a-adapter)
+                     targets+=("$1"); shift ;;
+      *)             echo "Unknown target: $1" >&2; return 2 ;;
+    esac
+  done
+
+  if (( ${#targets[@]} == 0 )); then
+    targets=(backend sandbox)
+  fi
+
+  if ! command -v python3 >/dev/null 2>&1; then
+    echo "ERROR: python3 required for verify" >&2
+    return 1
+  fi
+
+  local head_commit
+  head_commit=$(git -C "$ROOT_DIR" rev-parse HEAD 2>/dev/null || echo "unknown")
+
+  local worktree_dirty="clean"
+  if ! git -C "$ROOT_DIR" diff --quiet HEAD 2>/dev/null; then
+    worktree_dirty="dirty"
+  fi
+
+  local overall_rc=0
+  local first=true
+  for target in "${targets[@]}"; do
+    [[ "$first" == true ]] && first=false || echo ""
+    echo "=== verify: $target ==="
+
+    local manifest
+    if ! manifest=$(_read_manifest "$target"); then
+      echo "  FAIL: could not read manifest"
+      overall_rc=1
+      continue
+    fi
+    if [[ -z "$manifest" ]]; then
+      echo "  FAIL: manifest empty or missing ($BUILD_MANIFEST_PATH)"
+      overall_rc=1
+      continue
+    fi
+
+    # Run the per-file comparison in python for clean JSON + sha handling.
+    SM_MANIFEST="$manifest" \
+    SM_ROOT="$ROOT_DIR" \
+    SM_HEAD="$head_commit" \
+    SM_WORKTREE="$worktree_dirty" \
+    SM_SHOWALL="$show_all" \
+    python3 - <<'PY'
+import hashlib
+import json
+import os
+import sys
+
+manifest_raw = os.environ["SM_MANIFEST"]
+root = os.environ["SM_ROOT"]
+head = os.environ["SM_HEAD"]
+worktree = os.environ["SM_WORKTREE"]
+show_all = os.environ["SM_SHOWALL"] == "true"
+
+try:
+    m = json.loads(manifest_raw)
+except json.JSONDecodeError as e:
+    print(f"  FAIL: manifest is not valid JSON ({e})")
+    sys.exit(1)
+
+built_commit = m.get("git_commit_full", "unknown")
+built_branch = m.get("git_branch", "unknown")
+built_ts = m.get("timestamp", "unknown")
+built_type = m.get("build_type", "unknown")
+built_dirty = m.get("dirty", False)
+dirty_files = m.get("dirty_files", []) or []
+deleted = m.get("dirty_files_deleted", []) or []
+truncated = m.get("dirty_files_truncated", False)
+
+print(f"  built_at:   {built_ts}  ({built_type})")
+print(f"  built_cmt:  {built_commit[:12]}  branch={built_branch}  dirty={built_dirty}")
+print(f"  head_cmt:   {head[:12]}  worktree={worktree}")
+
+commit_match = (built_commit == head)
+print(f"  commit:     {'MATCH' if commit_match else 'DIFFERS'}")
+
+# Legacy manifests store dirty_files as ["path", ...] strings — tolerate.
+def _normalize(entry):
+    if isinstance(entry, str):
+        return {"path": entry, "size": None, "sha256": None}
+    return entry
+
+entries = [_normalize(e) for e in dirty_files]
+
+ok = 0
+changed = 0
+missing = 0
+no_hash = 0
+lines = []
+
+for e in entries:
+    path = e.get("path", "")
+    want_sha = e.get("sha256")
+    want_size = e.get("size")
+    abs_path = os.path.join(root, path)
+
+    if not os.path.isfile(abs_path):
+        missing += 1
+        lines.append(f"    MISSING  {path}")
+        continue
+
+    if not want_sha or want_sha == "unknown":
+        no_hash += 1
+        if show_all:
+            lines.append(f"    NO-HASH  {path}  (legacy manifest — name only)")
+        continue
+
+    h = hashlib.sha256()
+    try:
+        with open(abs_path, "rb") as f:
+            for chunk in iter(lambda: f.read(1 << 20), b""):
+                h.update(chunk)
+    except OSError as exc:
+        missing += 1
+        lines.append(f"    MISSING  {path}  ({exc})")
+        continue
+
+    got_sha = h.hexdigest()
+    got_size = os.path.getsize(abs_path)
+    if got_sha == want_sha:
+        ok += 1
+        if show_all:
+            lines.append(f"    OK       {path}  ({got_size}B)")
+    else:
+        changed += 1
+        size_note = ""
+        if want_size is not None and want_size != got_size:
+            size_note = f"  size {want_size}→{got_size}"
+        lines.append(f"    CHANGED  {path}{size_note}")
+
+print(f"  files:      {len(entries)} tracked in manifest  "
+      f"(ok={ok} changed={changed} missing={missing} no-hash={no_hash})")
+if deleted:
+    print(f"  deleted_in_diff: {len(deleted)} file(s) were in-diff but absent on disk at build time")
+if truncated:
+    print("  NOTE: manifest truncated (>100 dirty files); verification is partial.")
+
+if lines:
+    print("  details:")
+    for line in lines:
+        print(line)
+
+# Exit code semantics:
+#   0 = image matches working tree (commit match AND no drift on embedded files)
+#   1 = drift detected (rebuild recommended)
+if commit_match and changed == 0 and missing == 0:
+    print("  verdict:    UP TO DATE")
+    sys.exit(0)
+
+reasons = []
+if not commit_match:
+    reasons.append(f"commit drift ({built_commit[:7]} → {head[:7]})")
+if changed:
+    reasons.append(f"{changed} file(s) changed")
+if missing:
+    reasons.append(f"{missing} file(s) missing on disk")
+print("  verdict:    STALE — " + "; ".join(reasons))
+sys.exit(1)
+PY
+    local rc=$?
+    if (( rc != 0 )); then
+      overall_rc=1
+    fi
+  done
+
+  return "$overall_rc"
+}
+
 # ── Main ───────────────────────────────────────────────────────────────────
 
 case "${1:-help}" in
@@ -693,6 +988,7 @@ case "${1:-help}" in
   status)         cmd_status ;;
   logs)           shift; cmd_logs "$@" ;;
   cleanup)        cmd_cleanup ;;
+  verify)         shift; cmd_verify "$@" ;;
   help|--help|-h)
     print_help
     ;;

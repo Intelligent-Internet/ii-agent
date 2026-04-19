@@ -533,6 +533,14 @@ class TestRunOrphanCleanupLoop:
         cfg = MagicMock()
         cfg.sandbox.orphan_cleanup_interval_seconds = 42
 
+        # Mock Redis so the advisory lock is always acquired (SET NX → True).
+        # Without this, a live Redis instance may have a stale lock key from a
+        # prior test run, causing the sweep to be skipped and making the test
+        # non-deterministic.
+        mock_redis = AsyncMock()
+        mock_redis.set = AsyncMock(return_value=True)
+        mock_redis.delete = AsyncMock()
+
         with (
             patch(
                 f"{_MODULE}._soft_delete_expired_sessions", new_callable=AsyncMock, return_value=0
@@ -543,6 +551,10 @@ class TestRunOrphanCleanupLoop:
             patch(f"{_MODULE}._cleanup_orphaned_volumes", new_callable=AsyncMock, return_value=0),
             patch(f"{_MODULE}._kill_timed_out_sandboxes", new_callable=AsyncMock, return_value=0),
             patch(f"{_MODULE}.asyncio.sleep", side_effect=mock_sleep),
+            patch(
+                "ii_agent.core.redis.client.get_redis_client",
+                return_value=mock_redis,
+            ),
         ):
             await run_orphan_cleanup_loop(cfg)
 
