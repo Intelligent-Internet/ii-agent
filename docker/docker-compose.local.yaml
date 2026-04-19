@@ -75,26 +75,33 @@ services:
       retries: 5
 
   # ── A2A adapter sidecar ──────────────────────────────────────────────
-  # Standalone A2A adapter shared by chat AND agent inner loops.
+  # Standalone A2A adapter for chat sessions (which do NOT own sandboxes).
+  #
+  # Separation of concerns:
+  #   * This container runs ONLY the adapter_server process — no Xvfb,
+  #     VNC, code-server, MCP server, or any agentic-mode services.
+  #   * Agentic-mode sandboxes run the adapter internally only when
+  #     AGENT_INNER_LOOP_MODE=a2a.  They never share this sidecar.
+  #   * The entrypoint is overridden to bypass start-services.sh entirely.
   #
   # Why a sidecar instead of relying on per-session sandbox adapters:
   #   * Chat sessions do NOT own sandboxes.  Without this service, chat
   #     A2A had no endpoint and silently fell back to direct
   #     Anthropic/OpenAI calls (10× more expensive than the Copilot
   #     subscription).  See docs/design-docs/chat-a2a-adapter-sidecar.md.
-  #   * Agent sessions still benefit (cheaper than per-sandbox adapter
-  #     startup) and may continue to use their in-sandbox adapter when
-  #     the sandbox is online.
   #
   # Image: reuses ii-agent-sandbox:latest because it already ships the
-  # adapter module + Copilot/Claude/Codex CLI tooling.  Container is
-  # short-lived: only the adapter listens; no Xvfb, no VNC, no MCP.
+  # adapter module + Copilot/Claude/Codex CLI tooling.  The entrypoint
+  # override ensures none of the sandbox services start.
   a2a-adapter:
     image: ${SANDBOX_DOCKER_IMAGE:-ii-agent-sandbox:latest}
     init: true
     restart: unless-stopped
     user: "1001:1001"
     working_dir: /home/user
+    # Bypass the sandbox entrypoint entirely — this container is
+    # adapter-only.  No gosu, no start-services.sh.
+    entrypoint: []
     env_file:
       - .stack.env.local
     environment:
@@ -112,6 +119,9 @@ services:
       A2A_CODEX_TIMEOUT: ${A2A_CODEX_TIMEOUT:-900}
     # Read-only adapter — no workspace, no shared volume.  All state
     # lives in memory in the adapter task store.
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m
     command: >
       python -m ii_agent.integrations.a2a.adapter_server
       --host 0.0.0.0

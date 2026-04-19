@@ -62,31 +62,38 @@ tmux new-session -d -s code-server-system-never-kill -c /workspace 'code-server 
   --disable-workspace-trust \
   /workspace'
 
-# Start A2A adapter (with supervised auto-restart on exit)
+# Start A2A adapter only when explicitly enabled.
 # The adapter hosts the II-Agent A2A protocol endpoint used by A2AInnerLoop.
-# SANDBOX_ADAPTER_PORT defaults to 18100 (control-plane reserved range 18000-18999).
-# SANDBOX_ADAPTER_BACKEND selects the inner-loop backend:
-#   simulate   - built-in mock stream (default, no external deps)
-#   copilot    - GitHub Copilot CLI via github-copilot-sdk (uses gh auth or GITHUB_TOKEN)
-#   claude-code - Claude Code CLI subprocess (requires ANTHROPIC_API_KEY)
-#   codex       - OpenAI Codex CLI subprocess (requires OPENAI_API_KEY)
-SANDBOX_ADAPTER_PORT="${SANDBOX_ADAPTER_PORT:-18100}"
-SANDBOX_ADAPTER_BACKEND="${SANDBOX_ADAPTER_BACKEND:-simulate}"
-ADAPTER_LOG_DIR="/workspace/.ii-agent"
-ADAPTER_LOG="${ADAPTER_LOG_DIR}/adapter.log"
-mkdir -p "${ADAPTER_LOG_DIR}"
-echo "Starting A2A adapter on port ${SANDBOX_ADAPTER_PORT} (backend=${SANDBOX_ADAPTER_BACKEND})..."
-echo "Adapter logs: ${ADAPTER_LOG}"
-tmux new-session -d -s copilot-adapter-system-never-kill -c /workspace \
-  "while true; do \
-     DISPLAY=:99 AGENT_BROWSER_HEADED=1 \
-     python -m ii_agent.integrations.a2a.adapter_server \
-       --host 0.0.0.0 --port ${SANDBOX_ADAPTER_PORT} \
-       --backend ${SANDBOX_ADAPTER_BACKEND} 2>&1 \
-       | tee -a ${ADAPTER_LOG}; \
-     echo 'A2A adapter exited, restarting in 2s...' | tee -a ${ADAPTER_LOG}; \
-     sleep 2; \
-   done"
+# SANDBOX_ADAPTER_ENABLED must be "true" (set by the backend when
+#   inner_loop_mode=a2a).  When the agent is running in native mode the
+#   adapter is not needed and should not consume resources.
+# SANDBOX_ADAPTER_BACKEND must be set explicitly (copilot, claude-code,
+#   codex) — there is no default.  The "simulate" mock backend exists
+#   only for tests; production sandboxes should never fall back to it.
+if [[ "${SANDBOX_ADAPTER_ENABLED:-false}" == "true" ]]; then
+  if [[ -z "${SANDBOX_ADAPTER_BACKEND:-}" ]]; then
+    echo "✗ SANDBOX_ADAPTER_ENABLED=true but SANDBOX_ADAPTER_BACKEND is not set — skipping adapter"
+  else
+    SANDBOX_ADAPTER_PORT="${SANDBOX_ADAPTER_PORT:-18100}"
+    ADAPTER_LOG_DIR="/workspace/.ii-agent"
+    ADAPTER_LOG="${ADAPTER_LOG_DIR}/adapter.log"
+    mkdir -p "${ADAPTER_LOG_DIR}"
+    echo "Starting A2A adapter on port ${SANDBOX_ADAPTER_PORT} (backend=${SANDBOX_ADAPTER_BACKEND})..."
+    echo "Adapter logs: ${ADAPTER_LOG}"
+    tmux new-session -d -s copilot-adapter-system-never-kill -c /workspace \
+      "while true; do \
+         DISPLAY=:99 AGENT_BROWSER_HEADED=1 \
+         python -m ii_agent.integrations.a2a.adapter_server \
+           --host 0.0.0.0 --port ${SANDBOX_ADAPTER_PORT} \
+           --backend ${SANDBOX_ADAPTER_BACKEND} 2>&1 \
+           | tee -a ${ADAPTER_LOG}; \
+         echo 'A2A adapter exited, restarting in 2s...' | tee -a ${ADAPTER_LOG}; \
+         sleep 2; \
+       done"
+  fi
+else
+  echo "A2A adapter disabled (SANDBOX_ADAPTER_ENABLED=${SANDBOX_ADAPTER_ENABLED:-false})"
+fi
 
 # Wait for both processes to start
 sleep 3

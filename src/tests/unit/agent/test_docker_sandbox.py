@@ -196,10 +196,11 @@ class TestDockerSandboxPortConstants:
         assert MCP_SERVER_PORT in DEFAULT_EXPOSED_PORTS
         assert CODE_SERVER_PORT in DEFAULT_EXPOSED_PORTS
         assert NOVNC_PORT in DEFAULT_EXPOSED_PORTS
-        assert ADAPTER_CONTAINER_PORT in DEFAULT_EXPOSED_PORTS
+        # Adapter port is NOT in the base set — only added when inner_loop_mode=a2a
+        assert ADAPTER_CONTAINER_PORT not in DEFAULT_EXPOSED_PORTS
 
     def test_default_exposed_ports_count(self):
-        assert len(DEFAULT_EXPOSED_PORTS) == 7
+        assert len(DEFAULT_EXPOSED_PORTS) == 6
 
     def test_novnc_port_mapping_stored(self):
         sandbox = _make_sandbox(
@@ -1666,3 +1667,201 @@ class TestA2AAdapterEnv:
         """Missing/None metadata behaves as non-long-horizon."""
         env = DockerSandbox._a2a_adapter_env(self._cfg("copilot"))
         assert env["A2A_COPILOT_TIMEOUT"] == "900"
+
+
+class TestA2AAdapterGating:
+    """Tests that the sandbox only allocates A2A resources in a2a mode."""
+
+    def _cfg(self, inner_loop_mode: str = "native", backend: str = "copilot") -> MagicMock:
+        cfg = MagicMock()
+        cfg.agent.inner_loop_mode = inner_loop_mode
+        cfg.agent.a2a_backend = backend
+        cfg.agent.a2a_adapter_timeout_long_horizon = 3600
+        cfg.agent.a2a_adapter_long_horizon_agent_kinds = {"deep_research"}
+        cfg.sandbox.docker_image = "ii-agent-sandbox:latest"
+        cfg.sandbox.docker_network = "test-net"
+        cfg.sandbox.max_concurrent_sandboxes = 0
+        cfg.sandbox.mcp_server_port = MCP_SERVER_PORT
+        cfg.sandbox.code_server_port = CODE_SERVER_PORT
+        cfg.sandbox.novnc_port = NOVNC_PORT
+        cfg.sandbox.timeout_seconds = 0
+        return cfg
+
+    @patch("ii_agent.agents.sandboxes.docker.get_settings")
+    @patch("ii_agent.agents.sandboxes.docker.DockerSandbox._get_docker_client")
+    @patch("ii_agent.agents.sandboxes.docker.PortPoolManager.get_instance")
+    @patch.dict("os.environ", {}, clear=True)
+    async def test_native_mode_excludes_adapter_port(
+        self, mock_pool_cls, mock_docker_cls, mock_settings
+    ):
+        """In native mode, the adapter port is not allocated."""
+        cfg = self._cfg("native")
+        mock_settings.return_value = cfg
+
+        mock_pool = MagicMock()
+        mock_pool.get_stats.return_value = {
+            "sandboxes": 0,
+            "free": 100,
+            "port_range": "30000-39999",
+        }
+        port_set = MagicMock()
+        port_set.to_docker_ports.return_value = {}
+        port_set.allocations = {}
+        mock_pool.allocate_ports.return_value = port_set
+        mock_pool_cls.return_value = mock_pool
+
+        mock_container = MagicMock()
+        mock_container.id = "abc123456789"
+        mock_client = MagicMock()
+        mock_client.containers.run.return_value = mock_container
+        mock_docker_cls.return_value = mock_client
+
+        with patch.object(DockerSandbox, "_wait_for_ready", new_callable=AsyncMock):
+            await DockerSandbox.create("sid", "sess")
+
+        # Verify allocate_ports was called without the adapter port
+        call_args = mock_pool.allocate_ports.call_args
+        assert ADAPTER_CONTAINER_PORT not in call_args.kwargs.get(
+            "container_ports", call_args[1].get("container_ports", [])
+        )
+
+        # Verify SANDBOX_ADAPTER_ENABLED is NOT in environment
+        run_call = mock_client.containers.run.call_args
+        env = run_call.kwargs.get("environment", run_call[1].get("environment", {}))
+        assert "SANDBOX_ADAPTER_ENABLED" not in env
+        assert "SANDBOX_ADAPTER_BACKEND" not in env
+
+    @patch("ii_agent.agents.sandboxes.docker.get_settings")
+    @patch("ii_agent.agents.sandboxes.docker.DockerSandbox._get_docker_client")
+    @patch("ii_agent.agents.sandboxes.docker.PortPoolManager.get_instance")
+    @patch.dict("os.environ", {"GITHUB_TOKEN": "ghp_test"}, clear=True)
+    async def test_a2a_mode_includes_adapter_port_and_env(
+        self, mock_pool_cls, mock_docker_cls, mock_settings
+    ):
+        """In a2a mode, the adapter port is allocated and env is set."""
+        cfg = self._cfg("a2a", "copilot")
+        mock_settings.return_value = cfg
+
+        mock_pool = MagicMock()
+        mock_pool.get_stats.return_value = {
+            "sandboxes": 0,
+            "free": 100,
+            "port_range": "30000-39999",
+        }
+        port_set = MagicMock()
+        port_set.to_docker_ports.return_value = {}
+        port_set.allocations = {}
+        mock_pool.allocate_ports.return_value = port_set
+        mock_pool_cls.return_value = mock_pool
+
+        mock_container = MagicMock()
+        mock_container.id = "abc123456789"
+        mock_client = MagicMock()
+        mock_client.containers.run.return_value = mock_container
+        mock_docker_cls.return_value = mock_client
+
+        with patch.object(DockerSandbox, "_wait_for_ready", new_callable=AsyncMock):
+            await DockerSandbox.create("sid", "sess")
+
+        # Verify allocate_ports includes the adapter port
+        call_args = mock_pool.allocate_ports.call_args
+        container_ports = call_args.kwargs.get(
+            "container_ports", call_args[1].get("container_ports", [])
+        )
+        assert ADAPTER_CONTAINER_PORT in container_ports
+
+        # Verify environment includes adapter vars
+        run_call = mock_client.containers.run.call_args
+        env = run_call.kwargs.get("environment", run_call[1].get("environment", {}))
+        assert env["SANDBOX_ADAPTER_ENABLED"] == "true"
+        assert env["SANDBOX_ADAPTER_BACKEND"] == "copilot"
+        assert env["GITHUB_TOKEN"] == "ghp_test"
+
+    @patch("ii_agent.agents.sandboxes.docker.get_settings")
+    @patch("ii_agent.agents.sandboxes.docker.DockerSandbox._get_docker_client")
+    @patch("ii_agent.agents.sandboxes.docker.PortPoolManager.get_instance")
+    @patch.dict("os.environ", {}, clear=True)
+    async def test_native_mode_needs_fewer_ports(
+        self, mock_pool_cls, mock_docker_cls, mock_settings
+    ):
+        """Native mode requires 6 ports; a2a mode requires 7."""
+        cfg_native = self._cfg("native")
+        mock_settings.return_value = cfg_native
+
+        mock_pool = MagicMock()
+        # Only 6 ports available — should succeed for native
+        mock_pool.get_stats.return_value = {"sandboxes": 0, "free": 6, "port_range": "30000-30005"}
+        mock_pool_cls.return_value = mock_pool
+
+        port_set = MagicMock()
+        port_set.to_docker_ports.return_value = {}
+        port_set.allocations = {}
+        mock_pool.allocate_ports.return_value = port_set
+
+        mock_container = MagicMock()
+        mock_container.id = "abc123456789"
+        mock_client = MagicMock()
+        mock_client.containers.run.return_value = mock_container
+        mock_docker_cls.return_value = mock_client
+
+        with patch.object(DockerSandbox, "_wait_for_ready", new_callable=AsyncMock):
+            await DockerSandbox.create("sid", "sess")
+
+        # Now test a2a with same 6 ports — should fail
+        cfg_a2a = self._cfg("a2a")
+        mock_settings.return_value = cfg_a2a
+
+        with pytest.raises(SandboxCreationError, match="Insufficient ports"):
+            await DockerSandbox.create("sid2", "sess2")
+
+    @patch("ii_agent.agents.sandboxes.docker.get_settings")
+    @patch("ii_agent.agents.sandboxes.docker.DockerSandbox._get_docker_client")
+    @patch("ii_agent.agents.sandboxes.docker.PortPoolManager.get_instance")
+    @patch.dict(
+        "os.environ",
+        {"GITHUB_TOKEN": "ghp_leaked", "ANTHROPIC_API_KEY": "sk-ant-leaked"},
+        clear=True,
+    )
+    async def test_native_mode_does_not_leak_tokens(
+        self, mock_pool_cls, mock_docker_cls, mock_settings
+    ):
+        """API tokens in the backend env must NOT appear in native sandbox env."""
+        cfg = self._cfg("native")
+        mock_settings.return_value = cfg
+
+        mock_pool = MagicMock()
+        mock_pool.get_stats.return_value = {
+            "sandboxes": 0,
+            "free": 100,
+            "port_range": "30000-39999",
+        }
+        port_set = MagicMock()
+        port_set.to_docker_ports.return_value = {}
+        port_set.allocations = {}
+        mock_pool.allocate_ports.return_value = port_set
+        mock_pool_cls.return_value = mock_pool
+
+        mock_container = MagicMock()
+        mock_container.id = "abc123456789"
+        mock_client = MagicMock()
+        mock_client.containers.run.return_value = mock_container
+        mock_docker_cls.return_value = mock_client
+
+        with patch.object(DockerSandbox, "_wait_for_ready", new_callable=AsyncMock):
+            await DockerSandbox.create("sid", "sess")
+
+        run_call = mock_client.containers.run.call_args
+        env = run_call.kwargs.get("environment", run_call[1].get("environment", {}))
+        # None of the A2A-related env vars should be present
+        for key in (
+            "SANDBOX_ADAPTER_ENABLED",
+            "SANDBOX_ADAPTER_BACKEND",
+            "GITHUB_TOKEN",
+            "GH_TOKEN",
+            "ANTHROPIC_API_KEY",
+            "OPENAI_API_KEY",
+            "A2A_COPILOT_TIMEOUT",
+            "A2A_CLAUDE_CODE_TIMEOUT",
+            "A2A_CODEX_TIMEOUT",
+        ):
+            assert key not in env, f"{key} leaked into native-mode sandbox env"

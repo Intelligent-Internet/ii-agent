@@ -66,12 +66,12 @@ CODE_SERVER_PORT = 9000
 NOVNC_PORT = 6080
 ADAPTER_CONTAINER_PORT = 18100  # A2A adapter process inside the sandbox
 
-# Common dev server ports to pre-allocate
+# Common dev server ports to pre-allocate (base set, without A2A adapter).
+# When inner_loop_mode=a2a, create() additionally allocates ADAPTER_CONTAINER_PORT.
 DEFAULT_EXPOSED_PORTS = [
     MCP_SERVER_PORT,
     CODE_SERVER_PORT,
     NOVNC_PORT,
-    ADAPTER_CONTAINER_PORT,
     3000,
     5173,
     8080,
@@ -295,7 +295,8 @@ class DockerSandbox(Sandbox):
                 )
 
         # R7: Check port availability before attempting container creation
-        required_ports = 7  # Number of ports per sandbox
+        a2a_enabled = cfg.agent.inner_loop_mode == "a2a"
+        required_ports = 7 if a2a_enabled else 6  # A2A adds the adapter port
         stats = port_manager.get_stats()
         if stats["free"] < required_ports:
             raise SandboxCreationError(
@@ -308,18 +309,19 @@ class DockerSandbox(Sandbox):
         cs_port = cfg.sandbox.code_server_port
         vnc_port = cfg.sandbox.novnc_port
 
-        exposed_ports = [mcp_port, cs_port, vnc_port, ADAPTER_CONTAINER_PORT, 3000, 5173, 8080]
-
-        # Allocate ports from the pool
-        service_names = {
+        # Only allocate the adapter port when the inner loop uses A2A.
+        exposed_ports = [mcp_port, cs_port, vnc_port, 3000, 5173, 8080]
+        service_names: dict[int, str] = {
             mcp_port: "mcp_server",
             cs_port: "code_server",
             vnc_port: "novnc",
-            ADAPTER_CONTAINER_PORT: "a2a_adapter",
             3000: "dev_server",
             5173: "vite",
             8080: "http",
         }
+        if a2a_enabled:
+            exposed_ports.append(ADAPTER_CONTAINER_PORT)
+            service_names[ADAPTER_CONTAINER_PORT] = "a2a_adapter"
         port_set = port_manager.allocate_ports(
             sandbox_id=sandbox_id,
             container_ports=exposed_ports,
@@ -348,15 +350,17 @@ class DockerSandbox(Sandbox):
 
         volume_name = f"ii-sandbox-workspace-{sandbox_id}"
 
-        # Build sandbox environment: always include operational vars,
-        # plus A2A adapter backend selection and auth tokens when the inner
-        # loop is configured for A2A delegation.
+        # Build sandbox environment: operational vars are always set.
+        # A2A adapter vars are only injected when inner_loop_mode=a2a —
+        # native-mode sandboxes should not run the adapter process.
         sandbox_env: dict[str, str] = {
             "SANDBOX_ID": sandbox_id,
             "WORKSPACE_DIR": "/workspace",
             "AGENT_BROWSER_HEADED": "1",
         }
-        sandbox_env.update(cls._a2a_adapter_env(cfg, metadata=metadata))
+        if a2a_enabled:
+            sandbox_env["SANDBOX_ADAPTER_ENABLED"] = "true"
+            sandbox_env.update(cls._a2a_adapter_env(cfg, metadata=metadata))
 
         try:
             container = client.containers.run(
@@ -449,7 +453,9 @@ class DockerSandbox(Sandbox):
         """
         env: dict[str, str] = {}
 
-        # Always tell the adapter which backend to use.
+        # Tell the adapter which backend to use.  This method is only
+        # called when inner_loop_mode=a2a, so ``simulate`` is never
+        # appropriate — the caller must have a real backend configured.
         a2a_backend = cfg.agent.a2a_backend
         env["SANDBOX_ADAPTER_BACKEND"] = a2a_backend
 
