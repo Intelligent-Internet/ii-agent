@@ -1,17 +1,13 @@
-"""Handler for cowork_continue_run command.
-
-Adapted from the legacy ``server.socket.command.cowork_continue_run``
-to use the new ``BaseCommandHandler`` / pubsub / container pattern.
-"""
+"""Handler for cowork_continue_run command."""
 
 from __future__ import annotations
 
 from typing import Any
 from uuid import UUID
 
-from ii_agent.agents.factory.agent import agent_factory
 from ii_agent.agents.sessions import AgentSessionStore
 from ii_agent.agents.types import AgentType
+from ii_agent.clients.cowork.factory import cowork_agent_factory
 from ii_agent.core.db import get_db_session_local, get_session_factory
 from ii_agent.core.logger import logger
 from ii_agent.realtime.events.app_events import (
@@ -26,19 +22,23 @@ from ii_agent.sessions.schemas import SessionInfo
 
 
 class CoworkContinueRunHandler(ContinueRunHandler):
-    """Cowork-only continue handler with desktop external execution support."""
+    """Handle ``cowork_continue_run`` commands."""
 
     _content_type = CoworkContinueRunContent
 
     def get_command_type(self) -> CommandType:
         return CommandType.COWORK_CONTINUE_RUN
 
-    async def handle(self, content: CoworkContinueRunContent, session_info: SessionInfo) -> None:
+    async def handle(
+        self,
+        content: CoworkContinueRunContent,
+        session_info: SessionInfo,
+    ) -> None:
         if session_info.api_version != "v1":
             await self._send_error_event(
                 session_info.id,
                 error_code=ErrorCode.UNSUPPORTED_API_VERSION,
-                message="Continue run is only supported for v1 API version",
+                message="continue_run is only supported for v1 API version",
             )
             return
 
@@ -47,7 +47,6 @@ class CoworkContinueRunHandler(ContinueRunHandler):
         user_input = content.user_input
         external_tool_results = content.external_tool_results or []
 
-        # Send AGENT_CONTINUE event immediately
         await self.send_event(
             AgentContinueEvent(
                 session_id=UUID(str(session_info.id)),
@@ -64,7 +63,6 @@ class CoworkContinueRunHandler(ContinueRunHandler):
             run_response = await session_store.get_by_run_id(
                 run_id=run_id, session_id=str(session_info.id)
             )
-
             if not run_response:
                 await self._send_error_event(
                     session_info.id,
@@ -73,12 +71,12 @@ class CoworkContinueRunHandler(ContinueRunHandler):
                 )
                 return
 
-            run_task_data = await self._load_cowork_run_task_data(run_id)
+            run_task_data = await self._load_run_task_data(run_id)
 
             for tool in run_response.tools_requiring_confirmation:
                 tool.confirmed = bool(confirmed)
                 logger.info(
-                    "Cowork continue confirmation for run %s tool_call_id=%s confirmed=%s",
+                    "[cowork] continue confirmation run=%s tool_call_id=%s confirmed=%s",
                     run_id,
                     tool.tool_call_id,
                     confirmed,
@@ -92,12 +90,9 @@ class CoworkContinueRunHandler(ContinueRunHandler):
                     tool.answered = False
 
             self._apply_external_tool_results(
-                run_response.tools,
-                external_tool_results,
-                run_id,
+                run_response.tools, external_tool_results, run_id
             )
 
-            # Get model config — fall back to hardcoded default for cowork
             llm_config = None
             if session_info.model_setting_id:
                 try:
@@ -107,25 +102,24 @@ class CoworkContinueRunHandler(ContinueRunHandler):
                                 db, setting_id=session_info.model_setting_id
                             )
                         )
-                except (ValueError, Exception) as e:
+                except Exception as exc:
                     logger.warning(
-                        "Cowork continue_run model resolution failed: %s, using default", e
+                        "[cowork] continue_run model resolution failed: %s",
+                        exc,
                     )
 
-            # Create cowork agent for continuation
-            agent = await agent_factory.create_cowork_agent(
-                session_info=session_info,
+            agent = await cowork_agent_factory.create_agent(
+                user_id=str(session_info.user_id),
+                session_id=str(session_info.id),
                 llm_config=llm_config,
-                workspace_manager=None,
                 agent_type=AgentType(session_info.agent_type)
                 if session_info.agent_type
-                else AgentType.GENERAL,
+                else AgentType.COWORK,
+                session_store=session_store,
                 metadata=run_task_data.get("metadata"),
                 system_prompt=run_task_data.get("system_prompt"),
-                tool_names=run_task_data.get("tool_names"),
-                skill_names=run_task_data.get("skill_names"),
-                desktop_capabilities=run_task_data.get("desktop_capabilities"),
-                agent_config=run_task_data.get("agent_config"),
+                requested_capabilities=run_task_data.get("requested_capabilities"),
+                skill_creator=self._create_skill_creator(session_info.user_id),
             )
 
             await self.send_event(
@@ -150,29 +144,29 @@ class CoworkContinueRunHandler(ContinueRunHandler):
                 event_stream,
                 session_info,
                 run_id=UUID(run_response.run_id),
-                is_user_key=llm_config.is_user_model(),
+                is_user_key=llm_config.is_user_model() if llm_config else False,
                 llm_config=llm_config,
             )
 
-        except ValueError as error:
-            logger.error(f"ValueError in cowork_continue_run: {str(error)}")
+        except ValueError as exc:
+            logger.error("[cowork] continue_run ValueError: %s", exc)
             await self._send_error_event(
                 session_info.id,
                 error_code=ErrorCode.VALIDATION_ERROR,
-                message=str(error),
+                message=str(exc),
             )
-        except Exception as error:
+        except Exception as exc:
             logger.error(
-                f"Error in cowork_continue_run handler: {str(error)}",
-                exc_info=True,
+                "[cowork] continue_run failed: %s", exc, exc_info=True
             )
             await self._send_error_event(
                 session_info.id,
                 error_code=ErrorCode.EXECUTION_ERROR,
-                message=f"Failed to continue run: {str(error)}",
+                message=f"Failed to continue run: {exc}",
             )
 
-    async def _load_cowork_run_task_data(self, run_id: str) -> dict[str, Any]:
+    async def _load_run_task_data(self, run_id: str) -> dict[str, Any]:
+        """Reload the original ``RunTask.data`` so overrides survive resume."""
         try:
             run_task_id = UUID(str(run_id))
         except ValueError:
@@ -180,13 +174,11 @@ class CoworkContinueRunHandler(ContinueRunHandler):
 
         async with get_db_session_local() as db:
             run_task = await self._container.run_task_service.get_task_by_id(
-                db,
-                task_id=run_task_id,
+                db, task_id=run_task_id
             )
 
         if not run_task or not isinstance(run_task.data, dict):
             return {}
-
         return run_task.data
 
     @staticmethod
@@ -195,39 +187,41 @@ class CoworkContinueRunHandler(ContinueRunHandler):
         external_tool_results: list[dict[str, Any]],
         run_id: str,
     ) -> None:
+        """Inject extension-side tool execution results back into paused tools."""
         if not external_tool_results:
             return
 
-        tool_results_by_id = {
-            str(result.get("tool_call_id")): result
-            for result in external_tool_results
-            if isinstance(result, dict) and result.get("tool_call_id")
+        by_id = {
+            str(item.get("tool_call_id")): item
+            for item in external_tool_results
+            if isinstance(item, dict) and item.get("tool_call_id")
         }
 
         for tool in tools:
             tool_call_id = getattr(tool, "tool_call_id", None)
             if not tool_call_id:
                 continue
-
-            external_result = tool_results_by_id.get(str(tool_call_id))
-            if not external_result:
+            external = by_id.get(str(tool_call_id))
+            if not external:
                 continue
 
-            llm_content = external_result.get("llm_content")
-            user_display_content = external_result.get("user_display_content")
-            tool.result = llm_content if llm_content is not None else user_display_content
-            tool.tool_call_error = bool(external_result.get("is_error"))
+            llm_content = external.get("llm_content")
+            user_display_content = external.get("user_display_content")
+            tool.result = (
+                llm_content if llm_content is not None else user_display_content
+            )
+            tool.tool_call_error = bool(external.get("is_error"))
 
-            tool_input = external_result.get("tool_input")
+            tool_input = external.get("tool_input")
             if isinstance(tool_input, dict):
                 tool.tool_args = tool_input
 
-            tool_name = external_result.get("tool_name")
+            tool_name = external.get("tool_name")
             if isinstance(tool_name, str) and tool_name.strip():
                 tool.tool_name = tool_name
 
             logger.info(
-                "Cowork continue applied external tool result for run %s tool_call_id=%s error=%s",
+                "[cowork] applied external tool result run=%s tool_call_id=%s error=%s",
                 run_id,
                 tool_call_id,
                 tool.tool_call_error,

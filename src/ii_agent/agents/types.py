@@ -30,6 +30,7 @@ class AgentType(StrEnum):
     FAST_RESEARCH = "fast_research"
     RESEARCH_TO_WEBSITE = "research_to_website"
     MOBILE_APP = "mobile_app"
+    COWORK = "cowork"
 
 
 __all__ = ["AgentType"]

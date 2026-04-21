@@ -1,6 +1,6 @@
 """Agent factory for creating configured agent instances."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 from uuid import UUID
 
 from ii_agent.core.config.settings import Settings, get_settings
@@ -17,9 +17,7 @@ from ii_agent.agents.factory.tool_manager import AgentToolManager
 from ii_agent.agents.models.utils import get_model
 from ii_agent.agents.sessions import SessionStore
 from ii_agent.agents.tools.task import SYSTEM_PROMPT, TaskAgentTool, DESCRIPTION
-from ii_agent.core.db import get_session_factory
 from ii_agent.core.logger import logger
-from ii_agent.sessions.schemas import SessionInfo
 
 
 def _append_prompt_section(base_prompt: Optional[str], section: Optional[str]) -> Optional[str]:
@@ -492,53 +490,5 @@ class AgentFactory:
             logger.warning(f"Failed to connect to codex server: {e}")
             return None
 
-
-    async def create_cowork_agent(
-        self,
-        session_info: SessionInfo,
-        llm_config: LLMConfig,
-        workspace_manager: WorkspaceManager,
-        agent_type: AgentType = AgentType.GENERAL,
-        tool_args: Optional[Dict[str, Any]] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-        default_repository: Optional[Dict[str, str]] = None,
-        system_prompt: Optional[str] = None,
-        tool_names: Optional[List[str]] = None,
-        skill_names: Optional[List[str]] = None,
-        desktop_capabilities: Optional[Dict[str, Any]] = None,
-        agent_config: Optional[Dict[str, Any]] = None,
-    ) -> IIAgent:
-        from ii_agent.agents.skills.db_creator import DbSkillCreator
-        from ii_agent.agents.connector.connector_tool import ConnectorTool
-        from ii_agent.agents.cowork.factory import CoworkAgentFactory
-        from ii_agent.agents.sessions.store import AgentSessionStore
-
-        logger.info(
-            f"[Agent Service] Creating Cowork V1 agent for user {session_info.user_id}"
-        )
-
-        skill_creator = DbSkillCreator(user_id=str(session_info.user_id))
-        connector_tool = ConnectorTool(
-            user_id=str(session_info.user_id), default_repository=default_repository
-        )
-
-        cowork_factory = CoworkAgentFactory(factory=self)
-        return await cowork_factory.create_agent(
-            user_id=str(session_info.user_id),
-            session_id=str(session_info.id),
-            llm_config=llm_config,
-            agent_type=agent_type,
-            workspace_manager=workspace_manager,
-            session_store=AgentSessionStore(session_maker=get_session_factory()),
-            tool_args=tool_args,
-            metadata=metadata,
-            skill_creator=skill_creator,
-            connector_tool=connector_tool,
-            system_prompt=system_prompt,
-            tool_names=tool_names,
-            skill_names=skill_names,
-            desktop_capabilities=desktop_capabilities,
-            agent_config=agent_config,
-        )
 
 agent_factory = AgentFactory(config=get_settings())

@@ -1,4 +1,4 @@
-use crate::cowork::agent_presets::shared::DesktopCapabilities;
+use crate::cowork::agent_presets::shared::{DesktopSkillCapability, DesktopToolCapability};
 use crate::cowork::chat::CoworkGitHubRepositoryContext;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -26,18 +26,26 @@ pub(super) struct RemoteAgentCommandContent {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metadata: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub desktop_capabilities: Option<DesktopCapabilities>,
+    pub requested_capabilities: Option<RemoteRequestedCapabilities>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub github_repository: Option<CoworkGitHubRepositoryContext>,
     pub build_mode: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub system_prompt: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub(super) struct RemoteRequestedCapabilities {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub tool_names: Option<Vec<String>>,
+    pub client_tools: Option<Vec<DesktopToolCapability>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub skill_names: Option<Vec<String>>,
+    pub client_skills: Option<Vec<DesktopSkillCapability>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub agent_config: Option<Value>,
+    pub core_tools: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub core_skills: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub connector: Option<String>,
 }
 
 #[derive(Debug, Serialize)]

@@ -1,19 +1,18 @@
-"""Handler for cowork_query command with agent overrides.
-
-Adapted from the legacy ``server.socket.command.cowork_query``
-to use the new ``BaseCommandHandler`` / pubsub / container pattern.
-"""
+"""Handler for cowork_query command with agent overrides."""
 
 from __future__ import annotations
 
-from ii_agent.agents.factory.agent import agent_factory
+from ii_agent.agents.sandboxes import upload_media_to_sandbox
+from ii_agent.agents.sessions import AgentSessionStore
 from ii_agent.agents.types import AgentType
-from ii_agent.core.db import get_db_session_local
+from ii_agent.clients.cowork.factory import cowork_agent_factory
+from ii_agent.core.db import get_db_session_local, get_session_factory
 from ii_agent.core.logger import logger
+from ii_agent.files.media import File as UrlFile, Image
 from ii_agent.realtime.events.app_events import ErrorCode
 from ii_agent.realtime.handlers.base import CommandType
 from ii_agent.realtime.handlers.query import UserQueryHandler
-from ii_agent.realtime.schemas import QueryCommandContent
+from ii_agent.realtime.schemas import CoworkQueryCommandContent
 from ii_agent.sessions.schemas import SessionInfo
 from ii_agent.sessions.types import AppKind
 from ii_agent.settings.llm.schemas import ModelConfig
@@ -21,48 +20,36 @@ from ii_agent.tasks.types import RunStatus, TaskType
 
 
 class CoworkQueryHandler(UserQueryHandler):
-    """Handler for cowork-specific query command with agent overrides."""
+    """Handle ``cowork_query`` commands from the cowork mode."""
 
-    COWORK_SESSION_AGENT_TYPE = "cowork"
+    _content_type = CoworkQueryCommandContent
 
     def get_command_type(self) -> CommandType:
         return CommandType.COWORK_QUERY
 
-    async def handle(self, content: QueryCommandContent, existing_session: SessionInfo) -> None:
-        query_command = content
-
-        # Stamp the session as a cowork app_kind so it is excluded from the
-        # standard Project sidebar listing. Cowork sessions are managed by
-        # the desktop runtime and must never appear there.
+    async def handle(
+        self,
+        content: CoworkQueryCommandContent,
+        existing_session: SessionInfo,
+    ) -> None:
         await self._ensure_cowork_app_kind(existing_session.id)
 
         is_valid, session_info, llm_config = await self.validate_and_update_session(
-            existing_session, query_command
+            existing_session, content
         )
+        if not is_valid or not session_info or not llm_config:
+            return
 
-        # For cowork mode, fall back to hardcoded model if resolution fails
-        if not is_valid or not llm_config:
-            if not session_info:
-                return
-
-        await self._handle_cowork_query(query_command, session_info, llm_config)
+        await self._handle_cowork_query(content, session_info, llm_config)
 
     async def _handle_cowork_query(
         self,
-        query_command: QueryCommandContent,
+        query_command: CoworkQueryCommandContent,
         session_info: SessionInfo,
         llm_config: ModelConfig,
     ) -> None:
-        """Handle cowork query by delegating to the cowork agent factory."""
-        plan_service = self._container.plan_service
         run_service = self._container.run_task_service
-
-        milestone_context = None
-        if query_command.milestone_ids and query_command.plan_context:
-            milestone_context = plan_service.get_milestone_context(
-                plan_context=query_command.plan_context,
-                milestone_ids=query_command.milestone_ids,
-            )
+        file_service = self._container.file_service
 
         run_task = None
         try:
@@ -77,87 +64,98 @@ class CoworkQueryHandler(UserQueryHandler):
                     session_info, query_command, db, run_id=run_task.id
                 )
                 await db.commit()
-
             await self.send_event(user_event)
-        except Exception as e:
-            logger.error(f"Failed to claim task: {e}", exc_info=True)
+        except Exception as exc:
+            logger.error(
+                "[cowork] Failed to claim task: %s", exc, exc_info=True
+            )
             await self._send_error_event(
                 session_id=session_info.id,
                 error_code=ErrorCode.INTERNAL_ERROR,
-                message=str(e),
+                message=str(exc),
                 user_id=session_info.user_id,
             )
             return
 
-        final_status = RunStatus.FAILED
         try:
-            agent = await agent_factory.create_cowork_agent(
-                session_info=session_info,
+            session_store = AgentSessionStore(session_maker=get_session_factory())
+            agent = await cowork_agent_factory.create_agent(
+                user_id=str(session_info.user_id),
+                session_id=str(session_info.id),
                 llm_config=llm_config,
-                workspace_manager=None,
                 agent_type=AgentType(session_info.agent_type)
                 if session_info.agent_type
-                else AgentType.GENERAL,
+                else AgentType.COWORK,
+                session_store=session_store,
                 tool_args=query_command.tool_args,
                 metadata=query_command.metadata,
-                system_prompt=getattr(query_command, "system_prompt", None),
-                tool_names=getattr(query_command, "tool_names", None),
-                skill_names=getattr(query_command, "skill_names", None),
-                desktop_capabilities=getattr(query_command, "desktop_capabilities", None),
-                agent_config=getattr(query_command, "agent_config", None),
+                system_prompt=query_command.system_prompt,
+                requested_capabilities=query_command.requested_capabilities,
+                skill_creator=self._create_skill_creator(session_info.user_id),
             )
 
-            instruction_text = query_command.text
-            if milestone_context:
-                instruction_text = f"{milestone_context}\n\nUser instruction: {query_command.text}"
+            images: list[Image] = []
+            files: list[UrlFile] = []
+            if query_command.files:
+                async with get_db_session_local() as db:
+                    images, files = await file_service.prepare_agent_files(
+                        db,
+                        file_ids=query_command.files,
+                        user_id=session_info.user_id,
+                        session_id=session_info.id,
+                    )
+
+            if images or files:
+                sandbox_service = self._container.sandbox_service
+                async with get_db_session_local() as db:
+                    sandbox = await sandbox_service.init_sandbox(
+                        db,
+                        session_id=session_info.id,
+                        user_id=session_info.user_id,
+                    )
+                agent.sandbox = sandbox
+                await sandbox.create_directory(sandbox.upload_path, exist_ok=True)
+                sandbox_files, sandbox_images = await upload_media_to_sandbox(
+                    sandbox=sandbox,
+                    files=files or [],
+                    images=images or [],
+                    upload_path=sandbox.upload_path,
+                )
+                if sandbox_files:
+                    files = sandbox_files
+                if sandbox_images:
+                    images = sandbox_images
 
             event_stream = await agent.arun(
-                instruction_text,
+                query_command.text,
                 stream=True,
                 stream_events=True,
                 run_id=str(run_task.id),
+                images=images or None,
+                files=files or None,
                 yield_run_output=False,
             )
 
-            final_status = await self.process_agent_event_stream(
+            await self.process_agent_event_stream(
                 event_stream,
                 session_info,
                 run_id=run_task.id,
                 is_user_key=llm_config.is_user_model(),
                 llm_config=llm_config,
             )
-
-            async with get_db_session_local() as db:
-                await plan_service.update_milestones_after_run(
-                    db,
-                    session_id=session_info.id,
-                    milestone_ids=query_command.milestone_ids,
-                    status=final_status,
-                )
-
-        except Exception as e:
-            logger.opt(exception=True).error("Error processing cowork query: {}", str(e))
+        except Exception as exc:
+            logger.opt(exception=True).error(
+                "[cowork] Error processing query: %s", exc
+            )
             async with get_db_session_local() as db:
                 await run_service.transition_status(
                     db, task_id=run_task.id, to_status=RunStatus.FAILED
                 )
                 await db.commit()
-            if query_command.milestone_ids:
-                async with get_db_session_local() as db:
-                    await plan_service.reset_milestones_to_pending(
-                        db,
-                        session_id=session_info.id,
-                        milestone_ids=query_command.milestone_ids,
-                    )
             raise
-    
-    async def _ensure_cowork_app_kind(self, session_id) -> None:
-        """Persist ``app_kind = cowork`` on the session row if not already set.
 
-        Cowork sessions must be invisible to the standard Project sidebar
-        listing. Stamping ``app_kind`` here is the canonical discriminator
-        used by ``SessionRepository.get_user_sessions``.
-        """
+    async def _ensure_cowork_app_kind(self, session_id) -> None:
+        """Stamp ``app_kind = cowork`` on the session if not set."""
         try:
             async with get_db_session_local() as db:
                 session = await self._container.session_service._session_repo.get_by_id(
@@ -170,5 +168,7 @@ class CoworkQueryHandler(UserQueryHandler):
                     await db.commit()
         except Exception as exc:
             logger.warning(
-                "Failed to stamp cowork app_kind on session %s: %s", session_id, exc
+                "[cowork] Failed to stamp app_kind on session %s: %s",
+                session_id,
+                exc,
             )

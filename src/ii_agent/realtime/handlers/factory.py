@@ -64,7 +64,6 @@ class CommandHandlerFactory:
 
         self._handlers = {
             CommandType.QUERY: query_handler,
-            CommandType.COWORK_QUERY: CoworkQueryHandler(pubsub=ps, container=ct),
             CommandType.PLAN: PlanHandler(pubsub=ps, container=ct),
             CommandType.SANDBOX_STATUS: SandboxStatusHandler(pubsub=ps, container=ct),
             CommandType.AWAKE_SANDBOX: AwakeSandboxHandler(pubsub=ps, container=ct),
@@ -72,7 +71,6 @@ class CommandHandlerFactory:
             CommandType.PING: PingHandler(pubsub=ps, container=ct),
             CommandType.CANCEL: CancelHandler(pubsub=ps, container=ct),
             CommandType.CONTINUE_RUN: ContinueRunHandler(pubsub=ps, container=ct),
-            CommandType.COWORK_CONTINUE_RUN: CoworkContinueRunHandler(pubsub=ps, container=ct),
             CommandType.ENHANCE_PROMPT: EnhancePromptHandler(pubsub=ps, container=ct),
             CommandType.PUBLISH_PROJECT: PublishProjectHandler(pubsub=ps, container=ct),
             CommandType.PUBLISH_CLOUD_RUN: CloudRunPublishHandler(pubsub=ps, container=ct),
@@ -96,6 +94,9 @@ class CommandHandlerFactory:
             CommandType.DESIGN_SAVE_STATE: DesignSaveStateHandler(pubsub=ps, container=ct),
             CommandType.DESIGN_SYNC_STATE: DesignSyncStateHandler(pubsub=ps, container=ct),
             CommandType.SLIDE_DECK_SYNC_STATE: SlideDeckSyncStateHandler(pubsub=ps, container=ct),
+            CommandType.COWORK_QUERY: CoworkQueryHandler(pubsub=ps, container=ct),
+            CommandType.COWORK_CONTINUE_RUN: CoworkContinueRunHandler(pubsub=ps, container=ct),
+
         }
 
     def get_handler(self, command_type: CommandType) -> BaseCommandHandler | None:
