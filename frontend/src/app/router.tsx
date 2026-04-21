@@ -307,6 +307,17 @@ const createAppRouter = () =>
                     }
                 },
                 {
+                    path: 'extension-auth',
+                    async lazy() {
+                        const { Component } = await import(
+                            '@/app/routes/extension-auth'
+                        )
+                        return {
+                            Component: () => <Component />
+                        }
+                    }
+                },
+                {
                     path: ':sessionId',
                     async lazy() {
                         const { Component } = await import('@/app/routes/agent')

@@ -38,6 +38,12 @@ from ii_agent.realtime.handlers.design_get_state import DesignGetStateHandler
 from ii_agent.realtime.handlers.design_save_state import DesignSaveStateHandler
 from ii_agent.realtime.handlers.design_sync_state import DesignSyncStateHandler
 from ii_agent.realtime.handlers.slide_deck_sync_state import SlideDeckSyncStateHandler
+from ii_agent.realtime.handlers.browser_extension_query import (
+    BrowserExtensionQueryHandler,
+)
+from ii_agent.realtime.handlers.browser_extension_continue_run import (
+    BrowserExtensionContinueRunHandler,
+)
 
 
 class CommandHandlerFactory:
@@ -92,6 +98,12 @@ class CommandHandlerFactory:
             CommandType.DESIGN_SAVE_STATE: DesignSaveStateHandler(pubsub=ps, container=ct),
             CommandType.DESIGN_SYNC_STATE: DesignSyncStateHandler(pubsub=ps, container=ct),
             CommandType.SLIDE_DECK_SYNC_STATE: SlideDeckSyncStateHandler(pubsub=ps, container=ct),
+            CommandType.BROWSER_EXTENSION_QUERY: BrowserExtensionQueryHandler(
+                pubsub=ps, container=ct
+            ),
+            CommandType.BROWSER_EXTENSION_CONTINUE_RUN: BrowserExtensionContinueRunHandler(
+                pubsub=ps, container=ct
+            ),
         }
 
     def get_handler(self, command_type: CommandType) -> BaseCommandHandler | None:
