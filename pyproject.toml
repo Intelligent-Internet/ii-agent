@@ -102,6 +102,9 @@ gaia = [
   "termcolor>=3.0.1",
   "uvicorn[standard]>=0.29.0",
 ]
+sage = [
+  "sage-agent-sdk>=6.6.1",
+]
 
 [build-system]
 requires = ["hatchling"]
