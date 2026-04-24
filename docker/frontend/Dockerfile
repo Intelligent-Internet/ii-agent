@@ -27,8 +27,11 @@ COPY --from=builder /app/dist ./dist
 
 # Build manifest — written by stack_control.sh at build time.
 # Inspect with: docker exec <container> cat /app/build-manifest.json
-ARG BUILD_MANIFEST='{}'
-RUN printf '%s\n' "$BUILD_MANIFEST" > /app/build-manifest.json
+# Manifest is written to <repo>/build-manifest-frontend.json by
+# scripts/stack_control.sh before invoking the build (file rather than
+# build-arg avoids Linux ARG_MAX limits on large tracked_files lists).
+ARG MANIFEST_FILE=build-manifest-frontend.json
+COPY ${MANIFEST_FILE} /app/build-manifest.json
 
 EXPOSE 3000
 CMD ["serve", "-s", "dist", "-l", "3000"]

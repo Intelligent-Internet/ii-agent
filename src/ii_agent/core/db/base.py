@@ -118,6 +118,18 @@ def get_engine() -> AsyncEngine:
 
         database_url, connect_args = _prepare_asyncpg_url(settings.database.url)
 
+        # Defense-in-depth: idle_in_transaction_session_timeout makes
+        # PostgreSQL terminate any session that holds an open transaction
+        # without activity for >60s. Converts "silent permanent connection
+        # leak" (e.g. the 2026-04-24 set_timeout self-deadlock) into a
+        # noisy, recoverable failure so the same bug class cannot quietly
+        # exhaust QueuePool again. Read-only / autocommit sessions are not
+        # affected. We do NOT set statement_timeout or lock_timeout here
+        # because legitimate slow queries (large session loads, migrations
+        # invoked through this engine in tests) would falsely trip them.
+        server_settings = connect_args.setdefault("server_settings", {})
+        server_settings.setdefault("idle_in_transaction_session_timeout", "60000")
+
         _engine = create_async_engine(
             database_url,
             echo=False,

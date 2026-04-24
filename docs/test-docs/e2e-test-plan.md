@@ -62,7 +62,14 @@ The automated A2A-05/A2A-06 checks validate the same underlying selection effect
 | SBOX-02 | Sandbox Lifecycle | Port pool overflow protection active | REST | 10s | None |
 | SBOX-03 | Sandbox Lifecycle | Orphaned Docker volumes cleaned up | Docker | 90s | Docker, cleanup loop |
 | SBOX-04 | Sandbox Lifecycle | timeout_at column persisted in DB | Docker+psql | 10s | PostgreSQL |
-| SBOX-05 | Sandbox Lifecycle | Cleanup loop active (6 stages) | Logs | 10s | Backend logs |
+| SBOX-05 | Sandbox Lifecycle | Cleanup loop active (host monitor + pool sweeps logged) | Logs | 10s | Backend logs |
+| SBOX-06 | Sandbox Lifecycle | Concurrent-create semaphore wired | Docker exec | 10s | Backend |
+| POOL-01 | Sandbox Pool Health | /health/sandbox-pool shape (Fix A) | REST | 10s | Backend |
+| POOL-02 | Sandbox Pool Health | stack_control.sh status --json modules.pool | Shell+JSON | 30s | Backend, stack_control.sh |
+| POOL-03 | Sandbox Pool Health | Claim → replenish cycle observable | Socket.IO+REST | 240s | Pool enabled, Docker |
+| POOL-04 | Sandbox Pool Health | Stuck-INITIALIZING reap (Fix A end-to-end) | psql+REST polling | 180s | PostgreSQL, cleanup loop |
+| HOST-01 | Backend Host Monitor | /health/host shape | REST | 10s | Backend |
+| HOST-02 | Backend Host Monitor | stack_control.sh status --json modules.backend | Shell+JSON | 30s | Backend, stack_control.sh |
 
 ### Not Automated — Rationale
 

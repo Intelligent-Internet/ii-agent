@@ -128,7 +128,11 @@ async def copy_skill_to_sandbox(
         Sandbox skill directory path where skill was extracted
     """
     sandbox_skill_dir = f"{sandbox_base_path}/{skill_name}"
-    zip_path_in_sandbox = f"/tmp/{skill_name}.zip"
+    # Stage the upload zip under the writable /workspace bind volume.
+    # Docker put_archive() rejects writes to /tmp on hardened sandboxes
+    # (read_only=True rootfs) with "container rootfs is marked read-only",
+    # even though /tmp is a tmpfs mount.
+    zip_path_in_sandbox = f"{sandbox_base_path}/.{skill_name}.zip"
 
     # Determine source and get zip content
     if storage_uri.startswith("builtin:"):
@@ -144,6 +148,9 @@ async def copy_skill_to_sandbox(
         # Legacy: absolute local path
         skill_dir = Path(storage_uri)
         zip_content = create_skill_zip_from_dir(skill_dir)
+
+    # Ensure the staging directory exists before uploading the zip.
+    await sandbox.run_command(f"mkdir -p {sandbox_base_path}", user="root")
 
     # Upload zip to sandbox
     await sandbox.write_file(zip_path_in_sandbox, zip_content)

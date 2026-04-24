@@ -635,9 +635,8 @@ class Claude(Model):
             # path from 400-looping on every retry.
             if self.temperature is not None and self.temperature != 1:
                 logger.debug(
-                    "Dropping temperature=%s because extended thinking is enabled "
-                    "(Anthropic requires temperature=1 when thinking is on).",
-                    self.temperature,
+                    f"Dropping temperature={self.temperature} because extended thinking is enabled "
+                    "(Anthropic requires temperature=1 when thinking is on)."
                 )
         elif self.temperature is not None:
             _request_params["temperature"] = self.temperature

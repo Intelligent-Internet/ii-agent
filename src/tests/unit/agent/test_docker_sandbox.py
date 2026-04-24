@@ -1078,6 +1078,48 @@ class TestSetTimeout:
         # Cleanup
         second_task.cancel()
 
+    @pytest.mark.asyncio
+    async def test_uses_caller_session_when_db_passed(self):
+        """Regression test for the 2026-04-24 pool-claim self-deadlock.
+
+        When ``db`` is provided, ``set_timeout`` MUST mutate ``timeout_at``
+        on the caller's session and MUST NOT open a second DB session via
+        ``get_db_session_local``. Opening a second session while the caller
+        holds a row-lock on the same ``agent_sandboxes`` row produces a
+        self-deadlock that exhausts the asyncpg connection pool.
+
+        See docs/design-docs/sandbox-pool-claim-self-deadlock.md.
+        """
+        import uuid as _uuid
+
+        sandbox = _make_sandbox(sandbox_id=str(_uuid.uuid4()))
+
+        record = MagicMock()
+        record.timeout_at = None
+
+        scalar_result = MagicMock()
+        scalar_result.scalar_one_or_none.return_value = record
+
+        db = MagicMock()
+        db.execute = AsyncMock(return_value=scalar_result)
+        db.commit = AsyncMock()
+
+        with patch("ii_agent.core.db.get_db_session_local") as mock_get_session:
+            await sandbox.set_timeout(300, db=db)
+
+            # Critical invariant: no separate DB session was opened.
+            mock_get_session.assert_not_called()
+
+        # The caller's session was used to mutate the row.
+        db.execute.assert_awaited_once()
+        # Caller owns commit/rollback — set_timeout must not commit.
+        db.commit.assert_not_called()
+        assert record.timeout_at is not None
+
+        # Cleanup
+        if sandbox._timeout_task:
+            sandbox._timeout_task.cancel()
+
 
 class TestCreate:
     """Tests for DockerSandbox.create class method."""

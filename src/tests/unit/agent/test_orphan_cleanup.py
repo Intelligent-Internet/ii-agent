@@ -212,6 +212,106 @@ class TestCleanupOrphansDeletedSession:
         assert cleaned == 1
 
 
+class TestCleanupOrphansPoolStateInteraction:
+    """Pool-state filtering must not protect CLAIMED slots whose session is gone."""
+
+    @pytest.mark.asyncio
+    async def test_claimed_slot_with_deleted_session_is_reaped(self):
+        """Regression: CLAIMED pool slots whose session was soft-deleted must be reaped.
+
+        Previously ``_cleanup_orphans`` skipped every CLAIMED row unconditionally,
+        which leaked sandboxes (and their containers) for hours after the user
+        deleted the session.
+        """
+        from ii_agent.agents.sandboxes.types import PoolState
+
+        sandbox = _make_sandbox_record(provider_sandbox_id="container-claimed-orphan")
+        sandbox.pool_state = PoolState.CLAIMED
+        session_row = MagicMock()
+        session_row.id = sandbox.session_id
+        session_row.is_deleted = True
+
+        phase1_db = _mock_db_session([sandbox], [session_row])
+
+        phase2_db = AsyncMock()
+        phase2_record = MagicMock()
+        phase2_record.status = SandboxStatus.RUNNING
+        phase2_result = MagicMock()
+        phase2_result.scalar_one_or_none.return_value = phase2_record
+        phase2_db.execute = AsyncMock(return_value=phase2_result)
+
+        call_count = [0]
+
+        def _get_db_ctx():
+            ctx = AsyncMock()
+            if call_count[0] == 0:
+                ctx.__aenter__ = AsyncMock(return_value=phase1_db)
+            else:
+                ctx.__aenter__ = AsyncMock(return_value=phase2_db)
+            ctx.__aexit__ = AsyncMock(return_value=False)
+            call_count[0] += 1
+            return ctx
+
+        cfg = MagicMock()
+
+        with (
+            patch(f"{_MODULE}.get_db_session_local", side_effect=_get_db_ctx),
+            patch(f"{_MODULE}.DockerSandbox") as mock_docker_cls,
+        ):
+            mock_docker_instance = MagicMock()
+            mock_docker_instance.kill = AsyncMock()
+            mock_docker_cls.return_value = mock_docker_instance
+            mock_docker_cls._get_docker_client.return_value.containers.get.return_value = (
+                MagicMock()
+            )
+
+            cleaned = await _cleanup_orphans(cfg)
+
+        assert cleaned == 1
+        assert phase2_record.status == SandboxStatus.DELETED
+
+    @pytest.mark.asyncio
+    async def test_claimed_slot_with_live_session_is_kept(self):
+        """CLAIMED pool slot whose session is alive must NOT be reaped."""
+        from ii_agent.agents.sandboxes.types import PoolState
+
+        sandbox = _make_sandbox_record(provider_sandbox_id="container-claimed-live")
+        sandbox.pool_state = PoolState.CLAIMED
+        session_row = MagicMock()
+        session_row.id = sandbox.session_id
+        session_row.is_deleted = False
+
+        mock_db = _mock_db_session([sandbox], [session_row])
+        cfg = MagicMock()
+
+        with patch(f"{_MODULE}.get_db_session_local") as mock_get_db:
+            mock_get_db.return_value.__aenter__ = AsyncMock(return_value=mock_db)
+            mock_get_db.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            cleaned = await _cleanup_orphans(cfg)
+
+        assert cleaned == 0
+
+    @pytest.mark.asyncio
+    async def test_available_slot_is_never_reaped(self):
+        """AVAILABLE pool slots are managed by other phases — never an orphan."""
+        from ii_agent.agents.sandboxes.types import PoolState
+
+        sandbox = _make_sandbox_record(provider_sandbox_id="container-available")
+        sandbox.pool_state = PoolState.AVAILABLE
+        # AVAILABLE rows have no owning session → session row missing.
+        mock_db = _mock_db_session([sandbox], [])
+        cfg = MagicMock()
+
+        with patch(f"{_MODULE}.get_db_session_local") as mock_get_db:
+            mock_get_db.return_value.__aenter__ = AsyncMock(return_value=mock_db)
+            mock_get_db.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            cleaned = await _cleanup_orphans(cfg)
+
+        assert cleaned == 0
+
+
 class TestCleanupOrphansR1ConditionalDelete:
     """R1: Only mark DELETED when container is confirmed removed."""
 

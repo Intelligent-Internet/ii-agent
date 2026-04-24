@@ -20,13 +20,24 @@ from typing import Optional
 
 import docker
 from docker.errors import APIError, NotFound
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ii_agent.agents.sandboxes.docker import DockerSandbox, _cleanup_sandbox_volume
+from ii_agent.agents.sandboxes.executor import docker_call
+from ii_agent.agents.sandboxes.host_monitor import (
+    HostHealthState,
+    HostMetricsBuffer,
+    HostMonitorConfig,
+    capacity_from_retention,
+    evaluate as evaluate_host_state,
+    get_host_state_snapshot,
+    sample_host_metrics,
+    set_host_state,
+)
 from ii_agent.agents.sandboxes.models import AgentSandbox
 from ii_agent.agents.sandboxes.port_manager import PortPoolManager
-from ii_agent.agents.sandboxes.types import SandboxProviderType, SandboxStatus
+from ii_agent.agents.sandboxes.types import PoolState, SandboxProviderType, SandboxStatus
 from ii_agent.core.config.settings import Settings, get_settings
 from ii_agent.core.db import get_db_session_local
 from ii_agent.core.logger import logger
@@ -40,6 +51,141 @@ _GRACE_PERIOD = timedelta(minutes=5)
 
 _cleanup_task: Optional[asyncio.Task] = None
 _cleanup_task_lock = threading.Lock()
+
+# ── Host monitor state (per-process) ──────────────────────────────────────
+#
+# Held at module level so both the orphan-cleanup loop and optional
+# shutdown persistence helpers can reach the same buffer. Constructed
+# lazily on first sweep (once settings are known) and re-built if
+# retention/interval settings change between sweeps.
+_HOST_MONITOR_BUFFER: Optional[HostMetricsBuffer] = None
+_HOST_MONITOR_BUFFER_CAPACITY: Optional[int] = None
+_HOST_MONITOR_LAST_SAMPLE = None  # type: Optional["HostMetrics"]  # noqa: F821
+
+
+def _get_host_monitor_buffer(cfg: Settings) -> HostMetricsBuffer:
+    """Return the shared host-metrics buffer, (re)building on capacity change."""
+    global _HOST_MONITOR_BUFFER, _HOST_MONITOR_BUFFER_CAPACITY
+    target_capacity = capacity_from_retention(
+        cfg.sandbox.baseline_capture_retention_hours,
+        cfg.sandbox.baseline_capture_interval_seconds,
+    )
+    if _HOST_MONITOR_BUFFER is None or _HOST_MONITOR_BUFFER_CAPACITY != target_capacity:
+        _HOST_MONITOR_BUFFER = HostMetricsBuffer(
+            capacity=target_capacity,
+            bootstrap_fraction=cfg.sandbox.host_monitor_bootstrap_fraction,
+        )
+        _HOST_MONITOR_BUFFER_CAPACITY = target_capacity
+    return _HOST_MONITOR_BUFFER
+
+
+def _reset_host_monitor_for_tests() -> None:
+    """Tests only: clear the shared buffer so each test starts fresh."""
+    global _HOST_MONITOR_BUFFER, _HOST_MONITOR_BUFFER_CAPACITY, _HOST_MONITOR_LAST_SAMPLE
+    _HOST_MONITOR_BUFFER = None
+    _HOST_MONITOR_BUFFER_CAPACITY = None
+    _HOST_MONITOR_LAST_SAMPLE = None
+
+
+def get_host_monitor_buffer_snapshot() -> Optional[HostMetricsBuffer]:
+    """Read-only accessor for the shared host-metrics buffer.
+
+    Returns ``None`` before the first sweep has constructed it.
+    Intended for ``/health/host``-style read-only consumers; callers
+    must not mutate the returned object.
+    """
+    return _HOST_MONITOR_BUFFER
+
+
+async def _run_host_monitor_phase(cfg: Settings) -> None:
+    """Phase 0 of the cleanup sweep: sample /proc, evaluate, publish state.
+
+    Failures are caught and logged at WARNING; a dead monitor must
+    never kill the cleanup sweep. Before the ring buffer is warm, only
+    hardcoded CRIT/WARN floors apply (see
+    :func:`~ii_agent.agents.sandboxes.host_monitor.evaluate`).
+    """
+    global _HOST_MONITOR_LAST_SAMPLE
+
+    if not cfg.sandbox.host_monitor_enabled:
+        return
+
+    try:
+        sample = await sample_host_metrics(
+            proc_root=cfg.sandbox.host_monitor_proc_root,
+            docker_window=cfg.sandbox.host_monitor_docker_latency_window,
+        )
+    except FileNotFoundError:
+        # /proc unreadable (e.g. running on non-Linux in tests). Silent
+        # skip rather than spamming warnings.
+        logger.debug("host_monitor: /proc not present; skipping sample")
+        return
+    except Exception as exc:
+        logger.warning(f"host_monitor: sample failed ({exc}); will retry next sweep")
+        return
+
+    buffer = _get_host_monitor_buffer(cfg)
+    if cfg.sandbox.baseline_capture_enabled:
+        buffer.append(sample)
+
+    monitor_cfg = HostMonitorConfig(
+        order7_warn_floor=cfg.sandbox.host_monitor_order7_warn_floor,
+        order7_crit_floor=cfg.sandbox.host_monitor_order7_crit_floor,
+        mem_available_warn_mb=cfg.sandbox.host_monitor_mem_available_warn_mb,
+        mem_available_crit_mb=cfg.sandbox.host_monitor_mem_available_crit_mb,
+        docker_p99_watch_s=cfg.sandbox.host_monitor_docker_p99_watch_s,
+        docker_p99_warn_s=cfg.sandbox.host_monitor_docker_p99_warn_s,
+        docker_call_timeout_s=cfg.sandbox.docker_call_timeout_seconds,
+    )
+
+    prev_sample = _HOST_MONITOR_LAST_SAMPLE
+    prev_state_snapshot = get_host_state_snapshot()
+    # Use the previous in-memory state via the holder (set below) so
+    # evaluate() can see counter deltas and hysteresis context.
+    from ii_agent.agents.sandboxes.host_monitor import get_host_state as _get_host_state
+
+    prev_state = _get_host_state()
+
+    state = evaluate_host_state(
+        sample,
+        buffer,
+        prev_state,
+        monitor_cfg,
+        prev_sample=prev_sample,
+    )
+    set_host_state(state, sample)
+    _HOST_MONITOR_LAST_SAMPLE = sample
+
+    # Log level scales with severity, and transitions are always
+    # reported so operators see state changes in real time.
+    if state != prev_state:
+        msg = (
+            f"host_monitor: state {prev_state.name} -> {state.name} "
+            f"order7={sample.order7_free()} "
+            f"mem_avail_mb={sample.mem_available_mb()} "
+            f"docker_p99_s={sample.docker_call_p99_s:.2f}"
+        )
+        if state == HostHealthState.CRIT:
+            logger.error(msg)
+        elif state == HostHealthState.WARN:
+            logger.warning(msg)
+        else:
+            logger.info(msg)
+    elif state >= HostHealthState.WATCH:
+        # Periodic status so degradation is visible in logs even
+        # without a transition.
+        logger.info(
+            f"host_monitor: state={state.name} "
+            f"order7={sample.order7_free()} "
+            f"mem_avail_mb={sample.mem_available_mb()} "
+            f"docker_p99_s={sample.docker_call_p99_s:.2f} "
+            f"baseline_warm={buffer.is_warm()}"
+        )
+
+    # Touch ``prev_state_snapshot`` to silence unused-variable lint;
+    # retained here because a future evaluator revision may use it for
+    # additional hysteresis logic.
+    _ = prev_state_snapshot
 
 
 async def run_orphan_cleanup_loop(config: Optional[Settings] = None) -> None:
@@ -84,19 +230,37 @@ async def run_orphan_cleanup_loop(config: Optional[Settings] = None) -> None:
                     continue
             except Exception as exc:
                 logger.warning(
-                    "Orphan cleanup: Redis advisory lock unavailable (%s); "
-                    "proceeding without lock (safe in single-worker deployments)",
-                    exc,
+                    f"Orphan cleanup: Redis advisory lock unavailable ({exc}); "
+                    "proceeding without lock (safe in single-worker deployments)"
                 )
 
             try:
                 # R5: Run cleanup BEFORE sleeping so the first sweep is immediate
+                _sweep_started = asyncio.get_running_loop().time()
+                # Phase 0: host health sample + evaluation. Must run
+                # first so downstream phases (and out-of-sweep
+                # consumers) see the freshest state.
+                await _run_host_monitor_phase(cfg)
                 expired = await _soft_delete_expired_sessions()
+                pool_retired = await _retire_pool_sandboxes()
+                pool_deduped = await _dedupe_pool_slots()
+                pool_validated = await _validate_pool_slots()
+                pool_reaped = await _reap_pool_stuck_init()
+                health_marked = await _health_check_sandbox_rows()
+                ttl_expired = await _expire_old_paused_sandboxes(cfg)
                 cleaned = await _cleanup_orphans(cfg)
                 paused = await _pause_stale_sandboxes(cfg)
                 zombies = await _cleanup_docker_zombies()
                 volumes = await _cleanup_orphaned_volumes()
                 timed_out = await _kill_timed_out_sandboxes()
+                purged = await _purge_stale_deleted_rows(cfg)
+                await _ensure_pool_full()
+                _sweep_elapsed = asyncio.get_running_loop().time() - _sweep_started
+                if _sweep_elapsed > 5.0:
+                    logger.warning(
+                        f"Orphan cleanup sweep took {_sweep_elapsed:.1f}s "
+                        f"(expected <5s) — Docker or DB may be slow"
+                    )
                 if (
                     cleaned > 0
                     or paused > 0
@@ -104,11 +268,22 @@ async def run_orphan_cleanup_loop(config: Optional[Settings] = None) -> None:
                     or expired > 0
                     or volumes > 0
                     or timed_out > 0
+                    or pool_retired > 0
+                    or pool_deduped > 0
+                    or pool_validated > 0
+                    or pool_reaped > 0
+                    or health_marked > 0
+                    or ttl_expired > 0
+                    or purged > 0
                 ):
                     logger.info(
                         f"Orphan cleanup sweep: expired={expired} sessions, removed={cleaned} orphaned, "
                         f"paused={paused} stale, reaped={zombies} docker zombies, "
-                        f"volumes={volumes} orphaned, timed_out={timed_out} killed"
+                        f"volumes={volumes} orphaned, timed_out={timed_out} killed, "
+                        f"pool_retired={pool_retired} pool_deduped={pool_deduped}, "
+                        f"pool_validated={pool_validated}, pool_reaped={pool_reaped}, "
+                        f"health_marked={health_marked}, ttl_expired={ttl_expired}, "
+                        f"purged={purged}, elapsed={_sweep_elapsed:.1f}s"
                     )
                 else:
                     logger.debug("Orphan cleanup sweep completed: nothing to clean")
@@ -242,14 +417,27 @@ async def _cleanup_orphans(cfg: Settings) -> int:
 
         for sandbox in sandboxes:
             try:
-                if sandbox.created_at and (now - sandbox.created_at) < _GRACE_PERIOD:
+                # session_deleted is:
+                #   False -> session row exists and is_deleted=False (alive)
+                #   True  -> session row exists and is_deleted=True  (soft-deleted)
+                #   None  -> session row missing (legacy / crashed / never-linked)
+                session_deleted = session_map.get(sandbox.session_id)
+
+                # AVAILABLE pool slots have no owning session by design — they
+                # are warm spares managed by the pool retirement/dedupe phases,
+                # never by orphan cleanup.
+                if sandbox.pool_state == PoolState.AVAILABLE:
                     continue
 
-                session_deleted = session_map.get(sandbox.session_id)
-                if session_deleted is None:
-                    pass  # Session row doesn't exist — treat as orphaned
-                elif not session_deleted:
-                    continue  # Session exists and is not deleted — keep sandbox
+                # All other rows (CLAIMED, RETIRING, non-pool) are reapable
+                # only when their owning session is no longer alive. Previously
+                # CLAIMED rows were skipped unconditionally, leaking sandboxes
+                # whose sessions had been soft-deleted.
+                if session_deleted is False:
+                    continue
+
+                if sandbox.created_at and (now - sandbox.created_at) < _GRACE_PERIOD:
+                    continue
 
                 candidates.append((sandbox.id, sandbox.session_id, sandbox.provider_sandbox_id))
             except Exception as e:
@@ -373,6 +561,12 @@ async def _pause_stale_sandboxes(cfg: Settings) -> int:
 
         for sandbox in sandboxes:
             try:
+                # Skip pool-managed rows: they intentionally have no session
+                # activity (AVAILABLE) or follow their own retirement schedule
+                # (RETIRING). Stale-pause logic does not apply.
+                if sandbox.pool_state is not None:
+                    continue
+
                 session_info = session_map.get(sandbox.session_id)
                 if session_info is None:
                     continue  # Missing session handled by _cleanup_orphans
@@ -621,6 +815,215 @@ async def _cleanup_orphaned_volumes() -> int:
     return removed
 
 
+async def _health_check_sandbox_rows() -> int:
+    """Reconcile non-deleted sandbox rows against Docker reality.
+
+    For every row in status PAUSED or RUNNING we inspect the underlying
+    Docker container. If the container is missing, or its referenced
+    bridge network no longer exists (common after host/Docker reboot),
+    the row is marked DELETED so future session activity creates a fresh
+    sandbox instead of triggering doomed restart loops.
+
+    Pool rows in AVAILABLE state are also validated here so a standby slot
+    backed by a dead container is recycled promptly. CLAIMED rows follow
+    the normal session lifecycle.
+
+    This closes the primary failure mode observed in production: paused
+    rows whose networks are destroyed on reboot live forever and every
+    frontend poll produces "Cannot restart sandbox ...: network X not
+    found" errors that block the asyncio event loop.
+    """
+    try:
+        client = DockerSandbox._get_docker_client()
+    except Exception:
+        logger.debug("Docker client unavailable, skipping health-check phase")
+        return 0
+
+    # Phase 1: read candidate rows
+    async with get_db_session_local() as db:
+        result = await db.execute(
+            select(AgentSandbox).where(
+                AgentSandbox.provider == SandboxProviderType.DOCKER,
+                AgentSandbox.status.in_([SandboxStatus.RUNNING, SandboxStatus.PAUSED]),
+                AgentSandbox.provider_sandbox_id.isnot(None),
+            )
+        )
+        rows = result.scalars().all()
+
+    if not rows:
+        return 0
+
+    marked = 0
+    for row in rows:
+        provider_sandbox_id = row.provider_sandbox_id
+        sandbox_id = row.id
+        if not provider_sandbox_id:
+            continue
+
+        container = None
+        try:
+            container = await docker_call(client.containers.get, provider_sandbox_id, timeout=10)
+        except asyncio.TimeoutError:
+            logger.debug(f"Health check: Docker timeout for sandbox {sandbox_id} — deferring")
+            continue
+        except NotFound:
+            # Container has vanished — mark row deleted.
+            logger.info(
+                f"Health check: container for sandbox {sandbox_id} not found in Docker — marking deleted"
+            )
+        except APIError as exc:
+            logger.debug(
+                f"Health check: Docker APIError for sandbox {sandbox_id}: {exc} — deferring"
+            )
+            continue
+        except Exception as exc:
+            logger.debug(
+                f"Health check: unexpected error for sandbox {sandbox_id}: {exc} — deferring"
+            )
+            continue
+
+        network_missing = False
+        if container is not None:
+            try:
+                await docker_call(container.reload, timeout=10)
+            except Exception:
+                # Reload failed — treat as transient, retry next sweep.
+                continue
+
+            # Detect the "bridge network destroyed on reboot" case. We
+            # look at the *referenced* network IDs on the container; any
+            # missing one is unrecoverable without container recreation.
+            try:
+                networks = container.attrs.get("NetworkSettings", {}).get("Networks", {}) or {}
+                for net_name, net_info in networks.items():
+                    net_id = net_info.get("NetworkID") if isinstance(net_info, dict) else None
+                    if not net_id:
+                        continue
+                    try:
+                        await docker_call(client.networks.get, net_id, timeout=5)
+                    except NotFound:
+                        logger.info(
+                            f"Health check: network {net_name} ({net_id[:12]}) referenced by "
+                            f"sandbox {sandbox_id} no longer exists — marking deleted"
+                        )
+                        network_missing = True
+                        break
+                    except Exception:
+                        # Transient; skip this row this sweep.
+                        network_missing = False
+                        container = None
+                        break
+            except Exception:
+                continue
+
+            if not network_missing and container is not None:
+                # Container exists and references live networks. Healthy.
+                continue
+
+        # Either container was NotFound, or its network is gone. Mark deleted.
+        try:
+            async with get_db_session_local() as db:
+                result = await db.execute(select(AgentSandbox).where(AgentSandbox.id == sandbox_id))
+                record = result.scalar_one_or_none()
+                if record and record.status != SandboxStatus.DELETED:
+                    record.status = SandboxStatus.DELETED
+                    record.pool_state = None
+                    record.pool_slot = None
+                    await db.commit()
+                    marked += 1
+        except Exception:
+            logger.warning(
+                f"Health check: failed to mark sandbox {sandbox_id} deleted",
+                exc_info=True,
+            )
+
+        # Best-effort: if the container object still exists but its
+        # network is gone, remove it so a stale stopped container does
+        # not linger forever.
+        if network_missing and container is not None:
+            try:
+                await docker_call(container.remove, force=True, timeout=15)
+            except Exception:
+                pass
+
+    return marked
+
+
+async def _expire_old_paused_sandboxes(cfg: Settings) -> int:
+    """Mark paused session-attached sandboxes older than the TTL as DELETED.
+
+    Paused sandboxes otherwise live forever until their session is deleted,
+    accumulating unrecoverable rows (e.g. after host reboots) that spam
+    restart errors on every frontend poll.
+
+    Only session-attached rows (``pool_state IS NULL``) are subject to
+    this TTL — pool-managed rows have their own ``retire_at`` schedule.
+    """
+    ttl_seconds = cfg.sandbox.max_paused_age_seconds
+    if ttl_seconds <= 0:
+        return 0
+
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=ttl_seconds)
+    marked = 0
+
+    async with get_db_session_local() as db:
+        result = await db.execute(
+            select(AgentSandbox).where(
+                AgentSandbox.provider == SandboxProviderType.DOCKER,
+                AgentSandbox.status == SandboxStatus.PAUSED,
+                AgentSandbox.pool_state.is_(None),
+                AgentSandbox.updated_at < cutoff,
+            )
+        )
+        rows = result.scalars().all()
+        for row in rows:
+            row.status = SandboxStatus.DELETED
+            marked += 1
+            logger.info(
+                f"Expired paused sandbox {row.id} (updated_at={row.updated_at}, ttl={ttl_seconds}s)"
+            )
+        if marked:
+            await db.commit()
+
+    return marked
+
+
+async def _purge_stale_deleted_rows(cfg: Settings) -> int:
+    """Hard-delete rows with ``status='deleted'`` older than the purge TTL.
+
+    Keeps the ``agent_sandboxes`` table compact so index scans remain fast.
+    """
+    ttl_seconds = cfg.sandbox.stale_deleted_purge_age_seconds
+    if ttl_seconds <= 0:
+        return 0
+
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=ttl_seconds)
+    purged = 0
+
+    try:
+        async with get_db_session_local() as db:
+            result = await db.execute(
+                select(AgentSandbox.id).where(
+                    AgentSandbox.status == SandboxStatus.DELETED,
+                    AgentSandbox.updated_at < cutoff,
+                )
+            )
+            ids = [row[0] for row in result]
+            if not ids:
+                return 0
+            # Delete in a single statement
+            from sqlalchemy import delete as _delete
+
+            await db.execute(_delete(AgentSandbox).where(AgentSandbox.id.in_(ids)))
+            await db.commit()
+            purged = len(ids)
+            logger.info(f"Purged {purged} stale deleted sandbox rows (older than {ttl_seconds}s)")
+    except Exception:
+        logger.exception("Failed to purge stale deleted sandbox rows")
+
+    return purged
+
+
 async def _kill_timed_out_sandboxes() -> int:
     """R6: Kill sandboxes that have exceeded their timeout_at deadline.
 
@@ -638,6 +1041,18 @@ async def _kill_timed_out_sandboxes() -> int:
                 AgentSandbox.status.in_([SandboxStatus.RUNNING, SandboxStatus.PAUSED]),
                 AgentSandbox.timeout_at.isnot(None),
                 AgentSandbox.timeout_at <= now,
+                # AVAILABLE pool slots manage their own lifetime via
+                # retire_at — never let the per-session timeout_at check
+                # kill an unclaimed pre-warmed slot. CLAIMED slots have
+                # been handed to a session and follow the normal session
+                # timeout rules. RETIRING rows are handled by the orphan
+                # path (session_id IS NULL). NOTE: SQL ``!=`` does not
+                # match NULL, so we OR explicitly to include normal
+                # (non-pool) session sandboxes.
+                or_(
+                    AgentSandbox.pool_state.is_(None),
+                    AgentSandbox.pool_state != PoolState.AVAILABLE,
+                ),
             )
         )
         timed_out = result.scalars().all()
@@ -719,6 +1134,132 @@ async def _kill_timed_out_sandboxes() -> int:
             continue
 
     return killed
+
+
+# ── Pre-warmed pool integration ─────────────────────────────────────────
+
+
+def _get_pool_manager():
+    """Return the SandboxPoolManager from the global app container.
+
+    Returns ``None`` when the container is not yet initialized (e.g. early
+    test startup) or the pool is disabled.
+    """
+    try:
+        from ii_agent.core.container import get_app_container
+
+        container = get_app_container()
+    except Exception:
+        return None
+    pool_mgr = getattr(container, "sandbox_pool_manager", None)
+    if pool_mgr is None or not getattr(pool_mgr, "enabled", False):
+        return None
+    return pool_mgr
+
+
+async def _retire_pool_sandboxes() -> int:
+    """Mark AVAILABLE pool rows past their ``retire_at`` deadline as RETIRING.
+
+    The actual container kill happens in ``_cleanup_orphans`` (RETIRING rows
+    have ``session_id=NULL`` and fall through the orphan candidate check).
+    """
+    pool_mgr = _get_pool_manager()
+    if pool_mgr is None:
+        return 0
+    try:
+        return await pool_mgr.mark_due_for_retirement()
+    except Exception:
+        logger.exception("Sandbox pool: mark_due_for_retirement failed")
+        return 0
+
+
+async def _dedupe_pool_slots() -> int:
+    """Drop duplicate AVAILABLE pool rows per slot (keep newest).
+
+    Defends against rollback races where a claim scheduled a replenish but
+    the caller's transaction never committed, leaving stale AVAILABLE rows.
+    """
+    pool_mgr = _get_pool_manager()
+    if pool_mgr is None:
+        return 0
+    try:
+        return await pool_mgr.dedupe_available_slots()
+    except Exception:
+        logger.exception("Sandbox pool: dedupe_available_slots failed")
+        return 0
+
+
+async def _validate_pool_slots() -> int:
+    """Retire AVAILABLE pool rows whose containers are missing or dead."""
+    pool_mgr = _get_pool_manager()
+    if pool_mgr is None:
+        return 0
+    try:
+        return await pool_mgr.validate_available_slots()
+    except Exception:
+        logger.exception("Sandbox pool: validate_available_slots failed")
+        return 0
+
+
+async def _reap_pool_stuck_init() -> int:
+    """Reap AVAILABLE+INITIALIZING pool rows wedged past the stuck threshold.
+
+    Runs unconditionally (does not skip on host WARN/CRIT) because the
+    reap is a pure DB UPDATE — no container creation or memory pressure.
+    Without this, stuck rows accumulate indefinitely whenever the host
+    monitor stays elevated, blocking ``ensure_full`` from recreating the
+    slot.
+    """
+    pool_mgr = _get_pool_manager()
+    if pool_mgr is None:
+        return 0
+    try:
+        return await pool_mgr.reap_stuck_initializing()
+    except Exception:
+        logger.exception("Sandbox pool: reap_stuck_initializing failed")
+        return 0
+
+
+async def _ensure_pool_full() -> None:
+    """Re-fill any missing pool slots after retirements/claims.
+
+    Fire-and-forget: the actual container creates run as background tasks.
+    """
+    pool_mgr = _get_pool_manager()
+    if pool_mgr is None:
+        return
+    try:
+        await pool_mgr.ensure_full()
+    except Exception:
+        logger.exception("Sandbox pool: ensure_full failed")
+
+
+async def run_once_reconciliation(config: Optional[Settings] = None) -> None:
+    """Run a single reconciliation sweep (health-check + TTL + orphans).
+
+    Intended to be called during application startup, after Redis and DB
+    are available but BEFORE the WebSocket server starts accepting
+    connections. Reconciles DB rows against Docker reality so stale rows
+    left behind by a host reboot don't generate a flood of failing
+    restart attempts at first user interaction.
+
+    Safe to call multiple times; individual phases tolerate empty state.
+    """
+    cfg = config or get_settings()
+    if not cfg.sandbox.local_mode:
+        return
+    try:
+        started = asyncio.get_running_loop().time()
+        await _health_check_sandbox_rows()
+        await _expire_old_paused_sandboxes(cfg)
+        await _cleanup_orphans(cfg)
+        await _cleanup_docker_zombies()
+        await _cleanup_orphaned_volumes()
+        await _purge_stale_deleted_rows(cfg)
+        elapsed = asyncio.get_running_loop().time() - started
+        logger.info(f"Startup sandbox reconciliation completed in {elapsed:.1f}s")
+    except Exception:
+        logger.exception("Startup sandbox reconciliation failed (non-fatal)")
 
 
 def start_orphan_cleanup(config: Optional[Settings] = None) -> Optional[asyncio.Task]:

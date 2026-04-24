@@ -6,9 +6,12 @@ All database persistence is handled by :class:`SandboxService`.
 
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import IO, AsyncIterator, Dict, Any, List, Literal, Optional
+from typing import IO, TYPE_CHECKING, AsyncIterator, Dict, Any, List, Literal, Optional
 
 from fastmcp import Client
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 from ii_agent.agents.sandboxes.schemas import (
     FileContentResponse,
@@ -115,8 +118,20 @@ class Sandbox(ABC):
         ...
 
     @abstractmethod
-    async def set_timeout(self, timeout_seconds: int) -> None:
-        """Set or update the sandbox timeout."""
+    async def set_timeout(
+        self,
+        timeout_seconds: int,
+        db: "AsyncSession | None" = None,
+    ) -> None:
+        """Set or update the sandbox timeout.
+
+        When ``db`` is provided, any persistent-deadline write performed by
+        the implementation MUST run on that session (no separate DB session).
+        This avoids a row-lock self-deadlock when the caller is mid-transaction
+        on the same ``agent_sandboxes`` row. The caller retains ownership of
+        commit/rollback. When ``db`` is ``None``, the implementation may open
+        its own short-lived session (with a ``lock_timeout`` backstop).
+        """
         ...
 
     # ── Command execution ─────────────────────────────────────────────────

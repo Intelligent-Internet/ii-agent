@@ -11,6 +11,8 @@ pytestmark = pytest.mark.unit
 
 EXPECTED_ROUTES = {
     ("GET", "/health"),
+    ("GET", "/health/host"),
+    ("GET", "/health/sandbox-pool"),
 }
 
 

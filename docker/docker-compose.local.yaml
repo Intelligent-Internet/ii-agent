@@ -119,9 +119,28 @@ services:
       A2A_CODEX_TIMEOUT: ${A2A_CODEX_TIMEOUT:-900}
     # Read-only adapter — no workspace, no shared volume.  All state
     # lives in memory in the adapter task store.
+    #
+    # tmpfs notes:
+    #   * /tmp — generic scratch space.
+    #   * /home/user/.copilot — the bundled Copilot CLI shipped inside
+    #     github-copilot-sdk is a self-extracting binary that writes
+    #     its native package to $HOME/.copilot/pkg/linux-x64/<version>/
+    #     on first invocation.  Without a writable mount here every
+    #     Copilot A2A turn fails with `mkdir '/home/user/.copilot':
+    #     ENOENT` (chat falls back to native LLM, council mode reports
+    #     "all members failed").  256m is comfortably above the
+    #     ~30 MB extracted package.  The `exec` flag is REQUIRED:
+    #     Docker tmpfs defaults to `noexec`, which causes Node to fail
+    #     `dlopen` of the bundled `prebuilds/linux-x64/pty.node` with
+    #     "failed to map segment from shared object".
+    #   * /home/user/.cache — Copilot CLI and supporting Node tooling
+    #     write small cache state on startup; keep it writable so the
+    #     CLI doesn't error out before reaching extraction.
     read_only: true
     tmpfs:
       - /tmp:size=64m
+      - /home/user/.copilot:size=256m,uid=1001,gid=1001,mode=0755,exec
+      - /home/user/.cache:size=64m,uid=1001,gid=1001,mode=0755
     command: >
       python -m ii_agent.integrations.a2a.adapter_server
       --host 0.0.0.0

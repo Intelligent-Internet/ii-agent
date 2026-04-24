@@ -16,8 +16,11 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import PurePosixPath
 from typing import IO, TYPE_CHECKING, Any, AsyncIterator, Dict, List, Literal, Optional
+from urllib.parse import quote
 
 if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
     from ii_agent.agents.sandboxes.docker_shell import DockerShell
 
 import docker
@@ -153,6 +156,9 @@ class DockerSandbox(Sandbox):
         self._config = config or get_settings()
         self._timeout_task: Optional[asyncio.Task] = None
         self._shell: Optional["DockerShell"] = None
+        # Cached noVNC password read from /tmp/.vnc_password inside the
+        # container.  Generated per-container by docker/sandbox/start-services.sh.
+        self._vnc_password: Optional[str] = None
 
     # ── Shell ─────────────────────────────────────────────────────────────
 
@@ -238,7 +244,13 @@ class DockerSandbox(Sandbox):
                 pass
             try:
                 vnc_base = await self.expose_port(self._config.sandbox.novnc_port, external=True)
-                vnc_url = f"{vnc_base}/vnc.html?autoconnect=true" if vnc_base else None
+                if vnc_base:
+                    vnc_url = f"{vnc_base}/vnc.html?autoconnect=true"
+                    password = self._read_vnc_password()
+                    if password:
+                        # noVNC accepts ``password`` as a URL param when
+                        # autoconnect=true; pre-fills the auth prompt.
+                        vnc_url = f"{vnc_url}&password={quote(password, safe='')}"
             except Exception:
                 pass
         return SandboxInfo(
@@ -250,6 +262,31 @@ class DockerSandbox(Sandbox):
             vscode_url=vscode_url,
             vnc_url=vnc_url,
         )
+
+    def _read_vnc_password(self) -> Optional[str]:
+        """Read the noVNC password generated inside the container at startup.
+
+        Cached after the first successful read.  Returns ``None`` if the
+        container is unavailable or the password file is missing (e.g. on a
+        sandbox built from an older image that did not write the file yet).
+        """
+        if self._vnc_password is not None:
+            return self._vnc_password
+        if self._container is None:
+            return None
+        try:
+            exit_code, output = self._container.exec_run(
+                ["/bin/cat", "/tmp/.vnc_password"],
+            )
+        except Exception:
+            return None
+        if exit_code != 0 or not output:
+            return None
+        password = output.decode("utf-8", errors="replace").strip()
+        if not password:
+            return None
+        self._vnc_password = password
+        return password
 
     async def get_status(self) -> SandboxStatus:
         if self._container is None:
@@ -381,6 +418,23 @@ class DockerSandbox(Sandbox):
                 security_opt=["no-new-privileges"],
                 cap_drop=["ALL"],
                 cap_add=["CHOWN", "SETUID", "SETGID", "DAC_OVERRIDE", "FOWNER"],
+                # Hardening: rootfs is read-only; writable surfaces are
+                # limited to the bind-mounted /workspace and the tmpfs paths
+                # below. Processes inside the container can read/write all of
+                # them normally via in-container syscalls.
+                #
+                # IMPORTANT for any code that uploads files into the sandbox
+                # via Docker's put_archive API (sandbox.write_file /
+                # upload_file / write_files / extract_archive): stage uploads
+                # under /workspace, NOT /tmp or any other tmpfs path. The
+                # Docker daemon rejects put_archive against ANY destination
+                # outside the writable bind-mount on a read-only-rootfs
+                # container with "container rootfs is marked read-only" — even
+                # when the destination resolves to a tmpfs mount that
+                # in-container writes succeed against (moby/moby#42333). The
+                # only safe destination for host-mediated uploads is
+                # /workspace. This is also surfaced to the agent in the
+                # "Sandbox filesystem" section of the system prompt.
                 read_only=True,
                 tmpfs={
                     "/tmp": "size=512m",
@@ -544,9 +598,68 @@ class DockerSandbox(Sandbox):
             try:
                 container.start()
             except APIError as e:
-                raise SandboxNotInitializedError(
-                    f"Cannot restart sandbox {sandbox_id}: {e.explanation or e}"
+                # Fail-fast on unrecoverable conditions (missing bridge
+                # network after host/Docker reboot is the common case).
+                # Raising SandboxNotFoundException signals callers to
+                # treat the sandbox as gone so a fresh one is created
+                # rather than retrying doomed restarts forever.
+                detail = str(e.explanation or e)
+                unrecoverable = any(
+                    token in detail.lower()
+                    for token in (
+                        "network",
+                        "not found",
+                        "no such",
+                        "endpoint",
+                    )
                 )
+                # Best-effort DB reconciliation: mark the row DELETED so
+                # the next init creates a fresh sandbox.
+                if unrecoverable:
+                    try:
+                        import asyncio as _asyncio_docker
+                        from sqlalchemy import select as _select
+
+                        from ii_agent.agents.sandboxes.models import (
+                            AgentSandbox,
+                        )
+                        from ii_agent.agents.sandboxes.types import (
+                            SandboxStatus as _SandboxStatus,
+                        )
+                        from ii_agent.core.db import get_db_session_local as _gdsl
+
+                        async def _mark_deleted(_sid: str) -> None:
+                            try:
+                                import uuid as _uuid
+
+                                async with _gdsl() as _db:
+                                    _res = await _db.execute(
+                                        _select(AgentSandbox).where(
+                                            AgentSandbox.id == _uuid.UUID(_sid)
+                                        )
+                                    )
+                                    _row = _res.scalar_one_or_none()
+                                    if _row and _row.status != _SandboxStatus.DELETED:
+                                        _row.status = _SandboxStatus.DELETED
+                                        _row.pool_state = None
+                                        _row.pool_slot = None
+                                        await _db.commit()
+                            except Exception:
+                                logger.warning(
+                                    f"Failed to mark sandbox {_sid} deleted after unrecoverable start error",
+                                    exc_info=True,
+                                )
+
+                        try:
+                            _loop = _asyncio_docker.get_running_loop()
+                            _loop.create_task(_mark_deleted(str(sandbox_id)))
+                        except RuntimeError:
+                            # No running loop; best-effort only.
+                            pass
+                    except Exception:
+                        pass
+                    raise SandboxNotFoundException(provider_sandbox_id)
+                raise SandboxNotInitializedError(f"Cannot restart sandbox {sandbox_id}: {detail}")
             container.reload()
             needs_readiness_check = True
         else:
@@ -599,34 +712,85 @@ class DockerSandbox(Sandbox):
         except APIError as e:
             raise SandboxOperationError("pause", str(e))
 
-    async def set_timeout(self, timeout_seconds: int) -> None:
+    async def set_timeout(
+        self,
+        timeout_seconds: int,
+        db: "AsyncSession | None" = None,
+    ) -> None:
         """Set or update the sandbox timeout.
 
         R6: Stores the deadline in the DB via ``timeout_at`` column so the
         cleanup loop can enforce it even after a backend restart.  Also keeps
         an in-memory task as a best-effort fast path.
+
+        Two persistence paths:
+
+        - **``db`` provided** (caller is mid-transaction on this sandbox row):
+          UPDATE ``timeout_at`` on the caller's session. No second connection,
+          no commit (caller owns it). Eliminates the row-lock self-deadlock
+          that wedged the asyncpg pool on 2026-04-24 (see
+          docs/design-docs/sandbox-pool-claim-self-deadlock.md).
+
+        - **``db`` is None** (cron jobs, instance creation paths): open a
+          short-lived session, set ``lock_timeout = '5s'`` so any future
+          contention raises ``LockNotAvailable`` rather than wedging, and
+          wrap the whole thing in ``asyncio.wait_for(timeout=10.0)`` as a
+          ceiling backstop on the user-visible session-startup path. If both
+          guards fail, the in-memory timeout task still fires; only the
+          cross-restart durability of ``timeout_at`` is sacrificed.
         """
         if self._timeout_task:
             self._timeout_task.cancel()
 
-        # Persist deadline to DB so it survives restarts
-        try:
-            from ii_agent.agents.sandboxes.models import AgentSandbox
-            from ii_agent.core.db import get_db_session_local
+        deadline = datetime.now(timezone.utc) + timedelta(seconds=timeout_seconds)
 
-            deadline = datetime.now(timezone.utc) + timedelta(seconds=timeout_seconds)
-            async with get_db_session_local() as db:
+        if db is not None:
+            # Same-transaction path: caller owns commit/rollback.
+            try:
+                from ii_agent.agents.sandboxes.models import AgentSandbox
                 from sqlalchemy import select
 
+                sandbox_uuid = uuid.UUID(self.sandbox_id)
                 result = await db.execute(
-                    select(AgentSandbox).where(AgentSandbox.id == uuid.UUID(self.sandbox_id))
+                    select(AgentSandbox).where(AgentSandbox.id == sandbox_uuid)
                 )
                 record = result.scalar_one_or_none()
                 if record:
                     record.timeout_at = deadline
-                    await db.commit()
-        except Exception as e:
-            logger.warning(f"Failed to persist timeout_at for sandbox {self.sandbox_id}: {e}")
+            except Exception as e:
+                logger.warning(
+                    f"Failed to set timeout_at on caller's session for sandbox "
+                    f"{self.sandbox_id}: {e}"
+                )
+        else:
+            # Separate-session path with lock_timeout + wait_for backstops.
+            async def _persist_deadline() -> None:
+                from ii_agent.agents.sandboxes.models import AgentSandbox
+                from ii_agent.core.db import get_db_session_local
+                from sqlalchemy import select, text
+
+                sandbox_uuid = uuid.UUID(self.sandbox_id)
+                async with get_db_session_local() as own_db:
+                    # Backstop: any contention bounded at 5s -> LockNotAvailable.
+                    await own_db.execute(text("SET LOCAL lock_timeout = '5s'"))
+                    result = await own_db.execute(
+                        select(AgentSandbox).where(AgentSandbox.id == sandbox_uuid)
+                    )
+                    record = result.scalar_one_or_none()
+                    if record:
+                        record.timeout_at = deadline
+                        await own_db.commit()
+
+            try:
+                await asyncio.wait_for(_persist_deadline(), timeout=10.0)
+            except asyncio.TimeoutError:
+                logger.warning(
+                    f"Timed out (>10s) persisting timeout_at for sandbox "
+                    f"{self.sandbox_id}; in-memory timeout still active but "
+                    f"deadline will not survive restart"
+                )
+            except Exception as e:
+                logger.warning(f"Failed to persist timeout_at for sandbox {self.sandbox_id}: {e}")
 
         async def _timeout_handler():
             await asyncio.sleep(timeout_seconds)

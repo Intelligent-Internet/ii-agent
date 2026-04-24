@@ -64,6 +64,10 @@ class SandboxTimeoutExtender:
                 logger.warning(f"No sandbox found for session {session.id}")
                 return False
 
+            # NOTE: do NOT pass ``db`` here. The cron shares one session
+            # across an asyncio.gather() batch and never commits inline; the
+            # short-lived self-managed session inside ``set_timeout`` (with
+            # lock_timeout=5s + wait_for=10s backstops) is the correct path.
             await sandbox.set_timeout(timeout_seconds)
 
             logger.info(

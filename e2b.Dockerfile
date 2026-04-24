@@ -88,7 +88,7 @@ RUN curl -fsSL https://code-server.dev/install.sh | sh
 
 # GitHub CLI (gh) — required by the Copilot A2A backend (`gh copilot agent`)
 # Pinned: update gh version when upgrading github-copilot-sdk compatibility.
-ARG GH_CLI_VERSION=2.90.0
+ARG GH_CLI_VERSION=2.91.0
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
   --mount=type=cache,target=/var/lib/apt,sharing=locked \
   curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
@@ -228,8 +228,11 @@ EXPOSE 18100
 
 # Build manifest — written by stack_control.sh at build time.
 # Inspect with: docker exec <container> cat /app/build-manifest.json
-ARG BUILD_MANIFEST='{}'
-RUN printf '%s\n' "$BUILD_MANIFEST" > /app/build-manifest.json
+# Manifest is written to <repo>/build-manifest-sandbox.json by
+# scripts/stack_control.sh before invoking the build (file rather than
+# build-arg avoids Linux ARG_MAX limits on large tracked_files lists).
+ARG MANIFEST_FILE=build-manifest-sandbox.json
+COPY ${MANIFEST_FILE} /app/build-manifest.json
 
 ENTRYPOINT ["/app/entrypoint.sh"]
 CMD ["bash", "/app/start-services.sh"]

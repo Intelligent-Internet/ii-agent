@@ -625,6 +625,12 @@ class SandboxStatusChangedEvent(SandboxEvent):
     status: Literal["starting", "ready", "paused", "terminated", "error"] = "starting"
     vscode_url: str | None = None
     vnc_url: str | None = None
+    # Host-health backpressure flag. True when the integrated host
+    # monitor reports WARN or CRIT (``HostHealthState.is_degraded()``).
+    # Frontends can surface a banner; payload stays backward-compatible
+    # because the field defaults to False.
+    degraded: bool = False
+    host_state: str | None = None
 
 
 # ---------------------------------------------------------------------------

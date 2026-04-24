@@ -7,7 +7,7 @@ import os
 import stat as _stat_mod
 from datetime import datetime, timedelta, timezone
 from functools import wraps
-from typing import IO, Any, AsyncIterator, Dict, List, Literal, Optional
+from typing import IO, TYPE_CHECKING, Any, AsyncIterator, Dict, List, Literal, Optional
 
 from e2b import CommandResult, PtySize, SandboxState
 from e2b.exceptions import (
@@ -50,6 +50,9 @@ from ii_agent.agents.sandboxes.terminal import (
 from ii_agent.agents.sandboxes.types import SandboxProviderType, SandboxStatus
 from ii_agent.core.config.settings import Settings, get_settings
 from ii_agent.core.logger import logger
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 
 def _is_dir_entry(entry: Any) -> bool:
@@ -305,7 +308,15 @@ class E2BSandbox(Sandbox):
             logger.info(f"Paused sandbox {self.sandbox_id} (provider: {self.provider_sandbox_id})")
 
     @e2b_exception_handler
-    async def set_timeout(self, timeout_seconds: int) -> None:
+    async def set_timeout(
+        self,
+        timeout_seconds: int,
+        db: "AsyncSession | None" = None,
+    ) -> None:
+        # E2B does not persist a per-row deadline (the provider tracks its own
+        # timeout), so the ``db`` parameter is accepted for interface parity
+        # with DockerSandbox but not used.
+        del db
         await self.sandbox.set_timeout(timeout=timeout_seconds)
         self.expired_at = self.expired_at + timedelta(seconds=timeout_seconds)
         logger.debug(

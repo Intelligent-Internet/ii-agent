@@ -456,9 +456,8 @@ class A2AInnerLoop:
                     # by a nested path).  Log and move on -- never let
                     # cleanup errors mask the original exception.
                     logger.warning(
-                        "A2A inner loop: compaction lock release raised RuntimeError "
-                        "(session=%s) -- treating as released",
-                        session_uuid,
+                        f"A2A inner loop: compaction lock release raised RuntimeError "
+                        f"(session={session_uuid}) -- treating as released"
                     )
 
     # ------------------------------------------------------------------

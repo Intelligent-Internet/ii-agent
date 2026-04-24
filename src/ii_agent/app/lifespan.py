@@ -139,6 +139,18 @@ def create_lifespan(sio: socketio.AsyncServer):
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # ── Startup ────────────────────────────────────────────────────
 
+        # 0. Observability: raise slow-callback threshold so blocking I/O
+        #    is visible in logs. Default 0.5s; 0 disables.
+        try:
+            import asyncio as _asyncio_obs
+            from ii_agent.core.config.settings import get_settings as _gsettings
+
+            _slow = float(_gsettings().sandbox.event_loop_slow_callback_seconds)
+            if _slow > 0:
+                _asyncio_obs.get_event_loop().slow_callback_duration = _slow
+        except Exception:
+            pass
+
         # 1. Database engine (lazy singleton — ensures connection pool is ready)
         get_engine()
         logger.info("Database engine initialized")
@@ -290,9 +302,40 @@ def create_lifespan(sio: socketio.AsyncServer):
                     )
 
                 # 10. Orphan cleanup background task
-                from ii_agent.agents.sandboxes.orphan_cleanup import start_orphan_cleanup
+                from ii_agent.agents.sandboxes.orphan_cleanup import (
+                    run_once_reconciliation,
+                    start_orphan_cleanup,
+                )
+
+                # 10a. Startup reconciliation sweep: mark stale rows DELETED
+                #      before the WebSocket server starts accepting pings so
+                #      frontends don't trigger a flood of doomed restart
+                #      attempts on sandboxes whose networks/containers are
+                #      gone (e.g. after host reboot).
+                try:
+                    await run_once_reconciliation(_settings)
+                except Exception:
+                    logger.exception("Startup sandbox reconciliation failed (non-fatal)")
 
                 start_orphan_cleanup(_settings)
+
+                # 11. Pre-warmed sandbox pool: bootstrap all N slots in parallel.
+                #     No-op if SANDBOX_PREWARM_POOL_SIZE=0 (default).
+                try:
+                    pool_mgr = getattr(container, "sandbox_pool_manager", None)
+                    if pool_mgr is not None and pool_mgr.enabled:
+                        logger.info(
+                            "Bootstrapping pre-warmed sandbox pool (size=%d, max_age=%ds)",
+                            pool_mgr.pool_size,
+                            pool_mgr.max_age_seconds,
+                        )
+                        # Fire-and-forget: bootstrap can take ~110s per slot.
+                        # We must not block startup.
+                        import asyncio as _asyncio_pool
+
+                        _asyncio_pool.create_task(pool_mgr.bootstrap())
+                except Exception as exc:
+                    logger.warning("Sandbox pool bootstrap skipped: %s", exc)
         except Exception as exc:
             logger.warning("Docker sandbox initialization skipped: %s", exc)
 
@@ -327,6 +370,13 @@ def create_lifespan(sio: socketio.AsyncServer):
             from ii_agent.agents.sandboxes.orphan_cleanup import stop_orphan_cleanup
 
             stop_orphan_cleanup()
+
+            try:
+                from ii_agent.agents.sandboxes.executor import shutdown_docker_executor
+
+                shutdown_docker_executor()
+            except Exception:
+                pass
         except Exception:
             pass
 

@@ -79,13 +79,25 @@ flowchart TD
     SSVC --> SREPO
     SREPO --> PG
 
-    classDef external fill:#5a7a90,stroke:#3e5e74
-    classDef sandbox fill:#4a90d9,stroke:#2c6cb0
-    classDef session fill:#34a870,stroke:#1e8850
+    style External fill:#5a7a9066,stroke:#3e5e748C,stroke-width:2px
+    style Sandbox fill:#4a90d966,stroke:#2c6cb08C,stroke-width:2px
+    style Session fill:#34a87066,stroke:#1e88508C,stroke-width:2px
+
+    classDef external fill:#5a7a90,stroke:#3e5e74,stroke-width:2px
+    classDef sandbox fill:#4a90d9,stroke:#2c6cb0,stroke-width:2px
+    classDef session fill:#34a870,stroke:#1e8850,stroke-width:2px
 
     class Docker,PG external
     class SVC,REPO,CLEANUP,DOCKER,PORT sandbox
     class SSVC,SREPO session
+
+    linkStyle 0,1,2 stroke:#4a90d9,stroke-width:2px
+    linkStyle 3 stroke:#5a7a90,stroke-width:2px
+    linkStyle 4 stroke:#5a7a90,stroke-width:2px
+    linkStyle 5,6 stroke:#4a90d9,stroke-width:2px
+    linkStyle 7 stroke:#34a870,stroke-width:2px
+    linkStyle 8 stroke:#34a870,stroke-width:2px
+    linkStyle 9 stroke:#5a7a90,stroke-width:2px
 ```
 
 ### Resource Budget (Per Sandbox)
@@ -111,28 +123,32 @@ flowchart TD
 
 ```mermaid
 %%{init: {'theme':'base', 'themeVariables': {'fontFamily': 'Arial, sans-serif', 'fontSize': '13px', 'fontWeight': 'normal'}}}%%
-stateDiagram-v2
-    [*] --> INITIALIZING: SandboxService.init_sandbox()
-    INITIALIZING --> RUNNING: DockerProvider.create()
-    RUNNING --> PAUSED: _pause_stale_sandboxes()<br/>after 30min idle
-    PAUSED --> RUNNING: DockerProvider.connect()<br/>user returns
-    RUNNING --> DELETED: kill() on session delete
-    PAUSED --> DELETED: kill() on session delete
-    PAUSED --> RUNNING: init_sandbox()<br/>container gone → new sandbox
-    INITIALIZING --> DELETED: creation failure
+flowchart LR
+    START(("start")) -->|init_sandbox| INIT["INITIALIZING"]
+    INIT -->|create| RUN["RUNNING"]
+    RUN -->|30 min idle| PAU["PAUSED"]
+    PAU -->|connect| RUN
+    PAU -->|container gone| RUN
+    RUN -->|kill| DEL["DELETED"]
+    PAU -->|kill| DEL
+    INIT -->|create failure| DEL
 
-    note right of PAUSED
-        Container stopped but preserved.
-        Named volume retained.
-        Ports released.
-    end note
+    PAU -.->|stopped + volume kept| PAUNOTE["Ports released<br/>Volume retained"]
+    DEL -.->|soft delete| DELNOTE["Container removed<br/>Volume removed<br/>DB record kept"]
 
-    note right of DELETED
-        Container removed.
-        Named volume removed.
-        Ports released.
-        DB record kept (soft delete).
-    end note
+    classDef state fill:#5888a8,stroke:#3c6c90,stroke-width:2px
+    classDef terminal fill:#b07070,stroke:#944c4c,stroke-width:2px
+    classDef note fill:#c49858,stroke:#a87c3c,stroke-width:1px
+    classDef entry fill:#58a888,stroke:#3c906c,stroke-width:2px
+
+    class INIT,RUN,PAU state
+    class DEL terminal
+    class PAUNOTE,DELNOTE note
+    class START entry
+
+    linkStyle 0,1,2,3,4 stroke:#34a870,stroke-width:2px
+    linkStyle 5,6,7 stroke:#d06050,stroke-width:2px
+    linkStyle 8,9 stroke:#8a8a8a,stroke-width:1px,stroke-dasharray:3 3
 ```
 
 ### Key Transitions
@@ -164,73 +180,60 @@ R5 moved the sleep to the end of the loop body so the first sweep runs immediate
 ```mermaid
 %%{init: {'theme':'base', 'themeVariables': {'fontFamily': 'Arial, sans-serif', 'fontSize': '13px', 'fontWeight': 'normal'}}}%%
 flowchart TD
-    START["Loop start<br/>(R5: cleanup runs FIRST)"] --> S1
+    START(["Loop start (R5)"]) --> S1
 
-    subgraph S1["Stage 1: _soft_delete_expired_sessions"]
-        S1A["Query sessions WHERE<br/>delete_after ≤ now()<br/>AND is_deleted = false"]
-        S1B["Set is_deleted = true"]
-        S1A --> S1B
+    subgraph S1["Stage 1: soft delete expired"]
+        S1A["Query expired sessions"] --> S1B["Set is_deleted = true"]
     end
 
-    S1 --> S2
-
-    subgraph S2["Stage 2: _cleanup_orphans  ✓ R1+R2"]
-        S2A["Phase 1: Read candidates<br/>(single DB session)"]
-        S2B["Phase 2: Per-sandbox<br/>DB session (R2)"]
-        S2C["docker containers.get()"]
-        S2D["docker container.kill()"]
-        S2E["Mark sandbox DELETED<br/>only if confirmed (R1)"]
-        S2A --> S2B --> S2C
-        S2C -->|"found"| S2D --> S2E
-        S2C -->|"NotFound"| S2E
-        S2C -->|"timeout/error"| S2F["Skip — retry next sweep"]
+    subgraph S2["Stage 2: cleanup orphans (R1+R2)"]
+        S2A["Phase 1: read candidates"] --> S2B["Phase 2: per-sandbox DB session"]
+        S2B --> S2C{"containers.get()"}
+        S2C -->|found| S2D["container.kill()"]
+        S2D --> S2E["Mark DELETED if confirmed"]
+        S2C -->|NotFound| S2E
+        S2C -->|timeout/error| S2F["Skip — retry next sweep"]
     end
 
-    S2 --> S3
-
-    subgraph S3["Stage 3: _pause_stale_sandboxes"]
-        S3A["Query RUNNING sandboxes<br/>idle > 30 min"]
-        S3B["docker container.stop()"]
-        S3C["Mark sandbox PAUSED"]
-        S3A --> S3B --> S3C
+    subgraph S3["Stage 3: pause stale"]
+        S3A["RUNNING idle > 30 min"] --> S3B["container.stop()"]
+        S3B --> S3C["Mark PAUSED"]
     end
 
-    S3 --> S4
-
-    subgraph S4["Stage 4: _cleanup_docker_zombies  ✓ R4"]
-        S4A["docker containers.list()<br/>(120s timeout — R4)"]
-        S4B["Cross-ref with DB records"]
-        S4C["Remove containers with<br/>no matching DB record"]
-        S4A --> S4B --> S4C
+    subgraph S4["Stage 4: cleanup zombies (R4)"]
+        S4A["containers.list() 120s"] --> S4B["Cross-ref DB records"]
+        S4B --> S4C["Remove unmatched containers"]
     end
 
-    S4 --> S5
-
-    subgraph S5["Stage 5: _cleanup_orphaned_volumes  ✓ R9"]
-        S5A["docker volumes.list()<br/>(ii-sandbox-workspace-* prefix)"]
-        S5B["Cross-ref with active DB<br/>records AND containers"]
-        S5C["Remove orphaned volumes"]
-        S5A --> S5B --> S5C
+    subgraph S5["Stage 5: orphaned volumes (R9)"]
+        S5A["volumes.list() prefix filter"] --> S5B["Cross-ref DB + containers"]
+        S5B --> S5C["Remove orphaned volumes"]
     end
 
-    S5 --> S6
-
-    subgraph S6["Stage 6: _kill_timed_out_sandboxes  ✓ R6"]
-        S6A["Query sandboxes WHERE<br/>timeout_at ≤ now()"]
-        S6B["docker container.stop()"]
-        S6C["Mark sandbox PAUSED<br/>+ clear timeout_at"]
-        S6A --> S6B --> S6C
+    subgraph S6["Stage 6: timed-out sandboxes (R6)"]
+        S6A["timeout_at <= now()"] --> S6B["container.stop()"]
+        S6B --> S6C["Mark PAUSED, clear timeout"]
     end
 
-    S6 --> SLEEP["await asyncio.sleep(interval)<br/>(R5: sleep at END)"]
+    S1 --> S2 --> S3 --> S4 --> S5 --> S6
+    S6 --> SLEEP(["asyncio.sleep(interval)"])
     SLEEP --> S1
 
-    classDef fixed fill:#34a870,stroke:#1e8850
-    classDef normal fill:#4a90d9,stroke:#2c6cb0
-    classDef sleep fill:#e8a838,stroke:#c08828
+    style S1 fill:#4a90d966,stroke:#2c6cb08C,stroke-width:2px
+    style S2 fill:#34a87066,stroke:#1e88508C,stroke-width:2px
+    style S3 fill:#4a90d966,stroke:#2c6cb08C,stroke-width:2px
+    style S4 fill:#34a87066,stroke:#1e88508C,stroke-width:2px
+    style S5 fill:#34a87066,stroke:#1e88508C,stroke-width:2px
+    style S6 fill:#34a87066,stroke:#1e88508C,stroke-width:2px
 
-    class S2,S4,S5,S6 fixed
-    class S1,S3 normal
+    classDef fixed fill:#34a870,stroke:#1e8850,stroke-width:2px
+    classDef normal fill:#4a90d9,stroke:#2c6cb0,stroke-width:2px
+    classDef sleep fill:#e8a838,stroke:#c08828,stroke-width:2px
+    classDef skip fill:#b07070,stroke:#944c4c,stroke-width:2px
+
+    class S1A,S1B,S3A,S3B,S3C normal
+    class S2A,S2B,S2C,S2D,S2E,S4A,S4B,S4C,S5A,S5B,S5C,S6A,S6B,S6C fixed
+    class S2F skip
     class START,SLEEP sleep
 ```
 
@@ -432,21 +435,31 @@ The P0-A bug creates a positive feedback loop that amplifies container accumulat
 ```mermaid
 %%{init: {'theme':'base', 'themeVariables': {'fontFamily': 'Arial, sans-serif', 'fontSize': '13px', 'fontWeight': 'normal'}}}%%
 flowchart TD
-    A["Container count increases"] --> B["Docker API latency increases"]
-    B --> C["containers.get() times out<br/>in _cleanup_orphans"]
-    C --> D["P0-A: DB record marked DELETED<br/>but container NOT removed"]
-    D --> E["Container now invisible<br/>to all future cleanup sweeps"]
+    A["Container count rises"] --> B["Docker API latency rises"]
+    B --> C["containers.get() timeout<br/>in _cleanup_orphans"]
+    C --> D["P0-A: DB marked DELETED<br/>container NOT removed"]
+    D --> E["Container invisible<br/>to all future sweeps"]
     E --> A
 
-    F["containers.list() times out<br/>in _cleanup_docker_zombies"] --> G["P1-A: Zombie sweep<br/>returns 0 containers"]
+    B --> F["containers.list() timeout<br/>in _cleanup_docker_zombies"]
+    F --> G["P1-A: Zombie sweep<br/>returns 0"]
     G --> E
-    B --> F
 
-    classDef danger fill:#d06050,stroke:#a84838
-    classDef warn fill:#e8a838,stroke:#c08828
+    classDef normal fill:#5888a8,stroke:#3c6c90,stroke-width:2px
+    classDef warn fill:#e8a838,stroke:#c08828,stroke-width:2px
+    classDef danger fill:#d06050,stroke:#a84838,stroke-width:2px
 
-    class D,G danger
+    class A,B,E normal
     class C,F warn
+    class D,G danger
+
+    linkStyle 0,1 stroke:#4a90d9,stroke-width:2px
+    linkStyle 2 stroke:#d06050,stroke-width:2px
+    linkStyle 3 stroke:#d06050,stroke-width:2px,stroke-dasharray:5 5
+    linkStyle 4 stroke:#d06050,stroke-width:3px
+    linkStyle 5 stroke:#e8a838,stroke-width:2px
+    linkStyle 6 stroke:#d06050,stroke-width:2px
+    linkStyle 7 stroke:#d06050,stroke-width:2px,stroke-dasharray:5 5
 ```
 
 **Loop mechanics:**

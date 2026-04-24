@@ -113,13 +113,21 @@ export const fetchProjects = createAsyncThunk(
     }
 )
 
-// Fetch ALL remaining project pages in one go (100 per batch, max backend allows)
+// Fetch ALL remaining project pages in one go.
+//
+// IMPORTANT: the backend computes offset = (page - 1) * per_page, so the
+// `limit` used here MUST match the `limit` used by the initial fetch and the
+// infinite-scroll loader (both use state.sessions.limit, default 20).
+// Using a larger batchLimit here would jump the offset past already-loaded
+// rows and silently skip every session beyond the first page. (Bug history:
+// hardcoding batchLimit=100 caused all sessions past position 20 to vanish
+// from the sidebar after clicking "Load all projects".)
 export const fetchAllRemainingProjects = createAsyncThunk(
     'sessions/fetchAllRemainingProjects',
     async (_, { getState }) => {
         const state = getState() as { sessions: SessionsState }
+        const batchLimit = state.sessions.limit
         let currentPage = state.sessions.projects.page
-        const batchLimit = 100
         const allSessions: ISession[] = []
 
         // eslint-disable-next-line no-constant-condition

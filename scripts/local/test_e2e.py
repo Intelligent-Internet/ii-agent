@@ -159,6 +159,9 @@ Automated E2E test suite for ii-agent with 32+ tests across 11 categories:
   • Chat History (HIST): Message persistence
   • Council Mode (CNCL): Parallel execution, billing, validation
   • A2A Backend (A2A): Config, chat/agent routing, council integration
+  • Sandbox Lifecycle (SBOX): R1-R9 cleanup fixes, semaphore wiring
+  • Sandbox Pool Health (POOL): Fix A self-heal, /health/sandbox-pool, claim/replenish
+  • Backend Host Monitor (HOST): /health/host, status JSON modules.backend
 
 OPTIONS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -178,7 +181,7 @@ OPTIONS
   --category CAT[,CAT...]      Run all tests in one or more categories
                                Examples: --category CHAT
                                          --category CHAT,IMG,CODE
-                               Valid: INF, CHAT, IMG, WEB, CODE, SESS, AGEN, XFEAT, HIST, CNCL, A2A
+                               Valid: INF, CHAT, IMG, WEB, CODE, SESS, AGEN, XFEAT, HIST, CNCL, A2A, SBOX, POOL, HOST
 
 ENVIRONMENT VARIABLES (Legacy Support)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1171,7 +1174,7 @@ async def test_img_chat_attachment() -> TestResult:
 
         # Turn 2 — same session, NO re-upload, ask about the image again
         r2 = await chat_sse_request(
-            "Without me re-uploading the image, look at the image from my previous message. "
+            "Without me re-uploading the image, take a fresh look at the image from my previous message. "
             "What color is on the LEFT side and what color is on the RIGHT side of the gradient?",
             model_id=ANTHROPIC_MODEL_ID,
             session_id=session_id,
@@ -1262,7 +1265,7 @@ async def test_img_agent_attachment() -> TestResult:
 
         # Turn 2 — same session, NO re-upload, ask about the image again
         r2 = await agent_query(
-            "Without me re-uploading the image, look at the image from my previous message. "
+            "Without me re-uploading the image, take a fresh look at the image from my previous message. "
             "What color is on the LEFT side and what color is on the RIGHT side of the gradient?",
             session_id=sid,
             timeout=TIMEOUT_AGENT,
@@ -2485,26 +2488,573 @@ async def test_sbox_timeout_at_persisted() -> TestResult:
     return t
 
 
-async def test_sbox_cleanup_loop_running() -> TestResult:
-    """SBOX-05: Orphan cleanup loop is running (6 stages)."""
-    t = TestResult("SBOX-05", "Cleanup loop active (6 stages)")
+async def test_sbox_concurrent_create_semaphore() -> TestResult:
+    """SBOX-06: Concurrent-create semaphore is wired and configured.
+
+    Phase 1 of the 2026-04-23 sandbox-robustness work caps parallel
+    ``docker.containers.run()`` calls behind a module-level
+    ``asyncio.Semaphore`` so veth/bridge allocation bursts cannot
+    fragment the kernel's high-order page pool.
+
+    This test verifies the gate is present in the running backend:
+
+    1. ``sandbox_concurrent_create_limit`` attribute exists on the
+       loaded config with a sane default (>= 1).
+    2. ``_get_create_semaphore`` + ``_CREATE_SEMAPHORE_LIMIT`` symbols
+       are importable from ``ii_agent.agents.sandboxes.service``.
+    3. ``sandbox_create_wait_log_threshold_ms`` is present.
+
+    A live burst-of-creates test should be added once Phase 2 (host
+    monitor) is shipped so that it can be gated by host health.
+    """
+    t = TestResult("SBOX-06", "Concurrent-create semaphore wired")
     start = time.monotonic()
     try:
-        logs = await get_backend_logs_since(300)
-        # The cleanup loop logs a summary after each sweep when anything changed
-        # Even if nothing changed, it runs silently — check for startup log
-        if "Orphan cleanup started" in logs or "Orphan cleanup sweep" in logs:
-            t.status = TestStatus.PASS
-            t.notes = "Orphan cleanup loop confirmed active in backend logs"
+        proc = await asyncio.create_subprocess_exec(
+            "docker",
+            "exec",
+            "ii-agent-local-backend-1",
+            "python",
+            "-c",
+            (
+                "from ii_agent.core.config import Settings; "
+                "from ii_agent.agents.sandboxes.service import "
+                "_get_create_semaphore, _CREATE_SEMAPHORE_LIMIT; "
+                "c = Settings().sandbox; "
+                "print('limit=' + str(c.sandbox_concurrent_create_limit)); "
+                "print('threshold_ms=' + str(c.sandbox_create_wait_log_threshold_ms)); "
+                "print('OK')"
+            ),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout_bytes, stderr_bytes = await proc.communicate()
+        stdout = stdout_bytes.decode()
+        stderr = stderr_bytes.decode()
+        if proc.returncode != 0 or "OK" not in stdout:
+            t.status = TestStatus.FAIL
+            t.notes = f"rc={proc.returncode} stdout={stdout[:200]!r} stderr={stderr[:200]!r}"
         else:
-            # It may just be running silently because nothing needs cleanup
-            # Check for any orphan-related log
-            if "orphan" in logs.lower() or "cleanup" in logs.lower():
-                t.status = TestStatus.PASS
-                t.notes = "Cleanup-related activity detected in logs"
+            # Use regex to be robust against log interleaving / ANSI codes
+            import re as _re
+            m_limit = _re.search(r"limit=(\d+)", stdout)
+            m_thresh = _re.search(r"threshold_ms=(\d+)", stdout)
+            limit_val = int(m_limit.group(1)) if m_limit else -1
+            thresh_val = int(m_thresh.group(1)) if m_thresh else -1
+            if limit_val < 1:
+                t.status = TestStatus.FAIL
+                t.notes = (
+                    f"sandbox_concurrent_create_limit={limit_val} (expected >= 1)"
+                )
+            elif thresh_val < 0:
+                t.status = TestStatus.FAIL
+                t.notes = (
+                    f"sandbox_create_wait_log_threshold_ms={thresh_val} (expected >= 0)"
+                )
             else:
                 t.status = TestStatus.PASS
-                t.notes = "No cleanup logs (expected when system is clean). Loop assumed active."
+                t.notes = (
+                    f"limit={limit_val}, wait_log_threshold_ms={thresh_val}, "
+                    "semaphore symbols importable"
+                )
+    except Exception as e:
+        t.status = TestStatus.ERROR
+        t.notes = str(e)[:300]
+    t.elapsed = time.monotonic() - start
+    return t
+
+
+async def test_sbox_cleanup_loop_running() -> TestResult:
+    """SBOX-05: Orphan cleanup loop is running (host monitor or pool sweeps logged)."""
+    t = TestResult("SBOX-05", "Cleanup loop active (6 stages + host monitor)")
+    start = time.monotonic()
+    try:
+        # Look back 180s. The host-monitor phase fires every cleanup sweep
+        # (60s by default) and logs "host_monitor:" on every state
+        # transition or every Nth sample, so within 3 minutes we expect
+        # at least one of: host_monitor / Sandbox pool / Orphan cleanup.
+        # An empty log set is now a regression — every sweep emits at
+        # least the host-monitor sample summary (Phase 2).
+        logs = await get_backend_logs_since(180)
+        markers = [
+            "Orphan cleanup",
+            "host_monitor",
+            "Sandbox pool",
+            "cleanup sweep",
+        ]
+        hits = [m for m in markers if m.lower() in logs.lower()]
+        if hits:
+            t.status = TestStatus.PASS
+            t.notes = f"Cleanup loop active (markers seen: {', '.join(hits)})"
+        else:
+            t.status = TestStatus.FAIL
+            t.notes = (
+                "No cleanup-loop activity in 180s of backend logs — host monitor "
+                "phase should emit at least one sample summary per minute. "
+                "Check that orphan_cleanup task started in lifespan."
+            )
+    except Exception as e:
+        t.status = TestStatus.ERROR
+        t.notes = str(e)[:300]
+    t.elapsed = time.monotonic() - start
+    return t
+
+
+# --- Category: Sandbox Pool Health (POOL) ---
+# Validate the pre-warmed sandbox pool surface added with Fix A:
+# /health/sandbox-pool, claim/replenish cycle, stuck-INITIALIZING reap,
+# and stack_control.sh JSON exposure.
+
+
+_POOL_REQUIRED_KEYS = {
+    "available",
+    "enabled",
+    "configured",
+    "ready",
+    "initializing",
+    "initializing_age_max_seconds",
+    "stuck_initializing",
+    "claimed",
+    "retiring",
+    "stuck_threshold_seconds",
+}
+
+
+async def _fetch_pool_health() -> dict | None:
+    """Return /health/sandbox-pool JSON or None on transport failure."""
+    try:
+        async with httpx.AsyncClient(base_url=BACKEND_URL, timeout=10.0) as client:
+            resp = await client.get("/health/sandbox-pool")
+            if resp.status_code != 200:
+                return None
+            return resp.json()
+    except Exception:
+        return None
+
+
+async def test_pool_health_shape() -> TestResult:
+    """POOL-01: /health/sandbox-pool returns a stable JSON shape."""
+    t = TestResult("POOL-01", "/health/sandbox-pool shape")
+    start = time.monotonic()
+    try:
+        snap = await _fetch_pool_health()
+        if snap is None:
+            t.status = TestStatus.ERROR
+            t.notes = "Failed to fetch /health/sandbox-pool"
+        else:
+            missing = _POOL_REQUIRED_KEYS - set(snap.keys())
+            if missing:
+                t.status = TestStatus.FAIL
+                t.notes = f"Missing keys: {sorted(missing)}"
+            elif not snap.get("available"):
+                t.status = TestStatus.FAIL
+                t.notes = f"available=false reason={snap.get('reason')!r}"
+            elif snap.get("stuck_threshold_seconds") != 600:
+                t.status = TestStatus.FAIL
+                t.notes = (
+                    f"stuck_threshold_seconds={snap.get('stuck_threshold_seconds')} "
+                    "(expected 600)"
+                )
+            else:
+                t.status = TestStatus.PASS
+                t.notes = (
+                    f"configured={snap.get('configured')} "
+                    f"ready={snap.get('ready')} "
+                    f"stuck_initializing={snap.get('stuck_initializing')}"
+                )
+    except Exception as e:
+        t.status = TestStatus.ERROR
+        t.notes = str(e)[:300]
+    t.elapsed = time.monotonic() - start
+    return t
+
+
+async def test_pool_status_json_module() -> TestResult:
+    """POOL-02: stack_control.sh status --json exposes modules.pool with verdict OK."""
+    t = TestResult("POOL-02", "stack_control.sh status --json modules.pool")
+    start = time.monotonic()
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "./scripts/stack_control.sh",
+            "status",
+            "--json",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout_bytes, stderr_bytes = await proc.communicate()
+        if proc.returncode != 0:
+            t.status = TestStatus.ERROR
+            t.notes = f"status --json exit={proc.returncode} stderr={stderr_bytes.decode()[:200]}"
+            t.elapsed = time.monotonic() - start
+            return t
+        try:
+            payload = json.loads(stdout_bytes.decode())
+        except json.JSONDecodeError as exc:
+            t.status = TestStatus.FAIL
+            t.notes = f"status --json output not parseable: {exc}"
+            t.elapsed = time.monotonic() - start
+            return t
+        pool = (payload.get("modules") or {}).get("pool")
+        if pool is None:
+            t.status = TestStatus.FAIL
+            t.notes = "modules.pool missing from status --json output"
+        elif not pool.get("reachable"):
+            t.status = TestStatus.FAIL
+            t.notes = f"modules.pool.reachable=false: {pool!r}"
+        elif pool.get("verdict") not in {"OK", "WATCH"}:
+            t.status = TestStatus.FAIL
+            t.notes = (
+                f"modules.pool.verdict={pool.get('verdict')!r} "
+                f"(expected OK or WATCH; pool={pool!r})"
+            )
+        else:
+            t.status = TestStatus.PASS
+            t.notes = (
+                f"verdict={pool.get('verdict')} "
+                f"configured={pool.get('configured')} ready={pool.get('ready')}"
+            )
+    except Exception as e:
+        t.status = TestStatus.ERROR
+        t.notes = str(e)[:300]
+    t.elapsed = time.monotonic() - start
+    return t
+
+
+async def test_pool_claim_replenish() -> TestResult:
+    """POOL-03: A chat query consumes a slot then the pool replenishes back to ready.
+
+    Skipped when the pool is disabled (configured=0).
+    """
+    t = TestResult("POOL-03", "Claim → replenish cycle")
+    start = time.monotonic()
+    try:
+        before = await _fetch_pool_health()
+        if before is None or not before.get("available"):
+            t.status = TestStatus.ERROR
+            t.notes = "Could not read pool snapshot before query"
+            t.elapsed = time.monotonic() - start
+            return t
+        if not before.get("enabled") or before.get("configured", 0) == 0:
+            t.status = TestStatus.SKIP
+            t.notes = "Pool disabled (configured=0); claim/replenish not applicable"
+            t.elapsed = time.monotonic() - start
+            return t
+
+        configured = int(before["configured"])
+        ready_before = int(before.get("ready") or 0)
+        if ready_before == 0:
+            t.status = TestStatus.SKIP
+            t.notes = (
+                f"Pool not warm (ready=0/{configured}) — replenishment cycle "
+                "cannot be observed; rerun once ready >= 1"
+            )
+            t.elapsed = time.monotonic() - start
+            return t
+
+        # Fire a single agent query — claims one pool slot.
+        result = await agent_query(
+            "Reply with exactly the word: ok",
+            timeout=120,
+        )
+        # Whether the query succeeded or not, claim happened on session start;
+        # keep going so we still observe the replenish behaviour.
+        sid = result.get("session_id")
+
+        # Poll up to 240s: the replenish run takes ~90-120s for a fresh
+        # container. We allow a buffer for slow Docker startup.
+        deadline = time.monotonic() + 240
+        recovered = False
+        last_snap: dict | None = None
+        while time.monotonic() < deadline:
+            await asyncio.sleep(10)
+            snap = await _fetch_pool_health()
+            if snap is None:
+                continue
+            last_snap = snap
+            if int(snap.get("ready") or 0) >= ready_before:
+                recovered = True
+                break
+
+        if recovered:
+            t.status = TestStatus.PASS
+            t.notes = (
+                f"Pool recovered to ready>={ready_before}/{configured} after claim "
+                f"(session={sid})"
+            )
+        else:
+            t.status = TestStatus.FAIL
+            t.notes = (
+                f"Pool did not recover to ready={ready_before}/{configured} "
+                f"within 240s; last snapshot={last_snap!r}"
+            )
+    except Exception as e:
+        t.status = TestStatus.ERROR
+        t.notes = str(e)[:300]
+    t.elapsed = time.monotonic() - start
+    return t
+
+
+async def test_pool_stuck_init_reap() -> TestResult:
+    """POOL-04: Inject a stuck INITIALIZING pool row; verify reap on next sweep.
+
+    Inserts a synthetic ``pool_state=available, status=initializing,
+    created_at=NOW() - 11h`` row directly via psql, waits for the orphan
+    cleanup loop, then asserts ``stuck_initializing`` returns to its
+    pre-injection value.
+    """
+    t = TestResult("POOL-04", "Stuck-INITIALIZING reap (Fix A)")
+    start = time.monotonic()
+    try:
+        before = await _fetch_pool_health()
+        if before is None or not before.get("available"):
+            t.status = TestStatus.ERROR
+            t.notes = "Could not read pool snapshot before injection"
+            t.elapsed = time.monotonic() - start
+            return t
+        if not before.get("enabled") or int(before.get("configured", 0)) == 0:
+            t.status = TestStatus.SKIP
+            t.notes = "Pool disabled; reap path not applicable"
+            t.elapsed = time.monotonic() - start
+            return t
+
+        baseline_stuck = int(before.get("stuck_initializing") or 0)
+
+        # Pick a slot index that is unlikely to clash with existing rows.
+        # Use a high slot value (configured + 99) to avoid replenishment
+        # races with real slots; the reaper is slot-agnostic.
+        configured = int(before["configured"])
+        slot = configured + 99
+        inject_sql = (
+            "INSERT INTO agent_sandboxes "
+            "(id, session_id, provider, status, pool_state, pool_slot, created_at, updated_at) "
+            "VALUES (gen_random_uuid(), NULL, 'docker', 'initializing', 'available', "
+            f"{slot}, NOW() - INTERVAL '11 hours', NOW() - INTERVAL '11 hours') "
+            "RETURNING id;"
+        )
+        proc = await asyncio.create_subprocess_exec(
+            "docker",
+            "exec",
+            "ii-agent-local-postgres-1",
+            "psql",
+            "-U",
+            "iiagent",
+            "-d",
+            "iiagentdev",
+            "-t",
+            "-A",
+            "-c",
+            inject_sql,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout_bytes, stderr_bytes = await proc.communicate()
+        # psql -t -A appends "INSERT 0 1" on a separate line; the row id
+        # is the first line of stdout.
+        first_line = stdout_bytes.decode().splitlines()[0].strip() if stdout_bytes else ""
+        injected_id = first_line
+        if proc.returncode != 0 or not injected_id:
+            t.status = TestStatus.ERROR
+            t.notes = (
+                f"Failed to inject row (rc={proc.returncode}): "
+                f"{stderr_bytes.decode()[:200]}"
+            )
+            t.elapsed = time.monotonic() - start
+            return t
+
+        # Confirm injection bumps stuck_initializing.
+        after_inject = await _fetch_pool_health()
+        seen_bumped = (
+            after_inject is not None
+            and int(after_inject.get("stuck_initializing") or 0) > baseline_stuck
+        )
+
+        # Wait for two cleanup sweeps (60s each). Reap fires at the start
+        # of bootstrap or ensure_full and on its own dedicated phase.
+        # 180s gives two full sweeps + slack.
+        deadline = time.monotonic() + 180
+        reaped = False
+        last_snap: dict | None = None
+        while time.monotonic() < deadline:
+            await asyncio.sleep(15)
+            snap = await _fetch_pool_health()
+            if snap is None:
+                continue
+            last_snap = snap
+            if int(snap.get("stuck_initializing") or 0) <= baseline_stuck:
+                reaped = True
+                break
+
+        # Belt & braces: confirm the injected row is now status=deleted.
+        verify_proc = await asyncio.create_subprocess_exec(
+            "docker",
+            "exec",
+            "ii-agent-local-postgres-1",
+            "psql",
+            "-U",
+            "iiagent",
+            "-d",
+            "iiagentdev",
+            "-t",
+            "-A",
+            "-c",
+            f"SELECT status FROM agent_sandboxes WHERE id = '{injected_id}';",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        v_stdout, _ = await verify_proc.communicate()
+        row_status = v_stdout.decode().strip()
+
+        if reaped and row_status == "deleted":
+            t.status = TestStatus.PASS
+            t.notes = (
+                f"Reaped stuck row {injected_id} (slot={slot}) — "
+                f"snapshot.stuck_initializing back to {baseline_stuck}, row status=deleted"
+                + ("" if seen_bumped else " (note: bump window not observed)")
+            )
+        elif reaped:
+            t.status = TestStatus.FAIL
+            t.notes = (
+                f"Snapshot recovered but row {injected_id} status={row_status!r} "
+                "(expected 'deleted')"
+            )
+        else:
+            t.status = TestStatus.FAIL
+            t.notes = (
+                f"stuck_initializing did not return to {baseline_stuck} within 180s; "
+                f"last={last_snap!r} row_status={row_status!r}"
+            )
+    except Exception as e:
+        t.status = TestStatus.ERROR
+        t.notes = str(e)[:300]
+    t.elapsed = time.monotonic() - start
+    return t
+
+
+# --- Category: Backend Host Monitor (HOST) ---
+# Surface added with Phase 6.c: /health/host exposes the integrated
+# host-monitor's 5-state verdict and ring-buffer warmth.
+
+
+_HOST_REQUIRED_KEYS = {
+    "state",
+    "state_code",
+    "captured_at",
+    "buddyinfo",
+    "p99_docker_call_ms",
+    "docker_call_timeout_total",
+    "meminfo",
+    "vmstat",
+    "baseline_window_samples",
+    "baseline_window_capacity",
+    "baseline_warm",
+}
+
+_VALID_HOST_STATES = {"BOOTSTRAP", "OK", "WATCH", "WARN", "CRIT"}
+
+
+async def test_host_health_shape() -> TestResult:
+    """HOST-01: /health/host returns a stable JSON shape."""
+    t = TestResult("HOST-01", "/health/host shape")
+    start = time.monotonic()
+    try:
+        async with httpx.AsyncClient(base_url=BACKEND_URL, timeout=10.0) as client:
+            resp = await client.get("/health/host")
+            if resp.status_code != 200:
+                t.status = TestStatus.ERROR
+                t.notes = f"HTTP {resp.status_code}"
+                t.elapsed = time.monotonic() - start
+                return t
+            body = resp.json()
+        missing = _HOST_REQUIRED_KEYS - set(body.keys())
+        if missing:
+            t.status = TestStatus.FAIL
+            t.notes = f"Missing keys: {sorted(missing)}"
+        elif body.get("state") not in _VALID_HOST_STATES:
+            t.status = TestStatus.FAIL
+            t.notes = f"Invalid state={body.get('state')!r}"
+        elif not isinstance(body.get("state_code"), int):
+            t.status = TestStatus.FAIL
+            t.notes = f"state_code not int: {body.get('state_code')!r}"
+        elif body.get("baseline_window_capacity", 0) <= 0:
+            t.status = TestStatus.FAIL
+            t.notes = (
+                f"baseline_window_capacity={body.get('baseline_window_capacity')} "
+                "(expected > 0)"
+            )
+        else:
+            buddy = body.get("buddyinfo") or {}
+            orders = (buddy.get("orders") or {}) if isinstance(buddy, dict) else {}
+            # When state != BOOTSTRAP we expect orders 4..10 to be populated.
+            if body["state"] != "BOOTSTRAP":
+                expected_orders = {str(i) for i in range(4, 11)}
+                if not expected_orders.issubset(set(orders.keys())):
+                    t.status = TestStatus.FAIL
+                    t.notes = (
+                        f"buddyinfo.orders keys={sorted(orders.keys())} "
+                        f"(expected superset of {sorted(expected_orders)})"
+                    )
+                else:
+                    t.status = TestStatus.PASS
+                    t.notes = (
+                        f"state={body['state']} samples="
+                        f"{body.get('baseline_window_samples')}/"
+                        f"{body.get('baseline_window_capacity')} "
+                        f"warm={body.get('baseline_warm')}"
+                    )
+            else:
+                t.status = TestStatus.PASS
+                t.notes = "state=BOOTSTRAP (baseline still warming)"
+    except Exception as e:
+        t.status = TestStatus.ERROR
+        t.notes = str(e)[:300]
+    t.elapsed = time.monotonic() - start
+    return t
+
+
+async def test_host_status_json_module() -> TestResult:
+    """HOST-02: stack_control.sh status --json exposes modules.backend with state."""
+    t = TestResult("HOST-02", "stack_control.sh status --json modules.backend")
+    start = time.monotonic()
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "./scripts/stack_control.sh",
+            "status",
+            "--json",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout_bytes, _ = await proc.communicate()
+        if proc.returncode != 0:
+            t.status = TestStatus.ERROR
+            t.notes = f"status --json exit={proc.returncode}"
+            t.elapsed = time.monotonic() - start
+            return t
+        try:
+            payload = json.loads(stdout_bytes.decode())
+        except json.JSONDecodeError as exc:
+            t.status = TestStatus.FAIL
+            t.notes = f"unparseable JSON: {exc}"
+            t.elapsed = time.monotonic() - start
+            return t
+        backend = (payload.get("modules") or {}).get("backend")
+        if backend is None:
+            t.status = TestStatus.FAIL
+            t.notes = "modules.backend missing"
+        elif not backend.get("reachable"):
+            t.status = TestStatus.FAIL
+            t.notes = f"backend.reachable=false: {backend!r}"
+        elif backend.get("state") not in _VALID_HOST_STATES:
+            t.status = TestStatus.FAIL
+            t.notes = f"backend.state={backend.get('state')!r}"
+        elif backend.get("verdict") not in {"OK", "WATCH", "WARN", "CRIT"}:
+            t.status = TestStatus.FAIL
+            t.notes = f"backend.verdict={backend.get('verdict')!r}"
+        else:
+            t.status = TestStatus.PASS
+            t.notes = (
+                f"verdict={backend.get('verdict')} state={backend.get('state')} "
+                f"warm={backend.get('baseline_warm')}"
+            )
     except Exception as e:
         t.status = TestStatus.ERROR
         t.notes = str(e)[:300]
@@ -2628,6 +3178,27 @@ ALL_TESTS = [
             test_sbox_orphaned_volume_cleanup,
             test_sbox_timeout_at_persisted,
             test_sbox_cleanup_loop_running,
+            test_sbox_concurrent_create_semaphore,
+        ],
+    ),
+    # Sandbox Pool Health (Fix A — pool self-heal + observability)
+    (
+        "POOL",
+        "Sandbox Pool Health",
+        [
+            test_pool_health_shape,
+            test_pool_status_json_module,
+            test_pool_claim_replenish,
+            test_pool_stuck_init_reap,
+        ],
+    ),
+    # Backend Host Monitor (Phase 6.c — /health/host surface)
+    (
+        "HOST",
+        "Backend Host Monitor",
+        [
+            test_host_health_shape,
+            test_host_status_json_module,
         ],
     ),
 ]
