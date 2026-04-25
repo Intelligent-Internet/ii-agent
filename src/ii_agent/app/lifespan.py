@@ -182,6 +182,8 @@ def create_lifespan(sio: socketio.AsyncServer):
         app.state.pubsub = pubsub
         container.plan_service.set_pubsub(pubsub)
         container.workspace_explorer_service.set_pubsub(pubsub)
+        # Audit item #7: surface MCP-configure failures into the agent UI.
+        container.sandbox_service.set_pubsub(pubsub)
         logger.info("PubSub started with %d handlers", len(pubsub._handlers))
 
         # 6. Socket.IO manager (registers socket event handlers)
@@ -341,50 +343,72 @@ def create_lifespan(sio: socketio.AsyncServer):
 
         yield
 
-        # ── Shutdown (reverse order) ───────────────────────────────────
+        # ── Shutdown (clean-shutdown contract) ─────────────────────────
+        # Order matters. The compose-level `stop_grace_period: 30s` and
+        # gunicorn `--graceful-timeout 25` give us a strict budget. We
+        # must reach `shutdown_engine()` (asyncpg pool dispose) before
+        # the SIGKILL deadline, otherwise PG sees N child backends die
+        # mid-transaction in the same millisecond and enters recovery
+        # for 5+ minutes. See:
+        #   docs/runtime-docs/postgres-recovery-mode-failures.md
+        # Order:
+        #   1. Stop accepting *new* work (sio, orphan-cleanup, scheduler).
+        #   2. Stop publishing events (pubsub).
+        #   3. Best-effort drain of in-flight sandbox turns, *bounded*.
+        #   4. Dispose Redis + DB pools (clean FIN to PG, not RST).
+        import asyncio
 
-        # Drain running sandboxes: give in-flight turns a grace period
-        # before the infrastructure (Redis, DB) goes away.
+        # 1. Stop new traffic / background loops.
+        try:
+            from ii_agent.agents.sandboxes.orphan_cleanup import (
+                stop_orphan_cleanup,
+            )
+
+            stop_orphan_cleanup()
+        except Exception:
+            pass
+        try:
+            from ii_agent.agents.sandboxes.executor import (
+                shutdown_docker_executor,
+            )
+
+            shutdown_docker_executor()
+        except Exception:
+            pass
+        shutdown_scheduler()
+        await container.workspace_explorer_service.shutdown()
+        await sio_manager.shutdown()
+
+        # 2. Stop event publishing.
+        await pubsub.stop()
+        logger.info("PubSub stopped")
+
+        # 3. Bounded sandbox drain. Capped at 10s via wait_for so it
+        #    cannot consume the entire grace period (historic bug:
+        #    asyncio.sleep(10) blocked DB dispose every shutdown).
         if _settings.sandbox.local_mode:
-            try:
-                import asyncio
 
+            async def _drain_sandboxes() -> None:
                 from ii_agent.agents.sandboxes.docker import DockerSandbox
 
                 running = DockerSandbox.list_sandboxes()
                 active = [s for s in running if s["status"] == "running"]
                 if active:
-                    grace_seconds = 10
                     logger.info(
                         "Graceful shutdown: %d sandbox(es) still running, "
-                        "waiting %ds for in-flight turns to complete",
+                        "waiting up to 10s for in-flight turns to complete",
                         len(active),
-                        grace_seconds,
                     )
-                    await asyncio.sleep(grace_seconds)
+                    await asyncio.sleep(10)
+
+            try:
+                await asyncio.wait_for(_drain_sandboxes(), timeout=10.5)
+            except asyncio.TimeoutError:
+                logger.warning("Sandbox drain hit 10s deadline; proceeding")
             except Exception as exc:
                 logger.debug("Sandbox drain skipped: %s", exc)
 
-        # Stop orphan cleanup first
-        try:
-            from ii_agent.agents.sandboxes.orphan_cleanup import stop_orphan_cleanup
-
-            stop_orphan_cleanup()
-
-            try:
-                from ii_agent.agents.sandboxes.executor import shutdown_docker_executor
-
-                shutdown_docker_executor()
-            except Exception:
-                pass
-        except Exception:
-            pass
-
-        shutdown_scheduler()
-        await container.workspace_explorer_service.shutdown()
-        await sio_manager.shutdown()
-        await pubsub.stop()
-        logger.info("PubSub stopped")
+        # 4. Tear down infra last so any straggler query above succeeds.
         await shutdown_redis_client()
         await shutdown_engine()
         set_app_container(None)

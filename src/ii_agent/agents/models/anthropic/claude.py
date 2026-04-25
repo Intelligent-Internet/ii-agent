@@ -343,19 +343,21 @@ def format_messages(
                     }
                 )
             elif redacted_reasoning_content:
-                # Redacted thinking (no signature needed)
+                # Redacted thinking (no signature needed).
+                # Per Anthropic API: {"type": "redacted_thinking", "data": "<blob>"}.
                 parts.append(
                     {
                         "type": "redacted_thinking",
-                        "redacted_thinking": str(redacted_reasoning_content),
+                        "data": str(redacted_reasoning_content),
                     }
                 )
             elif reasoning_content:
-                # Fallback: use reasoning_content as redacted if no signature
+                # Fallback: use reasoning_content as redacted if no signature.
+                # Per Anthropic API: {"type": "redacted_thinking", "data": "<blob>"}.
                 parts.append(
                     {
                         "type": "redacted_thinking",
-                        "redacted_thinking": str(reasoning_content),
+                        "data": str(reasoning_content),
                     }
                 )
 
@@ -415,7 +417,38 @@ def format_messages(
                     files_text = "\n\nAttached files:\n" + "\n".join(f" - {p}" for p in file_paths)
                     parts.append({"type": "text", "text": files_text})
 
-        chat_messages.append({"role": ROLE_MAP[message.role], "content": parts})
+        # Defensive sanitizer: drop malformed thinking/redacted_thinking blocks before
+        # sending to Anthropic. A2A inner-loop fallback can replay history that contains
+        # partially-formed thinking blocks (e.g. from a stream that was cut mid-response),
+        # which Anthropic rejects with a non-retriable 400 and permanently bricks the
+        # session. See triage of session e965f013 (2026-04-25).
+        sanitized_parts: List[Dict[str, Any]] = []
+        for part in parts:
+            if not isinstance(part, dict):
+                sanitized_parts.append(part)
+                continue
+            ptype = part.get("type")
+            if ptype == "thinking":
+                # Requires non-empty `thinking` and `signature`
+                if not part.get("thinking") or not part.get("signature"):
+                    logger.warning(
+                        "Dropping malformed `thinking` block from Anthropic message "
+                        "(missing thinking or signature). role={}",
+                        message.role,
+                    )
+                    continue
+            elif ptype == "redacted_thinking":
+                # Requires non-empty `data`
+                if not part.get("data"):
+                    logger.warning(
+                        "Dropping malformed `redacted_thinking` block from Anthropic "
+                        "message (missing data). role={}",
+                        message.role,
+                    )
+                    continue
+            sanitized_parts.append(part)
+
+        chat_messages.append({"role": ROLE_MAP[message.role], "content": sanitized_parts})
 
     # Flush any remaining tool results at the end
     if pending_tool_results:

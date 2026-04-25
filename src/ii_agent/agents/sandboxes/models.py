@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import ForeignKey, Integer, String
+from sqlalchemy import Boolean, ForeignKey, Integer, String
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -67,6 +67,24 @@ class AgentSandbox(Base):
         nullable=True,
     )
     claimed_at: Mapped[Optional[datetime]] = mapped_column(
+        TimestampColumn,
+        nullable=True,
+    )
+
+    # ── MCP runtime status ───────────────────────────────────────────────
+    # ``True`` (default) once the post-claim ``_configure_mcp`` background
+    # task has completed successfully (or for non-pool sandboxes that
+    # never need a separate configure pass). Set to ``False`` when the
+    # background configure exhausts its retries; runtime MCP-tool
+    # factories check this flag and lazy-retry the handshake on demand.
+    # See docs/design-docs/sandbox-pool-claim-mcp-handoff-audit.md.
+    mcp_configured: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default="true",
+    )
+    mcp_configure_attempted_at: Mapped[Optional[datetime]] = mapped_column(
         TimestampColumn,
         nullable=True,
     )

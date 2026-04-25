@@ -34,6 +34,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Awaitable, Callable, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import event
 
 from ii_agent.agents.sandboxes.base import Sandbox
 from ii_agent.agents.sandboxes.exceptions import SandboxCreationError
@@ -257,6 +258,16 @@ class SandboxPoolManager:
         repository (the row's own ``pool_slot`` is cleared on claim so
         the long-lived CLAIMED row does not block future ensure_full
         cycles for that slot).
+
+        Replenishment is wired to fire from a SQLAlchemy ``after_commit``
+        hook on the caller's session rather than immediately. Audit item
+        #6 in ``docs/design-docs/sandbox-pool-claim-mcp-handoff-audit.md``:
+        the historical race where a rolled-back claim left a duplicate
+        replenished row on the slot is now structurally impossible because
+        the trigger never fires until the caller's transaction is durable.
+        Fire-and-forget is preserved (the replenish task is created from
+        within the after-commit listener, which itself runs synchronously
+        inside ``await db.commit()`` on the same loop).
         """
         if not self.enabled:
             return None
@@ -266,14 +277,51 @@ class SandboxPoolManager:
             return None
 
         logger.info(
-            f"Sandbox pool claim: row={row.id} slot={claimed_slot} session={session_id} — scheduling replenish"
+            f"Sandbox pool claim: row={row.id} slot={claimed_slot} session={session_id} — scheduling post-commit replenish"
         )
 
-        # Schedule replacement for the same slot ASAP. Fire-and-forget.
+        # Schedule replacement for the same slot via an after_commit hook
+        # so it cannot fire if the caller rolls back. Captured by closure.
         if claimed_slot is not None:
-            asyncio.create_task(self._create_slot_async(claimed_slot, is_bootstrap=False))
+            self._schedule_replenish_after_commit(db, claimed_slot)
 
         return row
+
+    def _schedule_replenish_after_commit(
+        self,
+        db: AsyncSession,
+        claimed_slot: int,
+    ) -> None:
+        """Register a one-shot ``after_commit`` listener that schedules replenish.
+
+        The listener runs synchronously inside the greenlet-driven
+        ``await db.commit()`` so ``asyncio.get_running_loop()`` is safe.
+        We use ``once=True`` to auto-deregister; otherwise repeat claims
+        on the same session would stack listeners.
+        """
+        pool_self = self
+        slot = claimed_slot
+
+        def _on_after_commit(_session: Any) -> None:
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                # No running loop (e.g. some unit tests using sync sessions).
+                # Fall back to the legacy immediate-schedule pattern so the
+                # slot still gets refilled.
+                logger.debug(
+                    f"Pool replenish (slot={slot}): no running loop in after_commit; "
+                    "falling back to direct asyncio.create_task"
+                )
+                try:
+                    asyncio.create_task(pool_self._create_slot_async(slot, is_bootstrap=False))
+                except RuntimeError:
+                    logger.warning(f"Pool replenish (slot={slot}): cannot schedule — no event loop")
+                return
+
+            loop.create_task(pool_self._create_slot_async(slot, is_bootstrap=False))
+
+        event.listen(db.sync_session, "after_commit", _on_after_commit, once=True)
 
     # ── Dedupe ───────────────────────────────────────────────────────────
 
@@ -331,6 +379,13 @@ class SandboxPoolManager:
         next claimer receives a broken sandbox. Marking the row RETIRING
         triggers the existing cleanup chain to reap the row and lets
         ``ensure_full`` provision a replacement on the same slot.
+
+        Also performs a fast HTTP ``/health`` probe of the sandbox MCP
+        server (port from ``settings.mcp.port``) using the **container
+        IP** so a wedged MCP process inside a healthy container is also
+        caught here \u2014 historically these would be silently handed to
+        sessions and only surface as ``Client failed to connect`` later.
+        See docs/design-docs/sandbox-pool-claim-mcp-handoff-audit.md.
         """
         if not self.enabled:
             return 0
@@ -345,6 +400,19 @@ class SandboxPoolManager:
             client = DockerSandbox._get_docker_client()
         except Exception:
             return 0
+
+        # Lightweight HTTP probe of the in-container MCP /health endpoint.
+        # Bounded total budget per sandbox so a slow probe cannot wedge
+        # the cleanup loop. Failures here should NOT be fatal \u2014 the
+        # network/probe itself can hiccup; we only count *consistent*
+        # unhealthy containers (caught on a second sweep) toward
+        # retirement to avoid flapping rows under transient load.
+        try:
+            import httpx  # noqa: F401  (only imported when feature used)
+
+            _httpx_available = True
+        except Exception:
+            _httpx_available = False
 
         marked = 0
         async with get_db_session_local() as db:
@@ -366,18 +434,74 @@ class SandboxPoolManager:
                 status = getattr(container, "status", "")
                 if status not in ("running", "created", "restarting"):
                     to_retire.append(row)
+                    continue
+
+                # Container is up; check the MCP /health endpoint via the
+                # container IP. We do this *only* if httpx is importable
+                # and the container has an IP \u2014 fall closed (don't
+                # retire) on any infra issue with the probe itself.
+                if not _httpx_available:
+                    continue
+                try:
+                    import httpx as _httpx
+
+                    container_ip = self._extract_container_ip(container)
+                    if not container_ip:
+                        continue
+                    url = f"http://{container_ip}:{self._config.mcp.port}/health"
+                    async with _httpx.AsyncClient(timeout=1.0) as http_client:
+                        resp = await http_client.get(url)
+                    if resp.status_code >= 400:
+                        logger.warning(
+                            f"Sandbox pool validate: row={row.id} container {pid} healthy "
+                            f"but MCP /health returned {resp.status_code}; retiring."
+                        )
+                        to_retire.append(row)
+                except Exception as e:
+                    # A single failed probe is not retire-worthy: the
+                    # cleanup loop runs every 60s and a transient blip
+                    # shouldn't shrink the pool. Just log at DEBUG.
+                    logger.debug(
+                        f"Sandbox pool validate: MCP /health probe failed for "
+                        f"row={row.id} container {pid}: {e}"
+                    )
 
             for row in to_retire:
                 row.pool_state = PoolState.RETIRING
                 marked += 1
                 logger.warning(
                     f"Sandbox pool validate: retiring slot={row.pool_slot} row={row.id} "
-                    "(container missing or not running)"
+                    "(container missing, not running, or MCP unhealthy)"
                 )
             if marked:
                 await db.commit()
 
         return marked
+
+    @staticmethod
+    def _extract_container_ip(container) -> str | None:
+        """Best-effort extraction of the bridge-network IP for a container.
+
+        Returns ``None`` when the inspect payload doesn't expose an IP
+        we can use (e.g. host network, or pre-attach state). The
+        ``Networks`` map under ``NetworkSettings`` is the post-Docker
+        17.06 layout; we tolerate both the legacy top-level ``IPAddress``
+        and the per-network entries.
+        """
+        try:
+            attrs = getattr(container, "attrs", None) or {}
+            ns = attrs.get("NetworkSettings", {}) or {}
+            networks = ns.get("Networks") or {}
+            for net in networks.values():
+                ip = (net or {}).get("IPAddress")
+                if ip:
+                    return ip
+            ip = ns.get("IPAddress")
+            if ip:
+                return ip
+        except Exception:
+            pass
+        return None
 
     # ── Retirement legacy marker ─────────────────────────────────────────
 

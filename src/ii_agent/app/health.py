@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from typing import Any
 
 from fastapi import APIRouter
+from fastapi.responses import JSONResponse
+from sqlalchemy import text
 
 from ii_agent.core.config.settings import get_settings
+from ii_agent.core.db import get_db_session_local
+from ii_agent.core.redis.client import get_redis_client
 
 health_router = APIRouter()
 
@@ -68,6 +73,74 @@ async def health_check():
                 response["port_pool_free"] = None
 
     return response
+
+
+# ── Liveness vs readiness contract ─────────────────────────────────────────
+# /health        — liveness. 200 as long as the process is alive. Wired into
+#                  Docker HEALTHCHECK. Must NOT probe DB: a transient PG
+#                  recovery would otherwise cause Docker to restart the
+#                  backend, which is the wrong action when PG (not the
+#                  backend) is the problem.
+# /health/ready  — readiness. Probes critical deps (DB, Redis) with tight
+#                  timeouts. Returns 503 + Retry-After while any dep is
+#                  unavailable (e.g. PG is in recovery mode). NOT wired into
+#                  Docker HEALTHCHECK — readiness is for load balancers, the
+#                  frontend bootstrap, the E2E harness, and stack_control.sh
+#                  status. See docs/runtime-docs/postgres-recovery-mode-
+#                  failures.md (Liveness vs readiness section).
+
+
+@health_router.get("/health/ready")
+async def health_ready() -> JSONResponse:
+    """Readiness probe.
+
+    Returns 200 when DB and Redis are both reachable, 503 otherwise.
+    Each dep has its own short timeout so a slow dep cannot block the
+    probe past the typical scrape interval.
+    """
+    checks: dict[str, str] = {}
+    overall_ok = True
+
+    # ── DB probe (2s timeout) ──
+    # SELECT 1 is the canonical asyncpg liveness check. asyncpg raises
+    # CannotConnectNowError (SQLSTATE 57P03) while PG is in recovery —
+    # that surfaces here as the "db" check failing, no special handling
+    # needed (the broad except catches it).
+    try:
+        # NOTE: get_db_session_local() returns an async session context
+        # manager directly (not a factory) — see billing/service.py et al.
+        async with get_db_session_local() as db:
+            await asyncio.wait_for(db.execute(text("SELECT 1")), timeout=2.0)
+        checks["db"] = "ok"
+    except asyncio.TimeoutError:
+        checks["db"] = "timeout"
+        overall_ok = False
+    except Exception as exc:
+        checks["db"] = f"unavailable: {type(exc).__name__}"
+        overall_ok = False
+
+    # ── Redis probe (1s timeout) ──
+    try:
+        redis_client = get_redis_client()
+        await asyncio.wait_for(redis_client.ping(), timeout=1.0)
+        checks["redis"] = "ok"
+    except asyncio.TimeoutError:
+        checks["redis"] = "timeout"
+        overall_ok = False
+    except Exception as exc:
+        checks["redis"] = f"unavailable: {type(exc).__name__}"
+        overall_ok = False
+
+    payload = {"ready": overall_ok, "checks": checks}
+    if overall_ok:
+        return JSONResponse(status_code=200, content=payload)
+    # Retry-After: 5s aligns with asyncpg's typical PG-recovery window
+    # backoff and gives clients (frontend, E2E harness) a sane retry hint.
+    return JSONResponse(
+        status_code=503,
+        content=payload,
+        headers={"Retry-After": "5"},
+    )
 
 
 @health_router.get("/health/host")

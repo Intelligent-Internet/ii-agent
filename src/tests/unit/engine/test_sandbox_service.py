@@ -165,6 +165,10 @@ async def test_init_sandbox_pool_claim_passes_caller_db_to_set_timeout(
         set_timeout=AsyncMock(),
     )
     monkeypatch.setattr(service, "_connect_provider", AsyncMock(return_value=sandbox_mgr))
+    # Bypass the post-attach MCP /health probe; the SimpleNamespace mock
+    # has no expose_port/sandbox_id and the real probe is exercised by
+    # dedicated unit tests in test_sandbox_service_mcp_handoff.py.
+    monkeypatch.setattr(service, "_probe_mcp_health", AsyncMock(return_value=True))
     # Suppress fire-and-forget MCP background task.
     monkeypatch.setattr(service, "_spawn_configure_mcp", lambda *a, **kw: None)
 

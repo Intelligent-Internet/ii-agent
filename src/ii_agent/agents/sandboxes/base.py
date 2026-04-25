@@ -255,14 +255,24 @@ class Sandbox(ABC):
     # ── Networking ────────────────────────────────────────────────────────
 
     @abstractmethod
-    async def expose_port(self, port: int, *, external: bool = True) -> str:
+    async def expose_port(self, port: int, *, external: bool = False) -> str:
         """Expose a port and return its URL.
 
         Args:
             port: The port number to expose.
-            external: If True, return a browser-accessible URL (e.g., public URL
-                or host-mapped port). If False, return a container-internal URL
-                usable only by the agent within the sandbox network.
+            external: If False (default), return a backend/sandbox-internal URL
+                using the container IP. This is the correct mode for any
+                backend code that needs to talk to a service inside the
+                sandbox (MCP server, A2A adapter, codex, etc.) — it does not
+                rely on host-network routing or hairpin NAT.
+                If True, return a browser-accessible URL (host-mapped port
+                with the configured ``SANDBOX_DOCKER_HOST``, or the public
+                cloud URL on E2B). Use this only when minting a URL the
+                browser will fetch directly.
+
+        The default flipped to ``False`` on 2026-04-25 — see
+        ``docs/design-docs/sandbox-pool-claim-mcp-handoff-audit.md``
+        for the rationale and blast-radius analysis.
         """
         ...
 

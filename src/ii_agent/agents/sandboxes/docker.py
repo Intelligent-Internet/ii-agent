@@ -1195,7 +1195,7 @@ class DockerSandbox(Sandbox):
             recursive=recursive,
         )
 
-    async def expose_port(self, port: int, *, external: bool = True) -> str:
+    async def expose_port(self, port: int, *, external: bool = False) -> str:
         self._ensure_container()
         self._container.reload()
 

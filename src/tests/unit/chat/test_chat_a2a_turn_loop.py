@@ -8,6 +8,7 @@ Covers:
 
 from __future__ import annotations
 
+import json
 import uuid
 from typing import Any, Dict
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -1138,7 +1139,43 @@ class TestA2AUncoveredBranches:
         )
 
         called = tool_service.execute_tool.await_args.kwargs
-        assert called["tool_input"] == {"input": "{not-json"}
+        # Bridge serialises to a JSON string before passing to execute_tool
+        # because ToolCallInput.input is typed as str.
+        assert called["tool_input"] == json.dumps({"input": "{not-json"})
+
+    @pytest.mark.asyncio
+    async def test_bridge_tool_execution_reads_canonical_tool_name_and_arguments(self):
+        """Adapter SSE payloads use ``tool_name`` and ``arguments`` (see
+        ``copilot_backend._inject_tool_request``).  Regression guard for
+        the 2026-04-25 e2e log triage that surfaced
+        ``Tool '' not found in registry`` because the bridge was reading
+        the wrong keys (``name`` / ``input``) and looking up an empty
+        tool name in the registry on every bridged call.
+        """
+        loop, _, _ = _make_a2a_loop([])
+        tool_service = AsyncMock()
+        tool_service.execute_tool = AsyncMock(return_value=_tool_output_mock("ok", cost=0.0))
+
+        await loop._bridge_tool_execution(
+            event_data={
+                "tool_call_id": "tc-canonical",
+                "tool_name": "web_visit",
+                "arguments": {"url": "https://example.com"},
+            },
+            tool_registry={},
+            tool_service=tool_service,
+            session_id=uuid.uuid4(),
+            user_id=uuid.uuid4(),
+            run_uuid=uuid.uuid4(),
+        )
+
+        called = tool_service.execute_tool.await_args.kwargs
+        assert called["tool_name"] == "web_visit"
+        # Bridge re-serialises the adapter's dict ``arguments`` payload to a
+        # JSON string so the downstream ``ToolCallInput.input: str`` contract
+        # holds (otherwise pydantic raises ``string_type`` ValidationError
+        # — see 2026-04-25 e2e log triage).
+        assert called["tool_input"] == json.dumps({"url": "https://example.com"})
 
     def test_build_a2a_messages_handles_dict_and_text_like_parts(self):
         text_like = MagicMock()

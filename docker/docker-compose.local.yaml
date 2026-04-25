@@ -179,6 +179,15 @@ services:
       context: ..
       dockerfile: docker/backend/Dockerfile
     init: true
+    # ── Clean-shutdown contract (see docs/runtime-docs/postgres-recovery-mode-failures.md) ──
+    # Default 10s grace was insufficient: the lifespan shutdown sandbox-drain step
+    # alone consumes ~10s, leaving zero budget for asyncpg pool drain. Result was
+    # millisecond-aligned EOF storms on every backend rebuild → PG entered
+    # child-backend recovery → 5–7 minute outage windows. Bumping to 30s gives the
+    # lifespan reorder enough headroom: sio.shutdown + pubsub.stop + bounded
+    # sandbox drain (10s) + redis dispose + asyncpg dispose all complete cleanly.
+    stop_grace_period: 30s
+    stop_signal: SIGTERM
     restart: unless-stopped
     extra_hosts:
       - "host.docker.internal:host-gateway"

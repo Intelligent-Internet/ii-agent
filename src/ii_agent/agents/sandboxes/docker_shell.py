@@ -8,6 +8,7 @@ approach taken by :class:`E2BShell` via E2B's native PTY API.
 from __future__ import annotations
 
 import asyncio
+import base64
 import os
 import shlex
 import uuid
@@ -51,6 +52,32 @@ _SHELL_OUTPUT_TAIL_BYTES = 131072
 _SHELL_UTILITY_TIMEOUT = 30
 _ENV_SOURCE_CMD = "source /app/.user_env.sh"
 _ENV_SOURCE_SAFE_CMD = f"{_ENV_SOURCE_CMD} >/dev/null 2>&1 || true"
+
+
+def _b64_frame(command: str) -> str:
+    """Encode a shell command for transport over the PTY FIFO.
+
+    The PTY inner loop is line-oriented (``read -r`` / ``read -d ''``
+    both have edge cases with embedded NULs or backslash-escapes), so
+    we frame each command as a single base64 line. The reader decodes
+    that line and ``eval``s the result, so any byte sequence — embedded
+    newlines, quotes, parentheses, here-docs — survives intact. A naive
+    ``"\n".join(commands)`` framing splits multi-line user payloads
+    (e.g. ``python3 -c \"<heredoc>\"``) across multiple ``read``
+    iterations, causing bash to evaluate Python source as shell.
+    """
+    return base64.b64encode(command.encode("utf-8")).decode("ascii")
+
+
+def _b64_frame_payload(commands: list[str]) -> bytes:
+    """Encode a sequence of commands as base64 lines for FIFO transport.
+
+    Each command becomes one base64 line; the joined payload ends with
+    ``\n`` so the reader's blocking ``read -r`` returns once per command.
+    The number of lines equals ``len(commands)`` exactly, matching the
+    ``pending_prompt_seq`` accounting in ``build_command_request``.
+    """
+    return ("\n".join(_b64_frame(c) for c in commands) + "\n").encode("ascii")
 
 
 class DockerShell(Shell):
@@ -347,8 +374,15 @@ __ii_agent_prompt
 clear
 # Open FIFO as fd 3 (read-write keeps it alive across writers)
 exec 3<> {fifo_path}
-while IFS= read -r line <&3; do
-    eval "$line"
+# Each line on the FIFO is a base64-encoded shell command (see
+# _b64_frame in docker_shell.py).  Decoding before eval lets multi-line
+# payloads — embedded newlines, quotes, here-docs — survive transport
+# intact.  A failed decode produces an empty string, which ``eval``
+# treats as a no-op; the prompt counter still advances so the protocol
+# stays in lockstep with ``pending_prompt_seq`` on the writer side.
+while IFS= read -r __ii_agent_b64 <&3; do
+    __ii_agent_cmd=$(printf '%s' "$__ii_agent_b64" | base64 -d 2>/dev/null)
+    eval "$__ii_agent_cmd"
     __ii_agent_prompt
 done
 exec 3<&-
@@ -487,7 +521,7 @@ echo $SHELL_PID > {shlex.quote(pid_path)}
 
         return ShellExecutionRequest(
             record=record,
-            stdin=("\n".join(commands_to_send) + "\n").encode(),
+            stdin=_b64_frame_payload(commands_to_send),
             log_offset=log_offset,
             expected_prompt_seq=expected_prompt_seq,
         )
@@ -519,10 +553,19 @@ echo $SHELL_PID > {shlex.quote(pid_path)}
             record.pending_prompt_seq = record.prompt_seq + 1
             record.updated_at = self._shell_timestamp()
 
-        stdin_data = data + ("\n" if press_enter else "")
+        # The PTY inner loop reads base64-framed lines (see _b64_frame).
+        # Without ``press_enter`` there is nothing to deliver until the
+        # caller sends a terminating newline anyway, so we frame only
+        # complete payloads. Empty payloads are preserved so callers
+        # that do ``press_enter`` after a previous partial write still
+        # advance the prompt counter exactly once.
+        if press_enter:
+            stdin_bytes = _b64_frame_payload([data])
+        else:
+            stdin_bytes = b""
         return ShellExecutionRequest(
             record=record,
-            stdin=stdin_data.encode(),
+            stdin=stdin_bytes,
         )
 
     async def send_stdin(

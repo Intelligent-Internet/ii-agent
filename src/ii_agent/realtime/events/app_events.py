@@ -502,6 +502,28 @@ class CompactionSkippedEvent(AgentRunEvent):
     context_id: str = ""
 
 
+class AgentWarningEvent(AgentRunEvent):
+    """Soft warning surfaced from infrastructure into the agent UI.
+
+    Used for non-fatal degradations that the user should know about (a
+    subset of tools may be unavailable, a sandbox may be slower than
+    usual, etc.) without aborting the run. The frontend can display a
+    banner and the backend persists the event for post-hoc telemetry.
+
+    See ``docs/design-docs/sandbox-pool-claim-mcp-handoff-audit.md``
+    item #7 for the original motivating case (``mcp_configure_failed``).
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    group: EventGroup = EventGroup.AGENT
+    name: Literal["agent.warning"] = "agent.warning"
+    transient: bool = False
+    warning_kind: str = ""  # e.g. "mcp_configure_failed"
+    message: str = ""
+    details: dict[str, Any] = Field(default_factory=dict)
+
+
 # ---------------------------------------------------------------------------
 # Session events
 # ---------------------------------------------------------------------------
@@ -988,6 +1010,7 @@ AgentAppEvent: TypeAlias = Union[
     DelegationFallbackEvent,
     CompactionAuthorityEvent,
     CompactionSkippedEvent,
+    AgentWarningEvent,
 ]
 
 SessionAppEvent: TypeAlias = Union[

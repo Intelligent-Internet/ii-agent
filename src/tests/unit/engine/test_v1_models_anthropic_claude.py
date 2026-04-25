@@ -294,6 +294,31 @@ class TestFormatMessages:
         parts = formatted[0]["content"]
         redacted_parts = [p for p in parts if p.get("type") == "redacted_thinking"]
         assert len(redacted_parts) == 1
+        # Anthropic API requires the encrypted blob to be in the "data" field;
+        # any other key (e.g. "redacted_thinking") triggers a 400
+        # "messages.N.content.0.redacted_thinking.data: Field required".
+        assert redacted_parts[0]["data"] == "<redacted>"
+        assert "redacted_thinking" not in redacted_parts[0] or (
+            # only the "type" field may legitimately equal "redacted_thinking"
+            set(redacted_parts[0].keys()) == {"type", "data"}
+        )
+
+    def test_assistant_with_reasoning_no_signature_uses_data_field(self):
+        """Fallback path (reasoning_content without signature) must also use 'data'."""
+        msgs = [
+            Message(
+                role="assistant",
+                content="Answer",
+                reasoning_content="raw thoughts",
+                # no provider_data signature -> falls into redacted fallback
+            )
+        ]
+        formatted, _ = format_messages(msgs)
+        parts = formatted[0]["content"]
+        redacted_parts = [p for p in parts if p.get("type") == "redacted_thinking"]
+        assert len(redacted_parts) == 1
+        assert redacted_parts[0]["data"] == "raw thoughts"
+        assert set(redacted_parts[0].keys()) == {"type", "data"}
 
     def test_assistant_with_tool_calls(self):
         tool_calls = [
@@ -859,7 +884,12 @@ class TestClaudeAinvokeHappyPath:
 
 class TestFormatMessagesAdditionalBranches:
     def test_assistant_reasoning_content_fallback_no_signature(self):
-        """reasoning_content set without signature → redacted_thinking fallback (line 351)."""
+        """reasoning_content set without signature → redacted_thinking fallback (line 351).
+
+        Per Anthropic Messages API, the encrypted blob must be in the ``data``
+        field. Using any other key triggers a 400 with
+        ``messages.N.content.0.redacted_thinking.data: Field required``.
+        """
         msgs = [
             Message(
                 role="assistant",
@@ -872,7 +902,8 @@ class TestFormatMessagesAdditionalBranches:
         parts = formatted[0]["content"]
         redacted_parts = [p for p in parts if p.get("type") == "redacted_thinking"]
         assert len(redacted_parts) == 1
-        assert redacted_parts[0]["redacted_thinking"] == "I thought about this"
+        assert redacted_parts[0]["data"] == "I thought about this"
+        assert set(redacted_parts[0].keys()) == {"type", "data"}
 
     def test_assistant_message_with_list_content_dict_items(self):
         """Assistant message with list content – dicts with 'text' key (lines 362-364)."""

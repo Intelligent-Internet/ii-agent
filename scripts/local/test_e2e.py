@@ -320,6 +320,50 @@ async def http_client() -> httpx.AsyncClient:
     )
 
 
+async def _backend_is_ready() -> bool:
+    """Probe ``/health/ready`` once with a tight timeout.
+
+    Returns True iff the backend reports DB + Redis are both reachable.
+    Used as a precondition guard for tests whose failure mode would
+    otherwise be misclassified as a feature regression when really PG
+    is in recovery mode. See
+    docs/runtime-docs/postgres-recovery-mode-failures.md.
+    """
+    try:
+        async with httpx.AsyncClient(
+            base_url=BACKEND_URL, timeout=httpx.Timeout(5.0, connect=2.0)
+        ) as client:
+            resp = await client.get("/health/ready")
+            return resp.status_code == 200
+    except Exception:
+        return False
+
+
+async def wait_for_backend_ready(deadline_s: float = 60.0) -> tuple[bool, str]:
+    """Poll ``/health/ready`` until 200 or deadline.
+
+    Returns (ready, last_payload). Used at the start of a full E2E
+    run to gate DB-touching categories: a single PG-recovery window
+    used to cascade into ~14 spurious failures (see 2026-04-24
+    history table in the runtime doc).
+    """
+    deadline = time.monotonic() + deadline_s
+    last_payload = ""
+    async with httpx.AsyncClient(
+        base_url=BACKEND_URL, timeout=httpx.Timeout(5.0, connect=2.0)
+    ) as client:
+        while time.monotonic() < deadline:
+            try:
+                resp = await client.get("/health/ready")
+                last_payload = resp.text[:200]
+                if resp.status_code == 200:
+                    return True, last_payload
+            except Exception as exc:
+                last_payload = f"connect error: {type(exc).__name__}"
+            await asyncio.sleep(2)
+    return False, last_payload
+
+
 async def schedule_session_cleanup(session_id: str) -> None:
     """Schedule a test session for automatic deletion after E2E_SESSION_TTL_SECONDS.
 
@@ -2387,6 +2431,17 @@ async def test_sbox_orphaned_volume_cleanup() -> TestResult:
     t = TestResult("SBOX-03", "Orphaned volume cleanup")
     start = time.monotonic()
     try:
+        # Precondition: backend must be ready (DB + Redis reachable). If PG
+        # is in recovery mode the orphan-cleanup loop cannot query for
+        # candidate volumes, so the test would FAIL for an environmental
+        # reason rather than a real regression. See
+        # docs/runtime-docs/postgres-recovery-mode-failures.md.
+        if not await _backend_is_ready():
+            t.status = TestStatus.SKIP
+            t.notes = "Backend /health/ready != 200 (PG likely in recovery); skipping"
+            t.elapsed = time.monotonic() - start
+            return t
+
         import uuid as _uuid
 
         test_id = str(_uuid.uuid4())[:12]
@@ -2474,8 +2529,20 @@ async def test_sbox_timeout_at_persisted() -> TestResult:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        stdout, _ = await proc.communicate()
-        if "timeout_at" in stdout.decode():
+        stdout, stderr = await proc.communicate()
+        stdout_s = stdout.decode()
+        stderr_s = stderr.decode()
+        # Distinguish "column missing" from "PG is in recovery mode". psql
+        # writes the recovery-mode error to stderr and exits non-zero. Without
+        # this guard the test misreports a transient PG outage as a missing
+        # migration. See docs/runtime-docs/postgres-recovery-mode-failures.md.
+        if proc.returncode != 0 or "recovery mode" in stderr_s.lower():
+            t.status = TestStatus.SKIP
+            t.notes = (
+                f"psql failed (exit={proc.returncode}); likely PG recovery: "
+                f"{stderr_s.strip()[:200]}"
+            )
+        elif "timeout_at" in stdout_s:
             t.status = TestStatus.PASS
             t.notes = "timeout_at column exists in agent_sandboxes table"
         else:
@@ -2537,20 +2604,17 @@ async def test_sbox_concurrent_create_semaphore() -> TestResult:
         else:
             # Use regex to be robust against log interleaving / ANSI codes
             import re as _re
+
             m_limit = _re.search(r"limit=(\d+)", stdout)
             m_thresh = _re.search(r"threshold_ms=(\d+)", stdout)
             limit_val = int(m_limit.group(1)) if m_limit else -1
             thresh_val = int(m_thresh.group(1)) if m_thresh else -1
             if limit_val < 1:
                 t.status = TestStatus.FAIL
-                t.notes = (
-                    f"sandbox_concurrent_create_limit={limit_val} (expected >= 1)"
-                )
+                t.notes = f"sandbox_concurrent_create_limit={limit_val} (expected >= 1)"
             elif thresh_val < 0:
                 t.status = TestStatus.FAIL
-                t.notes = (
-                    f"sandbox_create_wait_log_threshold_ms={thresh_val} (expected >= 0)"
-                )
+                t.notes = f"sandbox_create_wait_log_threshold_ms={thresh_val} (expected >= 0)"
             else:
                 t.status = TestStatus.PASS
                 t.notes = (
@@ -2652,8 +2716,7 @@ async def test_pool_health_shape() -> TestResult:
             elif snap.get("stuck_threshold_seconds") != 600:
                 t.status = TestStatus.FAIL
                 t.notes = (
-                    f"stuck_threshold_seconds={snap.get('stuck_threshold_seconds')} "
-                    "(expected 600)"
+                    f"stuck_threshold_seconds={snap.get('stuck_threshold_seconds')} (expected 600)"
                 )
             else:
                 t.status = TestStatus.PASS
@@ -2778,8 +2841,7 @@ async def test_pool_claim_replenish() -> TestResult:
         if recovered:
             t.status = TestStatus.PASS
             t.notes = (
-                f"Pool recovered to ready>={ready_before}/{configured} after claim "
-                f"(session={sid})"
+                f"Pool recovered to ready>={ready_before}/{configured} after claim (session={sid})"
             )
         else:
             t.status = TestStatus.FAIL
@@ -2854,10 +2916,7 @@ async def test_pool_stuck_init_reap() -> TestResult:
         injected_id = first_line
         if proc.returncode != 0 or not injected_id:
             t.status = TestStatus.ERROR
-            t.notes = (
-                f"Failed to inject row (rc={proc.returncode}): "
-                f"{stderr_bytes.decode()[:200]}"
-            )
+            t.notes = f"Failed to inject row (rc={proc.returncode}): {stderr_bytes.decode()[:200]}"
             t.elapsed = time.monotonic() - start
             return t
 
@@ -2978,8 +3037,7 @@ async def test_host_health_shape() -> TestResult:
         elif body.get("baseline_window_capacity", 0) <= 0:
             t.status = TestStatus.FAIL
             t.notes = (
-                f"baseline_window_capacity={body.get('baseline_window_capacity')} "
-                "(expected > 0)"
+                f"baseline_window_capacity={body.get('baseline_window_capacity')} (expected > 0)"
             )
         else:
             buddy = body.get("buddyinfo") or {}
@@ -3315,6 +3373,21 @@ async def main():
     if filter_test:
         print(f"  Tests: {filter_test}")
     print("=" * 60)
+
+    # Readiness gate: a single PG-recovery window historically cascaded
+    # into ~14 spurious failures. Wait up to 60s for /health/ready before
+    # running any DB-touching category. See
+    # docs/runtime-docs/postgres-recovery-mode-failures.md.
+    print("[Readiness] Probing /health/ready ...")
+    ready, payload = await wait_for_backend_ready(deadline_s=60.0)
+    if ready:
+        print(f"[Readiness] OK: {payload}")
+    else:
+        print(
+            f"[Readiness] WARN: backend not ready after 60s: {payload}\n"
+            "            DB-touching tests will likely SKIP or FAIL. "
+            "Continuing anyway."
+        )
 
     all_results: list[TestResult] = []
     start_time = time.monotonic()

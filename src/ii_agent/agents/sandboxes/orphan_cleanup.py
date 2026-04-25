@@ -52,6 +52,28 @@ _GRACE_PERIOD = timedelta(minutes=5)
 _cleanup_task: Optional[asyncio.Task] = None
 _cleanup_task_lock = threading.Lock()
 
+
+def _is_pg_unavailable(exc: BaseException) -> bool:
+    """Return True if ``exc`` is (wraps) asyncpg's CannotConnectNowError.
+
+    PG emits SQLSTATE 57P03 during startup/recovery/shutdown. Walking
+    ``__cause__``/``__context__`` lets us catch SQLAlchemy wrappers too.
+    Kept in sync with ``core.middleware.exception_handler._is_db_unavailable``.
+    """
+    try:
+        from asyncpg.exceptions import CannotConnectNowError  # type: ignore
+    except ImportError:  # pragma: no cover
+        return False
+    seen: set[int] = set()
+    cur: BaseException | None = exc
+    while cur is not None and id(cur) not in seen:
+        seen.add(id(cur))
+        if isinstance(cur, CannotConnectNowError):
+            return True
+        cur = cur.__cause__ or cur.__context__
+    return False
+
+
 # ── Host monitor state (per-process) ──────────────────────────────────────
 #
 # Held at module level so both the orphan-cleanup loop and optional
@@ -299,8 +321,18 @@ async def run_orphan_cleanup_loop(config: Optional[Settings] = None) -> None:
         except asyncio.CancelledError:
             logger.info("Orphan cleanup task cancelled")
             break
-        except Exception:
-            logger.exception("Error in orphan cleanup loop")
+        except Exception as loop_exc:
+            # Transient PG unavailability (crash-recovery, restart,
+            # failover) is expected and self-healing — downgrade the
+            # log from ERROR+traceback to WARNING and back off.  See
+            # docs/runtime-docs/postgres-recovery-mode-failures.md.
+            if _is_pg_unavailable(loop_exc):
+                logger.warning(
+                    "Orphan cleanup sweep skipped: database in recovery ({}); retrying in 60s",
+                    type(loop_exc).__name__,
+                )
+            else:
+                logger.exception("Error in orphan cleanup loop")
             await asyncio.sleep(60)
 
 

@@ -166,7 +166,7 @@ output/
 .gemini/
 
 # Local state
-.e2e_last_results.json
+*/.e2e_last_results.json
 
 # Local only scripts
 start_tool_server.sh
@@ -174,3 +174,6 @@ a2a_agents.json
 scripts/local/register_seats_mcp.sh
 scripts/local/create_seats_dark_template.sh
 scripts/local/rctcop_title_slide_rework.sh
+
+# VIM swap files
+*.sw*

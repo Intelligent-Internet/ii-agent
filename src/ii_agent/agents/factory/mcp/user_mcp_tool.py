@@ -86,6 +86,12 @@ class UserMCPTool(BaseSandboxTool):
         """
         await super().on_tool_start(agent, fc)
         sandbox = agent.sandbox
+        # Lazy-retry the MCP handshake if the post-claim configure pass
+        # exhausted its retries. See
+        # docs/design-docs/sandbox-pool-claim-mcp-handoff-audit.md.
+        from ii_agent.agents.factory.mcp.lazy_retry import ensure_mcp_configured
+
+        await ensure_mcp_configured(sandbox.sandbox_id, agent.user_id)
         sandbox_url = await sandbox.expose_port(get_settings().mcp.port)
         self.mcp_client = sandbox.get_mcp_client(sandbox_url)
 

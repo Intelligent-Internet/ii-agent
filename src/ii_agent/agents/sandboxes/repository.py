@@ -76,6 +76,32 @@ class SandboxRepository(BaseRepository[AgentSandbox]):
         await db.refresh(record)
         return record
 
+    async def set_mcp_configured(
+        self,
+        db: AsyncSession,
+        sandbox_id: uuid.UUID,
+        *,
+        configured: bool,
+        attempted_at: Optional[datetime] = None,
+    ) -> Optional[AgentSandbox]:
+        """Persist the durable ``mcp_configured`` flag.
+
+        Set to ``False`` when the bounded ``_configure_mcp`` retry envelope
+        is exhausted; runtime MCP-tool factories check this flag and lazy-
+        retry the handshake on demand. ``attempted_at`` records the last
+        configure attempt so the lazy-retry path can throttle by cooldown.
+        See docs/design-docs/sandbox-pool-claim-mcp-handoff-audit.md.
+        """
+        record = await self.get_by_id(db, sandbox_id)
+        if record is None:
+            return None
+        record.mcp_configured = configured
+        if attempted_at is not None:
+            record.mcp_configure_attempted_at = attempted_at
+        await db.flush()
+        await db.refresh(record)
+        return record
+
     # ── Pool-specific queries ─────────────────────────────────────────────
 
     async def list_active_pool_rows(

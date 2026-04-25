@@ -1,6 +1,7 @@
 """Tests for orphan cleanup of Docker sandboxes."""
 
 import asyncio
+import contextlib
 import uuid
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -12,6 +13,7 @@ from ii_agent.agents.sandboxes.orphan_cleanup import (
     _cleanup_docker_zombies,
     _cleanup_orphaned_volumes,
     _cleanup_orphans,
+    _is_pg_unavailable,
     _kill_timed_out_sandboxes,
     _soft_delete_expired_sessions,
     run_orphan_cleanup_loop,
@@ -613,6 +615,51 @@ class TestStopOrphanCleanupRunningTask:
 # ───────────────────── run_orphan_cleanup_loop ───────────────────────────────
 
 
+# Every phase invoked inside ``run_orphan_cleanup_loop``.  Used by the
+# tests below so we never fall through to real DB / Redis / Docker calls.
+_LOOP_PHASES = (
+    "_run_host_monitor_phase",
+    "_soft_delete_expired_sessions",
+    "_retire_pool_sandboxes",
+    "_dedupe_pool_slots",
+    "_validate_pool_slots",
+    "_reap_pool_stuck_init",
+    "_health_check_sandbox_rows",
+    "_expire_old_paused_sandboxes",
+    "_cleanup_orphans",
+    "_pause_stale_sandboxes",
+    "_cleanup_docker_zombies",
+    "_cleanup_orphaned_volumes",
+    "_kill_timed_out_sandboxes",
+    "_purge_stale_deleted_rows",
+    "_ensure_pool_full",
+)
+
+
+def _patch_all_loop_phases(extra: dict | None = None) -> list:
+    """Build patch() context managers for every phase the sweep invokes.
+
+    Pass ``extra`` to override individual phases (e.g. inject side_effects).
+    Values must be already-constructed ``patch(...)`` objects.
+    """
+    extra = extra or {}
+    patches = []
+    for name in _LOOP_PHASES:
+        if name in extra:
+            patches.append(extra[name])
+        else:
+            patches.append(patch(f"{_MODULE}.{name}", new_callable=AsyncMock, return_value=0))
+    return patches
+
+
+def _redis_lock_mock(acquired: bool = True):
+    """Build a Redis client mock whose SET NX returns ``acquired``."""
+    mock_redis = AsyncMock()
+    mock_redis.set = AsyncMock(return_value=acquired)
+    mock_redis.delete = AsyncMock()
+    return mock_redis
+
+
 class TestRunOrphanCleanupLoop:
     """Tests for run_orphan_cleanup_loop."""
 
@@ -627,38 +674,29 @@ class TestRunOrphanCleanupLoop:
 
         async def mock_sleep(seconds):
             call_order.append(f"sleep({seconds})")
-            # Cancel after first iteration
             raise asyncio.CancelledError()
 
         cfg = MagicMock()
         cfg.sandbox.orphan_cleanup_interval_seconds = 42
 
-        # Mock Redis so the advisory lock is always acquired (SET NX → True).
-        # Without this, a live Redis instance may have a stale lock key from a
-        # prior test run, causing the sweep to be skipped and making the test
-        # non-deterministic.
-        mock_redis = AsyncMock()
-        mock_redis.set = AsyncMock(return_value=True)
-        mock_redis.delete = AsyncMock()
+        loop_patches = _patch_all_loop_phases(
+            extra={
+                "_cleanup_orphans": patch(f"{_MODULE}._cleanup_orphans", side_effect=mock_cleanup),
+            }
+        )
+        with contextlib.ExitStack() as stack:
+            for cm in loop_patches:
+                stack.enter_context(cm)
+            stack.enter_context(patch(f"{_MODULE}.asyncio.sleep", side_effect=mock_sleep))
+            stack.enter_context(
+                patch(
+                    "ii_agent.core.redis.client.get_redis_client",
+                    return_value=_redis_lock_mock(),
+                )
+            )
+            # 5s wedge guard — see TestLoopHandlesPostgresRecovery docstring.
+            await asyncio.wait_for(run_orphan_cleanup_loop(cfg), timeout=5.0)
 
-        with (
-            patch(
-                f"{_MODULE}._soft_delete_expired_sessions", new_callable=AsyncMock, return_value=0
-            ),
-            patch(f"{_MODULE}._cleanup_orphans", side_effect=mock_cleanup),
-            patch(f"{_MODULE}._pause_stale_sandboxes", new_callable=AsyncMock, return_value=0),
-            patch(f"{_MODULE}._cleanup_docker_zombies", new_callable=AsyncMock, return_value=0),
-            patch(f"{_MODULE}._cleanup_orphaned_volumes", new_callable=AsyncMock, return_value=0),
-            patch(f"{_MODULE}._kill_timed_out_sandboxes", new_callable=AsyncMock, return_value=0),
-            patch(f"{_MODULE}.asyncio.sleep", side_effect=mock_sleep),
-            patch(
-                "ii_agent.core.redis.client.get_redis_client",
-                return_value=mock_redis,
-            ),
-        ):
-            await run_orphan_cleanup_loop(cfg)
-
-        # Cleanup must run before sleep
         assert call_order == ["cleanup", "sleep(42)"]
 
     @pytest.mark.asyncio
@@ -677,43 +715,47 @@ class TestRunOrphanCleanupLoop:
                 raise asyncio.CancelledError()
             return 0
 
-        with (
-            patch(
-                f"{_MODULE}._soft_delete_expired_sessions", new_callable=AsyncMock, return_value=0
-            ),
-            patch(f"{_MODULE}._cleanup_orphans", side_effect=failing_cleanup),
-            patch(f"{_MODULE}._pause_stale_sandboxes", new_callable=AsyncMock, return_value=0),
-            patch(f"{_MODULE}._cleanup_docker_zombies", new_callable=AsyncMock, return_value=0),
-            patch(f"{_MODULE}._cleanup_orphaned_volumes", new_callable=AsyncMock, return_value=0),
-            patch(f"{_MODULE}._kill_timed_out_sandboxes", new_callable=AsyncMock, return_value=0),
-            patch(f"{_MODULE}.asyncio.sleep", new_callable=AsyncMock),
-        ):
-            await run_orphan_cleanup_loop(cfg)
+        loop_patches = _patch_all_loop_phases(
+            extra={
+                "_cleanup_orphans": patch(
+                    f"{_MODULE}._cleanup_orphans", side_effect=failing_cleanup
+                ),
+            }
+        )
+        with contextlib.ExitStack() as stack:
+            for cm in loop_patches:
+                stack.enter_context(cm)
+            stack.enter_context(patch(f"{_MODULE}.asyncio.sleep", new_callable=AsyncMock))
+            stack.enter_context(
+                patch(
+                    "ii_agent.core.redis.client.get_redis_client",
+                    return_value=_redis_lock_mock(),
+                )
+            )
+            await asyncio.wait_for(run_orphan_cleanup_loop(cfg), timeout=5.0)
 
     @pytest.mark.asyncio
-    async def test_loop_calls_all_six_stages(self):
-        """All 6 stages (including new volume cleanup and timeout kill) are called."""
+    async def test_loop_calls_all_phases(self):
+        """Every phase invoked by the sweep must be called at least once."""
         cfg = MagicMock()
         cfg.sandbox.orphan_cleanup_interval_seconds = 0.01
 
-        with (
-            patch(
-                f"{_MODULE}._soft_delete_expired_sessions", new_callable=AsyncMock, return_value=0
-            ) as m1,
-            patch(f"{_MODULE}._cleanup_orphans", new_callable=AsyncMock, return_value=0) as m2,
-            patch(
-                f"{_MODULE}._pause_stale_sandboxes", new_callable=AsyncMock, return_value=0
-            ) as m3,
-            patch(
-                f"{_MODULE}._cleanup_docker_zombies", new_callable=AsyncMock, return_value=0
-            ) as m4,
-            patch(
-                f"{_MODULE}._cleanup_orphaned_volumes", new_callable=AsyncMock, return_value=0
-            ) as m5,
-            patch(
-                f"{_MODULE}._kill_timed_out_sandboxes", new_callable=AsyncMock, return_value=0
-            ) as m6,
-        ):
+        mocks: dict[str, AsyncMock] = {}
+        ctx_managers = []
+        for name in _LOOP_PHASES:
+            mock = AsyncMock(return_value=0)
+            mocks[name] = mock
+            ctx_managers.append(patch(f"{_MODULE}.{name}", mock))
+
+        with contextlib.ExitStack() as stack:
+            for cm in ctx_managers:
+                stack.enter_context(cm)
+            stack.enter_context(
+                patch(
+                    "ii_agent.core.redis.client.get_redis_client",
+                    return_value=_redis_lock_mock(),
+                )
+            )
             task = asyncio.create_task(run_orphan_cleanup_loop(cfg))
             await asyncio.sleep(0.05)
             task.cancel()
@@ -722,12 +764,281 @@ class TestRunOrphanCleanupLoop:
             except asyncio.CancelledError:
                 pass
 
-            assert m1.call_count >= 1
-            assert m2.call_count >= 1
-            assert m3.call_count >= 1
-            assert m4.call_count >= 1
-            assert m5.call_count >= 1
-            assert m6.call_count >= 1
+        for name, mock in mocks.items():
+            assert mock.call_count >= 1, f"{name} was never invoked"
+
+    @pytest.mark.asyncio
+    async def test_loop_skips_sweep_when_lock_not_acquired(self):
+        """When another worker holds the Redis advisory lock, the sweep is skipped."""
+        cfg = MagicMock()
+        cfg.sandbox.orphan_cleanup_interval_seconds = 0
+
+        sleep_calls: list[float] = []
+
+        async def mock_sleep(seconds):
+            sleep_calls.append(seconds)
+            if len(sleep_calls) >= 2:
+                raise asyncio.CancelledError()
+
+        # Cleanup phases — should NOT be called when lock is held by another worker.
+        # Track with explicit AsyncMocks so we can assert on call counts.
+        phase_mocks: dict[str, AsyncMock] = {
+            name: AsyncMock(return_value=0) for name in _LOOP_PHASES
+        }
+        ctx_managers = [patch(f"{_MODULE}.{n}", m) for n, m in phase_mocks.items()]
+
+        with contextlib.ExitStack() as stack:
+            for cm in ctx_managers:
+                stack.enter_context(cm)
+            stack.enter_context(patch(f"{_MODULE}.asyncio.sleep", side_effect=mock_sleep))
+            stack.enter_context(
+                patch(
+                    "ii_agent.core.redis.client.get_redis_client",
+                    return_value=_redis_lock_mock(acquired=False),
+                )
+            )
+            await asyncio.wait_for(run_orphan_cleanup_loop(cfg), timeout=5.0)
+
+        # Loop should have slept (skipped the sweep) at least once
+        assert len(sleep_calls) >= 1
+        # No phase should have been invoked because the lock was contested
+        for name, mock in phase_mocks.items():
+            assert mock.call_count == 0, f"{name} ran while another worker held the lock"
+
+    @pytest.mark.asyncio
+    async def test_loop_proceeds_when_redis_unavailable(self):
+        """If Redis is unavailable the sweep proceeds without the lock."""
+        cfg = MagicMock()
+        cfg.sandbox.orphan_cleanup_interval_seconds = 0
+
+        async def mock_sleep(seconds):
+            raise asyncio.CancelledError()
+
+        cleanup_called = False
+
+        async def mock_cleanup(cfg):
+            nonlocal cleanup_called
+            cleanup_called = True
+            return 0
+
+        loop_patches = _patch_all_loop_phases(
+            extra={
+                "_cleanup_orphans": patch(f"{_MODULE}._cleanup_orphans", side_effect=mock_cleanup),
+            }
+        )
+        with contextlib.ExitStack() as stack:
+            for cm in loop_patches:
+                stack.enter_context(cm)
+            stack.enter_context(patch(f"{_MODULE}.asyncio.sleep", side_effect=mock_sleep))
+            stack.enter_context(
+                patch(
+                    "ii_agent.core.redis.client.get_redis_client",
+                    side_effect=RuntimeError("redis down"),
+                )
+            )
+            await asyncio.wait_for(run_orphan_cleanup_loop(cfg), timeout=5.0)
+
+        assert cleanup_called, "Sweep must proceed when Redis lock is unavailable"
+
+    @pytest.mark.asyncio
+    async def test_loop_releases_lock_on_phase_failure(self):
+        """The Redis advisory lock must be released even if a phase raises."""
+        cfg = MagicMock()
+        cfg.sandbox.orphan_cleanup_interval_seconds = 0
+
+        mock_redis = _redis_lock_mock()
+
+        # First sweep: phase raises. Second sweep: phase succeeds, then we
+        # cancel via mock_sleep so the loop terminates cleanly.
+        call_n = {"phase": 0}
+
+        async def boom_then_ok(*_a, **_kw):
+            call_n["phase"] += 1
+            if call_n["phase"] == 1:
+                raise RuntimeError("phase exploded")
+            return 0
+
+        async def mock_sleep(seconds):
+            # Cancel on the second sleep call so we observe at least one
+            # successful release after the failure.
+            if seconds < 60:
+                # interval sleep at end of successful sweep — terminate now
+                raise asyncio.CancelledError()
+            # else: error-path 60s sleep, return immediately to continue
+
+        loop_patches = _patch_all_loop_phases(
+            extra={
+                "_cleanup_orphans": patch(f"{_MODULE}._cleanup_orphans", side_effect=boom_then_ok),
+            }
+        )
+        with contextlib.ExitStack() as stack:
+            for cm in loop_patches:
+                stack.enter_context(cm)
+            stack.enter_context(patch(f"{_MODULE}.asyncio.sleep", side_effect=mock_sleep))
+            stack.enter_context(
+                patch(
+                    "ii_agent.core.redis.client.get_redis_client",
+                    return_value=mock_redis,
+                )
+            )
+            await asyncio.wait_for(run_orphan_cleanup_loop(cfg), timeout=5.0)
+
+        # The lock must have been released at least twice: once after the
+        # failing sweep (via the inner finally) and once after the
+        # successful sweep that was cancelled.
+        assert mock_redis.delete.await_count >= 2
+
+
+class TestIsPgUnavailable:
+    """Regression tests for the PG-recovery classifier used by the
+    orphan-cleanup loop (and mirrored in the HTTP middleware).
+    """
+
+    def test_direct_cannot_connect_now_is_true(self):
+        from asyncpg.exceptions import CannotConnectNowError
+
+        assert _is_pg_unavailable(CannotConnectNowError("recovery"))
+
+    def test_wrapped_via_cause_is_true(self):
+        from asyncpg.exceptions import CannotConnectNowError
+
+        try:
+            raise CannotConnectNowError("x")
+        except CannotConnectNowError as inner:
+            try:
+                raise RuntimeError("wrapper") from inner
+            except RuntimeError as outer:
+                assert _is_pg_unavailable(outer)
+
+    def test_unrelated_error_is_false(self):
+        assert not _is_pg_unavailable(ValueError("nope"))
+
+    def test_none_safe(self):
+        # Defence-in-depth: treat None as not-unavailable rather than crash.
+        assert not _is_pg_unavailable(RuntimeError("plain"))
+
+
+class TestLoopHandlesPostgresRecovery:
+    """When PG is in startup-recovery the sweep must log WARNING (not
+    ERROR+traceback) and continue polling.  Regression guard for the
+    2026-04-25 post-WSL2-hard-kill incident — see
+    docs/runtime-docs/postgres-recovery-mode-failures.md.
+
+    Each test wraps ``run_orphan_cleanup_loop`` in ``asyncio.wait_for``
+    with a 5-second ceiling.  Without this guard a misbehaving mock
+    (e.g. ``CancelledError`` swallowed by an over-broad ``except``,
+    or an iteration counter that never trips) wedges the test forever:
+    on 2026-04-25 a single such hang consumed 25 GiB RSS and 8.5 hours
+    of CPU before being killed manually.  ``wait_for`` makes any
+    future regression fail fast and visibly.
+    """
+
+    @pytest.mark.asyncio
+    async def test_cannot_connect_now_logs_warning_not_exception(self):
+        from asyncpg.exceptions import CannotConnectNowError
+
+        cfg = MagicMock()
+        cfg.sandbox.orphan_cleanup_interval_seconds = 0
+
+        sleep_calls: list[float] = []
+        # After the error-path 60s sleep fires, raise CancelledError
+        # so the outer loop's `except asyncio.CancelledError: break`
+        # terminates cleanly.  (Raising it from the first sleep would
+        # be caught by the `except Exception` handler instead.)
+        iteration = {"n": 0}
+
+        async def mock_sleep(seconds):
+            sleep_calls.append(seconds)
+            iteration["n"] += 1
+            if iteration["n"] >= 2:
+                raise asyncio.CancelledError()
+
+        # First phase blows up with the recovery error; on the second
+        # iteration let it succeed so the outer loop reaches its
+        # normal-path ``asyncio.sleep(interval)`` and the cancel fires
+        # there (outside the except handler).
+        call_n = {"phase": 0}
+
+        async def boom_then_ok(cfg_arg):
+            call_n["phase"] += 1
+            if call_n["phase"] == 1:
+                raise CannotConnectNowError("the database system is in recovery mode")
+            return None
+
+        loop_patches = _patch_all_loop_phases(
+            extra={
+                "_run_host_monitor_phase": patch(
+                    f"{_MODULE}._run_host_monitor_phase", side_effect=boom_then_ok
+                ),
+            }
+        )
+        with contextlib.ExitStack() as stack:
+            for cm in loop_patches:
+                stack.enter_context(cm)
+            stack.enter_context(patch(f"{_MODULE}.asyncio.sleep", side_effect=mock_sleep))
+            stack.enter_context(
+                patch(
+                    "ii_agent.core.redis.client.get_redis_client",
+                    return_value=_redis_lock_mock(),
+                )
+            )
+            mock_logger = stack.enter_context(patch(f"{_MODULE}.logger"))
+            # 5s wait_for guard — see class docstring. The test is
+            # designed to terminate via mocked CancelledError after 2
+            # sleeps; if the mock chain breaks the test must fail fast.
+            await asyncio.wait_for(run_orphan_cleanup_loop(cfg), timeout=5.0)
+
+        # Must take the WARNING path, not the .exception() path.
+        assert mock_logger.warning.called, "expected WARNING log for PG-recovery"
+        assert not mock_logger.exception.called, (
+            "ERROR+traceback must NOT fire for CannotConnectNowError"
+        )
+        # And the loop backed off by 60s before continuing.
+        assert 60 in sleep_calls
+
+    @pytest.mark.asyncio
+    async def test_real_errors_still_use_exception(self):
+        """Non-PG failures must remain loud.  Guards against over-broad
+        suppression if someone later widens ``_is_pg_unavailable``.
+        """
+        cfg = MagicMock()
+        cfg.sandbox.orphan_cleanup_interval_seconds = 0
+        iteration = {"n": 0}
+
+        async def mock_sleep(seconds):
+            iteration["n"] += 1
+            if iteration["n"] >= 2:
+                raise asyncio.CancelledError()
+
+        call_n = {"phase": 0}
+
+        async def boom_then_ok(cfg_arg):
+            call_n["phase"] += 1
+            if call_n["phase"] == 1:
+                raise ValueError("unrelated bug")
+            return None
+
+        loop_patches = _patch_all_loop_phases(
+            extra={
+                "_run_host_monitor_phase": patch(
+                    f"{_MODULE}._run_host_monitor_phase", side_effect=boom_then_ok
+                ),
+            }
+        )
+        with contextlib.ExitStack() as stack:
+            for cm in loop_patches:
+                stack.enter_context(cm)
+            stack.enter_context(patch(f"{_MODULE}.asyncio.sleep", side_effect=mock_sleep))
+            stack.enter_context(
+                patch(
+                    "ii_agent.core.redis.client.get_redis_client",
+                    return_value=_redis_lock_mock(),
+                )
+            )
+            mock_logger = stack.enter_context(patch(f"{_MODULE}.logger"))
+            await asyncio.wait_for(run_orphan_cleanup_loop(cfg), timeout=5.0)
+
+        assert mock_logger.exception.called, "unrelated errors still need traceback"
 
 
 # ──────────────────── _cleanup_docker_zombies ────────────────────────────────

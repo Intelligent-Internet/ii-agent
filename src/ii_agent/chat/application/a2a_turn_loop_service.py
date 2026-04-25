@@ -377,8 +377,14 @@ class A2AChatTurnLoop:
     ) -> list[Dict[str, Any]]:
         """Execute a bridged tool and post result back to adapter."""
         tool_call_id = str(event_data.get("tool_call_id", ""))
-        tool_name = str(event_data.get("name", ""))
-        tool_input = event_data.get("input", {})
+        # The adapter SSE payload uses ``tool_name`` and ``arguments`` (see
+        # ``copilot_backend._inject_tool_request`` and the design doc
+        # docs/design-docs/a2a-tool-bridge-gap-analysis.md).  Fall back to
+        # ``name``/``input`` for forward-compat with older adapter payloads.
+        tool_name = str(event_data.get("tool_name") or event_data.get("name", ""))
+        tool_input = event_data.get("arguments")
+        if tool_input is None:
+            tool_input = event_data.get("input", {})
 
         if isinstance(tool_input, str):
             try:
@@ -386,12 +392,22 @@ class A2AChatTurnLoop:
             except json.JSONDecodeError:
                 tool_input = {"input": tool_input}
 
+        # ChatToolService.execute_tool builds a ToolCallInput whose ``input``
+        # field is typed as ``str`` (a JSON-encoded parameters blob — chat
+        # tools call ``json.loads(tool_call.input)`` in their ``run``
+        # method).  The native chat path passes the LLM-emitted JSON string
+        # straight through, but the A2A adapter delivers ``arguments`` as a
+        # dict.  Re-serialise so the downstream contract holds.
+        tool_input_str = json.dumps(
+            tool_input if isinstance(tool_input, dict) else {"input": tool_input}
+        )
+
         events: list[Dict[str, Any]] = []
 
         tool_result = await tool_service.execute_tool(
             tool_call_id=tool_call_id,
             tool_name=tool_name,
-            tool_input=tool_input,
+            tool_input=tool_input_str,
             tool_registry=tool_registry,
         )
 

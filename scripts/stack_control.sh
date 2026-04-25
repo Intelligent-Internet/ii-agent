@@ -83,10 +83,18 @@ _json_escape() {
 #   }
 #
 # Verify verdict (v2):
-#   UP TO DATE  iff git_commit_full == HEAD AND every tracked_files entry
-#               still matches the working-tree sha256.
-#   STALE       on any drift; legacy (v1, no manifest_version) is forced
-#               STALE so a one-time rebuild enables full verification.
+#   UP TO DATE  iff every tracked_files entry still matches the working-tree
+#               sha256. Commit-pointer drift alone (manifest commit !=
+#               HEAD but every tracked file content-matches) is reported
+#               as informational metadata staleness, NOT STALE — the
+#               in-image bytes are still current. `refresh-manifest`
+#               updates the pointer without rebuilding.
+#   STALE       on any tracked-file content drift (changed/missing).
+#               Commit-pointer drift is appended to the reasons line as
+#               supplementary context when present, but it never causes
+#               STALE on its own. Legacy (v1, no manifest_version) is
+#               forced STALE so a one-time rebuild enables full
+#               verification.
 # Returns 0 if the given path is COPY'd into the named target's image,
 # 1 otherwise. The verdict from this function is the single source of truth
 # for "what belongs in this image" and is consumed both by dirty-file
@@ -282,7 +290,22 @@ Commands:
                                (--show-deleted also lists sandboxes attached to
                                 soft-deleted sessions awaiting reap)
   logs [service] [-f]          View logs for the full stack or a single service
-  cleanup                      Remove stale sandbox containers
+  cleanup                      Remove stale sandbox containers (Docker-label
+                               based; does NOT touch DB rows or future
+                               delete_after timestamps)
+  purge-pending-deletes [--dry-run] [--no-wait] [--timeout=SECS]
+                               Force-expire every session with a future
+                               delete_after timestamp and wait for the
+                               orphan_cleanup loop to reap. Use before an
+                               E2E run for a clean slate (E2E sessions
+                               default to 24h delete_after).
+  disk-cleanup [--prune-volumes] [--no-fstrim]
+                               Prune Docker images / build cache and run
+                               fstrim so a subsequent Windows-side
+                               'Optimize-VHD -Mode Full' can reclaim space
+                               from the WSL2 VHDX. Safe while the stack is
+                               up. See
+                               docs/runtime-docs/postgres-recovery-mode-failures.md.
   verify [targets ...] [--all] Verify every file shipped in the image still
                                matches its working-tree SHA. Reports STALE on
                                any drift (closes the post-build clean-file
@@ -785,6 +808,24 @@ cmd_start() {
 cmd_stop() {
   ensure_env
   echo "Stopping ii-agent local stack..."
+  # Note: per-service `stop_grace_period: 30s` (backend) is honored by
+  # `compose down` automatically. Do NOT pass `-t <small>` here without
+  # overriding it on the backend service explicitly — it would clip the
+  # backend's lifespan shutdown short and re-introduce the asyncpg EOF
+  # storm that puts PG into recovery.
+  #
+  # The 30s value is hardcoded (and must stay in sync) in three places:
+  #   1. docker/docker-compose.local.yaml  — backend.stop_grace_period: 30s
+  #      (the value compose actually enforces against the container)
+  #   2. docker/backend/entrypoint.sh       — GUNICORN_GRACEFUL_TIMEOUT=25
+  #      (gunicorn's worker-shutdown ceiling; 5s headroom under #1)
+  #   3. src/ii_agent/app/lifespan.py       — `asyncio.wait_for(_drain_sandboxes(), timeout=10.5)`
+  #      (sandbox-drain phase ceiling; remaining ~14s budget covers
+  #      sio.shutdown + pubsub.stop + redis dispose + asyncpg dispose)
+  #
+  # If you raise/lower #1, update #2 and #3 in lockstep — see
+  # docs/runtime-docs/postgres-recovery-mode-failures.md (Backend
+  # shutdown contract section) for the full layered budget.
   compose down "$@"
 }
 
@@ -1247,6 +1288,35 @@ cmd_status() {
   echo "=== Sandboxes ==="
   _list_sandboxes "$show_deleted"
 
+  # Backend readiness probe. /health/ready returns 503 + Retry-After when
+  # PG is in recovery (or Redis is down) but the backend process itself is
+  # alive. Surfacing this here closes the visibility gap from
+  # docs/runtime-docs/postgres-recovery-mode-failures.md: previously, a
+  # PG-recovery outage left the backend container reporting "healthy" via
+  # Docker HEALTHCHECK while every business endpoint returned HTTP 500 /
+  # 503. Wired into status (not into HEALTHCHECK) so a transient PG outage
+  # does NOT cause Docker to restart the backend.
+  echo ""
+  echo "=== Backend readiness ==="
+  local _ready_url="http://localhost:${BACKEND_PORT:-8000}/health/ready"
+  local _ready_resp
+  _ready_resp=$(curl -sS -o /tmp/.stack_ready_body.$$ -w "%{http_code}" \
+    --max-time 5 "$_ready_url" 2>/dev/null || true)
+  if [[ "$_ready_resp" == "200" ]]; then
+    printf '  /health/ready: \033[32mOK\033[0m  ('
+    cat /tmp/.stack_ready_body.$$ 2>/dev/null | tr -d '\n' | head -c 160
+    printf ')\n'
+  elif [[ "$_ready_resp" == "503" ]]; then
+    printf '  /health/ready: \033[33mDEGRADED\033[0m  ('
+    cat /tmp/.stack_ready_body.$$ 2>/dev/null | tr -d '\n' | head -c 220
+    printf ')\n'
+    printf '  Hint: this usually means PG is in recovery — see\n'
+    printf '        docs/runtime-docs/postgres-recovery-mode-failures.md\n'
+  else
+    printf '  /health/ready: \033[31mUNREACHABLE\033[0m  (http_code=%s)\n' "${_ready_resp:-?}"
+  fi
+  rm -f /tmp/.stack_ready_body.$$ 2>/dev/null || true
+
   if [[ "$show_platform" == "true" ]]; then
     echo ""
     # Source on demand so users without /proc (or with --no-platform) pay
@@ -1379,6 +1449,200 @@ cmd_cleanup() {
   echo "Done."
 }
 
+# ── purge-pending-deletes ─────────────────────────────────────────────────
+#
+# Force-expire every session whose `delete_after` timestamp is in the
+# future, then wait for the orphan_cleanup loop to soft-delete those
+# sessions and reap their sandbox containers.
+#
+# Use case: about to start an E2E run and want a clean slate.  E2E
+# sessions get a 24h delete_after by default (E2E_SESSION_TTL_SECONDS in
+# scripts/local/test_e2e.py), so accumulated runs leave hundreds of
+# sessions in `(deletes in <X>h)` state visible via `status`.  Without
+# this command the only options are: wait 24h, manually UPDATE the table,
+# or restart the backend with a clock skew (none acceptable).
+#
+# Mechanics:
+#   1. UPDATE sessions SET delete_after = now()
+#      WHERE delete_after IS NOT NULL AND delete_after > now()
+#        AND NOT is_deleted
+#   2. Poll every 10s for the orphan_cleanup loop to:
+#        a. soft-delete the now-expired sessions, then
+#        b. reap their associated sandbox containers
+#      The sweep runs every 60s by default
+#      (sandbox.orphan_cleanup_interval_seconds), so two full cycles
+#      (~120-180s) is the worst case.
+#
+# Safe to run while the stack is up; touches only `sessions.delete_after`
+# and lets the backend's own cleanup loop do the destructive work.
+cmd_purge_pending_deletes() {
+  local dry_run=false
+  local wait_for_reap=true
+  local timeout_s=180
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --dry-run)   dry_run=true ;;
+      --no-wait)   wait_for_reap=false ;;
+      --timeout)   shift; timeout_s="${1:-180}" ;;
+      --timeout=*) timeout_s="${1#*=}" ;;
+      -h|--help)
+        cat <<'EOF'
+purge-pending-deletes — Expire pending session deletions and reap immediately.
+
+Usage:
+  scripts/stack_control.sh purge-pending-deletes [--dry-run] [--no-wait]
+                                                 [--timeout=SECS]
+
+Options:
+  --dry-run        Report counts without modifying any rows.
+  --no-wait        Expire timestamps and exit immediately; the orphan
+                   cleanup loop will reap on its next sweep (~60s).
+  --timeout=SECS   Max seconds to wait for the cleanup loop to drain
+                   sandbox containers (default: 180).
+
+What it does:
+  1. UPDATE sessions SET delete_after = now() for every session with a
+     future delete_after timestamp.
+  2. Polls every 10s until the orphan_cleanup loop has soft-deleted the
+     sessions and reaped their sandbox containers (or --timeout fires).
+
+Use when starting a fresh E2E run to ensure no carry-over sandboxes are
+present from prior runs.  E2E sessions have a 24h delete_after by
+default, so without this command they accumulate visibly under
+`status` as `(deletes in XXhYYm)` rows.
+EOF
+        return 0
+        ;;
+      *)
+        echo "Unknown option: $1" >&2
+        echo "Run 'scripts/stack_control.sh purge-pending-deletes --help' for usage." >&2
+        return 2
+        ;;
+    esac
+    shift
+  done
+
+  ensure_env
+
+  set -a
+  # shellcheck disable=SC1090
+  . "$ENV_FILE"
+  set +a
+
+  local pg_user="${POSTGRES_USER:-iiagent}"
+  local pg_db="${POSTGRES_DB:-iiagentdev}"
+  local pg_container="${PROJECT_NAME}-postgres-1"
+
+  if ! docker ps --format '{{.Names}}' | grep -qx "$pg_container"; then
+    echo "ERROR: postgres container '$pg_container' is not running" >&2
+    return 1
+  fi
+
+  # ── Phase 1: snapshot pending state ────────────────────────────────────
+  local snapshot
+  snapshot=$(docker exec -i "$pg_container" \
+    psql -U "$pg_user" -d "$pg_db" -A -F '|' -t -v ON_ERROR_STOP=1 -c "
+SELECT
+  COUNT(*) FILTER (WHERE sess.delete_after IS NOT NULL
+                     AND sess.delete_after > now()
+                     AND NOT sess.is_deleted) AS pending_future,
+  COUNT(*) FILTER (WHERE sess.delete_after IS NOT NULL
+                     AND sess.delete_after <= now()
+                     AND NOT sess.is_deleted) AS overdue,
+  COUNT(DISTINCT s.id) FILTER (
+    WHERE sess.delete_after IS NOT NULL
+      AND sess.delete_after > now()
+      AND NOT sess.is_deleted
+      AND s.status NOT IN ('deleted', 'error')
+  ) AS attached_sandboxes
+FROM sessions sess
+LEFT JOIN agent_sandboxes s ON s.session_id = sess.id;
+") || {
+    echo "ERROR: failed to query session state" >&2
+    return 1
+  }
+
+  IFS='|' read -r pending overdue attached <<< "$snapshot"
+  pending="${pending:-0}"
+  overdue="${overdue:-0}"
+  attached="${attached:-0}"
+
+  echo "Pending session deletions:"
+  echo "  future delete_after:    $pending session(s)"
+  echo "  already overdue:        $overdue session(s) (will be reaped on next sweep)"
+  echo "  attached sandboxes:     $attached container(s) (subset of above)"
+
+  if (( pending == 0 && overdue == 0 )); then
+    echo "Nothing to do."
+    return 0
+  fi
+
+  if [[ "$dry_run" == true ]]; then
+    echo "(dry-run; no rows modified)"
+    return 0
+  fi
+
+  # ── Phase 2: expire future delete_after timestamps ─────────────────────
+  if (( pending > 0 )); then
+    local updated
+    updated=$(docker exec -i "$pg_container" \
+      psql -U "$pg_user" -d "$pg_db" -A -t -v ON_ERROR_STOP=1 -c "
+UPDATE sessions
+   SET delete_after = now()
+ WHERE delete_after IS NOT NULL
+   AND delete_after > now()
+   AND NOT is_deleted
+RETURNING 1;
+" | wc -l) || {
+      echo "ERROR: UPDATE failed" >&2
+      return 1
+    }
+    # `wc -l` includes a trailing summary blank from psql -A -t when the
+    # set is non-empty; strip whitespace.
+    updated=$(echo "$updated" | tr -d '[:space:]')
+    echo "Expired delete_after on $updated session(s)."
+  fi
+
+  if [[ "$wait_for_reap" != true ]]; then
+    echo "Skipping wait (--no-wait); orphan_cleanup loop will reap on next sweep (~60s)."
+    return 0
+  fi
+
+  # ── Phase 3: poll until cleanup loop drains the work ───────────────────
+  local deadline=$(( SECONDS + timeout_s ))
+  echo "Waiting up to ${timeout_s}s for orphan_cleanup loop to reap..."
+  local last_remaining=-1
+  while (( SECONDS < deadline )); do
+    sleep 10
+    local remaining
+    remaining=$(docker exec -i "$pg_container" \
+      psql -U "$pg_user" -d "$pg_db" -A -t -v ON_ERROR_STOP=1 -c "
+SELECT COUNT(*)
+FROM sessions sess
+LEFT JOIN agent_sandboxes s ON s.session_id = sess.id
+WHERE sess.delete_after IS NOT NULL
+  AND sess.delete_after <= now()
+  AND ( NOT sess.is_deleted
+        OR (s.id IS NOT NULL AND s.status NOT IN ('deleted', 'error')) );
+" 2>/dev/null | tr -d '[:space:]') || remaining="?"
+
+    if [[ "$remaining" != "$last_remaining" ]]; then
+      printf '  [%ds] remaining work units: %s\n' "$SECONDS" "$remaining"
+      last_remaining="$remaining"
+    fi
+
+    if [[ "$remaining" == "0" ]]; then
+      echo "All pending deletions reaped."
+      return 0
+    fi
+  done
+
+  echo "WARN: timed out after ${timeout_s}s; remaining work units: ${last_remaining}"
+  echo "      The cleanup loop will continue draining; rerun \`status\` to monitor."
+  return 1
+}
+
 # ── verify ────────────────────────────────────────────────────────────────
 #
 # Compare the build manifest embedded in a container / image against the
@@ -1410,6 +1674,102 @@ _read_manifest() {
       return 2
       ;;
   esac
+}
+
+# ─── Disk cleanup ──────────────────────────────────────────────────────────
+# Purpose: free filesystem-level space inside the WSL2 distro so that a
+# subsequent host-side `Optimize-VHD -Mode Full` can actually reclaim space
+# from the underlying VHDX. ext4 does not TRIM by default in WSL2, so freed
+# blocks remain "used" from the VHDX's perspective until `fstrim` informs
+# the host they're discardable. Without `fstrim`, the VHDX never shrinks.
+#
+# This command is safe to run while the stack is up — it only prunes Docker
+# objects unreachable from any running container/image/volume. It does NOT
+# touch the postgres-data-local, redis-data-local, minio-data-local, or
+# ii-agent-filestore-local named volumes (they are referenced by the
+# compose project even when stopped).
+#
+# Compaction with `Optimize-VHD` itself MUST be done from the Windows host
+# after `wsl --shutdown` (the VHDX is held open by vmwp.exe while WSL is
+# running). See docs/runtime-docs/postgres-recovery-mode-failures.md
+# (Preventing it section) for the full workflow.
+cmd_disk_cleanup() {
+  local do_fstrim=true
+  local prune_volumes=false
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --no-fstrim)     do_fstrim=false ;;
+      --prune-volumes) prune_volumes=true ;;
+      -h|--help)
+        cat <<'EOF'
+disk-cleanup — Free filesystem space inside WSL2 to enable VHDX reclaim.
+
+Usage:
+  scripts/stack_control.sh disk-cleanup [--no-fstrim] [--prune-volumes]
+
+Options:
+  --no-fstrim        Skip the `sudo fstrim -av` step (which is what tells
+                     the host that freed blocks are discardable).
+  --prune-volumes    Also `docker volume prune -f`. WARNING: this removes
+                     volumes not attached to any container, including
+                     potentially important named volumes from stopped
+                     compose projects. Off by default.
+
+Compaction step (run on Windows host AFTER `wsl --shutdown`):
+  Optimize-VHD -Path '<...>\ext4.vhdx' -Mode Full
+
+See docs/runtime-docs/postgres-recovery-mode-failures.md for context.
+EOF
+        return 0
+        ;;
+      *)
+        echo "Unknown disk-cleanup option: $1"
+        return 1
+        ;;
+    esac
+    shift
+  done
+
+  echo "=== Disk usage before ==="
+  df -h /var/lib/docker / 2>/dev/null | head -5 || true
+
+  echo ""
+  echo "=== docker system prune (images, build cache, stopped containers) ==="
+  docker system prune -af
+
+  if [[ "$prune_volumes" == "true" ]]; then
+    echo ""
+    echo "=== docker volume prune (UNATTACHED volumes only) ==="
+    docker volume prune -f
+  else
+    echo ""
+    echo "Skipping volume prune (pass --prune-volumes to enable)."
+  fi
+
+  if [[ "$do_fstrim" == "true" ]]; then
+    echo ""
+    echo "=== fstrim (telling host VHDX which blocks are now free) ==="
+    if command -v fstrim >/dev/null 2>&1; then
+      sudo fstrim -av || echo "  (fstrim returned non-zero; some mounts may not support TRIM)"
+    else
+      echo "  fstrim not installed; skipping."
+    fi
+  fi
+
+  echo ""
+  echo "=== Disk usage after ==="
+  df -h /var/lib/docker / 2>/dev/null | head -5 || true
+
+  cat <<'EOF'
+
+Next step (Windows host, elevated PowerShell):
+  wsl --shutdown
+  Optimize-VHD -Path '<path-to-ext4.vhdx>' -Mode Full
+
+The VHDX path is typically:
+  %LOCALAPPDATA%\Docker\wsl\disk\docker_data.vhdx       (Docker Desktop)
+  %LOCALAPPDATA%\Packages\<distro>\LocalState\ext4.vhdx (raw distro)
+EOF
 }
 
 cmd_verify() {
@@ -1624,19 +1984,38 @@ if detail_lines:
         print(line)
 
 # Exit code semantics (v2):
-#   0 = commit matches HEAD AND every tracked_files entry matches working tree
-#   1 = any drift detected (rebuild recommended)
-if commit_match and t_changed == 0 and t_missing == 0:
-    print("  verdict:    UP TO DATE")
+#   0 = every tracked_files entry matches working tree (content is current),
+#       regardless of whether the manifest's commit pointer matches HEAD.
+#       Commit drift with zero file drift means HEAD moved but no file in
+#       this image's content scope changed — the image is functionally
+#       up-to-date. The stale commit pointer is metadata and can be
+#       refreshed via `refresh-manifest` without a rebuild.
+#   1 = at least one tracked file changed or is missing on disk
+#       (content drift → rebuild recommended).
+content_current = (t_changed == 0 and t_missing == 0)
+if content_current:
+    if commit_match:
+        print("  verdict:    UP TO DATE")
+    else:
+        # All tracked content matches working tree; only the manifest's
+        # commit pointer lags HEAD. No rebuild needed; run
+        # `refresh-manifest` to silence the metadata drift if desired.
+        print(
+            f"  verdict:    UP TO DATE  (commit metadata stale: "
+            f"{built_commit[:7]} → {head[:7]}; content unchanged — "
+            f"run `refresh-manifest` to update the pointer)"
+        )
     sys.exit(0)
 
 reasons = []
-if not commit_match:
-    reasons.append(f"commit drift ({built_commit[:7]} → {head[:7]})")
 if t_changed:
     reasons.append(f"{t_changed} tracked file(s) changed")
 if t_missing:
     reasons.append(f"{t_missing} tracked file(s) missing on disk")
+# commit drift is reported as supplementary context only when there is
+# also content drift — by itself it does not warrant STALE.
+if not commit_match:
+    reasons.append(f"commit drift ({built_commit[:7]} → {head[:7]})")
 print("  verdict:    STALE — " + "; ".join(reasons))
 sys.exit(1)
 PY
@@ -1685,13 +2064,13 @@ WARNING: this does NOT re-validate file content. The 'tracked_files' array
 is preserved verbatim from the prior manifest; only commit/timestamp/dirty
 metadata is refreshed. To re-validate file content, run 'rebuild'.
 
-Targets (default: sandbox a2a-adapter):
+Targets (default: backend frontend sandbox a2a-adapter — i.e. all):
   backend       ii-agent-local-backend-1 (docker cp)
   frontend      ii-agent-local-frontend-1 (docker cp)
   a2a-adapter   ii-agent-local-a2a-adapter-1 (docker cp)
   sandbox       \${SANDBOX_DOCKER_IMAGE:-ii-agent-sandbox:latest}
                 (rebuild a 1-line derivative image, retag)
-  all           all four
+  all           explicit alias for the default
 EOF
         return 0
         ;;
@@ -1703,7 +2082,13 @@ EOF
   done
 
   if (( ${#targets[@]} == 0 )); then
-    targets=(sandbox a2a-adapter)
+    # Default: refresh every target. The original default of
+    # `(sandbox a2a-adapter)` predates the v2 verdict logic and silently
+    # skipped backend/frontend, leaving their commit pointers stale even
+    # after `refresh-manifest` was run with no args (observed 2026-04-25:
+    # frontend stayed pinned to 468cb7a despite a refresh-all invocation).
+    # All four operations are fast and idempotent — make the default DWIM.
+    targets=(backend frontend sandbox a2a-adapter)
   fi
 
   local overall_rc=0
@@ -1822,6 +2207,9 @@ case "${1:-help}" in
   status)         shift; cmd_status "$@" ;;
   logs)           shift; cmd_logs "$@" ;;
   cleanup)        cmd_cleanup ;;
+  purge-pending-deletes|purge-deletes)
+                  shift; cmd_purge_pending_deletes "$@" ;;
+  disk-cleanup)   shift; cmd_disk_cleanup "$@" ;;
   verify)         shift; cmd_verify "$@" ;;
   refresh-manifest) shift; cmd_refresh_manifest "$@" ;;
   help|--help|-h)

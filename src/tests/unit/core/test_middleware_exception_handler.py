@@ -80,6 +80,66 @@ class TestExceptionLoggingMiddleware:
         assert resp.status_code == 500
         assert "Internal Server Error" in resp.json()["detail"]
 
+    def test_cannot_connect_now_returns_503_with_retry_after(self):
+        """Postgres crash-recovery should surface as 503, not 500.
+
+        See docs/runtime-docs/postgres-recovery-mode-failures.md — when
+        PG is in startup recovery (e.g. after a WSL2 hard kill) asyncpg
+        raises ``CannotConnectNowError``.  Middleware must convert that
+        into a retryable 503 with ``Retry-After`` so frontends and
+        smoke-tests can distinguish "wait a moment" from "real bug".
+        """
+        from asyncpg.exceptions import CannotConnectNowError
+
+        app = _make_app()
+
+        @app.get("/db")
+        def db_endpoint():
+            raise CannotConnectNowError("the database system is in recovery mode")
+
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.get("/db")
+        assert resp.status_code == 503
+        assert resp.headers.get("Retry-After") == "5"
+        body = resp.json()
+        assert body["error_code"] == "db_unavailable"
+        assert "temporarily unavailable" in body["detail"].lower()
+
+    def test_wrapped_cannot_connect_now_returns_503(self):
+        """When SQLAlchemy wraps CannotConnectNowError in an
+        OperationalError/DBAPIError, we still classify it correctly via
+        the ``__cause__`` / ``__context__`` chain walk.
+        """
+        from asyncpg.exceptions import CannotConnectNowError
+
+        app = _make_app()
+
+        @app.get("/wrapped")
+        def wrapped():
+            try:
+                raise CannotConnectNowError("recovery")
+            except CannotConnectNowError as inner:
+                raise RuntimeError("sqlalchemy wrapper") from inner
+
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.get("/wrapped")
+        assert resp.status_code == 503
+        assert resp.headers.get("Retry-After") == "5"
+
+    def test_unrelated_runtime_error_still_500(self):
+        """Sanity check: only asyncpg's CannotConnectNowError downgrades
+        to 503.  Other RuntimeErrors must remain opaque 500s.
+        """
+        app = _make_app()
+
+        @app.get("/other")
+        def other():
+            raise RuntimeError("not a db problem")
+
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.get("/other")
+        assert resp.status_code == 500
+
 
 # ---------------------------------------------------------------------------
 # Named exception handlers

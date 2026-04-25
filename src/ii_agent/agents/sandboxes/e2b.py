@@ -192,11 +192,11 @@ class E2BSandbox(Sandbox):
         vnc_url = None
         if self.status == SandboxStatus.RUNNING and self.sandbox:
             try:
-                vscode_url = await self.expose_port(self._config.vscode_port)
+                vscode_url = await self.expose_port(self._config.vscode_port, external=True)
             except Exception:
                 pass
             try:
-                vnc_base = await self.expose_port(self._config.sandbox.novnc_port)
+                vnc_base = await self.expose_port(self._config.sandbox.novnc_port, external=True)
                 vnc_url = f"{vnc_base}/vnc.html?autoconnect=true" if vnc_base else None
             except Exception:
                 pass
@@ -671,7 +671,11 @@ class E2BSandbox(Sandbox):
 
     # ── Networking ────────────────────────────────────────────────────────
 
-    async def expose_port(self, port: int, *, external: bool = True) -> str:
+    async def expose_port(self, port: int, *, external: bool = False) -> str:
+        # E2B sandboxes return the same public https URL regardless of
+        # ``external`` — the cloud platform doesn't distinguish between
+        # backend-internal and browser-accessible endpoints. The kwarg
+        # exists purely for ``Sandbox`` interface parity with Docker.
         await self._ensure_sandbox_connection()
         host = self.sandbox.get_host(port)
         return f"https://{host}"

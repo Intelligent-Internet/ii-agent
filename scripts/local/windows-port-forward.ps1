@@ -1,4 +1,4 @@
-& C:\Windows\Temp\ii-agent-pf.ps1#Requires -RunAsAdministrator
+#Requires -RunAsAdministrator
 <#
 .SYNOPSIS
     Forward WSL2 ports to the Windows host LAN interface for ii-agent.
@@ -8,8 +8,9 @@
     This script adds netsh portproxy rules and Windows Firewall rules so that:
       - http://<windows-lan-ip>:1420  → ii-agent frontend
       - http://<windows-lan-ip>:8000  → ii-agent backend API / Socket.IO
-      - http://<windows-lan-ip>:30000-30999 → sandbox services (noVNC, code-server,
+      - http://<windows-lan-ip>:30000-39999 → sandbox services (noVNC, code-server,
                                                MCP, Vite, dev servers, A2A adapter)
+        (Range MUST match SANDBOX_PORT_RANGE_END in docker/docker-compose.local.yaml.)
 
     Run this script after every WSL2 restart because WSL2 gets a new internal IP
     on each boot. Use -Reset to remove all rules instead.
@@ -40,9 +41,14 @@ $corePorts = @(
     @{ Port = 8000; Name = "ii-agent Backend" }
 )
 
+# Sandbox port range — MUST stay aligned with SANDBOX_PORT_RANGE_START/_END in
+# docker/docker-compose.local.yaml. Backend allocates dynamic host ports across
+# this whole range (default 30000-39999); any port allocated outside the
+# Windows portproxy window is unreachable from the LAN even though it listens
+# on 0.0.0.0 inside WSL2 (root cause of broken noVNC / preview links).
 $sandboxRangeStart = 30000
-$sandboxRangeEnd   = 30999
-$sandboxFwRuleName = "ii-agent Sandbox Pool (30000-30999)"
+$sandboxRangeEnd   = 39999
+$sandboxFwRuleName = "ii-agent Sandbox Pool (30000-39999)"
 
 # ── Reset mode ────────────────────────────────────────────────────────────────
 
@@ -79,10 +85,37 @@ if ($Reset) {
 # ── Get WSL IP ────────────────────────────────────────────────────────────────
 
 Write-Host "Detecting WSL2 IP address..." -ForegroundColor Cyan
-$wslIp = (wsl hostname -I 2>$null).Trim().Split()[0]
+
+# wsl.exe occasionally emits harmless stderr noise during startup
+# (e.g. "Failed to mount Z:\\" from a stale DrvFs entry). PowerShell's
+# default Stop-on-error behaviour for native commands turns that into a
+# script-killing error. We isolate the call inside a try/finally with
+# ErrorActionPreference relaxed and merge all streams to $null, then
+# parse the captured stdout from a temp file.
+$savedEAP = $ErrorActionPreference
+$ErrorActionPreference = 'SilentlyContinue'
+$wslOutFile = Join-Path $env:TEMP "ii-agent-wsl-ip.$PID.txt"
+try {
+    # `cmd /c` swallows wsl.exe stderr completely; redirect stdout to file.
+    cmd.exe /c "wsl -d Ubuntu-22.04 -- hostname -I 2>nul > `"$wslOutFile`"" 2>$null | Out-Null
+    if (-not (Test-Path $wslOutFile) -or (Get-Item $wslOutFile).Length -eq 0) {
+        # Fallback: default distro.
+        cmd.exe /c "wsl -- hostname -I 2>nul > `"$wslOutFile`"" 2>$null | Out-Null
+    }
+    $wslHostnameOutput = if (Test-Path $wslOutFile) { Get-Content $wslOutFile -Raw } else { "" }
+} finally {
+    Remove-Item $wslOutFile -ErrorAction SilentlyContinue
+    $ErrorActionPreference = $savedEAP
+}
+
+$wslIp = $null
+if ($wslHostnameOutput) {
+    $tokens = $wslHostnameOutput.Trim().Split() | Where-Object { $_ -match '^\d{1,3}(\.\d{1,3}){3}$' }
+    if ($tokens) { $wslIp = $tokens[0] }
+}
 
 if (-not $wslIp) {
-    Write-Error "Could not detect WSL2 IP. Make sure WSL2 is running."
+    Write-Error "Could not detect WSL2 IP. Try `wsl hostname -I` manually in a regular shell."
     exit 1
 }
 
@@ -98,7 +131,7 @@ foreach ($entry in $corePorts) {
     Write-Host "  0.0.0.0:$($entry.Port) -> $wslIp`:$($entry.Port)  ($($entry.Name))"
 }
 
-# ── Sandbox port range (30000-30999) via registry (fast — avoids 1000 netsh calls) ──
+# ── Sandbox port range via registry (fast — avoids thousands of netsh calls) ──
 
 Write-Host "`nAdding sandbox port range $sandboxRangeStart-$sandboxRangeEnd via registry..." -ForegroundColor Yellow
 Write-Host "  (This forwards the pool allocated dynamically per sandbox container)"
