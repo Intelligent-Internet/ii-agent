@@ -615,10 +615,18 @@ The sandbox cleanup loop (`agents/sandboxes/orphan_cleanup.py`) runs every 60 se
 When `SANDBOX_PROVIDER=docker` and `SANDBOX_LOCAL_MODE=true`, sandboxes run as local Docker containers instead of E2B cloud instances.
 
 **Container hardening (applied in `agents/sandboxes/docker.py`):**
-- `read_only=True` with tmpfs mounts (`/tmp`, `/var/tmp`, `/run`, `/home/user`)
+- `read_only=True` with tmpfs mounts (`/tmp` 512 MB, `/var/tmp` 256 MB, `/run` 64 MB, `/home/user` 1 GB uid=1001)
 - `cap_drop=ALL`, selective `cap_add` (CHOWN, SETUID, SETGID, DAC_OVERRIDE, FOWNER)
-- `no-new-privileges`, `mem_limit=3GB`, `pids_limit=512`
+- `no-new-privileges`, `mem_limit=3 GB`, `pids_limit=512`
 - Docker socket auto-detection: `DOCKER_SOCK_PATH` env var, or auto-probes `/var/run/docker.sock`, Colima, OrbStack, Podman sockets
+
+**Sandbox filesystem and file ownership — see [`docs/design-docs/sandbox-filesystem-design.md`](docs/design-docs/sandbox-filesystem-design.md) for the full specification. Rules in brief:**
+
+1. **`/workspace` is the only valid destination for host-mediated uploads.** `write_file` / `upload_file` use Docker's `put_archive` API, which rejects writes outside the writable bind-mount on a `read_only=True` container (moby/moby#42333) — including `/tmp`, even though in-container writes to `/tmp` succeed. Stage all backend-uploaded files under `/workspace`.
+
+2. **`/workspace` is owned by `user:user 755` (uid=1001, gid=1001).** Every `put_archive` tar entry has `uid=1001, gid=1001` baked in (`_SANDBOX_USER_UID`/`_SANDBOX_USER_GID` in `docker.py`). All `run_command` calls default to the sandbox user. **Never use `user="root"` for operations under `/workspace`** — root-owned paths break subsequent user-mode cleanup (producing `Permission denied` on `rm`).
+
+3. **`user="root"` is reserved for system-level commands** (apt, system services, operations outside `/workspace`). Skill deployment, file staging, and cleanup must never escalate to root.
 
 **Orphan cleanup distributed lock:** `run_orphan_cleanup_loop` acquires a Redis advisory lock (`sandbox:cleanup:lock`, 5-min TTL, `SET NX EX`) so only one backend instance runs cleanup at a time.
 

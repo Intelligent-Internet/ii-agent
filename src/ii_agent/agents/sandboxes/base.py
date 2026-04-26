@@ -143,8 +143,24 @@ class Sandbox(ABC):
         background: bool = False,
         timeout: Optional[int] = None,
         cwd: Optional[str] = None,
+        user: Optional[str] = None,
     ) -> str:
-        """Run a shell command and return stdout."""
+        """Run a shell command and return stdout.
+
+        Args:
+            command: Shell command to execute.
+            background: If True, launch detached and return immediately.
+            timeout: Maximum seconds to wait for completion.
+            cwd: Working directory inside the sandbox.
+            user: Override the executing Unix user (e.g. "root").
+                  Provider support: Docker — honoured via exec_run user=.
+                  E2B — honoured if the E2B SDK accepts the parameter;
+                  otherwise ignored (E2B sandboxes typically run as a
+                  fixed user configured in the template).
+                  Callers MUST NOT rely on ``user`` for security-critical
+                  isolation — use only for file-ownership convenience where
+                  the provider is known to be Docker.
+        """
         ...
 
     @abstractmethod

@@ -332,9 +332,12 @@ class E2BSandbox(Sandbox):
         background: bool = False,
         timeout: Optional[int] = None,
         cwd: Optional[str] = None,
+        user: Optional[str] = None,
         **kwargs,
     ) -> str:
         await self._ensure_sandbox_connection()
+        if user is not None:
+            kwargs["user"] = user
         result = await self.sandbox.commands.run(
             command,
             background=background,

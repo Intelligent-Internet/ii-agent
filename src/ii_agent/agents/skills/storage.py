@@ -169,21 +169,28 @@ async def copy_skill_to_sandbox(
         skill_dir = Path(storage_uri)
         zip_content = create_skill_zip_from_dir(skill_dir)
 
-    # Ensure the staging directory exists before uploading the zip.
-    await sandbox.run_command(f"mkdir -p {sandbox_base_path}", user="root")
+    # All operations run as the default sandbox user (uid 1001, "user").
+    # /workspace is owned by user:user 755, so no root escalation is needed.
+    # Using user="root" for mkdir would create root-owned directories, making
+    # subsequent user-mode writes/deletes fail with Permission denied.
 
-    # Upload zip to sandbox
+    # Ensure the staging directory exists before uploading the zip.
+    await sandbox.run_command(f"mkdir -p {sandbox_base_path}")
+
+    # Upload zip — write_file (Docker: put_archive, E2B: files.write) creates
+    # files owned by the sandbox user, not root.
     await sandbox.write_file(zip_path_in_sandbox, zip_content)
 
-    # Create target directory and extract
-    await sandbox.run_command(f"mkdir -p {sandbox_skill_dir}", user="root")
-    await sandbox.run_command(f"unzip -o {zip_path_in_sandbox} -d {sandbox_skill_dir}", user="root")
+    # Create target directory and extract. Running as the default user means
+    # all extracted files are already user-owned; no chown step needed.
+    await sandbox.run_command(f"mkdir -p {sandbox_skill_dir}")
+    await sandbox.run_command(f"unzip -o {zip_path_in_sandbox} -d {sandbox_skill_dir}")
 
-    # Fix permissions so the sandbox user can read the files
-    await sandbox.run_command(f"chown -R user:user {sandbox_skill_dir}", user="root")
-    await sandbox.run_command(f"chmod -R 755 {sandbox_skill_dir}", user="root")
+    # Ensure all skill scripts are executable by the sandbox user.
+    await sandbox.run_command(f"chmod -R 755 {sandbox_skill_dir}")
 
-    # Clean up zip file (owned by sandbox user via _put_file, no root needed)
+    # Remove staging zip — user owns the file and the directory, so this works
+    # without root. Use -f so a missing zip never raises an error on retry.
     await sandbox.run_command(f"rm -f {zip_path_in_sandbox}")
 
     logger.debug(f"Extracted skill '{skill_name}' to {sandbox_skill_dir}")
