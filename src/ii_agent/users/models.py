@@ -62,6 +62,13 @@ class User(Base):
     )
     language: Mapped[str] = mapped_column(String, default="en")
 
+    # Purge subsystem (§16). Set true while a user-account purge is in flight;
+    # gates mutation endpoints (NotPurgingDep — PR-G follow-up) so a half-purged
+    # user cannot continue accruing data.
+    is_purging: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+
     # Relationships (using string references for forward declarations)
     sessions: Mapped[list["Session"]] = relationship(
         "Session", back_populates="user", cascade="all, delete-orphan"

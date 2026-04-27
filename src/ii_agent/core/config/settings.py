@@ -31,6 +31,7 @@ from ii_agent.core.config.mobile import MobileSettings
 from ii_agent.core.config.enhance_prompt_config import EnhancePromptConfig
 from ii_agent.core.config.nano_banana import NanoBananaConfig
 from ii_agent.core.config.session_title import SessionTitleConfig
+from ii_agent.core.config.sessions import SessionsSettings
 
 if TYPE_CHECKING:
     from ii_agent.core.storage.providers.base import StorageProvider
@@ -168,6 +169,11 @@ class Settings(BaseSettings):
     session_title: SessionTitleConfig = Field(
         default_factory=SessionTitleConfig,
         description="LLM-generated session title configuration (OpenAI-based)",
+    )
+
+    sessions: SessionsSettings = Field(
+        default_factory=SessionsSettings,
+        description="Session purge subsystem (§4) — three-phase purge driver and storage reaper.",
     )
 
     # ========== Workspace Configuration ==========

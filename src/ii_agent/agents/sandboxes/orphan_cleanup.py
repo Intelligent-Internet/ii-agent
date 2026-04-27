@@ -272,6 +272,17 @@ async def run_orphan_cleanup_loop(config: Optional[Settings] = None) -> None:
                 ttl_expired = await _expire_old_paused_sandboxes(cfg)
                 cleaned = await _cleanup_orphans(cfg)
                 paused = await _pause_stale_sandboxes(cfg)
+                # §4.1 — three-phase purge driver. Slots between pause-stale
+                # and zombie-reap per design. Feature-flagged via
+                # SessionsSettings.purge_enabled (default off until
+                # 20260427_000008 has rolled out).
+                from ii_agent.sessions.purge.cleanup_stage import (
+                    cleanup_loop_stage_purge_sessions,
+                    cleanup_loop_stage_storage_reaper,
+                )
+
+                purged_sessions = await cleanup_loop_stage_purge_sessions()
+                reaped_assets = await cleanup_loop_stage_storage_reaper()
                 zombies = await _cleanup_docker_zombies()
                 volumes = await _cleanup_orphaned_volumes()
                 timed_out = await _kill_timed_out_sandboxes()
@@ -297,6 +308,8 @@ async def run_orphan_cleanup_loop(config: Optional[Settings] = None) -> None:
                     or health_marked > 0
                     or ttl_expired > 0
                     or purged > 0
+                    or purged_sessions > 0
+                    or reaped_assets > 0
                 ):
                     logger.info(
                         f"Orphan cleanup sweep: expired={expired} sessions, removed={cleaned} orphaned, "
@@ -305,7 +318,8 @@ async def run_orphan_cleanup_loop(config: Optional[Settings] = None) -> None:
                         f"pool_retired={pool_retired} pool_deduped={pool_deduped}, "
                         f"pool_validated={pool_validated}, pool_reaped={pool_reaped}, "
                         f"health_marked={health_marked}, ttl_expired={ttl_expired}, "
-                        f"purged={purged}, elapsed={_sweep_elapsed:.1f}s"
+                        f"purged={purged}, purged_sessions={purged_sessions}, "
+                        f"reaped_assets={reaped_assets}, elapsed={_sweep_elapsed:.1f}s"
                     )
                 else:
                     logger.debug("Orphan cleanup sweep completed: nothing to clean")

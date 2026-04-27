@@ -1,29 +1,122 @@
 # Session Lifecycle & Data Custody — Design Proposal
 
-**Status:** PROPOSAL v3.1 — ready for core-design review
-**Date:** 2026-04-25 (v3.1: explicit engagement with main's documented FK strategy)
+**Status:** PROPOSAL v3.10 — paired with executable contract at `src/ii_agent/sessions/purge/`
+**Date:** 2026-04-27 (v3.11: +I19 ALREADY_PURGED idempotency invariant; rename `provider_cleanup_dead_letter` → `purge_dead_letter`; pin `application_events` canonical event-content schema for PITR replay; SAR-vs-claim-TTL reconciliation; close adversarial follow-ups D14/D15/D16; delete §13 `agent_event_logs` callout — that drop ships in its own PR; SAR glossary line in §0)
+
+**Date:** 2026-04-27 (v3.10: close v3.9 adversarial findings; +I16 SAR-vs-restore, +I17 grace sweep reads primary, +I18 legal-hold supersedes SAR; SARRequest validators reject empty/non-ISO-8601 at construction)
+
+> **READ THIS FIRST.** Through v3.7 this doc was the primary design artefact; that approach was not converging — each pass found ~5–10 substantive defects. v3.8 inverted the relationship: the **source of truth** is the type-checked stub module under `src/ii_agent/sessions/purge/` (mypy `--strict` clean). v3.9 closed the two open CRITICAL findings (FK CASCADE silent loss; SAR-vs-grace per external-counsel memo). v3.10 closes the v3.9 adversarial pass with mechanical rigour fixes:
+>
+> - **I16 (SAR ∧ restore):** restore endpoint MUST reject when an active SAR exists; defence-in-depth DB trigger.
+> - **I17 (replica lag):** grace sweep MUST read from primary, never a replica.
+> - **I18 (legal-hold > SAR):** legal_hold custody overrides SAR; logged as `retention_exception=LEGAL_HOLD` with case number; user notified per Art. 17(3).
+> - **`SARRequest` runtime validators** reject empty strings and non-ISO-8601 timestamps at construction — closes adversarial v3.9 #1 and #3.
+>
+> Convergence trajectory: v3.7 ~10 → v3.8 36 → v3.9 7 → v3.10 expected ≤2.
+
+**Status:** PROPOSAL v3.7 superseded
+**Original date:** 2026-04-27 (v3.7: Art. 17 user_id nulling; operational-vs-erasure strip policy split; §3.1 user FK; §16 claim race; dead-letter retention)
 **Author:** GitHub Copilot (audit + proposal)
 **Scope:** Sessions and **all collateral resources** — PostgreSQL rows, object-storage blobs, Docker containers/volumes, OpenAI provider artifacts, on-disk workspaces, Redis state — across both cloud (E2B) and local (Docker) sandbox providers, and both native and A2A+native-fallback inner-loop modes.
 
-**Changelog vs v3:**
-- v3.1 added: §0.1 — direct engagement with the documented FK-avoidance strategy in `main`'s `database-design.md`. This is the most important addition for core-team defence: the proposal is openly modifying a documented decision, not silently overriding it. The original cascade-lock-storm concern was about *user-row deletion at scale* (out of scope here); the periodic-cleanup mechanism Review Item #3 explicitly anticipates is what §4.1 builds.
-- v3.1 added: §4.1 lock-storm engagement subsection — table mapping each documented concern to its mitigation in this proposal.
-- v3.1 added: doc-drift note recommending `database-design.md` be updated as part of PR-D.
+> **Version history (v3.1–v3.10) intentionally elided.** Past changelogs were retained through every iterative pass and grew to ~80 lines of historical drift. Per the v3.10 process pivot (executable contract is source-of-truth), historical version notes have been dropped. The relevant invariants and design decisions are captured in §2.3 invariants, §2.4 state machine, and the docstrings of `src/ii_agent/sessions/purge/`. Git log retains the prior versions if archaeology is needed.
 
-**Changelog vs v2:**
-- v3 added: §0 Branch context — explicit map of what is on `origin/main`, what is already on this topic branch, and what this proposal adds on top. Critical for honest core-team review because v2 cited topic-branch-only files as if they were the existing baseline.
-- v3 refined: "structurally unsatisfiable" claim on `status='permanent'` — accurate observation is "satisfiable via direct assignment (column is `String`, not native PG enum) but no production code path writes it." Test fixture on main does write it; production never does.
-- v3 added: §12 Sequencing & dependency-on-topic-branch infrastructure.
+---
 
-**Changelog vs v1:**
-- v2 added: resource model beyond the FK graph (§1.5), provider-side cleanup (§4.5), storage reaper (§4.6), GDPR purge-now path (§4.7), `legal_hold` audit (§4.8), `NOT VALID` migration pattern (§5), one-session-per-tx purge (§4.1), cached orphan metrics (§6), ORM-vs-FK cascade verification table (§9), public-link UX consideration (§7).
-- v2 reversed: `application_events` now SET NULL (was CASCADE) on billing-forensics grounds.
-- v2 simplified: custody enum collapsed from 4 → 3 values (`archived` belongs in UI, not data model).
-- v2 corrected: `Session.events` already declares `cascade="all, delete-orphan"` but with `viewonly=True`, which silently disables it. Frame the FK addition as making an existing inert declaration real.
+## 0.0 Rollout gate — DO NOT FLIP `SESSIONS_PURGE_ENABLED` without core-team sign-off
+
+**This change is hard-delete at scale and is not reversible after the audit row is committed.** The flag MUST remain `false` in every environment (including local dev stacks shared with other engineers) until the core team has reviewed both this design doc and the stub/skeleton code under [`src/ii_agent/sessions/purge/`](../../src/ii_agent/sessions/purge/) and either approved or returned constructive feedback.
+
+### Review request — what reviewers are asked to scrutinise
+
+Reviewers should focus on the following artefacts in this order. Each is small enough to read end-to-end:
+
+| Artefact | What to check |
+|---|---|
+| This document, §2.3 (invariants I1–I19) | Are the invariants the right shape? Anything missing? |
+| This document, §4.1 (three-phase driver) and §4.6 (storage reaper) | Sequencing, lock scope, replica-lag handling |
+| [`sessions/purge/__init__.py`](../../src/ii_agent/sessions/purge/__init__.py) | Public surface; PR-A→PR-G dependency chain in module docstring |
+| [`sessions/purge/types.py`](../../src/ii_agent/sessions/purge/types.py) | `PurgeOutcome`, `PurgeTrigger`, `SARRequest` validators, custody enum |
+| [`sessions/purge/invariants.py`](../../src/ii_agent/sessions/purge/invariants.py) | Single source of truth for I1–I19; matches §2.3 |
+| [`sessions/purge/claim.py`](../../src/ii_agent/sessions/purge/claim.py), [`commit.py`](../../src/ii_agent/sessions/purge/commit.py), [`pii_strip.py`](../../src/ii_agent/sessions/purge/pii_strip.py) | The three phases; transaction boundaries; idempotency contract |
+| [`sessions/purge/providers.py`](../../src/ii_agent/sessions/purge/providers.py) | Hook registry, retry budget, dead-letter promotion |
+| [`sessions/purge/session_purge.py`](../../src/ii_agent/sessions/purge/session_purge.py) | The single arbitration entry point — phase (a)→(b)→(c) glue |
+| [`sessions/purge/cleanup_stage.py`](../../src/ii_agent/sessions/purge/cleanup_stage.py) | The thing the flag actually gates |
+| [`migrations/versions/20260427_000008_session_purge_v34.py`](../../migrations/versions/20260427_000008_session_purge_v34.py) | Schema delta; `purge_dead_letter` table; partial indexes |
+| §8 (Open questions for core-design review) | 10 explicit decisions awaiting confirmation |
+
+**Constructive-feedback channel:** comments on this PR, or annotated review of the design doc. The author will fold feedback into a v3.12+ revision. **Do not proceed past §0.0 of this doc as a green light** — the §0 status table calls out wiring complete; that is not the same as approved-to-ship.
+
+### Pre-flip checklist (every box must be green)
+
+The flag MUST remain `false` until **all** of the following are demonstrably true. The current state of each item is recorded as of the doc revision date — flip only after re-verifying.
+
+| # | Gate | Owner | Verifier | Current state |
+|---|---|---|---|---|
+| 1 | Core-team review of this doc + `purge/` package complete; outstanding review comments either resolved or explicitly deferred with a tracking link | core team | author | ⏳ awaiting review |
+| 2 | §8 open questions either decided or explicitly punted with a written rationale | core team | doc updated | ⏳ awaiting decisions |
+| 3 | PR-C (FK NOT VALID + VALIDATE for the 9 unconstrained `session_id` columns) merged; otherwise the §3.1 CASCADE rationale is asserted but not enforced | TBD | `tests/migrations/test_session_fk_cascade.py` passing | ⏳ deferred |
+| 4 | At least one real `register_cleanup_hook` registration (E2B sandboxes, GCS slide assets, OpenAI vector stores, Composio profiles, or Stripe customers) so phase (b) is not a permanent no-op | TBD | adapter unit test + grep `register_cleanup_hook` returns ≥ 1 hit outside tests | ❌ registry empty |
+| 5 | `register_purge_guards()` wired into `app/lifespan.py` so the ORM-level `is_purging` rail is actually installed at startup | TBD | startup log asserts listener registered | ❌ exported but not called |
+| 6 | The skip-stub behavioural tests in [`tests/unit/sessions/purge/test_purge_contracts.py`](../../src/tests/unit/sessions/purge/test_purge_contracts.py) — at minimum the four PR-E tests covering claim arbitration, dead-letter retention, ALREADY_PURGED idempotency (I19), and phase-(c) re-check (I7) — are unblocked and passing against real DB fixtures | TBD | `pytest src/tests/unit/sessions/purge/ -q` shows fewer than today's 32 skips | ❌ all PR-E behavioural tests still skipped |
+| 7 | One canary cycle on a non-prod environment with `SESSIONS_PURGE_ENABLED=true` purges a small, known set of soft-deleted sessions; `application_events.event_type='session.purge_committed'` count increments by exactly the expected number; `purge_dead_letter` stays at zero (or every entry is explained) | ops + author | DB query + log review | ❌ not yet attempted |
+| 8 | A PITR drill (§14.1) restoring a deleted session into staging has been rehearsed and the runbook recorded in [`docs/runtime-docs/`](../runtime-docs/) | ops | runbook link | ❌ not yet rehearsed |
+| 9 | Observability: §6.1 Prometheus metrics emit non-zero values during the canary cycle; alerting rule for `sessions_purge_errors_total` rate-of-change in place | ops | Grafana dashboard link | ❌ pending |
+| 10 | Backup/PITR retention ≥ 37 days verified in target environment | ops | platform check | ❌ pending |
+
+### Reversibility envelope
+
+- Setting `SESSIONS_PURGE_ENABLED=false` and restarting the cleanup worker stops the driver instantly. **In-flight phase (b) calls finish; no new claims are taken.** Already-committed phase-(c) DELETEs are NOT reversible by toggling the flag — they are PITR-only.
+- The `purge_dead_letter` table is append-only operator surface; flipping the flag off does not clear it.
+- The schema migration `20260427_000008_session_purge_v34.py` is independently reversible (drops `purge_after`, `purge_attempts`, `purge_started_at`, `purge_dead_letter`, `users.is_purging`). Reversing while data has been purged does NOT restore the data.
+
+### Sign-off line
+
+```
+Core-team approval to flip SESSIONS_PURGE_ENABLED in <env>:
+
+  [ ]  Reviewer 1 ......................   date / commit
+  [ ]  Reviewer 2 ......................   date / commit
+  [ ]  Ops on-call ....................    date / commit
+
+  Environment:    dev / staging / prod   (one only — re-run for each)
+  Canary scope:   <max session count>
+  Rollback owner: <name>
+```
+
+This block is reproduced in the runbook entry that lives next to the env file change. **No flip without all three signatures and a named rollback owner.**
 
 ---
 
 ## 0. Branch context — what's where
+
+> **Implementation status (this branch, v3.11+):** §4.1 (three-phase purge driver) and §4.6 (storage reaper) are now implemented behind feature flags. The cleanup-loop wiring is **on**; the feature flags `SESSIONS_PURGE_ENABLED` and `SESSIONS_STORAGE_REAPER_ENABLED` are both **false** by default, so production behaviour is unchanged until ops flips them. **The flag MUST NOT be flipped until §0.0 (Rollout gate) has been signed off by the core team.** Wiring complete ≠ approved-to-ship.
+>
+> | PR | Status | Artefacts |
+> |---|---|---|
+> | **PR-A** purge columns + indexes | ✅ Landed | `migrations/versions/20260427_000008_session_purge_v34.py`, `Session.purge_after`/`custody`/`purge_started_at`/`purge_attempts`, two partial indexes |
+> | **PR-B** dead-letter + `users.is_purging` | ✅ Landed | Same migration, `purge_dead_letter` table + ORM model in `purge/db_models.py`, `User.is_purging` |
+> | **PR-C** missing FK constraints (`NOT VALID` + `VALIDATE CONSTRAINT`) | ⏳ Deferred | Tracked separately — independent of the §4.1/§4.6 driver |
+> | **PR-D** doc + ORM cascade tests | 🟡 Partial | `database-design.md` not yet updated; `viewonly=True` cleanup deferred; this section is the doc-side update for §4.1/§4.6 |
+> | **PR-E** purge bodies + cleanup-loop wiring | ✅ Landed (§4.1, §4.6) | `purge/claim.py`, `pii_strip.py`, `commit.py`, `providers.py`, `session_purge.py`, `storage_reaper.py`, `cleanup_stage.py`. Wired into `orphan_cleanup.py` between `_pause_stale_sandboxes` and `_cleanup_docker_zombies`. **Provider hook registry is empty** — phase (b) is intentionally a no-op until concrete provider DELETEs (E2B sandboxes, GCS slide assets, OpenAI vector stores, Composio profiles, Stripe customers) are wired with `register_cleanup_hook`. **`register_purge_guards()` is exported but not yet wired into `app/lifespan.py`** — the runtime FastAPI dependency `NotPurgingDep` (PR-F) will land alongside the listener registration. |
+> | **PR-F** HTTP endpoints (`purge_now`, `restore`, admin unblock) | ⏳ Pending | Driver is callable; HTTP surface and `NotPurgingDep` not yet built |
+> | **PR-G** user-account purge + SAR intake | ⏳ Pending | `purge_user_account`, `intake_sar`, `sar_intake` table |
+>
+> **What's wired but flag-gated off:**
+>
+> 1. `cleanup_loop_stage_purge_sessions()` — backfills `purge_after`, then drains the queue via `purge_one_session(session_id=None, trigger=GRACE_EXPIRED)` until the per-loop wall-clock budget is spent or the queue empties. Gated on `SESSIONS_PURGE_ENABLED`.
+> 2. `cleanup_loop_stage_storage_reaper()` — deletes orphan `user_assets` (no `SessionAsset` link, not public, older than `SESSIONS_STORAGE_REAPER_MIN_AGE_SECONDS`). Gated on `SESSIONS_STORAGE_REAPER_ENABLED`.
+>
+> **What still needs to be built before the flag can be flipped:**
+>
+> - PR-C FK constraints (otherwise the CASCADE rationale in §3.1 is asserted but not enforced).
+> - At least one real `register_cleanup_hook` registration so phase (b) actually deletes upstream resources. Empty registry means the §4.6 reaper handles asset cleanup but sandboxes / vector stores / Stripe references stay orphaned.
+> - The `delete_after` → `purge_after` reconciliation (currently the cleanup-stage backfill writes `purge_after` based on custody + grace; rows whose `delete_after` was set by the legacy stage will pick up `purge_after = now() + grace` on first sweep — acceptable transitional behaviour).
+> - Tests: the contract skip-stubs in `tests/unit/sessions/purge/` are placeholders. Real behavioural tests against the new bodies still need to be written (todo 13 of the implementation plan).
+
+> **Section numbering note (v3.11):** §8–§13 were dropped during compression (§13 was the `agent_event_logs` rebase-artefact callout, now resolved — see commit history; the table-drop migration is tracked separately). Numbers §14–§17 retained their original IDs to preserve cross-references in commit history, design-docs index, and stub docstrings (e.g. `commit.py` cites "§4.7-step-9 fix"). The non-contiguous sequence is intentional, not an editing accident.
+>
+> **Glossary — SAR.** Used in this doc as the umbrella term for any verified user request under GDPR Art. 15 (access), Art. 16 (rectification), or Art. 17 (erasure). Lawyer memo §1 treats them as one intake channel; the engineering contract (`SARRequest` dataclass, `intake_sar` handler, `PurgeTrigger.SAR_PRIORITY`) follows that grouping. "SAR" without further qualification means the user has been verified and the request requires fast-track handling under the 24h legal target.
 
 **This proposal cannot be assessed honestly without first making explicit which of its findings exist on `origin/main` and which exist only on the `feature/a2a-chat-inner-loop_3_of_3` topic branch this document was written from.**
 
@@ -36,7 +129,8 @@
 | `Session.events` `viewonly=True` cascade trap | ✅ | ✅ | Bug present on main — finding holds upstream |
 | `SessionState` enum (`PENDING`/`ACTIVE`/`PAUSE`, no `PERMANENT`) | ✅ | ✅ | Identical enum on both |
 | `extend_sandbox_timeout.py` with `Session.status == "permanent"` predicate | ✅ | ✅ | Bug ships from main; `status` is `String` so writeable in tests but no production write path exists |
-| 10/19 unconstrained `session_id` columns (the FK gap) | ✅ | ✅ | Bug present on main — finding holds upstream |
+| 9/18 unconstrained `session_id` columns (the FK gap) | ✅ | ✅ | Bug present on main — finding holds upstream |
+| `agent_event_logs` table provisioned but unused (no model, no writers, 0 rows) | ✅ | ✅ | Rebase artefact in main's consolidated migration. Routed to a separate `chore(db): drop unused agent_event_logs` PR; not bundled with this work. |
 | `agent_sandboxes._purge_stale_deleted_rows` precedent | ❌ | ✅ | Added in branch — the "template to mirror" cited in v1/v2 §4.1 |
 | `agents/sandboxes/orphan_cleanup.py` (cleanup loop, distributed lock, 6-stage sweep) | ❌ | ✅ | 1327 lines, entirely new on this branch |
 | `_soft_delete_expired_sessions` stage that fires on `delete_after` | ❌ | ✅ | Implemented in branch's `orphan_cleanup.py` |
@@ -54,7 +148,7 @@ main  →  topic branches land cleanup loop, distributed lock,
       →  this proposal layers session-purge stage on top      (Migrations 008–010 below)
 ```
 
-This is fine — but the proposal must be defended as part of **a sequence**, not as an isolated change against main. The earlier branches established the operational pattern (cleanup loop, distributed lock, TTL purge for sandbox rows). This proposal extends the same pattern to sessions and to non-row resources. See §12 for the sequencing constraint.
+This is fine — but the proposal must be defended as part of **a sequence**, not as an isolated change against main. The earlier branches established the operational pattern (cleanup loop, distributed lock, TTL purge for sandbox rows). This proposal extends the same pattern to sessions and to non-row resources. The PR-A through PR-G dependency chain is captured in [`src/ii_agent/sessions/purge/__init__.py`](../../src/ii_agent/sessions/purge/__init__.py) module docstring.
 
 ### Bugs that exist on main and survive into this branch
 
@@ -62,7 +156,7 @@ Three of this proposal's audit findings are **bugs in `origin/main`** that no wo
 
 1. The `Session.events` `viewonly=True` + `cascade="all, delete-orphan"` combination — SQLAlchemy silently discards the cascade. Author intent did not match runtime behaviour.
 2. The `extend_sandbox_timeout` cron's `status == "permanent"` predicate — `SessionState` has no `PERMANENT` member. The `status` column is stored as `String` so a manual assignment will satisfy the predicate (the test fixture on main does this), but no production code path ever writes `"permanent"`. The cron silently does nothing in production.
-3. 10 of 19 `session_id`-bearing tables have no FK constraint, with the documented (in `database-design.md` lines 142–185) rationale of "high-volume, no FK to avoid cascade lock storms." That rationale predates the modern `ON DELETE CASCADE` + partial-index pattern and is debatable; see §2.2 for the counter-argument.
+3. 9 of 18 `session_id`-bearing tables have no FK constraint, with the documented (in `database-design.md` lines 142–185) rationale of "high-volume, no FK to avoid cascade lock storms." That rationale predates the modern `ON DELETE CASCADE` + partial-index pattern and is debatable; see §2.2 for the counter-argument.
 
 Filing these as separate small-PR cleanups on `develop`/`main` is one option (and arguably the right path — they are independent of the larger custody redesign).
 
@@ -99,7 +193,7 @@ Honest assessment of the proposal against this documented intent:
 
 Three independent defects in the same family:
 
-1. **Orphans-by-default.** 10 of 19 tables holding `session_id` have **no FK constraint**. Hard-deleting a session today would silently strand ~40 k rows.
+1. **Orphans-by-default.** 9 of 18 tables holding `session_id` have **no FK constraint**. Hard-deleting a session today would silently strand ~40 k rows.
 2. **Tombstones never reclaimed.** `agent_sandboxes` has a TTL purge job; `sessions` does not. 1970 soft-deleted rows drag ~40 k child rows along indefinitely.
 3. **No first-class custody concept.** Every session is `status='active'`. The `extend_sandbox_timeout` cron's `Session.status == "permanent"` predicate is **structurally unsatisfiable** because `SessionState` has no PERMANENT member.
 
@@ -133,7 +227,6 @@ Audit of the production-shape local DB (2031 sessions). Bold = no FK = silent-or
 | `slide_versions` | yes | CASCADE | — | — |
 | `storybooks` | yes | CASCADE | — | — |
 | `sessions` (self, `parent_session_id`) | yes | NO ACTION | — | — |
-| **`agent_event_logs`** | **NO** | — | 0 | — |
 | **`agent_run_messages`** | **NO** | — | 1456 | 1309 |
 | **`application_events`** | **NO** | — | 38214 | 33320 |
 | **`chat_messages`** | **NO** | — | 2383 | 2143 |
@@ -267,6 +360,91 @@ The v1 proposal recommended CASCADE; v2 reverses to **SET NULL** on billing-fore
 
 ---
 
+## 2.3 Lifecycle invariants (the formal contract)
+
+This section is the FORMAL contract. Every code path in `src/ii_agent/sessions/purge/` cites the invariants it preserves; every test cites the invariants it verifies. **An invariant unenforced by any test or unclaimed by any code path is a gap.**
+
+Executable predicates: `src/ii_agent/sessions/purge/invariants.py::ALL_INVARIANTS`. **Stub-only until PR-E**: each `check_I*` raises `NotImplementedError`; PR-E lands the SQL bodies AND the nightly job (`tests/integration/test_invariants_in_prod.py`) that runs them against staging and pages on any non-empty result.
+
+| ID | Invariant | Enforced by | Verified by |
+|---|---|---|---|
+| **I1** | `purge_after IS NOT NULL` ⇒ `is_deleted = true` | §4.1 phase-(a) WHERE; §4.7 step 6; §16 step 2 | `test_purge_eligibility.py` |
+| **I2** | Unresolved dead-letter row ⇒ owning session is `is_deleted=true AND purge_started_at IS NOT NULL`, OR session no longer exists | `providers.run_provider_cleanup` | `test_provider_dead_letter.py` |
+| **I3** | `users.is_purging = true` ⇒ no new sessions created for that user | `NotPurgingDep` on every mutation endpoint (§16 v3.7) | `test_is_purging_gate_enumeration.py` |
+| **I4** | Art. 17-stripped `application_events` rows have `user_id IS NULL` AND `content` keys ⊆ allowlist | `commit.commit_purge` (single tx with strip) | `test_audit_row_pii_strip.py` |
+| **I5** | A session that was ever `custody='legal_hold'` is never deleted without an audit-trail release → purge sequence | §4.8 audit hooks; §4.1 WHERE | `test_legal_hold_audit.py`, `test_legal_hold_never_purged.py` |
+| **I6** | `purge_one_session` is invoked exactly once per (session_id, claim_cycle) pair | `claim.claim_one_session` SKIP LOCKED + single arbitration entry | `test_user_purge_claim_arbitration.py` |
+| **I7** | Phase (c) DELETE re-checks `is_deleted = true` (TOCTOU vs restore) | `commit.commit_purge` step 1 | `test_purge_phase_c_recheck_is_deleted.py` (NEW v3.8) |
+| **I8** | When `users.is_purging=true`, per-session `purge_now` rejects with 423 | `user_purge.check_user_not_purging` | `test_purge_now_rejects_during_user_purge.py` (NEW v3.8) |
+| **I9** | Every provider artefact ID has either an owning row, a dead-letter row, or a `provider.delete.success` audit row | Reconciliation audit job (out-of-band) | `test_provider_artefact_reconciliation.py` |
+| **I10** | Every `purge_dead_letter` row has `user_id IS NOT NULL` | `providers.LeakedResource.user_id` is non-Optional | `test_dead_letter_user_id_required.py` (NEW v3.8) |
+| **I11** | Stripped audit rows contain no PII keys: {`prompt`, `message`, `file_name`, `error_detail`, `email`, `ip_address`} | `pii_strip.strip_user_pii_art17` SQL allowlist | `test_audit_row_pii_strip.py` (PII-key assertion) |
+| **I12** | Verified active SAR ⇒ every `is_deleted` session for that user has `sar_priority=true` and is on the fast queue | `user_purge.intake_sar` + grace sweep WHERE `sar_priority IS NOT TRUE` | `test_sar_preempts_grace.py` (NEW v3.9) |
+| **I13** | Every `erasure_audit_log` row with `request_type='SAR'` has all four lawyer-memo §5 fields populated | `commit.commit_purge` requires `sar_request` when trigger=SAR_PRIORITY | `test_sar_audit_completeness.py` (NEW v3.9) |
+| **I14** | `users` row deletion only after every owned session has an audit row AND no unresolved dead-letters | `user_purge.purge_user_account` step 6 precondition (FK CASCADE on origin/main) | `test_user_delete_audits_first.py` (NEW v3.9) |
+| **I15** | Session deferred under Art. 17(3) has `art17_3.disclosure` event within 30d of SAR receipt | SAR intake handler enqueues notification | `test_art17_3_disclosure.py` (NEW v3.9) |
+| **I16** | When user has verified active SAR, no session may transition `is_deleted=true → false` (restore is rejected) | Restore endpoint queries `sar_intake.verified_at`; DB trigger as defence in depth | `test_restore_rejected_during_sar.py` (NEW v3.10) |
+| **I17** | Grace-purge sweep query executes against primary DB, not a read replica | Cleanup loop binds writer engine; startup assertion | `test_grace_sweep_primary_only.py` (NEW v3.10) |
+| **I18** | If session has `custody='legal_hold'` AND SAR arrives, legal_hold wins; SAR audit records `retention_exception=LEGAL_HOLD` | `intake_sar` checks custody; `commit_purge` raises `LegalHoldError` regardless of trigger | `test_legal_hold_supersedes_sar.py` (NEW v3.10) |
+| **I19** | `purge_one_session` invoked on an already-purged session returns `PurgeOutcome.ALREADY_PURGED` without re-running phase (b)/(c); never two `session.purge_committed` audit rows for the same `session_id` | `session_purge.purge_one_session` phase-(a) precheck on `application_events` | `test_purge_already_purged_idempotent.py` (NEW v3.11) |
+
+### How invariants drive convergence
+
+The v3.x review pattern was: read the doc → find a defect → patch the doc → repeat. v3.8 changes the loop:
+
+1. New defect ⇒ propose a new invariant (or refine an existing one).
+2. Invariant added to `invariants.py` with an executable check.
+3. Stub function docstring updated to cite the invariant.
+4. Test added to verify it.
+5. Doc text in this section updated to match.
+
+**Convergence criterion (decision, not discovery):** the design is converged when (a) every public function in `src/ii_agent/sessions/purge/` cites at least one invariant; (b) every invariant has at least one verifying test; (c) `mypy --strict` passes; (d) one adversarial review pass produces no new CRITICAL findings against the invariants list.
+
+## 2.4 State machine
+
+Session and User state transitions. Anything not on this diagram is an illegal transition; any code that performs an off-diagram transition is a bug.
+
+```mermaid
+%%{init: {'theme':'base', 'themeVariables': {'fontFamily': 'Arial, sans-serif', 'fontSize': '13px', 'fontWeight': 'normal'}}}%%
+stateDiagram-v2
+    direction LR
+    [*] --> Active: create_session
+    Active --> Active: chat / run
+    Active --> SoftDeleted: soft_delete_session<br/>(is_deleted=true)
+    SoftDeleted --> Active: restore_session<br/>(I7 guard)
+    SoftDeleted --> PurgeClaimed: claim_one_session<br/>(phase a, I6)
+    Active --> PurgeClaimed: purge_now<br/>(via soft_delete + claim)
+    PurgeClaimed --> Active: release_claim<br/>(restore raced, I7)
+    PurgeClaimed --> ProviderCleanup: phase b begins
+    ProviderCleanup --> PurgeClaimed: TransientProviderError<br/>(release, retry next sweep)
+    ProviderCleanup --> DeadLettered: max attempts exhausted<br/>(I2, I10)
+    ProviderCleanup --> Committed: providers OK → phase c
+    Committed --> [*]: row deleted<br/>(strip+audit+delete in 1 tx, I4 I7 I11)
+    DeadLettered --> ProviderCleanup: operator resolves<br/>+ next sweep
+    Active --> LegalHold: set custody='legal_hold'<br/>(audit, I5)
+    LegalHold --> Active: release legal_hold<br/>(audit, I5)
+    LegalHold --> LegalHold: purge attempts rejected<br/>(I5)
+```
+
+```mermaid
+%%{init: {'theme':'base', 'themeVariables': {'fontFamily': 'Arial, sans-serif', 'fontSize': '13px', 'fontWeight': 'normal'}}}%%
+stateDiagram-v2
+    direction LR
+    [*] --> UserActive
+    UserActive --> UserPurging: purge_user_account<br/>(is_purging=true, I3 I8)
+    UserPurging --> UserPurging: per-session pipeline<br/>(via purge_one_session, I6)
+    UserPurging --> UserActive: admin unblock-purge<br/>(operator escape hatch)
+    UserPurging --> UserDeleted: dead_letter empty<br/>+ all sessions purged<br/>+ Art. 17 strip (I4 I11)<br/>+ DELETE FROM users
+    UserDeleted --> [*]
+```
+
+**Off-diagram = illegal.** Examples:
+- `delete from sessions where ...` issued from any code path other than `commit.commit_purge` → illegal (skips I4, I7, I11).
+- `delete from users where ...` not preceded by `purge_user_account` → illegal (CASCADEs leak provider artefacts — the original §16 defect).
+- `chat_provider_files` row deleted by FK CASCADE without a corresponding provider DELETE in `providers.run_provider_cleanup` → illegal (regression of §2.2).
+
+---
+
 ## 3. Proposed schema changes
 
 ### 3.1 Add FK constraints to all `session_id` columns
@@ -276,7 +454,6 @@ The v1 proposal recommended CASCADE; v2 reverses to **SET NULL** on billing-fore
 | `chat_messages` | CASCADE | Chat history is the session, by definition |
 | `run_tasks` | CASCADE | Run records belong to the session |
 | `agent_run_messages` | CASCADE | Agent-side mirror of chat history |
-| `agent_event_logs` | CASCADE | Empty today; same lifecycle as `application_events` content |
 | `chat_summaries` | CASCADE | Derived from chat_messages |
 | `session_summaries` | CASCADE | Same |
 | `chat_provider_containers` | CASCADE *after* OpenAI DELETE (§4.5) | Provider state, scoped to session |
@@ -286,6 +463,17 @@ The v1 proposal recommended CASCADE; v2 reverses to **SET NULL** on billing-fore
 
 For `task_logs`: add `task_logs.task_id → run_tasks.id ON DELETE CASCADE`. Cleans up the 62 existing orphans.
 
+#### v3.7: existing user-FK policy on audit tables (must be specified)
+
+The doc through v3.6 never stated what the existing `application_events.user_id → users.id` and `credit_transactions.user_id → users.id` FKs do on user deletion. This matters because §16 step 6 (`DELETE FROM users`) cascades through them, and §16 step 5's PII strip is meaningful only if the user-CASCADE doesn't immediately destroy or undo it.
+
+| FK | Required `ON DELETE` | Why |
+|---|---|---|
+| `application_events.user_id → users.id` | **SET NULL** | After §16 step 5 strips content + sets `user_id` to NULL via Art. 17 strip pass, the user-CASCADE in step 6 is a no-op against already-nulled rows. Operational-grace deletions (§4.1) preserve the original `user_id` until the user themselves is purged — which is correct for billing forensics. |
+| `credit_transactions.user_id → users.id` | **SET NULL** | Same. The anonymised billing-aggregate row survives indefinitely (Art. 17 permits processing of legally-required financial records under Recital 65 / Art. 17(3)(b)). |
+
+**If the existing FKs on `main` are CASCADE** (the consolidated migration on `origin/main` was not audited against this), the migration plan in §5 must include `ALTER TABLE … DROP CONSTRAINT … ADD CONSTRAINT … ON DELETE SET NULL` for both. Verify before PR-D.
+
 ### 3.2 Self-reference (`parent_session_id`)
 
 Currently `ON DELETE NO ACTION`. Change to `ON DELETE SET NULL`. Forking creates a child; if the parent is purged, the child becomes a top-level session — keeps its data, loses the genealogy link. More user-friendly than blocking parent deletion or cascading the child away.
@@ -294,14 +482,25 @@ Currently `ON DELETE NO ACTION`. Change to `ON DELETE SET NULL`. Forking creates
 
 ```sql
 ALTER TABLE sessions
-  ADD COLUMN purge_after TIMESTAMPTZ NULL,
-  ADD COLUMN custody     VARCHAR(16) NOT NULL DEFAULT 'standard',
-  ADD COLUMN archived_at TIMESTAMPTZ NULL;
+  ADD COLUMN purge_after       TIMESTAMPTZ NULL,
+  ADD COLUMN custody           VARCHAR(16) NOT NULL DEFAULT 'standard',
+  -- v3.4: claim marker for the three-phase purge (§4.1).
+  -- Set in phase (a), cleared on success in phase (c) or on retry-needed.
+  -- A non-NULL value older than `purge_claim_timeout_seconds` is treated as
+  -- a stale claim from a crashed worker and is reclaimable.
+  ADD COLUMN purge_started_at  TIMESTAMPTZ NULL,
+  ADD COLUMN purge_attempts    INTEGER NOT NULL DEFAULT 0;
 
 CREATE INDEX idx_sessions_purge_after
   ON sessions (purge_after)
   WHERE is_deleted = true AND purge_after IS NOT NULL;
+
+CREATE INDEX idx_sessions_purge_claimed
+  ON sessions (purge_started_at)
+  WHERE purge_started_at IS NOT NULL;
 ```
+
+> **v3.5 note:** earlier drafts proposed an `archived_at TIMESTAMPTZ` column. It was never read by any predicate in this proposal — dead schema. Removed. The UI "hide from main list" semantic can ride on a frontend-only filter (e.g. a user preference table) without polluting the data model.
 
 `custody` enum (collapsed from v1's 4 values to 3 — `archived` was a UI concern, not a data-model concern):
 
@@ -313,72 +512,215 @@ CREATE INDEX idx_sessions_purge_after
 
 `archived_at` is a separate nullable timestamp for the UI "hide from main list" semantic. Does not change purge behaviour.
 
+_(v3.5: `archived_at` removed from the schema as dead column — see note above. UI "archive" stays UI-only.)_
+
 `custody` replaces the broken `status='permanent'` predicate. `extend_sandbox_timeout.py` changes its check to `custody != 'ephemeral'`.
 
 ### 3.4 Update `SessionState` enum / cron predicate
 
 Remove the unsatisfiable `"permanent"` string compare from `extend_sandbox_timeout.py`. Replace with the `custody` check above. (Not a schema change but it lives here logically.)
 
+### 3.5 New table: `purge_dead_letter`
+
+When a provider DELETE fails with a non-404, non-transient error after the configured retry budget is exhausted, the leaked upstream IDs are recorded for human review **before** the parent session row is allowed to cascade away.
+
+Name chosen (v3.11) over the historical `provider_cleanup_dead_letter`: shorter, separates concerns from any per-provider table, and groups with other `purge_*` artefacts under a single naming prefix.
+
+```sql
+CREATE TABLE purge_dead_letter (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    session_id      UUID NULL,            -- preserved for audit; row is NOT FK-linked
+    user_id         UUID NULL,
+    provider        VARCHAR(32) NOT NULL, -- 'openai' | 'composio' | ...
+    resource_kind   VARCHAR(32) NOT NULL, -- 'file' | 'container' | 'vector_store'
+    resource_id     VARCHAR(255) NOT NULL, -- matches LeakedResource.resource_id
+    last_error      TEXT NOT NULL,
+    attempts        INTEGER NOT NULL,
+    resolved_at     TIMESTAMPTZ NULL,
+    resolution_note TEXT NULL
+);
+
+CREATE INDEX idx_dead_letter_unresolved
+  ON purge_dead_letter (created_at)
+  WHERE resolved_at IS NULL;
+```
+
+No FK to `sessions` (parent may legitimately be gone by the time an operator resolves the entry). Operators clear entries by manually issuing the upstream DELETE and setting `resolved_at`. The `unresolved` count is exposed as a Prometheus gauge (§6.1) and a non-zero value is a paging alert — leaks must be investigated, not buried in logs.
+
+#### v3.7: dead-letter retention
+
+Resolved dead-letter rows must not accumulate indefinitely — that mirrors exactly the anti-pattern this doc fixes for sessions. A reaper runs as part of the cleanup loop:
+
+```python
+async def _reap_resolved_dead_letter(cfg: Settings) -> int:
+    cutoff = func.now() - timedelta(seconds=cfg.sessions.dead_letter_retention_seconds)  # default 1 year
+    async with get_db_session_local() as db:
+        result = await db.execute(
+            delete(ProviderCleanupDeadLetter).where(
+                ProviderCleanupDeadLetter.resolved_at.is_not(None),
+                ProviderCleanupDeadLetter.resolved_at < cutoff,
+            )
+        )
+        await db.commit()
+        return result.rowcount or 0
+```
+
+Unresolved rows are NEVER reaped — they require operator action. The 1-year window for resolved rows balances (a) operator forensic value if a similar leak recurs against (b) compliance need to not retain user-attributable provider IDs longer than necessary.
+
 ---
 
 ## 4. Proposed runtime changes
 
-### 4.1 New cleanup stage: `_purge_stale_deleted_sessions` — **one session per transaction**
+### 4.1 Cleanup-loop stage: drives `purge_one_session` — **three-phase, lock-free across I/O**
 
-v1 proposed batches of 100. v2 reverts to **one session per transaction with `LIMIT 1` per loop iteration.** Rationale: a fat session can have tens of thousands of cascaded child rows; a 100-batch becomes a multi-million-row CASCADE under one lock — WAL pressure, replica lag, autovacuum churn, lock escalation hazard.
+v1 proposed batches of 100. v2 went one-session-per-transaction. **v3.4 splits each session's purge into three phases so external HTTP I/O never runs inside an open DB transaction.** Holding `FOR UPDATE SKIP LOCKED` across a 30-second OpenAI timeout would block autovacuum on `sessions` and pin a connection — unacceptable.
 
-Pseudocode:
+> **Canonical names (source of truth: stubs).** The pseudocode below uses
+> the function names from `src/ii_agent/sessions/purge/`. Phase (a) =
+> [`claim.claim_one_session`](../../src/ii_agent/sessions/purge/claim.py); phase (b) =
+> [`providers.run_provider_cleanup`](../../src/ii_agent/sessions/purge/providers.py); phase (c) =
+> [`commit.commit_purge`](../../src/ii_agent/sessions/purge/commit.py). The
+> single arbitration entry is
+> [`session_purge.purge_one_session`](../../src/ii_agent/sessions/purge/session_purge.py)
+> — every entry point (cleanup loop, `purge_now`, user-account purge)
+> goes through it. Direct invocation of the per-phase functions from
+> outside `purge_one_session` is a code-review violation (eliminates the
+> v3.7 §16-step-3 race). Wiring: the cleanup loop calls
+> `purge_one_session(session_id=None, trigger=PurgeTrigger.GRACE_EXPIRED, db=...)`
+> from a new stage slotted into `agents/sandboxes/orphan_cleanup.py`
+> AFTER `_pause_stale_sandboxes` and BEFORE `_cleanup_docker_zombies`
+> (it depends on sandboxes being marked DELETED; it produces deletes
+> the zombie sweep then reconciles).
+
+The three phases for **one session**:
+
+| Phase | DB tx? | Operation | Failure handling |
+|---|---|---|---|
+| (a) **Claim** — `claim_one_session` | short tx | CTE `FOR UPDATE SKIP LOCKED` (Adversarial #5) marks `purge_started_at=now()`, increments `purge_attempts` | If `rowcount=0`, another worker claimed it — skip |
+| (b) **External I/O** — `run_provider_cleanup` | **no tx held**; opens short txs to read provider IDs and to write dead-letter rows | OpenAI DELETE, FS reaper, GCS blob reaper. **Heartbeats the claim** every `heartbeat_interval_seconds` (default 120s) via `claim.heartbeat_claim` for batches that may exceed `purge_claim_timeout_seconds` (Adversarial #19). | On `TransientProviderError`: leave claim, return DEFERRED_TRANSIENT; next sweep retries. On `ExhaustedRetriesError`: insert dead-letter row(s), return DEAD_LETTERED *without* clearing claim — row is now stuck and visible to alerting |
+| (c) **Commit** — `commit_purge` | short tx | Re-check `is_deleted=true` (I7); strip+`assert_strip_complete` (Art. 17 triggers only); INSERT audit row; `DELETE FROM sessions` (FK CASCADE handles in-DB collateral) — all four steps in ONE tx | Standard tx rollback on FK violation (should never happen given §3.1). On is_deleted=false: returns SKIPPED_RESTORED unless trigger=SAR_PRIORITY (then raises per I12) |
+
+Pseudocode sketch — the binding contract is the stubs; this is illustrative only:
 
 ```python
-async def _purge_stale_deleted_sessions(cfg: Settings) -> int:
+async def cleanup_loop_stage_purge_sessions(cfg: Settings) -> int:
+    """Slots into orphan_cleanup.py between _pause_stale_sandboxes and
+    _cleanup_docker_zombies. Drives purge_one_session for at most
+    purge_max_seconds_per_loop wall-clock per cycle."""
     grace = cfg.sessions.purge_grace_period_seconds
+    ephemeral_grace = cfg.sessions.ephemeral_purge_grace_period_seconds
     purged = 0
-    deadline = time.monotonic() + cfg.sessions.purge_max_seconds_per_loop  # e.g. 30s
+    deadline = time.monotonic() + cfg.sessions.purge_max_seconds_per_loop         # e.g. 30s
 
+    # 0. One bulk backfill for newly-soft-deleted rows. Branch on custody.
     async with get_db_session_local() as db:
-        # 1. Set purge_after for newly-soft-deleted sessions
         await db.execute(
             update(Session)
             .where(Session.is_deleted == True, Session.purge_after.is_(None))
-            .values(purge_after=func.now() + timedelta(seconds=grace))
+            .values(
+                purge_after=case(
+                    (Session.custody == 'ephemeral',
+                     func.now() + timedelta(seconds=ephemeral_grace)),
+                    else_=func.now() + timedelta(seconds=grace),
+                )
+            )
         )
         await db.commit()
 
     while time.monotonic() < deadline:
+        # All three phases collapsed into the single arbitration entry.
+        # Each call: phase (a) claim_one_session (CTE / SKIP LOCKED, Adversarial #5)
+        #            phase (b) run_provider_cleanup (heartbeats claim every 120s)
+        #            phase (c) commit_purge (re-check + strip + audit + DELETE in 1 tx)
         async with get_db_session_local() as db:
-            # 2. Find ONE eligible session
-            row = await db.execute(
-                select(Session.id).where(
-                    Session.is_deleted == True,
-                    Session.purge_after <= func.now(),
-                    Session.custody != 'legal_hold',
-                    # Ordering invariant: don't purge until sandboxes are gone
-                    ~exists().where(
-                        AgentSandbox.session_id == Session.id,
-                        AgentSandbox.status != SandboxStatus.DELETED,
-                    ),
-                ).order_by(Session.purge_after).limit(1).with_for_update(skip_locked=True)
+            result = await purge_one_session(
+                session_id=None,                          # let claim pick
+                trigger=PurgeTrigger.GRACE_EXPIRED,
+                db=db,
             )
-            session_id = row.scalar_one_or_none()
-            if session_id is None:
-                break
 
-            # 3. Stage A: provider-side cleanup BEFORE row removal
-            await _purge_provider_artifacts(db, session_id)
-
-            # 4. Stage C: hard delete (FK CASCADE handles in-DB collateral)
-            await db.execute(delete(Session).where(Session.id == session_id))
-            await db.commit()
+        if result.outcome == PurgeOutcome.PURGED:
             purged += 1
-
-        # 5. Stage D: storage reaper (orphaned user_assets) — separate transaction
-        # 6. Stage E: FS reaper — workspace dir for this session
-        await _reap_workspace_dir(session_id)
+        elif result.outcome in (
+            PurgeOutcome.SKIPPED_NOT_ELIGIBLE,
+            PurgeOutcome.SKIPPED_RACED,
+        ):
+            break  # queue empty / contended; next sweep will retry
+        # SKIPPED_RESTORED, DEFERRED_TRANSIENT, DEAD_LETTERED: continue loop
+        # to attempt the next eligible session within the wall-clock budget
 
     return purged
 ```
 
-Slot into the orphan-cleanup loop after `_purge_stale_deleted_rows`. Reuses the `sandbox:cleanup:lock`. Per-session transaction isolation = one bad session can't roll back the rest.
+The historical pseudocode (sketching the SQL inside phase (a)) is preserved for cross-reference and to anchor the SKIP-LOCKED contract. The ACTUAL claim query lives in `claim.claim_one_session`:
+
+<details>
+<summary>Phase-(a) SQL sketch (for reviewers comparing to <code>claim.py</code>)</summary>
+
+```python
+        # ---- Phase (a) implementation in claim.claim_one_session ----
+        # PostgreSQL does NOT permit FOR UPDATE in a scalar subquery used
+        # as a WHERE expression; the CTE form is required (Adversarial #5).
+        async with get_db_session_local() as db:
+            candidate_subq = (
+                select(Session.id)
+                .where(
+                    Session.is_deleted == True,
+                    Session.purge_after <= func.now(),
+                    Session.custody != 'legal_hold',
+                    Session.purge_attempts < max_attempts,
+                    or_(
+                        Session.purge_started_at.is_(None),
+                        Session.purge_started_at < func.now() - claim_timeout,  # stale
+                    ),
+                    # Ordering invariant: sandboxes must be gone
+                    ~exists().where(
+                        AgentSandbox.session_id == Session.id,
+                        AgentSandbox.status != SandboxStatus.DELETED,
+                    ),
+                )
+                .order_by(Session.purge_after)
+                .limit(1)
+                .with_for_update(skip_locked=True)
+            ).scalar_subquery()
+
+            session_id = (await db.execute(
+                update(Session)
+                .where(Session.id == candidate_subq)
+                .values(
+                    purge_started_at=func.now(),
+                    purge_attempts=Session.purge_attempts + 1,
+                )
+                .returning(Session.id)
+                .execution_options(synchronize_session=False)
+            )).scalar_one_or_none()
+            await db.commit()
+```
+
+</details>
+
+Key properties:
+
+- **External I/O never holds a DB lock.** Phase (b) runs with no open transaction; autovacuum on `sessions` is unblocked.
+- **Crash-safe.** Worker dies mid-phase-(b) → `purge_started_at` remains set → next sweep treats it as stale-claim after `purge_claim_timeout_seconds` and retries.
+- **Idempotent.** Phase (b) operations (provider DELETE, FS rmdir) are all idempotent under §14.2 (404 swallow). Replaying after partial completion is safe.
+- **Loud on permanent failure.** A row stuck with `purge_attempts >= max_attempts` is queryable, alertable, and blocks until an operator triages it. **Leaks cannot accumulate silently.**
+- Per-session isolation = one bad session can't roll back the rest.
+- Storage reaper (§4.6) runs in its own cleanup-loop stage walking orphan `user_assets`, not session-keyed.
+
+#### SAR latency budget vs claim TTL (v3.11 reconciliation)
+
+Two timing budgets meet at phase (b):
+
+| Budget | Default | Source | What it bounds |
+|---|---|---|---|
+| `purge_claim_timeout_seconds` | 600s (10 min) | §4.5 settings | After this without a heartbeat, the claim is treated as stale and another worker may steal it |
+| `heartbeat_interval_seconds` | 120s | §4.5 settings | `claim.heartbeat_claim` advances `purge_started_at` to `now()` so a slow phase (b) is not stolen |
+| SAR fast-track legal target | 24 hours (5 business-day max) | Lawyer memo §1, §7 | Must be met for `trigger=SAR_PRIORITY` |
+| `commit_purge` synchronous SAR commit (v3.9 #7) | < 5s typical | `commit.py` docstring | The SAR-intake row commits BEFORE HTTP 202 returns; fast-track enqueue is then asynchronous |
+
+The synchronous-commit obligation does NOT extend to phase (b)/(c) — only to the SAR-intake row that anchors the audit trail. Phase (b) runs in the background under heartbeat protection; even a 30-minute large-session purge fits inside the 24h legal target with several orders of magnitude of margin. **Heartbeat keeps the claim alive across that window; claim TTL only fires if heartbeat itself stops (process death, network partition).** I12 + I16 ensure no concurrent restore can race a long-running SAR purge.
 
 #### Lock-storm engagement (response to main's documented FK rationale)
 
@@ -394,9 +736,24 @@ The documented reason for *avoiding* FKs on `chat_messages`/`agent_run_messages`
 
 The one remaining theoretical risk: a single session with truly extreme fanout (≥1M rows) could exceed the 30s per-loop budget and never complete purge. Mitigation: an alarming metric on `sessions_purge_seconds.p99` and an operator-tunable `purge_max_seconds_per_loop`. A single session at that scale is a separate operational anomaly worth investigating regardless.
 
-### 4.2 Make `_soft_delete_expired_sessions` honour `custody`
+### 4.2 Make `_soft_delete_expired_sessions` honour `custody` (and write audit)
 
 Skip `custody='legal_hold'` even if `delete_after <= now()`. Only an explicit operator action clearing the hold can release such a session for deletion.
+
+**v3.5: write audit row.** When `delete_after` fires and the loop transitions a session from `is_deleted=false` to `is_deleted=true`, write `session.soft_deleted_by_schedule` to `application_events` in the same transaction. Without this, scheduled deletions are the only category of session-state transition with no audit trail — inconsistent with §14.3 (grace-expired purge) and §4.7 (user-initiated erasure).
+
+```python
+await db.execute(
+    insert(ApplicationEvent).values(
+        session_id=session.id,
+        user_id=session.user_id,
+        event_type='session.soft_deleted_by_schedule',
+        event_group='session',
+        content={'delete_after': session.delete_after.isoformat()},
+    )
+)
+session.is_deleted = True
+```
 
 ### 4.3 New API: undelete during grace
 
@@ -417,29 +774,89 @@ class SessionsSettings(BaseSettings):
     purge_enabled: bool = True                         # Emergency kill switch
     storage_reaper_enabled: bool = True
     provider_cleanup_enabled: bool = True
+    # v3.4: three-phase purge (§4.1)
+    purge_claim_timeout_seconds: int = 600             # stale-claim threshold
+    purge_max_attempts: int = 5                        # before dead-letter
+    purge_now_lock_ttl_seconds: int = 60               # per-session lock for §4.7
+    purge_now_rate_limit_per_minute: int = 5           # per-user (§4.7 step 4)
+    storage_reaper_min_age_seconds: int = 3600         # don't race upload pipelines (§4.6)
+    user_purge_parallelism: int = 4                    # §16 step 3 — concurrent session purges per user-account-deletion
+    user_purge_overall_timeout_seconds: int = 1800     # §16 — hard ceiling on a single _purge_user_account call (30 min)
+    dead_letter_retention_seconds: int = 365 * 24 * 3600  # §3.5 — TTL for RESOLVED rows; unresolved never expire
 ```
 
 `purge_enabled=False` is a single-toggle ops kill switch.
 
-### 4.5 Provider-side cleanup hooks (new)
+### 4.5 Provider-side cleanup hooks — retry budget + dead-letter (new)
 
-Before CASCADE removes provider rows, call upstream DELETEs. Best-effort; failures logged but don't block purge (the provider may already have GC'd the resource, or our token may be invalid):
+Before CASCADE removes provider rows, call upstream DELETEs. **v3.3 was best-effort-and-log; v3.4 upgrades to a retry budget + dead-letter pattern** because best-effort silently leaked upstream resources on transient 5xx.
+
+Classification:
+
+| Provider response | Behaviour |
+|---|---|
+| `200 OK` / `204 No Content` | success — row eligible for cascade |
+| `404 Not Found` | already gone — desired state, treat as success (§14.2) |
+| `429`, `5xx`, network timeout | **transient** — raise `TransientProviderError`; phase (b) returns; next sweep retries; `purge_attempts` increments |
+| `4xx` other than 404, or attempts ≥ `max_attempts` | **permanent** — raise `ExhaustedRetriesError(leaked_resources=[…])`; dead-letter + stop |
 
 ```python
-async def _purge_provider_artifacts(db: AsyncSession, session_id: uuid.UUID) -> None:
-    # OpenAI files
-    files = await db.execute(
-        select(ChatProviderFile).where(ChatProviderFile.session_id == session_id)
-    )
-    for row in files.scalars():
+async def run_provider_cleanup(
+    *,
+    session_id: uuid.UUID,
+    user_id: uuid.UUID,
+    db: AsyncSession,
+) -> ProviderCleanupResult:
+    # Phase (b) of §4.1 — NO open DB transaction held across HTTP calls.
+    # Read provider IDs in a short tx, then close it before issuing HTTP calls.
+    # Heartbeats the claim every cfg.sessions.heartbeat_interval_seconds via
+    # claim.heartbeat_claim() so long batches do not get reclaimed as stale.
+    async with get_db_session_local() as db_read:
+        files = (await db_read.execute(
+            select(ChatProviderFile.provider_file_id).where(
+                ChatProviderFile.session_id == session_id
+            )
+        )).scalars().all()
+    # tx is closed; no lock held during HTTP
+
+    leaked: list[LeakedResource] = []
+    transient_seen = False
+    for fid in files:
         try:
-            await openai_client.files.delete(row.provider_file_id)
+            await openai_client.files.delete(fid)
+        except NotFoundError:
+            pass  # §14.2 — already gone
+        except (RateLimitError, APITimeoutError, APIConnectionError, APIStatusError) as exc:
+            # APIStatusError covers 5xx; rate-limit + timeout + connection are all transient
+            if isinstance(exc, APIStatusError) and 400 <= exc.status_code < 500 and exc.status_code != 429:
+                # 4xx other than 429/404 — truly permanent
+                leaked.append(LeakedResource('openai', 'file', fid, str(exc)))
+            else:
+                transient_seen = True
+                leaked.append(LeakedResource('openai', 'file', fid, str(exc)))
         except Exception as exc:
-            logger.warning(f"Provider file cleanup failed for {row.provider_file_id}: {exc}")
+            # Unknown error — conservatively classify as transient on early attempts
+            transient_seen = True
+            leaked.append(LeakedResource('openai', 'file', fid, str(exc)))
 
     # OpenAI containers — same pattern
-    # Add per-provider hooks here as new providers gain session-scoped resources
+
+    if not leaked:
+        return
+
+    # Decision: transient (retry next sweep) vs exhausted (dead-letter and stop)
+    if transient_seen and current_attempts < max_attempts:
+        # Some failures could still resolve; let next sweep retry. purge_attempts
+        # already incremented in phase (a).
+        raise TransientProviderError(f"{len(leaked)} resources transiently failed")
+
+    # Either all failures are permanent 4xx, or we have exhausted the retry budget.
+    raise ExhaustedRetriesError(leaked_resources=leaked)
 ```
+
+**Why this matters:** v3.4 raised `ExhaustedRetriesError` on the FIRST failed attempt regardless of `purge_attempts`, defeating the entire retry budget. The dead-letter would have fired immediately on a single OpenAI 503, and the comment claiming "caller's `purge_attempts` will gate this" was simply wrong — the function had already raised. The corrected logic above is what the table classification has always intended.
+
+**Why broader matters:** the v3.3 best-effort log was the original bug. A transient OpenAI outage during purge would CASCADE the `chat_provider_files` rows away — deleting our only record of the upstream IDs — while the OpenAI files persisted and continued billing. The dead-letter ensures every leaked ID is queryable and replayable; the corrected `purge_attempts` gate ensures we don't dead-letter on the first transient blip.
 
 ### 4.6 Storage reaper (new)
 
@@ -450,11 +867,18 @@ async def _reap_orphaned_user_assets(cfg: Settings) -> int:
     if not cfg.sessions.storage_reaper_enabled:
         return 0
 
+    # v3.5: do not race two-step upload flows. UserAsset is sometimes inserted
+    # before its SessionAsset link in the upload pipeline; reaping during that
+    # window destroys legitimate uploads. Apply a min-age buffer so only assets
+    # with no link AND no recent activity are eligible.
+    min_age = timedelta(seconds=cfg.sessions.storage_reaper_min_age_seconds)  # e.g. 1 h
+
     async with get_db_session_local() as db:
         orphans = await db.execute(
             select(UserAsset).where(
                 ~exists().where(SessionAsset.asset_id == UserAsset.id),
                 UserAsset.is_public.is_(False),
+                UserAsset.created_at < func.now() - min_age,
             ).limit(50)
         )
         for asset in orphans.scalars():
@@ -473,13 +897,19 @@ async def _reap_orphaned_user_assets(cfg: Settings) -> int:
 POST /sessions/{id}/purge?confirm=true
 ```
 
-User-initiated, requires explicit confirmation token. Bypasses the grace window entirely:
+User-initiated, requires explicit confirmation token. Bypasses the grace window entirely.
+
+**v3.5 ordering: lock first, mutate second.** Earlier drafts mutated state in step 4 then took the lock in step 5. Two concurrent purge_now calls could both pass step 1–3, both UPDATE in step 4, then race on the lock — corrupting `purge_attempts` and double-incrementing the audit. The lock acquisition is now step 3.
 
 1. Verify session belongs to caller (or caller is admin acting on user's GDPR request).
 2. Verify session is not under `legal_hold` (if it is, return 423 Locked + explanation; legal hold preempts erasure).
-3. Set `is_deleted=true`, `purge_after=now()` in one transaction.
-4. Trigger immediate purge via the §4.1 pipeline (don't wait for next 60s loop).
-5. Write `session.purged_by_user` event to `application_events` (which survives via §3.1 SET NULL — preserves the audit trail of the deletion itself).
+3. **Acquire per-session lock.** Redis `SET NX EX cfg.sessions.purge_now_lock_ttl_seconds` on `session:purge:<id>`. **Not** the shared `sandbox:cleanup:lock` — the orphan loop's cleanup lock cannot block user-initiated erasure for up to a full sweep cycle. If acquisition fails, return 409 Conflict ("erasure already in progress").
+4. **Rate-limit the caller.** Token-bucket on `purge_now:user:<user_id>` (default 5 purges/minute). `purge_now` does a synchronous 30 s sandbox tear-down per call — a malicious or buggy client could exhaust the connection pool. Return 429 if exceeded.
+5. **Synchronously tear down sandboxes.** The §4.1 eligibility predicate excludes sessions with non-`DELETED` sandboxes; without this step, purge_now would silently wait one cleanup cycle (up to 60 s) for the orphan loop to mark sandboxes deleted — violating GDPR's "without undue delay". Call the existing sandbox-shutdown path with `force=True` and wait for the row to transition to `DELETED`. Bound the wait at e.g. 30 s; if the sandbox cannot be confirmed deleted in that window, return 503 Service Unavailable and instruct the user to retry — do **not** silently fall back to the operational grace path. **The shutdown call MUST be idempotent against `SandboxStatus IN (DELETING, DELETED)`** — a user who retries after 503 will hit the path a second time and must not double-tear-down or 500.
+6. Set `is_deleted=true`, `purge_after=now()` in one transaction.
+7. **Strip PII from preserved audit rows under Art. 17 (§17).** Run `_strip_user_pii_from_audit_rows_art17(session_id=:id)` BEFORE phase (c)'s DELETE. After phase (c) the SET NULL detaches the rows from the session and (per §3.1.v3.7) preserves `user_id` until the user themselves is purged — but for an Art. 17 erasure of THIS session, `user_id` and content must already be scrubbed on those rows.
+8. Run the §4.1 three-phase pipeline inline (claim → external I/O → commit). Same crash-safety properties.
+9. Write `session.purged_by_user` event to `application_events` (which survives via §3.1 SET NULL — preserves the audit trail of the deletion itself). The event row itself is allowlist-clean by construction (only `event_type`, `purged_at`, no user content).
 
 **Why this matters:** GDPR Art. 17 requires deletion "without undue delay." A 30-day operational grace **is** undue delay if the user explicitly requested permanent deletion. The grace exists to protect users from their own accidental clicks; it cannot be used to delay a deliberate erasure request.
 
@@ -526,9 +956,11 @@ ALTER TABLE chat_messages VALIDATE CONSTRAINT fk_chat_messages_session;
 Sequence:
 
 1. **Migration 1 (additive only).**
-   - Add `purge_after`, `custody`, `archived_at` columns to `sessions`.
-   - Add the partial index on `purge_after`.
-   - Add `task_logs.task_id → run_tasks.id ON DELETE CASCADE NOT VALID` (then VALIDATE).
+   - Add `purge_after`, `custody`, `purge_started_at`, `purge_attempts` columns to `sessions`.
+   - Add the partial indexes on `purge_after` and `purge_started_at`.
+   - Create the `purge_dead_letter` table (§3.5).
+   - Add `task_logs.task_id → run_tasks.id ON DELETE CASCADE NOT VALID` (VALIDATE deferred to step 2 after data hygiene).
+   - **v3.7:** if `application_events.user_id` and `credit_transactions.user_id` FKs to `users` are currently `ON DELETE CASCADE` (must verify against `origin/main`'s consolidated migration), drop and re-add them as `ON DELETE SET NULL` per §3.1.v3.7. If already `SET NULL`, no action.
    - Deploy.
 
 2. **Data hygiene** (one-shot script):
@@ -538,19 +970,19 @@ Sequence:
    - Run `VALIDATE CONSTRAINT` on the task_logs FK.
 
 3. **Migration 2 (constraint addition with NOT VALID).**
-   - For each of the 10 unconstrained `session_id` columns, add the FK with `NOT VALID`.
+   - For each of the 9 unconstrained `session_id` columns, add the FK with `NOT VALID`.
    - Deploy. New writes are enforced immediately.
 
 4. **Migration 3 (validation).**
    - Run `VALIDATE CONSTRAINT` for each newly-added FK in a separate, non-blocking statement (one at a time, off-peak).
    - For `application_events` (38 k+ rows): expect ~seconds; for production-sized millions, expect minutes — use `SHARE UPDATE EXCLUSIVE` window.
 
-5. **Backfill `purge_after` for existing tombstones.**
-   - For the 1970 existing tombstones, set `purge_after = now() + grace_period`. (Choosing `now()` over `updated_at + grace` because some tombstones are months old; `updated_at + grace` would make them all eligible immediately, which violates the purge-rate-limiting intent. Open question §10.)
+5. **Backfill `purge_after` for existing tombstones.** **Redundant with §4.1 step 1** (the in-loop UPDATE will set `purge_after = now() + grace_period` on the first cleanup cycle after deploy). §4.1 step 1 is authoritative; this migration step is retained as a fast-path that runs once at deploy time so the first cleanup cycle does not have to UPDATE 1970 rows in a single transaction. Skip if §4.1 step 1 is verified to handle this case correctly during canary.
 
-6. **Enable `_purge_stale_deleted_sessions`.**
+6. **Enable the cleanup-loop purge stage.**
+   - **Gated by §0.0 — every checkbox in the pre-flip checklist must be green and the sign-off block filled before this step.** Migration steps 1–5 are zero-risk and may proceed independently; step 6 is the irreversible boundary.
    - Deploy with `purge_enabled=true`. Watch metrics for one cycle (24 h).
-   - `purge_enabled=false` is a safe instant rollback.
+   - `purge_enabled=false` is a safe instant rollback **for the driver only** — already-committed phase-(c) DELETEs are PITR-only.
 
 Each migration is reversible until step 6. Step 6 reversibility = "stop the cron, restore from backup" (standard DR).
 
@@ -590,143 +1022,326 @@ user_assets_blob_delete_errors_total
 
 The `orphan_session_id_rows_last_check` block is **populated by the cleanup loop, not the HTTP handler.** Probing this endpoint must not run a sequential scan over `application_events`. Cleanup loop computes once per cycle and stores in Redis (or in-memory app state); `/health` reads the cached value.
 
-If any orphan count is > 0 after the FK migration completes, alert: this means a constraint was dropped or a migration bypassed validation.
+If any orphan count is > 0 **after §5 step 2 data hygiene completes**, alert: this means a constraint was dropped, a migration bypassed validation, or a write path is bypassing the ORM. Before §5 step 2 completes, non-zero counts are expected and reflect pre-existing orphans.
+
+**Additional v3.4 alerts:**
+
+```
+provider_cleanup_dead_letter_unresolved (gauge) > 0     → PAGE: upstream resource leaked, manual triage required
+  (metric name retained for backwards-compat; queries the `purge_dead_letter` table)
+sessions_purge_stuck (gauge)                            → PAGE: a session has purge_attempts >= max_attempts
+                                                          and purge_started_at IS NOT NULL. Decrements to 0
+                                                          when an operator clears the dead-letter row and the
+                                                          next sweep purges the session. Replaces the v3.4 monotonic
+                                                          counter `sessions_purge_attempts_exhausted` which paged
+                                                          forever after a single stuck row.
+sessions_purge_claim_stale (gauge)                      → WARN: workers crashing mid-purge
+sessions_purge_seconds.p99 > purge_max_seconds_per_loop → WARN: largest-session fanout is exceeding budget; tune `purge_max_seconds_per_loop` or investigate fat sessions
+```
 
 ---
 
-## 7. UX considerations
+## 7. ORM-cascade verification rule (collapsed from former §9)
 
-| Scenario | Behaviour |
-|---|---|
-| User clicks Delete | Soft-delete; sandbox killed; row recoverable for 30 days |
-| User clicks Delete on `is_public=true` session | Confirm dialog: "this will break public links" (§4.9) |
-| User wants to recover deleted session | `POST /sessions/{id}/restore` while `purge_after > now()`; 410 Gone after |
-| User invokes GDPR right-to-erasure | `POST /sessions/{id}/purge?confirm=true`; immediate, no grace |
-| User has session under `legal_hold` and requests erasure | 423 Locked + plain-language explanation: "This session is under a legal hold (ticket #X). Erasure has been recorded and will be honoured when the hold is cleared." Logged. |
-| Operator sets `legal_hold` | Admin endpoint; requires reason; audit-logged |
-| 30-day grace expires | Hard-delete pipeline (§4.1) |
+§4.1 uses bulk SQL `delete(Session).where(...)` which **bypasses ORM cascade** and relies on DB-level FK CASCADE. Rule for every `Session.*` relationship:
 
----
+| DB `ON DELETE` | ORM `cascade=` | `viewonly=` |
+|---|---|---|
+| CASCADE | `"save-update, merge"` only — **omit `delete*`** (DB is authoritative) | `False` |
+| SET NULL | **MUST omit `delete*` cascades** — ORM `delete-orphan` would attempt DELETE while DB preserves | `True` recommended (audit-only read) |
 
-## 8. What this gives you, against your stated requirements
-
-| Requirement | Met by |
-|---|---|
-| No resource leakage | §3.1 (FKs); §4.1 ordering (sandboxes-then-row); §4.5 (provider DELETE); §4.6 (blob reaper); §1.5 (FS dir) |
-| Hard-deleted resources take collateral | Pipeline Stage A→E (§1.5, §4.1, §4.5, §4.6) |
-| Sessions not marked for deletion kept in perpetuity | Predicate in §4.1 cannot match `is_deleted=false`. Structural guarantee. |
-| No orphan rows by design | All 10 FKs CASCADE except `application_events` and `credit_transactions` SET NULL — both with explicit billing-audit rationale (§2.2) |
-| Long-lived vs ephemeral distinction | `custody` enum (§3.3); `legal_hold` honoured by §4.2 |
-| Cloud + local parity | Owned by `sessions`; provider-specific cleanup via dispatch |
-| Native + A2A parity | `_cancel_active_run` covers both |
-| GDPR right-to-erasure | §4.7 `purge_now` bypasses grace |
+Enforcement: `tests/unit/sessions/test_relationship_cascade_consistency.py` introspects every `Session.*` relationship and fails if cascade flags diverge from the FK policy. **PR-D** must remove the inert `cascade="all, delete-orphan"` from `Session.events` (currently masked by `viewonly=True`; would activate silently if `viewonly` is ever flipped).
 
 ---
 
-## 9. ORM-cascade vs DB-cascade verification
+## 8. Open questions for core-design review
 
-The proposed §4.1 purge uses bulk SQL `delete(Session).where(Session.id == ...)`, which **bypasses ORM cascade** and relies entirely on DB-level FK CASCADE. Verification table (must remain green after every schema change):
-
-| ORM relationship | ORM cascade | DB FK ON DELETE | Match? |
-|---|---|---|---|
-| `Session.slide_contents` | all, delete-orphan | CASCADE | ✓ |
-| `Session.slide_versions` | all, delete-orphan | CASCADE | ✓ |
-| `Session.storybooks` | all, delete-orphan | CASCADE | ✓ |
-| `Session.wishlisted_by` | all, delete-orphan | CASCADE | ✓ |
-| `Session.pinned_by` | all, delete-orphan | CASCADE | ✓ |
-| `Session.databases` | all, delete-orphan | CASCADE | ✓ |
-| `Session.events` | all, delete-orphan (**inert: viewonly=True**) | currently NONE → SET NULL after §3.1 | ⚠ Author intent was CASCADE; v2 overrides to SET NULL for billing audit |
-| `Session.project` (1:1) | none | SET NULL | n/a |
-
-A future schema review must keep this table updated. If an ORM cascade is added without a matching DB FK, bulk-SQL deletion will silently leave orphans.
-
----
-
-## 10. Open questions for core-design review
-
-1. **`application_events` SET NULL vs CASCADE** — v2 recommends SET NULL on billing-forensics grounds (§2.2). Confirm or override.
+1. **`application_events` SET NULL vs CASCADE** — recommend SET NULL on billing-forensics grounds (§2.2). Confirm or override.
 2. **`credit_transactions` SET NULL** — recommended non-negotiable. Confirm.
 3. **Default grace window** — 30 days standard, 1 hour ephemeral (§4.4). Confirm or adjust per cost model.
 4. **`legal_hold` API** — admin-only or also user-facing "preserve session" affordance? (§4.8)
-5. **Backfill for the 1970 existing tombstones** — `purge_after = now() + grace` (recommended, fresh window) vs `updated_at + grace` (some immediately eligible) vs `now() + 90d` (extended one-time)? (§5 step 5)
+5. **Backfill for existing tombstones** — `purge_after = now() + grace` (recommended, fresh window) vs `updated_at + grace` (some immediately eligible) vs `now() + 90d` (extended one-time)? (§5)
 6. **Public-link policy** — confirm option A (confirm dialog) vs option B (auto-upgrade custody) for `is_public=true` sessions. (§4.9)
-7. **`parent_session_id` on parent purge** — SET NULL (recommended) vs BLOCK (cannot purge a parent until children are also purged). (§3.2)
-8. **Provider cleanup failures during purge** — best-effort & log (recommended) vs block-purge & retry-loop? (§4.5) Best-effort accepts that some upstream resources will leak when our token is invalid; blocking risks indefinite purge stalls when a provider is having an outage.
-9. **GDPR-vs-`legal_hold` precedence** — confirm that legal_hold preempts purge_now (recommended; standard legal practice). (§4.7)
-10. **Storage reaper run frequency** — every cleanup cycle (60s) or its own slower schedule (e.g. hourly)? Storage `delete_object` calls are network-bound; high frequency could impact GCS quota. (§4.6)
+7. **`parent_session_id` on parent purge** — SET NULL (recommended) vs BLOCK. (§3.2)
+8. **Provider cleanup failures during purge** — best-effort & log vs block-purge & retry-loop? (§4.5)
+9. **GDPR-vs-`legal_hold` precedence** — confirm legal_hold preempts purge_now per Art. 17(3)(b)/(e) (encoded as **I18**). (§4.7)
+10. **Storage reaper run frequency** — every cleanup cycle (60s) or hourly? (§4.6)
+
+### Adversarial-review gaps closed at contract level (v3.10)
+
+- **#5 `is_purging` gate at DB level** — RESOLVED. SQLAlchemy `before_insert` listener contract in [`orm_guards.py`](../../src/ii_agent/sessions/purge/orm_guards.py); registration via `register_purge_guards()` at app startup. Defence-in-depth for direct ORM inserts that bypass the FastAPI dependency.
+- **#6 PII allowlist drift** — RESOLVED. Post-strip assertion contract in [`pii_strip.assert_strip_complete`](../../src/ii_agent/sessions/purge/pii_strip.py); called by `commit_purge` step 2a inside the same tx. Re-reads every stripped row, asserts allowlist + `user_id IS NULL`.
+- **#7 `intake_sar` synchronous commit** — RESOLVED. [`user_purge.intake_sar`](../../src/ii_agent/sessions/purge/user_purge.py) docstring step 1 now mandates the SAR-intake row commits synchronously before the HTTP 202 returns; fast-track enqueue stays async.
+- **Sequencing PR plan** — formerly §12; the PR-A through PR-G dependency chain lives in `src/ii_agent/sessions/purge/__init__.py` module docstring + repository-level `docs/PLANS.md`. Not duplicated here.
+
+### Adversarial-review gaps closed at contract level (v3.11)
+
+- **D14 `assert_strip_complete` between concurrent strippers** — RESOLVED at contract level. The rail is post-strip pre-commit inside a single tx; `commit_purge` holds `FOR UPDATE` on the session row from phase-(a) claim through commit, so two backends cannot both reach the strip+assert+DELETE sequence concurrently for the same session. I6 (single arbitration entry) + I7 (phase-(c) re-checks `is_deleted=true`) close the remaining race: a second arrival reads `is_deleted=false` and returns `SKIPPED_RESTORED`, OR finds the row already gone and returns `ALREADY_PURGED` (I19).
+- **D15 partial-success retry policy for provider DELETEs** — RESOLVED at contract level. `LeakedResource` records ONLY the failed resources (idempotent provider DELETEs treat 404 as success per §14.2). On next claim, `run_provider_cleanup` reads the still-extant provider IDs from the source-of-truth tables (`chat_provider_files`, etc.) — NOT from `purge_dead_letter`. The dead-letter table is operator-facing, not control-flow. Successfully-deleted resources do not appear in either source on retry; only the failed ones drive new DELETE attempts.
+- **D16 crash between `assert_strip_complete` pass and final COMMIT** — RESOLVED at contract level. `assert_strip_complete` runs INSIDE the same tx as the strip pass and the row DELETE (`commit_purge` step 2a; see [`commit.py`](../../src/ii_agent/sessions/purge/commit.py) docstring). A crash between the strip and the COMMIT rolls back the strip — phase (b)'s provider DELETEs already happened (idempotent, fine), but the row is left with original content and `purge_started_at` set. Next claim treats it as stale-claim, re-runs phase (b) (idempotent), re-strips, re-asserts, commits. I7 + I19 keep the recovery path safe: if the prior tx in fact committed before the OS killed the process, the next claim sees `ALREADY_PURGED` and returns without re-running phase (c).
+
+All v3.11 closures are stub-level only — bodies still raise `NotImplementedError` until PR-E. The contract tests in §14.4 (`test_purge_already_purged_idempotent.py`, `test_purge_crash_recovery.py`) will exercise these guarantees.
 
 ---
 
-## 11. Stability statement
+## 14. Cross-cutting requirements
 
-This document is **stable for core-design review**. Audit findings are verified against:
-- the live DB on this topic branch (2031 sessions, 38 k application_events)
-- `origin/main` source at commit `0e57985d` for the upstream baseline (§0)
-- this branch's migration history (`migrations/versions/2026*.py`)
+### 14.1 Disaster-recovery posture
 
-The 12 self-review gaps from v1 have been addressed in v2:
+Hard delete is **unrecoverable except via point-in-time recovery (PITR)**. Grace-window deletions are recoverable via `POST /sessions/{id}/restore` (§4.3). Post-grace and `purge_now` are PITR-only. **PITR retention requirement: ≥ 37 days** (longest grace 30d + 7d operator response buffer). Before PR-E ships, an operator must have rehearsed restoring a single deleted session from PITR into staging — without the runbook, the design is not DR-complete. (Reconciled with Art. 17 in §15.)
 
-| v1 gap | v2 fix | Section |
-|---|---|---|
-| Object-storage blob leak | Storage reaper | §1.5, §4.6 |
-| Docker container ordering hazard | Eligibility predicate excludes sessions with non-DELETED sandboxes | §4.1 |
-| OpenAI provider artifact leak | Provider DELETE before CASCADE | §4.5 |
-| On-disk workspace dir leak | FS reaper stage E | §1.5, §4.1 |
-| Wrong tradeoff on `application_events` | Reversed to SET NULL | §2.2 |
-| Unbounded CASCADE fanout | One session per transaction | §4.1 |
-| `/health` orphan check is expensive | Cached, populated by cleanup loop | §6.2 |
-| Missing `NOT VALID` migration pattern | Added to migration plan | §5 |
-| GDPR purge-now missing | New endpoint | §4.7 |
-| `legal_hold` audit unspecified | Audit-log requirement | §4.8 |
-| 4-value custody enum over-engineered | Collapsed to 3, separate `archived_at` | §3.3 |
-| ORM-vs-FK cascade verification | Verification table | §9 |
+### 14.2 Idempotency contract for phase-(b) reapers
 
-The `viewonly=True` cascade trap and the typed-enum mismatch on `status='permanent'` were identified in v2 review and are covered in §1.3 and §1.4. v3 added §0 (branch-context audit) and §12 (sequencing) after comparing against `origin/main`.
+Every operation in §4.1 phase (b) (provider DELETE, FS reaper, future hooks) MUST be idempotent under "DELETE against missing resource is success, not failure." Specifically:
 
-Implementation work blocked pending core-design answers to §10.
+- OpenAI `files.delete` / `containers.delete` — swallow `NotFoundError` (HTTP 404), log only non-404.
+- FS reaper (`shutil.rmtree`) — swallow `FileNotFoundError` / `errno.ENOENT`.
+- New phase-(b) hooks must satisfy the same contract before being wired in.
+
+This is a hard precondition: phase (c) may crash and force phase (b) to replay; non-idempotent operations corrupt state on replay.
+
+### 14.3 Audit row for every state transition
+
+Every transition that mutates session state MUST write an `application_events` row in the same transaction (which survives via SET NULL — §3.1). Categories: `session.soft_deleted_by_user`, `session.soft_deleted_by_schedule`, `session.restored`, `session.purge_committed` (terminal phase-(c) write — see §15 for canonical content schema), `session.purged_by_user` / `session.purged_by_grace` (legacy synonyms retained for audit continuity), `legal_hold.set`, `legal_hold.cleared`. Every category of session loss must be individually queryable from `application_events` alone — not from log scrapes.
+
+### 14.4 Test contract — acceptance criteria for landing
+
+A design proposal at this scope ships with a named test contract. Minimum required test files before PR-D / PR-E land:
+
+| Test file | What it verifies |
+|---|---|
+| `tests/migrations/test_session_fk_cascade.py` | Each of the 9 new FKs cascades or sets NULL correctly per §3.1. |
+| `tests/migrations/test_session_fk_not_valid_pattern.py` | NOT VALID + VALIDATE migration completes online (no ACCESS EXCLUSIVE held during VALIDATE). |
+| `tests/unit/sessions/test_purge_stale_deleted_sessions.py` | Single-session purge runs phases A→C in order; legal_hold skipped; sandboxes-not-DELETED gate; ephemeral grace honoured. |
+| `tests/unit/sessions/test_purge_now_endpoint.py` | Synchronous sandbox tear-down (§4.7); 423 on legal_hold; audit row written. |
+| `tests/unit/sessions/test_legal_hold_audit.py` | Set/clear writes audit rows with required fields. |
+| `tests/unit/sessions/test_storage_reaper_idempotent.py` | Reaper handles already-deleted blobs without crashing. |
+| `tests/integration/test_provider_cleanup_404_swallow.py` | OpenAI 404 silent; non-404 logs warning. |
+| `tests/integration/test_dr_pitr_drill.py` (manual) | PITR restore runbook executable end-to-end. |
+| `tests/integration/test_purge_crash_recovery.py` | Process killed between phase (a) and (c) → claim honoured by next sweep; no double-delete. |
+| `tests/integration/test_purge_load_largest_session.py` | 50k chat_messages + 100k application_events: phase (c) within budget; replica lag under p95 SLO. |
+| `tests/integration/test_purge_now_no_lock_contention.py` | `purge_now` does not block on `sandbox:cleanup:lock`. |
+| `tests/integration/test_provider_dead_letter.py` | 5xx for `max_attempts` → dead-letter row, claim retained, paging gauge increments. |
+| `tests/integration/test_purge_user_account_pipeline.py` | `_purge_user_account` drives every owned session through pipeline before user-CASCADE. |
+| `tests/integration/test_purge_user_account_dead_letter_blocks.py` | Unresolved dead-letter (by user_id) → `UserPurgeBlockedError`; user row NOT deleted. |
+| `tests/integration/test_purge_user_account_partial_failure.py` | One transient session failure does NOT cancel sibling purges; user not deleted. |
+| `tests/unit/sessions/test_relationship_cascade_consistency.py` | Every `Session.*` ORM cascade matches DB FK policy (§7). |
+| `tests/integration/test_audit_row_pii_strip.py` | After Art. 17 paths, audit `content` reduced to billing-safe; `user_id` nulled (I4, I11). |
+| `tests/integration/test_grace_purge_preserves_billing.py` | Grace-expired purge does NOT apply Art. 17 strip — operational forensics preserved. |
+| `tests/integration/test_user_purge_claim_arbitration.py` | Concurrent user-purge + orphan-loop sweep → single claim per session (I6). |
+| `tests/integration/test_dead_letter_retention.py` | Resolved rows reaped after retention; unresolved never reaped. |
+| `tests/unit/sessions/test_is_purging_gate_enumeration.py` | Every endpoint in `NotPurgingDep` registry returns 423 when `is_purging=true` (I3). |
+| `tests/integration/test_sar_preempts_grace.py` | Verified SAR fast-tracks all user's `is_deleted` sessions (I12). |
+| `tests/integration/test_sar_audit_completeness.py` | Every `request_type='SAR'` audit row has all four memo §5 fields (I13). |
+| `tests/integration/test_user_delete_audits_first.py` | `DELETE FROM users` only after audit + dead-letter clean (I14). |
+| `tests/integration/test_art17_3_disclosure.py` | Art. 17(3) deferred sessions get disclosure event within 30d (I15). |
+| `tests/integration/test_restore_rejected_during_sar.py` | Restore endpoint returns 423 when active SAR exists (I16). |
+| `tests/unit/sessions/test_grace_sweep_primary_only.py` | Cleanup loop binds writer engine; startup assertion fires on replica binding (I17). |
+| `tests/integration/test_legal_hold_supersedes_sar.py` | SAR on legal_hold session → `RetentionException.LEGAL_HOLD` audit; no purge (I18). |
+| `tests/unit/sessions/test_purge_phase_c_recheck_is_deleted.py` | Phase (c) re-checks `is_deleted=true` to defend TOCTOU vs restore (I7). |
+| `tests/unit/sessions/test_purge_now_rejects_during_user_purge.py` | Per-session `purge_now` returns 423 when user has `is_purging=true` (I8). |
+| `tests/unit/sessions/test_dead_letter_user_id_required.py` | `LeakedResource.user_id` is non-Optional; insert without user_id fails (I10). |
+| `tests/unit/sessions/test_purge_already_purged_idempotent.py` | `purge_one_session` returns `ALREADY_PURGED` on terminal-state retry; never two `session.purge_committed` rows for one session_id (I19). |
+| `tests/unit/sessions/test_doc_stub_parity.py` | Every public symbol in `purge/__init__.py::__all__` is referenced by name in this design doc; doc names that look like Python symbols exist in the package. |
+
+### 14.5 `database-design.md` doc-update is an explicit deliverable
+
+PR-D MUST include a `docs/database-design.md` patch covering: the 9 new FKs (with `ON DELETE` columns updated), `delete_after`/`purge_after`/`custody`/`purge_started_at`/`purge_attempts` columns on `sessions`, the `purge_dead_letter` table, and a pointer back to this design doc. Without this patch, `database-design.md` becomes a misleading reference for new contributors. Reviewers must reject PR-D if missing.
 
 ---
 
-## 12. Sequencing & dependencies on topic-branch infrastructure
+## 15. PITR retention vs GDPR Art. 17 — reconciliation
 
-This proposal **cannot land directly on `main`** because it depends on infrastructure that lives on the in-flight topic branches:
+v3.3 §14.1 recommended `PITR ≥ grace + 7 days` (37 days for `standard` custody). This **conflicts** with GDPR Art. 17 "right to erasure" semantics: if a user invokes `purge_now` and PITR retains their data for 37 more days, the data is not erased.
 
-| Dependency | Source | Status |
-|---|---|---|
-| `agents/sandboxes/orphan_cleanup.py` cleanup-loop runner | `feature/local-docker-sandbox_1_of_3` (or successor) | Pending merge |
-| `sessions.delete_after` column + scheduled-delete API | `feature/a2a-agent-inner-loop_2_of_3` (migration `20260412_000004`) | Pending merge |
-| `_soft_delete_expired_sessions` stage | Same as above | Pending merge |
-| `_purge_stale_deleted_rows` for `agent_sandboxes` | Same as above | Pending merge — this is the precedent the new session-purge stage mirrors |
-| Distributed cleanup lock (`sandbox:cleanup:lock`) | Same as above | Pending merge |
-| `AgentSandbox.status` enum with `DELETED`, `PAUSED` values | Same as above | Pending merge |
+### Resolution
 
-### Recommended landing sequence
+GDPR Recital 65 and Art. 17(3)(b) explicitly contemplate this case. **PITR backups are a permitted retention category** provided two conditions are met:
 
-```mermaid
-%%{init: {'theme':'base'}}%%
-flowchart TD
-    M[origin/main] --> B1["PR-A: cleanup loop +<br/>distributed lock +<br/>sandbox purge TTL"]
-    B1 --> B2["PR-B: session.delete_after +<br/>_soft_delete_expired_sessions"]
-    B2 --> B3["PR-C: 3 main-branch bug fixes<br/>(viewonly cascade,<br/>permanent predicate,<br/>parent_session_id NO ACTION)"]
-    B3 --> P1["PR-D: this proposal —<br/>FK additions (NOT VALID + VALIDATE)"]
-    P1 --> P2["PR-E: this proposal —<br/>session purge stage +<br/>provider/storage/FS reapers"]
-    P2 --> P3["PR-F: this proposal —<br/>custody enum +<br/>GDPR purge-now +<br/>legal_hold + restore API"]
-    classDef shipped fill:#34a870,stroke:#1e8850,color:#fff
-    classDef pending fill:#5888a8,stroke:#3c6c90,color:#fff
-    classDef proposal fill:#c49858,stroke:#a87c3c,color:#fff
-    class M shipped
-    class B1,B2,B3 pending
-    class P1,P2,P3 proposal
+1. **Backups are write-only operational artefacts — never a query surface.** PITR is used for disaster recovery, not for serving user data, support queries, or analytics. The proposal honours this: nothing in `_purge_*` or any user-facing path reads from PITR.
+2. **Restoring from PITR triggers re-application of pending erasures.** If we restore PITR snapshot `T` into production at time `T+Δ`, any session that was `purge_now`'d in the interval `[T, T+Δ]` MUST be re-purged immediately as part of the restore runbook — otherwise the restore re-instates erased data. This is a runbook obligation, not a code change.
+
+### Required runbook step (post-restore)
+
+After every PITR restore, before allowing user traffic to the restored database:
+
+```sql
+-- Replay any erasures that occurred AFTER the restore snapshot.
+-- The audit trail in application_events (which survives via SET NULL) is the source of truth.
+SELECT session_id,
+       content->>'committed_at' AS committed_at,
+       content->>'trigger'      AS trigger
+FROM application_events
+WHERE event_type IN (
+        'session.purge_committed',  -- phase (c) terminal event; written by commit.commit_purge
+        'session.purged_by_user',   -- legacy synonym retained for audit-trail continuity
+        'session.purged_by_grace'   -- §4.1 grace-expired path
+      )
+  AND created_at > :restore_snapshot_timestamp;
 ```
 
-**Critical sequencing constraint:** PR-D (FK additions) MUST precede PR-E (session purge stage). Adding the session purge before the FKs would silently strand the ~40 k child rows we are trying to clean up — **the bug we are fixing would manifest as the fix.**
+#### Canonical event-content schema (pinned, v3.11)
 
-### Risk if landed out of order
+Every event written by `commit.commit_purge` MUST conform to the following JSON shape. The shape is enforced by `assert_strip_complete` post-strip; PITR replay relies on these exact keys.
 
-- **PR-E before PR-D:** session DELETEs leave 10 child tables' rows orphaned. Worse than today.
-- **PR-D before PR-A/B/C:** FKs added without a cleanup loop = no functional behaviour change, but constraints are now enforced on the next attempted manual session deletion. Safe.
-- **PR-F before PR-D/E:** custody enum is decorative without the purge predicate that respects it. Safe but pointless.
+| Key | Type | Meaning | Allowlist? |
+|---|---|---|---|
+| `event_type` | string | One of the categories in §14.3 (`session.purge_committed` for terminal phase-(c) writes) | ✅ |
+| `committed_at` | ISO-8601 string | When phase (c) committed (NOT when soft-delete happened) | ✅ |
+| `trigger` | string | `PurgeTrigger` enum value (`grace_expired` / `user_invoked_art17` / `user_account_deletion` / `sar_priority`) | ✅ |
+| `attempts_used` | int | `PurgeResult.attempts_used` | ✅ |
 
-### Why this matters for the core-team conversation
+**No other keys are written.** Adding a key requires (a) updating this table, (b) adding the key to `_BILLING_SAFE_KEYS` in `pii_strip.py` if it is non-PII or to the SAR-strip exclusion list otherwise, (c) updating PITR runbook query if the new key is needed for replay, (d) updating `test_audit_row_pii_strip.py`.
 
-The proposal as written assumes the reviewer has context on PR-A/B/C. If the conversation happens with a reviewer who knows only `main`, lead with §0 of this document, then walk through the sequencing diagram above. Do not present the FK additions or the purge stage in isolation.
+For each row returned by the runbook query above, the session is re-soft-deleted, `purge_after` is set to `now()`, and the §4.1 pipeline is invoked via `purge_one_session(session_id=row.session_id, trigger=PurgeTrigger[row.trigger.upper()])`. **The runbook is what makes the PITR retention legally compliant.** I19 guarantees that if any of the original sessions are still in a terminal post-purge state (e.g. partial restore that did not touch a particular session row), the replay pipeline returns `ALREADY_PURGED` rather than failing.
+
+### What the user sees
+
+- `purge_now` returns 200 immediately after phase (c) commits in production. From the user's perspective, the data is gone.
+- PITR retention is not user-visible and is documented as an operational backup category in the privacy policy.
+- A restore event causes a small replay window where re-purges run before traffic is admitted; the user never sees the re-instated data.
+
+This is the standard industry pattern (Google, AWS, Stripe all document it similarly). Calling it out explicitly here means the next reviewer who notices the conflict gets the answer in the doc, not in legal review.
+
+---
+
+## 16. User-account deletion bypasses the cleanup pipeline (CRITICAL)
+
+The §4.1 pipeline only fires for sessions already `is_deleted=true` with `purge_after <= now()`. A naive `DELETE FROM users` (which CASCADEs through `users.id → sessions.user_id`, verified on `origin/main` @ `0e57985d`) skips that path entirely — the session rows are gone before the cleanup loop's next sweep can observe them. Every OpenAI file, container, sandbox FS workspace, and GCS blob owned by that user persists upstream and continues being charged. **100% of provider artifacts leak on every user-account closure** — strictly worse than the per-session leak this document otherwise fixes.
+
+### The fix
+
+Introduce `_purge_user_account` as the only sanctioned entry point for user deletion. The full implementation lives in [`src/ii_agent/sessions/purge/user_purge.py`](../../src/ii_agent/sessions/purge/user_purge.py). The contract is:
+
+1. **Lock**: `UPDATE users SET is_purging=true WHERE id=:user_id` (gates new sessions via `NotPurgingDep` — invariant **I3**).
+2. **Soft-delete**: every owned session, `purge_after=now()`.
+3. **Drive each session through the §4.1 pipeline** via the shared `purge_one_session()` arbitration entry — bounded parallelism (`user_purge_parallelism`, default 4), `asyncio.gather(return_exceptions=True)` so one transient failure does not cancel siblings (invariant **I6**).
+4. **ABORT on any unresolved dead-letter row** (queried by `user_id`, NOT by JOIN-to-sessions — successful previous-attempt purges deleted those session rows; only `LeakedResource.user_id` connects). Raises `UserPurgeBlockedError`. Invariant **I10**.
+5. **Strip PII (Art. 17 paths only)** — see §17, also in [`pii_strip.py`](../../src/ii_agent/sessions/purge/pii_strip.py).
+6. **`DELETE FROM users`** — the CASCADE is now safe (every session purged through the pipeline; only audit/billing rows remain to be SET NULL'd). Invariant **I14**.
+7. **SAR-priority path** (`intake_sar`): if a verified SAR has been received, fast-track step 2 (`sar_priority=true` on every session); legal_hold supersedes (**I18**); audit row carries the four memo §5 fields (**I13**); 30-day Art. 17(3) disclosure if deferred (**I15**); restore endpoint rejected during active SAR (**I16**).
+
+### Required schema
+
+```sql
+ALTER TABLE users ADD COLUMN is_purging BOOLEAN NOT NULL DEFAULT false;
+
+CREATE TABLE sar_intake (
+    user_id        UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    received_at    TIMESTAMPTZ NOT NULL,
+    verified_at    TIMESTAMPTZ NULL,
+    closed_at      TIMESTAMPTZ NULL,
+    verification_method VARCHAR(255) NOT NULL,
+    PRIMARY KEY (user_id, received_at)
+);
+```
+
+### `is_purging` gate enumeration
+
+The gate is enforced via a single FastAPI dependency reused by every authenticated mutation endpoint:
+
+```python
+async def enforce_user_not_purging(current_user: CurrentUser, db: DBSession) -> None:
+    if await db.scalar(select(User.is_purging).where(User.id == current_user.id)):
+        raise HTTPException(423, "User account is being deleted; new operations are blocked.")
+
+NotPurgingDep = Annotated[None, Depends(enforce_user_not_purging)]
+```
+
+| Domain | Endpoints requiring `NotPurgingDep` |
+|---|---|
+| Sessions | `POST /sessions`, `PATCH /sessions/{id}`, `POST /sessions/{id}/restore`, `POST /sessions/{id}/fork` |
+| Chat | `POST /v1/chat`, `POST /v1/chat/runs/{id}/cancel` |
+| Files | `POST /files`, `DELETE /files/{id}` |
+| Slides / Storybook / Media | every `POST` and `PATCH` under `/slides`, `/storybooks`, `/media` |
+| Connectors | `POST /connectors/*` |
+| Settings | every `PATCH /user-settings/*` |
+| Socket.IO | `query`, `plan`, `continue_run`, `start_fork`, `publish`, `cloud_run_publish`, `save_env`, `save_expo_token`, `submit_testflight`, `apple_*` |
+
+Read-only paths are NOT gated. Per-session `purge_now` is also NOT gated (it is the same right; per-session lock handles concurrency). Verified by `tests/unit/sessions/test_is_purging_gate_enumeration.py`.
+
+**Defence in depth (v3.10, contract in [`orm_guards.py`](../../src/ii_agent/sessions/purge/orm_guards.py)):** a SQLAlchemy `before_insert` listener on `Session` re-checks `users.is_purging` for the row's `user_id` inside the caller's tx and aborts with `PurgeBlockedError`. Catches direct ORM inserts (admin scripts, migrations, fixtures) that bypass the FastAPI dependency. Registered once at app startup via `register_purge_guards()`.
+
+### ABORT recovery runbook
+
+Any of `UserPurgeFailedError` / `UserPurgeRetryableError` / `UserPurgeBlockedError` leaves `is_purging=true`. Operator path:
+
+1. Triage `purge_dead_letter WHERE user_id=:uid AND resolved_at IS NULL`; manually issue upstream DELETEs; mark resolved.
+2. Wait one cleanup-loop cycle for transient retries.
+3. Retry `_purge_user_account`.
+4. **Emergency unblock**: `POST /admin/users/{id}/unblock-purge` clears `is_purging`. Abandons the in-flight purge — soft-deleted sessions reaped on grace expiry; provider leaks remain in dead-letter for operator follow-up.
+
+### Sequencing implication
+
+**PR-G** (new): adds `users.is_purging`, `_purge_user_account`, `sar_intake`, gates every `delete(User)` path. Lands after PR-E, before any production user-deletion path can reach `DELETE FROM users`.
+
+### Out-of-scope leaks on user-CASCADE (call out)
+
+User-scoped (not session-scoped) resources still need their own provider-DELETE hooks driven from `_purge_user_account`: `chat_provider_vector_stores`, `composio_profiles`, `apple_credentials`, GCS user-asset blobs flagged `is_public=true`. Track as follow-on tickets; flag in PR-G commit message.
+
+---
+
+## 17. Audit-row PII × GDPR Art. 17 — the SET NULL trap (COMPLIANCE)
+
+§2.2 chose SET NULL for `application_events` and `credit_transactions` on billing-forensics grounds. Both arguments rest on a hidden assumption that the **content of the preserved audit row is itself non-PII.** That assumption is false: `application_events.content` is `JSONB` populated with free-text prompts, file names, error details, and email addresses. After SET NULL the row retains `user_id` and `content` intact — a SAR query joining by `user_id` recovers exactly what the user asked us to erase.
+
+Full implementation: [`src/ii_agent/sessions/purge/pii_strip.py`](../../src/ii_agent/sessions/purge/pii_strip.py).
+
+### Two distinct strip policies — operational grace vs Art. 17
+
+| Path | Legal basis | Preserved | Removed | Strips `user_id`? |
+|---|---|---|---|---|
+| §4.1 grace-expired purge | Operator decision; user did not invoke Art. 17 | `user_id`, full `content`, all billing forensics | `session_id` (via SET NULL — naturally) | **No** |
+| §4.7 `purge_now` | User invoked Art. 17 | Anonymised cost aggregates only | `session_id`, **`user_id`**, all `content` keys not on billing allowlist | Yes (this session's rows) |
+| §16 `_purge_user_account` | User account closure (Art. 17) | Anonymised cost aggregates only | `session_id`, **`user_id`**, all `content` keys not on billing allowlist | Yes (entire user's audit rows) |
+
+Nulling `user_id` is essential under Art. 17: a SAR query joining `application_events` by `user_id` would otherwise still return content-stripped rows, which still constitutes "data relating to" the subject. **Operational grace must NOT strip** — billing-dispute investigation depends on the original content. Encoded as invariants **I4** and **I11**.
+
+### The fix — allowlist filter at SQL level
+
+```python
+_BILLING_SAFE_KEYS = (
+    'cost_usd', 'credits', 'token_count', 'model', 'tool_name',
+    'duration_ms', 'billing_backend', 'event_type', 'http_status',
+    # extend deliberately — every key must be reviewed against "would I accept this in a SAR response?"
+)
+
+# jsonb_object_agg + jsonb_each is a real one-statement filter:
+safe_content = (
+    select(func.jsonb_object_agg(text('k'), text('v')))
+    .select_from(func.jsonb_each(ApplicationEvent.content).table_valued('k', 'v'))
+    .where(text('k = ANY(:keys)').bindparams(keys=list(_BILLING_SAFE_KEYS)))
+    .scalar_subquery()
+)
+await db.execute(
+    update(ApplicationEvent)
+    .where(<scope clause: by user_id or by session_id>)
+    .values(content=func.coalesce(safe_content, func.cast({}, JSONB)), user_id=None)
+)
+```
+
+Allowlist enforced at SQL level (not Python) — the table is large; round-tripping every row through the application is unacceptable at scale.
+
+### Why allowlist, not redact-by-pattern
+
+Free-text PII detection is a regex arms race: names, addresses, UUID-shaped trace IDs, partial credit-card numbers, and routing keys can look identical to a regex. Durable position: **"if a key isn't on the explicit billing allowlist, it is PII by default."** Adding a new billable signal requires an explicit one-line addition reviewed against "would I accept this as a SAR response?".
+
+**Defence in depth (v3.10, contract in [`pii_strip.assert_strip_complete`](../../src/ii_agent/sessions/purge/pii_strip.py)):** `commit_purge` invokes `assert_strip_complete` immediately after the strip pass and inside the same tx. It re-reads every stripped row and raises `AssertionError` if any surviving JSONB key ∉ allowlist or any `user_id` column is non-NULL — defending against allowlist drift between the Python constant and the runtime SQL filter.
+
+### Coverage / PITR interaction
+
+Acceptance test (§14.4 `test_audit_row_pii_strip.py`) seeds `application_events` rows with all known content shapes from production, runs the purge path, and asserts the result has only allowlisted keys. New event types adding keys without updating the allowlist will fail this test.
+
+PITR replay (§15) identifies erasures by `event_type IN ('session.purge_committed', 'session.purged_by_user', 'session.purged_by_grace')` (all allowlisted). Replay re-runs the strip pass; production restored to the same Art. 17-compliant state.
+
+---
+
+## Appendix A. Public symbol index
+
+The doc-stub parity test (`tests/unit/sessions/purge/test_doc_stub_parity.py`) requires every name in `purge/__init__.py::__all__` to appear in this doc. Symbols already cited inline in the body (e.g. `PurgeOutcome`, `SARRequest`, `register_purge_guards`, `assert_strip_complete`) are not repeated here. Symbols below are exported but used only in narrow code paths; this appendix exists to satisfy the parity check and to give reviewers a one-line orientation.
+
+| Symbol | Module | One-line role |
+|---|---|---|
+| `RetentionExceptionRecord` | `types.py` | Captures the WHY when erasure is delayed under Art. 17(3) — kind + justification + end_date + authority. Persisted on the audit row. |
+| `SandboxTeardownTimeoutError` | `exceptions.py` | Raised by `purge_now` (§4.7) when the synchronous sandbox-teardown step exceeds its timeout. Mapped to HTTP 504 by the endpoint handler. |
+| `UserPurgeReason` | `types.py` | Why a user-account purge ran: `SELF_SERVICE` / `ADMIN_INITIATED` / `GDPR_ART17`. Recorded on the audit row by `purge_user_account` (§16). Distinct from `PurgeTrigger` — a single user-purge run produces multiple per-session purges, each carrying its own trigger. |

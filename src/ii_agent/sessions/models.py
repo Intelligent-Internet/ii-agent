@@ -4,7 +4,7 @@ ChatSummary (formerly ConversationSummary) has been moved to ii_agent.chat.model
 """
 
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy import BigInteger, Boolean, ForeignKey, Index, String
+from sqlalchemy import BigInteger, Boolean, ForeignKey, Index, Integer, String
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from datetime import datetime, timezone
 from typing import Optional, TYPE_CHECKING
@@ -12,7 +12,7 @@ import uuid
 
 from ii_agent.agents.types import AgentType
 from ii_agent.core.db.base import Base, TimestampColumn
-from ii_agent.sessions.types import AppKind, SessionState
+from ii_agent.sessions.types import AppKind, SessionCustody, SessionState
 
 # Forward references for relationships
 if TYPE_CHECKING:
@@ -68,6 +68,31 @@ class Session(Base):
     )
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     delete_after: Mapped[Optional[datetime]] = mapped_column(TimestampColumn, nullable=True)
+
+    # ---- Purge subsystem (§4.1, three-phase purge driver) ----
+    # See docs/design-docs/session-lifecycle-and-data-custody.md §3.5 + §4.1
+    # PR-A migration: 20260427_000008_session_purge_v34.py
+    purge_after: Mapped[Optional[datetime]] = mapped_column(TimestampColumn, nullable=True)
+    """When grace expires and the session becomes eligible for hard purge.
+    Backfilled by the cleanup-loop bulk update (§4.1 step 0)."""
+
+    custody: Mapped[SessionCustody] = mapped_column(
+        String(32),
+        nullable=False,
+        default=SessionCustody.STANDARD,
+        server_default=SessionCustody.STANDARD.value,
+    )
+    """Retention custody (I1/I3): legal_hold blocks purge entirely."""
+
+    purge_started_at: Mapped[Optional[datetime]] = mapped_column(TimestampColumn, nullable=True)
+    """Phase-(a) claim timestamp. Set by claim_one_session, refreshed by
+    heartbeat_claim, cleared on release_claim. Stale (> claim_timeout) =
+    reclaimable (Adversarial #19)."""
+
+    purge_attempts: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    """Retry counter. >= max_attempts ⇒ permanent dead-letter (§4.5)."""
 
     # Relationships (using string references)
     user: Mapped["User"] = relationship("User", back_populates="sessions")
