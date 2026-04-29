@@ -2,16 +2,26 @@
 
 Design contract: ``docs/design-docs/session-lifecycle-and-data-custody.md`` §2.3.
 
-The 19 invariants in :mod:`ii_agent.sessions.purge.invariants` partition into:
+After the v3.10 hardening pass (migration 20260429_000011) the 19
+invariants in :mod:`ii_agent.sessions.purge.invariants` partition into
+**three** tiers:
 
-  * **DB-checkable** (cheap data-shape predicates) — return a list of
-    violating row UUIDs. Empty list = pass.
-  * **Structural / cross-system** (I3, I5, I6, I7, I8, I9, I14, I17) —
-    intentionally raise :class:`NotImplementedError` because the contract
-    is enforced by code structure, deployment configuration, or external
-    audit reconciliation rather than a SQL predicate. The runner skips
-    these and records the skip reason in the report so an operator can
-    confirm the corresponding test / deployment guard is in place.
+  * **SCHEMA_ENFORCED** — physically rejected by CHECK / UNIQUE / TRIGGER
+    in the database. NOT executed by this runner; the invariant cannot
+    be violated on a row that was successfully written.
+  * **DB_CHECKABLE** — cheap data-shape predicates against live tables.
+    Return a list of violating row UUIDs. Empty list = pass. The runner
+    iterates :data:`ALL_INVARIANTS` (an alias for
+    :data:`invariants.DB_CHECKABLE`) and pages on any non-empty result
+    or unexpected exception.
+  * **STRUCTURAL_TEST_ENFORCED** — code-shape, deployment-config, or
+    external-reconciliation contracts pinned by named tests. NOT
+    executed by this runner; the corresponding test suite is the
+    enforcement point. The previous "stub raises NotImplementedError"
+    pattern was removed because it conflated "checkable in principle"
+    with "checked in practice"; the SKIPPED_STRUCTURAL state is kept
+    only as a defensive landing pad in case a future check still
+    raises.
 
 The runner returns a :class:`InvariantReport` with one
 :class:`InvariantOutcome` per invariant.  Three terminal states:
@@ -207,9 +217,58 @@ async def run_all_invariants(db: AsyncSession) -> InvariantReport:
     return InvariantReport(outcomes=tuple(outcomes), total_elapsed_seconds=total)
 
 
+def assert_cleanup_uses_primary_db() -> None:
+    """I17 enforcement (deployment-config check).
+
+    Validates that the grace-purge / orphan-cleanup loops bind to the
+    PRIMARY database engine, not a read replica. A replica-bound sweep
+    would (a) miss recently-deleted sessions due to replication lag —
+    leaving GDPR Art. 17 deadlines silently breached — and (b) attempt
+    DELETEs against a read-only connection, raising at runtime.
+
+    Current contract: this codebase has a SINGLE async engine
+    (``ii_agent.core.db.base.get_engine``); no reader split exists. The
+    assertion is therefore that no module-level replica engine has been
+    introduced without updating this function. The sentinel is the
+    absence of any ``_reader_engine`` / ``_replica_engine`` attribute on
+    the db module.
+
+    When a read replica IS introduced in future, this function MUST be
+    upgraded to inspect ``Cleanup.bind`` (or equivalent) and verify the
+    resolved URL matches the writer's. Ignoring that upgrade would
+    silently downgrade I17 to paper-only.
+
+    Raises:
+        AssertionError: if a replica engine attribute appears on the
+            shared db module but this function has not been updated.
+
+    Returns:
+        None on pass. Called from app startup; failure should crash the
+        process (fail-loud is the correct posture for compliance gates).
+    """
+    from ii_agent.core.db import base as db_base
+
+    suspect_attrs = [
+        name
+        for name in dir(db_base)
+        if name.startswith("_")
+        and ("reader" in name.lower() or "replica" in name.lower())
+        and "engine" in name.lower()
+    ]
+    if suspect_attrs:
+        raise AssertionError(
+            "I17 violation candidate: read-replica engine attribute(s) "
+            f"detected on ii_agent.core.db.base — {suspect_attrs!r}. "
+            "assert_cleanup_uses_primary_db must be upgraded to "
+            "explicitly verify the cleanup loop binds to the writer "
+            "engine before this code path can be considered I17-safe."
+        )
+
+
 __all__ = [
     "InvariantOutcome",
     "InvariantReport",
     "InvariantStatus",
+    "assert_cleanup_uses_primary_db",
     "run_all_invariants",
 ]

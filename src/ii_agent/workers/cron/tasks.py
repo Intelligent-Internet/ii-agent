@@ -193,6 +193,43 @@ async def cleanup_long_running_chat_messages():
         logger.opt(exception=True).error(f"Error during ChatMessage cleanup: {e}")
 
 
+async def run_purge_invariants_check():
+    """Nightly §2.3 lifecycle-invariants probe.
+
+    Runs every ``check_I*`` in :data:`invariants.DB_CHECKABLE` against
+    the primary database and logs the report. Any FAIL or ERROR
+    outcome is logged at ERROR level (so the alerting pipeline keyed
+    on ``INVARIANT FAIL`` / ``INVARIANT ERROR`` substrings pages an
+    operator). Schema-enforced invariants (Tier 1) are not executed
+    here — they are checked atomically at write time by the database.
+    Structural invariants (Tier 3) are pinned by named tests and not
+    executed by this runner.
+
+    The job swallows its own exceptions because APScheduler's default
+    behaviour on an unhandled error is to suppress the next firing —
+    we want the invariant probe to keep running even if a single
+    pass blew up on a transient DB hiccup.
+    """
+    try:
+        from ii_agent.sessions.purge.check_runner import run_all_invariants
+
+        async with get_db_session_local() as db:
+            report = await run_all_invariants(db)
+        logger.info("purge invariants: {}", report.summary())
+        if report.failed or report.errored:
+            # The check_runner already logged the offending rows at ERROR.
+            # This bubbles a single concise summary the alert rule keys on.
+            logger.error(
+                "INVARIANT REPORT non-pass: failed={} errored={} skipped={} elapsed={:.2f}s",
+                len(report.failed),
+                len(report.errored),
+                len(report.skipped),
+                report.total_elapsed_seconds,
+            )
+    except Exception as e:
+        logger.opt(exception=True).error(f"Error running purge invariants: {e}")
+
+
 def start_scheduler():
     """
     Start the scheduler and add all periodic jobs.
@@ -213,6 +250,19 @@ def start_scheduler():
             trigger=IntervalTrigger(minutes=40),
             id="cleanup_stale_chat_messages",
             name="Cleanup stale incomplete ChatMessages (older than 45 mins)",
+            replace_existing=True,
+            max_instances=1,
+        )
+
+        # ── Lifecycle invariants probe ────────────────────────────────────
+        # Daily probe of every DB-checkable invariant. Schema-enforced
+        # invariants are policed at write time; this catches anything that
+        # bypasses the ORM or drifts via raw SQL.
+        scheduler.add_job(
+            run_purge_invariants_check,
+            trigger=IntervalTrigger(hours=24),
+            id="run_purge_invariants_check",
+            name="Run §2.3 lifecycle-invariants probe (DB_CHECKABLE tier)",
             replace_existing=True,
             max_instances=1,
         )

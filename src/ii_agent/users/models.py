@@ -68,6 +68,13 @@ class User(Base):
     is_purging: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
     )
+    is_purging_set_at: Mapped[Optional[datetime]] = mapped_column(TimestampColumn, nullable=True)
+    """Timestamp at which ``is_purging`` was flipped to true. Required by I3:
+    any ``sessions`` row with ``created_at > is_purging_set_at`` is a
+    forbidden post-lock insert. Cleared back to NULL only on explicit
+    operator unwind (test fixture); production code never clears it.
+
+    Migration: 20260429_000011_invariant_hardening.py."""
 
     # Relationships (using string references for forward declarations)
     sessions: Mapped[list["Session"]] = relationship(

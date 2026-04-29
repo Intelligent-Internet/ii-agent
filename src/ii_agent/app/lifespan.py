@@ -181,6 +181,20 @@ def create_lifespan(sio: socketio.AsyncServer):
             logger.error("Failed to register ORM purge guards: %s", exc)
             raise
 
+        # 4a-bis. I17 deployment-config gate: verify the grace-purge cleanup
+        #     loop will bind to the primary DB engine, not a read replica.
+        #     A replica-bound sweep would silently miss the GDPR Art. 17
+        #     deadline. Fail-loud on any suspect engine attribute.
+        try:
+            from ii_agent.sessions.purge.check_runner import (
+                assert_cleanup_uses_primary_db,
+            )
+
+            assert_cleanup_uses_primary_db()
+        except AssertionError as exc:
+            logger.error("I17 deployment-config check FAILED: %s", exc)
+            raise
+
         # 4c. Register session-purge phase-(b) provider cleanup hooks.
         #     Each hook is opt-in via SESSIONS_*_PROVIDER_CLEANUP_ENABLED so
         #     the registration ships dark; satisfies pre-flip gate #4.

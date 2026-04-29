@@ -106,19 +106,36 @@ def test_no_underscored_legacy_purge_names_in_doc() -> None:
 
 
 def test_invariant_count_matches_doc_table_header() -> None:
-    """The doc claims a specific number of invariants (e.g. '19 invariants
-    as of v3.11'). The runtime catalog must match.
+    """The doc table in §2.3 lists every invariant; the runtime catalog
+    must be a partition of the same set across the three tiers
+    (SCHEMA_ENFORCED, DB_CHECKABLE, STRUCTURAL_TEST_ENFORCED).
 
-    Looser-than-grep match: count `**Ix**` rows in the §2.3 table and
-    require it equals `len(ALL_INVARIANTS)`.
+    After the v3.10 hardening pass, ``ALL_INVARIANTS`` only enumerates
+    the DB-checkable tier — schema-enforced and structural invariants
+    live in their own tuples. The doc table count must match the
+    UNION of all three.
     """
-    from ii_agent.sessions.purge.invariants import ALL_INVARIANTS
+    from ii_agent.sessions.purge.invariants import (
+        DB_CHECKABLE,
+        SCHEMA_ENFORCED,
+        STRUCTURAL_TEST_ENFORCED,
+    )
 
     doc = _doc_text()
     # Match `**I1**` ... `**I99**` at the start of a table row.
-    invariant_rows = re.findall(r"\|\s*\*\*I\d+\*\*\s*\|", doc)
-    assert len(invariant_rows) == len(ALL_INVARIANTS), (
-        f"Doc table has {len(invariant_rows)} invariant rows but "
-        f"ALL_INVARIANTS has {len(ALL_INVARIANTS)}. "
-        f"Add the new invariant to §2.3 or remove the orphan row."
+    invariant_rows = re.findall(r"\|\s*\*\*(I\d+[a-z]?)\*\*\s*\|", doc)
+    runtime_ids = (
+        {iid for iid, _ in SCHEMA_ENFORCED}
+        | {iid for iid, _ in STRUCTURAL_TEST_ENFORCED}
+        # DB_CHECKABLE entries are functions named check_I{N}_*; extract N.
+        | {fn.__name__.split("_")[1] for fn in DB_CHECKABLE}
+    )
+    doc_ids = set(invariant_rows)
+    missing_in_runtime = doc_ids - runtime_ids
+    missing_in_doc = runtime_ids - doc_ids
+    assert not missing_in_runtime and not missing_in_doc, (
+        f"Doc/runtime invariant catalogue out of sync. "
+        f"In doc but not runtime: {sorted(missing_in_runtime)}. "
+        f"In runtime but not doc: {sorted(missing_in_doc)}. "
+        f"Update §2.3 or the invariants module so they agree."
     )

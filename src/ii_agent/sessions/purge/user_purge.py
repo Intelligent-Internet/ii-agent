@@ -59,7 +59,10 @@ from .types import (
 # ---- SQL constants ---------------------------------------------------------
 
 _LOCK_USER_SQL = text(
-    "UPDATE users SET is_purging = true WHERE id = :uid AND is_purging = false RETURNING id"
+    "UPDATE users "
+    "   SET is_purging = true, is_purging_set_at = now() "
+    " WHERE id = :uid AND is_purging = false "
+    "RETURNING id"
 )
 
 _CHECK_IS_PURGING_SQL = text("SELECT is_purging FROM users WHERE id = :uid")

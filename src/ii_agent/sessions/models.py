@@ -72,6 +72,12 @@ class Session(Base):
     # ---- Purge subsystem (§4.1, three-phase purge driver) ----
     # See docs/design-docs/session-lifecycle-and-data-custody.md §3.5 + §4.1
     # PR-A migration: 20260427_000008_session_purge_v34.py
+    # Hardening migration: 20260429_000011_invariant_hardening.py
+    #   adds CHECK constraints enforcing I1 atomically:
+    #     ck_sessions_purge_after_implies_deleted
+    #         (purge_after IS NULL OR is_deleted = true)
+    #     ck_sessions_purge_started_implies_deleted
+    #         (purge_started_at IS NULL OR is_deleted = true)
     purge_after: Mapped[Optional[datetime]] = mapped_column(TimestampColumn, nullable=True)
     """When grace expires and the session becomes eligible for hard purge.
     Backfilled by the cleanup-loop bulk update (§4.1 step 0)."""

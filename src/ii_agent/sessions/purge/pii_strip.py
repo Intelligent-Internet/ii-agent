@@ -42,6 +42,10 @@ DEFAULT_BILLING_SAFE_KEYS: frozenset[str] = frozenset(
 # We use ``jsonb_object_agg(k, v) FILTER (WHERE k = ANY(:allowlist))`` to
 # rebuild content with only allowlisted keys. ``jsonb_each`` unrolls the
 # object; the FILTER clause discards everything else.
+# NB: ``stripped_at = now()`` is the I11 discriminator added in migration
+# 20260429_000011. Every strip-touched row carries a non-NULL stripped_at;
+# I11's probe queries ``WHERE stripped_at IS NOT NULL`` to distinguish
+# real strip targets from system events that legitimately have no user_id.
 _STRIP_EVENTS_BY_SESSION_SQL = text(
     """
     UPDATE application_events
@@ -53,7 +57,8 @@ _STRIP_EVENTS_BY_SESSION_SQL = text(
                ),
                '{}'::jsonb
            ),
-           user_id = NULL
+           user_id = NULL,
+           stripped_at = now()
      WHERE session_id = :session_id
     """
 )
@@ -69,7 +74,8 @@ _STRIP_EVENTS_BY_USER_SQL = text(
                ),
                '{}'::jsonb
            ),
-           user_id = NULL
+           user_id = NULL,
+           stripped_at = now()
      WHERE user_id = :user_id
     """
 )
