@@ -33,10 +33,60 @@ Invariants preserved: I3, I8, I14 (defence-in-depth).
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import Any
 
-if TYPE_CHECKING:
-    pass
+from sqlalchemy import event, text
+from sqlalchemy.orm.mapper import Mapper
+
+from ii_agent.core.logger import logger
+from ii_agent.sessions.models import Session as SessionModel
+from ii_agent.sessions.purge.exceptions import PurgeBlockedError
+
+
+_REGISTERED: bool = False
+
+
+def _before_insert_session(
+    mapper: Mapper[SessionModel],  # noqa: ARG001 — required by event signature
+    connection: Any,
+    target: SessionModel,
+) -> None:
+    """Synchronous SQLAlchemy ``before_insert`` listener.
+
+    Runs inside the active transaction. If ``users.is_purging=true`` for
+    the row's user, abort the INSERT by raising ``PurgeBlockedError``.
+
+    The listener honours an opt-out via the connection's
+    ``execution_options(skip_purge_guard=True)`` — reserved for trusted
+    internal paths (none in production code today).
+    """
+    # Bypass for trusted internal paths (admin scripts, future migrations).
+    try:
+        exec_opts = connection.get_execution_options()
+    except Exception:
+        exec_opts = {}
+    if exec_opts.get("skip_purge_guard"):
+        return
+
+    user_id = getattr(target, "user_id", None)
+    if user_id is None:
+        # Pre-existing NOT NULL constraint will reject; let it surface.
+        return
+
+    row = connection.execute(
+        text("SELECT is_purging FROM users WHERE id = :uid"),
+        {"uid": user_id},
+    ).first()
+    if row is None:
+        # FK constraint will reject the insert; let it surface.
+        return
+    if bool(row[0]):
+        logger.warning(
+            "ORM guard blocked Session insert for user_id={} "
+            "(is_purging=true). I3/I8/I14 defence-in-depth fired.",
+            user_id,
+        )
+        raise PurgeBlockedError(f"cannot create Session: user {user_id} is_purging=true")
 
 
 def register_purge_guards() -> None:
@@ -45,12 +95,13 @@ def register_purge_guards() -> None:
     Idempotent: subsequent calls are no-ops. Called from app startup
     (``app/lifespan.py``) immediately after the SQLAlchemy engine is
     initialised and BEFORE any router is wired.
-
-    Raises:
-        RuntimeError: called before ``Session.metadata`` is bound to an
-            engine (programming error — startup ordering bug).
     """
-    raise NotImplementedError
+    global _REGISTERED
+    if _REGISTERED:
+        return
+    event.listen(SessionModel, "before_insert", _before_insert_session)
+    _REGISTERED = True
+    logger.info("Registered ORM purge guard (before_insert on Session)")
 
 
 __all__ = ["register_purge_guards"]

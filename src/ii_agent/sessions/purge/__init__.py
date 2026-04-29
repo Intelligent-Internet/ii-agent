@@ -4,9 +4,11 @@ This module is the SOURCE OF TRUTH for session lifecycle / data custody.
 The design doc (`docs/design-docs/session-lifecycle-and-data-custody.md`)
 EXPLAINS this module; this module DEFINES the contract.
 
-All signatures here MUST mypy --strict clean. Bodies raise NotImplementedError
-until PR-E lands. Each public function's docstring cites the invariants
-(see `invariants.py`) it preserves and the doc section it implements.
+All signatures here MUST mypy --strict clean. Each public function's
+docstring cites the invariants (see `invariants.py`) it preserves and
+the doc section it implements. Implementation status of every code
+path and invariant is tracked in
+``docs/impl-docs/session-purge-implementation-tracker.md``.
 
 Call graph (single arbitration point: ``purge_one_session``):
 

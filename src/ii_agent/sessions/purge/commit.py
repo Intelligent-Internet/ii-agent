@@ -30,7 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .exceptions import PurgeBlockedError
 from .pii_strip import assert_strip_complete, strip_user_pii_art17
-from .types import PurgeOutcome, PurgeTrigger, SARRequest
+from .types import PURGE_COMMITTED_EVENT_TYPE, PurgeOutcome, PurgeTrigger, SARRequest
 
 
 # Triggers that perform the Art. 17 strip pass.
@@ -57,10 +57,12 @@ _INSERT_AUDIT_SQL = text(
 _DELETE_SESSION_SQL = text("DELETE FROM sessions WHERE id = :session_id")
 
 
-# Canonical event_type for the audit row. v3.11: I19 idempotency precheck
-# (see ``session_purge.purge_one_session``) queries this exact string. Any
-# divergence breaks I19 detection. Sub-trigger lives in ``content.trigger``.
-_AUDIT_EVENT_TYPE = "session.purge_committed"
+# Canonical event_type for the audit row. The string lives in ``types``
+# (``PURGE_COMMITTED_EVENT_TYPE``) so that the I19 idempotency precheck
+# in ``session_purge.purge_one_session`` and the invariant checks in
+# ``invariants.py`` can import a single source of truth. Sub-trigger
+# lives in ``content.trigger``.
+_AUDIT_EVENT_TYPE = PURGE_COMMITTED_EVENT_TYPE
 
 
 async def commit_purge(

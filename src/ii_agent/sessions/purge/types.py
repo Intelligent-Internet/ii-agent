@@ -19,6 +19,20 @@ import uuid
 from dataclasses import dataclass
 
 
+# ─── Canonical event_type strings ───────────────────────────────────────
+#
+# These are written into ``application_events.event_type`` by the purge
+# subsystem and queried verbatim by ``invariants.py`` and the I19
+# idempotency precheck in ``session_purge.purge_one_session``. Renaming
+# the value REQUIRES updating every check at the same time. Keeping
+# them here as named constants gives ``grep`` and the type-checker a
+# shot at finding stragglers.
+PURGE_COMMITTED_EVENT_TYPE = "session.purge_committed"
+"""Phase-(c) audit row written by ``commit.commit_purge``. Required by
+I19 (idempotency), I13 (SAR audit completeness), I18 (legal-hold
+supersession check)."""
+
+
 class PurgeTrigger(str, enum.Enum):
     """Why a purge ran. Drives the strip policy (see `pii_strip.py`) AND
     the urgency window (see legal memo §7, codified as I12)."""

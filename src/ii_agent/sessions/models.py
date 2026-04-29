@@ -94,6 +94,14 @@ class Session(Base):
     )
     """Retry counter. >= max_attempts ⇒ permanent dead-letter (§4.5)."""
 
+    sar_priority: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    """SAR fast-track flag (I12). Set by ``intake_sar`` when a verified
+    Subject Access Request arrives for the owning user. Grace-sweep MUST
+    skip rows with sar_priority=true (they are driven directly via
+    ``purge_one_session(trigger=SAR_PRIORITY)`` from the SAR handler)."""
+
     # Relationships (using string references)
     user: Mapped["User"] = relationship("User", back_populates="sessions")
     model_setting: Mapped[Optional["ModelSetting"]] = relationship(
@@ -105,8 +113,10 @@ class Session(Base):
     events: Mapped[list["ApplicationEvent"]] = relationship(
         "ApplicationEvent",
         primaryjoin="Session.id == foreign(ApplicationEvent.session_id)",
-        cascade="all, delete-orphan",
         viewonly=True,
+        # PR-D (§7): no `cascade=` here — application_events.session_id is
+        # `ON DELETE SET NULL` per §3.1; cascade flags would diverge from the
+        # FK policy and silently activate if `viewonly=True` were ever flipped.
     )
     # NOTE: Files are linked via SessionAsset many-to-many, not direct FK.
     # Access session files via FileRepository.get_by_session_id() instead.

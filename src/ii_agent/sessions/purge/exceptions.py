@@ -8,6 +8,8 @@ Naming convention:
 
 from __future__ import annotations
 
+import uuid
+
 
 class PurgeError(Exception):
     """Base class for every purge-subsystem exception."""
@@ -74,11 +76,12 @@ class PurgeRetryableError(PurgeError):
 class UserPurgeFailedError(PurgeError):
     """§16 step 3 — at least one session raised a non-transient error.
 
-    `failures` carries the per-session exceptions. User row is NOT deleted;
-    `is_purging=true` remains set; operator runbook applies.
+    `failures` carries per-session ``(session_id, error_message)`` tuples.
+    User row is NOT deleted; ``is_purging=true`` remains set; operator
+    runbook applies.
     """
 
-    def __init__(self, failures: list[BaseException]) -> None:
+    def __init__(self, failures: "list[tuple[uuid.UUID, str]]") -> None:
         super().__init__(
             f"User purge failed for {len(failures)} session(s); operator action required."
         )

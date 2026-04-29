@@ -110,7 +110,16 @@ async def cleanup_loop_stage_purge_sessions() -> int:
 
 
 async def cleanup_loop_stage_storage_reaper() -> int:
-    """§4.6 storage reaper as a cleanup-loop stage. Returns assets reaped."""
+    """§4.6 storage reaper as a cleanup-loop stage. Returns assets reaped.
+
+    Gated by ``SessionsSettings.storage_reaper_enabled`` (env
+    ``SESSIONS_STORAGE_REAPER_ENABLED``, default ``False``). Independent of
+    ``purge_enabled`` so ops can ship the reaper before flipping the
+    full purge driver.
+    """
+    cfg = get_settings().sessions
+    if not cfg.storage_reaper_enabled:
+        return 0
     try:
         return await reap_orphaned_user_assets()
     except Exception:  # pragma: no cover — defensive

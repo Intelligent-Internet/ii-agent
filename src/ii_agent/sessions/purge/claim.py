@@ -42,7 +42,19 @@ _CLAIM_SQL = text(
                 WHERE ab.session_id = s.id
                   AND ab.status != 'DELETED'
            )
-           AND (:specific_id::uuid IS NULL OR s.id = :specific_id::uuid)
+           AND (CAST(:specific_id AS uuid) IS NULL OR s.id = CAST(:specific_id AS uuid))
+           -- Drain mode (specific_id IS NULL) MUST NOT claim sar_priority
+           -- sessions: those are driven directly via purge_user_account
+           -- (trigger=SAR_PRIORITY) so the audit row carries the SARRequest
+           -- (I13). A grace-mode claim would record trigger=GRACE_EXPIRED
+           -- and break I13. Specific-id claims (e.g. user-purge driver
+           -- targeting these sessions) bypass the filter.
+           -- NB: ``<param>::<type>`` PG cast syntax confuses asyncpg's
+           -- bind-param rewriter (it sees ``::`` as part of the param
+           -- name); always use ``CAST(<param> AS <type>)`` in this module.
+           -- (Also: SQLA's ``text()`` scans comments for ``<colon>name``
+           -- bind tokens, so this comment uses angle-bracket placeholders.)
+           AND (CAST(:specific_id AS uuid) IS NOT NULL OR s.sar_priority IS NOT TRUE)
          ORDER BY s.purge_after
          LIMIT 1
          FOR UPDATE SKIP LOCKED

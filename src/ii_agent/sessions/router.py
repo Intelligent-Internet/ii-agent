@@ -7,7 +7,7 @@ from typing import Literal, Optional
 
 from fastapi import APIRouter, HTTPException, Query
 
-from ii_agent.auth.dependencies import CurrentUser, DBSession
+from ii_agent.auth.dependencies import CurrentUser, DBSession, NotPurgingDep
 from ii_agent.core.exceptions import InternalError
 from ii_agent.sessions.dependencies import RunTaskServiceDep
 from ii_agent.chat.api.dependencies import ChatMessageRepositoryDep
@@ -100,10 +100,13 @@ router.include_router(wishlist_router)
 async def bulk_delete_sessions(
     payload: BulkDeleteRequest,
     db: DBSession,
-    current_user: CurrentUser,
+    current_user: NotPurgingDep,
     session_service: SessionServiceDep,
 ) -> BulkDeleteResponse:
-    """Bulk soft delete sessions by list of IDs."""
+    """Bulk soft delete sessions by list of IDs.
+
+    Gated by ``NotPurgingDep`` (I3/I8 §16): blocked while ``users.is_purging``.
+    """
     deleted_ids, failed_ids = await session_service.bulk_soft_delete_sessions(
         db, payload.session_ids, current_user.id
     )
@@ -226,10 +229,13 @@ async def get_session_files(
 async def publish_session(
     session_id: uuid.UUID,
     db: DBSession,
-    current_user: CurrentUser,
+    current_user: NotPurgingDep,
     session_service: SessionServiceDep,
 ) -> dict:
-    """Set a session as public."""
+    """Set a session as public.
+
+    Gated by ``NotPurgingDep`` (I3/I8 §16): blocked while ``users.is_purging``.
+    """
     success = await session_service.set_session_public(db, session_id, current_user.id, True)
 
     if not success:
@@ -242,10 +248,13 @@ async def publish_session(
 async def unpublish_session(
     session_id: uuid.UUID,
     db: DBSession,
-    current_user: CurrentUser,
+    current_user: NotPurgingDep,
     session_service: SessionServiceDep,
 ) -> dict:
-    """Set a session as private."""
+    """Set a session as private.
+
+    Gated by ``NotPurgingDep`` (I3/I8 §16): blocked while ``users.is_purging``.
+    """
     success = await session_service.set_session_public(db, session_id, current_user.id, False)
 
     if not success:
@@ -258,10 +267,14 @@ async def unpublish_session(
 async def delete_session(
     session_id: uuid.UUID,
     db: DBSession,
-    current_user: CurrentUser,
+    current_user: NotPurgingDep,
     session_service: SessionServiceDep,
 ) -> dict:
-    """Soft delete a session by setting is_deleted flag."""
+    """Soft delete a session by setting is_deleted flag.
+
+    Gated by ``NotPurgingDep`` (I3/I8 §16): blocked while ``users.is_purging``
+    — user-purge driver owns deletion of all sessions in that case.
+    """
     await session_service.soft_delete_session(db, session_id, current_user.id)
     return {"message": f"Session {session_id} deleted successfully"}
 
@@ -271,7 +284,7 @@ async def schedule_delete_session(
     session_id: uuid.UUID,
     payload: ScheduleDeleteRequest,
     db: DBSession,
-    current_user: CurrentUser,
+    current_user: NotPurgingDep,
     session_service: SessionServiceDep,
 ) -> dict:
     """Schedule a session for automatic deletion at a future time.
@@ -279,6 +292,8 @@ async def schedule_delete_session(
     The session and its sandbox will remain available for inspection until
     the scheduled time passes, at which point the background cleanup loop
     will soft-delete the session and reap its sandbox container.
+
+    Gated by ``NotPurgingDep`` (I3/I8 §16): blocked while ``users.is_purging``.
     """
     if payload.delete_after_seconds is not None:
         delete_at = datetime.now(timezone.utc) + timedelta(seconds=payload.delete_after_seconds)
@@ -304,10 +319,15 @@ async def fork_session(
     session_id: uuid.UUID,
     payload: ForkSessionRequest,
     db: DBSession,
-    current_user: CurrentUser,
+    current_user: NotPurgingDep,
     fork_service: SessionForkServiceDep,
 ) -> ForkSessionResponse:
-    """Fork a session to create a new child session with inherited context."""
+    """Fork a session to create a new child session with inherited context.
+
+    Gated by ``NotPurgingDep`` (I3 §16): blocked while ``users.is_purging``.
+    Defence-in-depth: ORM ``before_insert`` listener also catches the new
+    Session row even if this dep is bypassed.
+    """
     return await fork_service.fork_session(db, session_id, current_user.id, payload)
 
 
@@ -316,10 +336,13 @@ async def update_session(
     session_id: uuid.UUID,
     payload: SessionUpdate,
     db: DBSession,
-    current_user: CurrentUser,
+    current_user: NotPurgingDep,
     session_service: SessionServiceDep,
 ) -> SessionInfo:
-    """Update session metadata (name, status, etc.)."""
+    """Update session metadata (name, status, etc.).
+
+    Gated by ``NotPurgingDep`` (I3/I8 §16): blocked while ``users.is_purging``.
+    """
     session_data = await session_service.get_session_details(db, session_id, current_user.id)
 
     if not session_data:
@@ -341,10 +364,13 @@ async def update_session_plan(
     session_id: uuid.UUID,
     payload: SessionPlanUpdate,
     db: DBSession,
-    current_user: CurrentUser,
+    current_user: NotPurgingDep,
     session_service: SessionServiceDep,
 ) -> dict:
-    """Update the session's stored plan (summary + milestones)."""
+    """Update the session's stored plan (summary + milestones).
+
+    Gated by ``NotPurgingDep`` (I3/I8 §16): blocked while ``users.is_purging``.
+    """
     await session_service.update_session_plan(
         db,
         session_id=session_id,

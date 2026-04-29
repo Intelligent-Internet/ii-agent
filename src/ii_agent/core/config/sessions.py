@@ -30,6 +30,12 @@ class SessionsSettings(BaseSettings):
     """Whether phase (b) actually invokes upstream DELETEs. False ⇒ phase (b)
     no-ops and phase (c) deletes the session row anyway (lab/test mode)."""
 
+    openai_provider_cleanup_enabled: bool = False
+    """If True, the lifespan registers a phase-(b) hook that DELETEs OpenAI
+    containers and files associated with the session via the OpenAI HTTP API.
+    Defaults False so the registration is opt-in per environment after the
+    pre-flip canary (gate #4 in §0.0). Requires ``OPENAI_API_KEY`` in env."""
+
     # ---- Grace windows ----
     purge_grace_period_seconds: int = 30 * 24 * 3600
     """Standard grace before purge_after fires (30 days, GDPR-typical)."""

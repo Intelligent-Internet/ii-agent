@@ -29,17 +29,25 @@ from .exceptions import (
     TransientProviderError,
 )
 from .providers import run_provider_cleanup
-from .types import PurgeOutcome, PurgeResult, PurgeTrigger, SARRequest
+from .types import (
+    PURGE_COMMITTED_EVENT_TYPE,
+    PurgeOutcome,
+    PurgeResult,
+    PurgeTrigger,
+    SARRequest,
+)
 
 
 # Read post-claim state needed by phases (b) and (c).
 _READ_CLAIMED_SQL = text("SELECT user_id, purge_attempts FROM sessions WHERE id = :session_id")
 
 # I19 precheck: did a prior worker already write the canonical purge audit?
-# Single canonical event_type kept in sync with ``commit._AUDIT_EVENT_TYPE``.
+# Source of truth for the event_type string is ``types.PURGE_COMMITTED_EVENT_TYPE``;
+# we interpolate via SQL bind, not f-string, so renaming the constant is the
+# only change needed.
 _ALREADY_PURGED_SQL = text(
     "SELECT 1 FROM application_events "
-    "WHERE session_id = :session_id AND event_type = 'session.purge_committed' "
+    "WHERE session_id = :session_id AND event_type = :event_type "
     "LIMIT 1"
 )
 
@@ -82,7 +90,15 @@ async def purge_one_session(
     # filter on the still-existing sessions table provides the equivalent
     # guarantee — a successfully-purged row no longer exists to be claimed.
     if session_id is not None:
-        already = (await db.execute(_ALREADY_PURGED_SQL, {"session_id": str(session_id)})).first()
+        already = (
+            await db.execute(
+                _ALREADY_PURGED_SQL,
+                {
+                    "session_id": str(session_id),
+                    "event_type": PURGE_COMMITTED_EVENT_TYPE,
+                },
+            )
+        ).first()
         await db.commit()
         if already is not None:
             return PurgeResult(

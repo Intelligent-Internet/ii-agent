@@ -14,10 +14,9 @@ runs all checks against staging and pages on any non-empty result.
 from __future__ import annotations
 
 import uuid
-from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 # ─── State invariants ───────────────────────────────────────────────────────
@@ -33,7 +32,12 @@ async def check_I1_purge_after_implies_deleted(db: AsyncSession) -> list[uuid.UU
     Enforced by: §4.1 phase-(a) WHERE clause; §4.7 step 6 in-tx INSERT;
     §16 step 2 UPDATE.
     """
-    raise NotImplementedError
+    rows = (
+        await db.execute(
+            text("SELECT id FROM sessions WHERE purge_after IS NOT NULL AND is_deleted = false")
+        )
+    ).all()
+    return [r[0] if isinstance(r[0], uuid.UUID) else uuid.UUID(str(r[0])) for r in rows]
 
 
 async def check_I2_dead_letter_consistency(db: AsyncSession) -> list[uuid.UUID]:
@@ -44,7 +48,19 @@ async def check_I2_dead_letter_consistency(db: AsyncSession) -> list[uuid.UUID]:
     Violation means an unresolved dead-letter exists for an active session —
     operator action would re-leak data.
     """
-    raise NotImplementedError
+    rows = (
+        await db.execute(
+            text(
+                """
+                SELECT dl.id FROM purge_dead_letter dl
+                  JOIN sessions s ON s.id = dl.session_id
+                 WHERE dl.resolved_at IS NULL
+                   AND (s.is_deleted = false OR s.purge_started_at IS NULL)
+                """
+            )
+        )
+    ).all()
+    return [r[0] if isinstance(r[0], uuid.UUID) else uuid.UUID(str(r[0])) for r in rows]
 
 
 async def check_I3_is_purging_blocks_new_sessions(db: AsyncSession) -> list[uuid.UUID]:
@@ -68,7 +84,41 @@ async def check_I4_art17_strip_unattributable(db: AsyncSession) -> list[uuid.UUI
     event AFTER nulling user_id, so the new event row itself has user_id=NULL —
     see Adversarial Finding §4.7 step 9.)
     """
-    raise NotImplementedError
+    # Allowlisted billing-safe keys; anything else in `content` is a strip leak.
+    safe_keys = sorted(
+        {
+            "cost_usd",
+            "credits",
+            "token_count",
+            "model",
+            "tool_name",
+            "duration_ms",
+            "billing_backend",
+            "event_type",
+            "http_status",
+        }
+    )
+    rows = (
+        await db.execute(
+            text(
+                """
+                SELECT id
+                  FROM application_events
+                 WHERE event_type = 'session.purged_by_user'
+                   AND session_id IS NULL
+                   AND (
+                          user_id IS NOT NULL
+                       OR EXISTS (
+                              SELECT 1 FROM jsonb_object_keys(content) k
+                               WHERE k <> ALL(:safe_keys)
+                          )
+                   )
+                """
+            ),
+            {"safe_keys": safe_keys},
+        )
+    ).all()
+    return [r[0] if isinstance(r[0], uuid.UUID) else uuid.UUID(str(r[0])) for r in rows]
 
 
 async def check_I5_legal_hold_never_purged(db: AsyncSession) -> list[uuid.UUID]:
@@ -154,20 +204,74 @@ async def check_I10_dead_letter_user_id_set(db: AsyncSession) -> list[uuid.UUID]
     Enforced by: ``providers.run_provider_cleanup`` insert path
     (must populate user_id).
     """
-    raise NotImplementedError
+    rows = (await db.execute(text("SELECT id FROM purge_dead_letter WHERE user_id IS NULL"))).all()
+    return [r[0] if isinstance(r[0], uuid.UUID) else uuid.UUID(str(r[0])) for r in rows]
 
 
 # ─── Audit-row invariants (post-strip) ──────────────────────────────────────
 
 
 async def check_I11_no_pii_keys_in_stripped_rows(db: AsyncSession) -> list[uuid.UUID]:
-    """I11: any ``application_events`` row with ``user_id IS NULL`` (Art. 17 stripped)
-    MUST NOT contain any of the known PII keys in ``content``:
-    {'prompt', 'message', 'file_name', 'error_detail', 'email', 'ip_address'}.
+    """I11: every ``application_events`` row that has been Art. 17 stripped
+    MUST contain only keys from the strip allowlist (``DEFAULT_BILLING_SAFE_KEYS``).
+
+    Discriminator
+    -------------
+    The schema has no explicit ``stripped_at`` marker. The strip
+    contract in ``pii_strip.py`` sets ``user_id = NULL`` AND rebuilds
+    ``content`` as allowlist-only; commit-phase-(c) then DELETEs the
+    session row. Migration ``20260428_000010`` deliberately omits a FK
+    on ``application_events.session_id`` so the column survives the
+    DELETE as a forensic breadcrumb. A definitive discriminator for
+    "this row was strip-touched" is therefore::
+
+        user_id IS NULL
+        AND session_id IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM sessions WHERE id = ae.session_id)
+
+    i.e. an audit row whose owning user has been nulled and whose
+    owning session has been DELETEd. Pre-flip this set is empty.
+
+    Why not the previous denylist form
+    ----------------------------------
+    The earlier predicate (``user_id IS NULL AND content ?| pii_keys``)
+    matched ANY user-NULL event — including system-level events
+    (``agent.processing``, ``system.error``, etc.) emitted without a
+    user from inception. Those rows legitimately carry non-allowlist
+    keys; they were never strip-touched. The denylist masked any real
+    leak in noise (1,236 false positives observed in the canary run
+    on 2026-04-28; see tracker §4.1).
+
+    The new allowlist+orphan predicate hits zero rows pre-flip and
+    accurately catches strip leaks post-flip.
 
     Run as a nightly check. Any violation = compliance bug.
     """
-    raise NotImplementedError
+    # Imported here to avoid a top-level circular dep with pii_strip.
+    from ii_agent.sessions.purge.pii_strip import DEFAULT_BILLING_SAFE_KEYS
+
+    rows = (
+        await db.execute(
+            text(
+                """
+                SELECT ae.id
+                  FROM application_events ae
+                 WHERE ae.user_id IS NULL
+                   AND ae.session_id IS NOT NULL
+                   AND NOT EXISTS (
+                       SELECT 1 FROM sessions s WHERE s.id = ae.session_id
+                   )
+                   AND EXISTS (
+                       SELECT 1
+                         FROM jsonb_object_keys(ae.content) AS k
+                        WHERE k <> ALL(CAST(:allowlist AS text[]))
+                   )
+                """
+            ),
+            {"allowlist": list(DEFAULT_BILLING_SAFE_KEYS)},
+        )
+    ).all()
+    return [r[0] if isinstance(r[0], uuid.UUID) else uuid.UUID(str(r[0])) for r in rows]
 
 
 # ─── Legal-compliance invariants (added v3.9 from external counsel memo) ────
@@ -190,21 +294,67 @@ async def check_I12_sar_preempts_grace(db: AsyncSession) -> list[uuid.UUID]:
 
     Violation = GDPR Art. 17(1) violation. Up to 4% global turnover.
     """
-    raise NotImplementedError
+    rows = (
+        await db.execute(
+            text(
+                """
+                SELECT s.id
+                  FROM sessions s
+                  JOIN sar_intake si ON si.user_id = s.user_id
+                 WHERE si.verified_at IS NOT NULL
+                   AND si.closed_at IS NULL
+                   AND s.is_deleted = true
+                   AND COALESCE(s.sar_priority, false) = false
+                   AND s.custody != 'legal_hold'
+                """
+            )
+        )
+    ).all()
+    return [r[0] if isinstance(r[0], uuid.UUID) else uuid.UUID(str(r[0])) for r in rows]
 
 
 async def check_I13_sar_audit_fields_complete(db: AsyncSession) -> list[uuid.UUID]:
-    """I13: every `erasure_audit_log` row with ``request_type='SAR'`` MUST have
-    all of: sar_receipt_timestamp, sar_verification_method, erasure_completion_timestamp,
-    affected_systems (JSON array, non-empty).
+    """I13: every `application_events` row representing an Art. 17 SAR
+    erasure (``event_type='session.purge_committed'`` AND
+    ``content->>'trigger' = 'sar_priority'``) MUST have all four lawyer-memo
+    §5 fields populated:
 
-    Source: lawyer memo §5 — the four fields engineering's v3.7 design omitted.
+      - ``content->>'sar_receipt_timestamp'`` non-empty
+      - ``content->>'sar_verification_method'`` non-empty
+      - ``content->>'erasure_completion_timestamp'`` non-empty
+      - ``content->'affected_systems'`` is a non-empty JSON array
+
+    Source: lawyer memo §5 — the four fields engineering's v3.7 design
+    omitted. NOTE: the design doc's reference to ``erasure_audit_log``
+    is conceptual; the canonical store is ``application_events``
+    (§14 / §15).
 
     Returns audit row IDs missing any required field. Any non-empty result =
     audit trail incomplete = cannot defend Art. 5(2) accountability under
     regulator inspection.
     """
-    raise NotImplementedError
+    rows = (
+        await db.execute(
+            text(
+                """
+                SELECT id
+                  FROM application_events
+                 WHERE event_type = 'session.purge_committed'
+                   AND content ->> 'trigger' = 'sar_priority'
+                   AND (
+                          COALESCE(content ->> 'sar_receipt_timestamp', '') = ''
+                       OR COALESCE(content ->> 'sar_verification_method', '') = ''
+                       OR COALESCE(content ->> 'erasure_completion_timestamp', '') = ''
+                       OR jsonb_typeof(content -> 'affected_systems') <> 'array'
+                       OR jsonb_array_length(
+                              COALESCE(content -> 'affected_systems', '[]'::jsonb)
+                          ) = 0
+                   )
+                """
+            )
+        )
+    ).all()
+    return [r[0] if isinstance(r[0], uuid.UUID) else uuid.UUID(str(r[0])) for r in rows]
 
 
 async def check_I14_user_delete_after_session_purge(db: AsyncSession) -> list[uuid.UUID]:
@@ -228,15 +378,44 @@ async def check_I14_user_delete_after_session_purge(db: AsyncSession) -> list[uu
 
 
 async def check_I15_retention_exception_disclosed(db: AsyncSession) -> list[uuid.UUID]:
-    """I15: any session deferred under Art. 17(3) (retention_exception IS NOT NULL)
-    MUST have a corresponding outbound user-notification logged in
-    `application_events` with ``event_type='art17_3.disclosure'`` within 30 days
-    of the SAR receipt.
+    """I15: any user with a verified SAR (``sar_intake.verified_at IS NOT NULL``)
+    older than 30 days MUST have at least one ``application_events`` row of
+    ``event_type='art17_3.disclosure'`` for that user dated within 30 days of
+    SAR receipt — UNLESS the SAR has since been ``closed_at IS NOT NULL``.
 
     Source: lawyer memo §6 — 'DO NOT silently retain data; must notify under
-    Art. 17(3)'. Backup retention is the most common case; user must be told.
+    Art. 17(3)'. Backup retention is the most common deferral case; the user
+    must be told.
+
+    Returns ``user_id`` values whose verified, still-open SAR is past 30 days
+    with no disclosure row on file. Any non-empty result = Art. 17(3)
+    notification breach.
+
+    NB: the check is intentionally lenient on timing — only fires once a SAR
+    is more than 30 days old AND still open. Operators get a window to log
+    the disclosure before the invariant flips red.
     """
-    raise NotImplementedError
+    rows = (
+        await db.execute(
+            text(
+                """
+                SELECT si.user_id
+                  FROM sar_intake si
+                 WHERE si.verified_at IS NOT NULL
+                   AND si.closed_at IS NULL
+                   AND si.verified_at <= now() - INTERVAL '30 days'
+                   AND NOT EXISTS (
+                          SELECT 1 FROM application_events ae
+                           WHERE ae.user_id = si.user_id
+                             AND ae.event_type = 'art17_3.disclosure'
+                             AND ae.created_at >= si.verified_at
+                             AND ae.created_at <= si.verified_at + INTERVAL '30 days'
+                       )
+                """
+            )
+        )
+    ).all()
+    return [r[0] if isinstance(r[0], uuid.UUID) else uuid.UUID(str(r[0])) for r in rows]
 
 
 # ─── Concurrency / deployment invariants (v3.10 — adversarial pass #2) ──────
@@ -263,7 +442,23 @@ async def check_I16_restore_blocked_during_active_sar(db: AsyncSession) -> list[
     timestamp inside an active SAR window. Any non-empty result =
     Art. 17(1) violation.
     """
-    raise NotImplementedError
+    rows = (
+        await db.execute(
+            text(
+                """
+                SELECT DISTINCT ae.user_id
+                  FROM application_events ae
+                  JOIN sar_intake si ON si.user_id = ae.user_id
+                 WHERE ae.event_type = 'session.restored'
+                   AND si.verified_at IS NOT NULL
+                   AND ae.created_at >= si.verified_at
+                   AND (si.closed_at IS NULL OR ae.created_at <= si.closed_at)
+                   AND ae.user_id IS NOT NULL
+                """
+            )
+        )
+    ).all()
+    return [r[0] if isinstance(r[0], uuid.UUID) else uuid.UUID(str(r[0])) for r in rows]
 
 
 async def check_I17_grace_sweep_reads_primary(db: AsyncSession) -> list[uuid.UUID]:
@@ -289,32 +484,58 @@ async def check_I17_grace_sweep_reads_primary(db: AsyncSession) -> list[uuid.UUI
 
 
 async def check_I18_legal_hold_supersedes_sar(db: AsyncSession) -> list[uuid.UUID]:
-    """I18 (NEW v3.10, Adversarial v3.9 §C / lawyer memo §4(a)):
-    when a session has ``custody='legal_hold'`` AND a SAR arrives for the
-    owning user, the legal hold WINS — the session is NOT moved to the
-    fast-track queue and the SAR audit row records
-    ``retention_exception=LEGAL_HOLD`` with the case number from the hold.
+    """I18: when a session has ``custody='legal_hold'`` AND a SAR fast-track
+    purge audit row exists for that session, the legal hold lost — a
+    GDPR Art. 17(3)(b)/(e) breach (a SAR cannot override active litigation).
 
-    Why: GDPR Art. 17(3)(b)/(e) explicitly preserves the controller's
-    obligation to comply with legal claims. A SAR cannot override active
-    litigation. Lawyer memo §4(a) explicit.
+    The audit-trail signature is:
+      - ``application_events`` row with ``event_type='session.purge_committed'``
+        AND ``content->>'trigger' = 'sar_priority'`` AND non-NULL ``session_id``
+      - That ``session_id`` was — at any prior point — recorded as
+        ``custody='legal_hold'`` via ``application_events.event_type='legal_hold.set'``
+        with no later ``legal_hold.cleared`` audit row before the SAR purge.
 
-    But: per Art. 17(3) closing clause + §15 of this doc, the user MUST
-    be notified that erasure was deferred and the reason. I15 covers the
-    notification; I18 covers the routing decision.
+    Returns session_ids that hit this pattern. Any non-empty result =
+    indefensible legal exposure if the hold authority finds out.
 
-    Enforced by:
-      (1) ``intake_sar`` checks each candidate session's custody before
-          setting ``sar_priority=true``. Sessions in legal_hold are
-          recorded with retention_exception=LEGAL_HOLD instead.
-      (2) ``commit_purge`` raises ``LegalHoldError`` if it ever encounters
-          a legal-hold session, regardless of trigger.
-
-    Returns session_ids where a SAR fast-track purge happened on a session
-    that had custody='legal_hold' at the SAR receipt time (=I18 violation,
-    indefensible legal exposure if the hold authority finds out).
+    Lawyer memo §4(a). Adversarial v3.9 §C.
     """
-    raise NotImplementedError
+    rows = (
+        await db.execute(
+            text(
+                """
+                WITH sar_purges AS (
+                    SELECT ae.session_id, ae.created_at AS purged_at
+                      FROM application_events ae
+                     WHERE ae.event_type = 'session.purge_committed'
+                       AND ae.content ->> 'trigger' = 'sar_priority'
+                       AND ae.session_id IS NOT NULL
+                ),
+                holds_set AS (
+                    SELECT ae.session_id, MAX(ae.created_at) AS held_at
+                      FROM application_events ae
+                     WHERE ae.event_type = 'legal_hold.set'
+                       AND ae.session_id IS NOT NULL
+                     GROUP BY ae.session_id
+                ),
+                holds_cleared AS (
+                    SELECT ae.session_id, MAX(ae.created_at) AS cleared_at
+                      FROM application_events ae
+                     WHERE ae.event_type = 'legal_hold.cleared'
+                       AND ae.session_id IS NOT NULL
+                     GROUP BY ae.session_id
+                )
+                SELECT sp.session_id
+                  FROM sar_purges sp
+                  JOIN holds_set hs ON hs.session_id = sp.session_id
+             LEFT JOIN holds_cleared hc ON hc.session_id = sp.session_id
+                 WHERE hs.held_at < sp.purged_at
+                   AND (hc.cleared_at IS NULL OR hc.cleared_at >= sp.purged_at)
+                """
+            )
+        )
+    ).all()
+    return [r[0] if isinstance(r[0], uuid.UUID) else uuid.UUID(str(r[0])) for r in rows]
 
 
 async def check_I19_already_purged_idempotent(db: AsyncSession) -> list[uuid.UUID]:
@@ -339,7 +560,21 @@ async def check_I19_already_purged_idempotent(db: AsyncSession) -> list[uuid.UUI
     event_type='session.purge_committed' LIMIT 1`` and returns
     ALREADY_PURGED on hit.
     """
-    raise NotImplementedError
+    rows = (
+        await db.execute(
+            text(
+                """
+                SELECT session_id
+                  FROM application_events
+                 WHERE event_type = 'session.purge_committed'
+                   AND session_id IS NOT NULL
+                 GROUP BY session_id
+                HAVING count(*) > 1
+                """
+            )
+        )
+    ).all()
+    return [r[0] if isinstance(r[0], uuid.UUID) else uuid.UUID(str(r[0])) for r in rows]
 
 
 # ─── Catalog ────────────────────────────────────────────────────────────────

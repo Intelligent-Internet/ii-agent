@@ -170,6 +170,30 @@ def create_lifespan(sio: socketio.AsyncServer):
         set_app_container(container)
         app.state.container = container
 
+        # 4a. ORM defence-in-depth: register before_insert guard on Session
+        #     so direct ORM inserts cannot bypass NotPurgingDep when the
+        #     owning user has is_purging=true (I3/I8/I14, Adversarial v3.9 #5).
+        try:
+            from ii_agent.sessions.purge.orm_guards import register_purge_guards
+
+            register_purge_guards()
+        except Exception as exc:
+            logger.error("Failed to register ORM purge guards: %s", exc)
+            raise
+
+        # 4c. Register session-purge phase-(b) provider cleanup hooks.
+        #     Each hook is opt-in via SESSIONS_*_PROVIDER_CLEANUP_ENABLED so
+        #     the registration ships dark; satisfies pre-flip gate #4.
+        try:
+            from ii_agent.sessions.purge.hooks_openai import maybe_register_openai_hook
+
+            if maybe_register_openai_hook():
+                logger.info("Session-purge phase-(b): OpenAI hook active")
+        except Exception as exc:
+            # A hook-registration failure must not crash startup; phase (b)
+            # is degraded (more leaks) but the rest of the system is up.
+            logger.error("Failed to register session-purge cleanup hooks: %s", exc)
+
         # 4b. Cleanup orphaned run tasks from previous server lifecycle
         try:
             await _cleanup_orphaned_tasks(container)

@@ -4,9 +4,13 @@ Tables:
   - purge_dead_letter — operator-visible ledger of provider-cleanup
     failures. One row per leaked upstream resource. Phase (b) of §4.1
     writes here when retries are exhausted (§4.5).
+  - sar_intake        — verified Subject Access Request ledger
+    (lawyer memo §5). One row per SAR receipt; (verified_at IS NOT NULL
+    AND closed_at IS NULL) means the SAR is "active" — restore endpoint
+    blocks (I16); grace-sweep skips (I12).
 
-Design: docs/design-docs/session-lifecycle-and-data-custody.md §3.5 + §4.5.
-Migration: 20260427_000008_session_purge_v34.py
+Design: docs/design-docs/session-lifecycle-and-data-custody.md §3.5, §4.5, §16.
+Migrations: 20260427_000008 (purge_dead_letter), 20260427_000009 (sar_intake).
 """
 
 from __future__ import annotations
@@ -69,3 +73,18 @@ class PurgeDeadLetter(Base):
 
     resolved_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     """Free-form resolution narrative."""
+
+
+# ----------------------------------------------------------------------------
+# sar_intake — verified Subject Access Request ledger (lawyer memo §5).
+# ----------------------------------------------------------------------------
+# We deliberately do NOT model `sar_intake` as an ORM class. The table uses a
+# composite PK (user_id, received_at) which conflicts with ``Base``'s inherited
+# UUID ``id`` column, and every operation in ``user_purge.py`` is a single SQL
+# statement that's clearer expressed via ``text(...)``. Schema lives in
+# migration ``20260427_000009_session_purge_sar.py``; the active-SAR query is
+# centralised in ``user_purge.is_user_under_active_sar``.
+#
+# If a future contributor needs an ORM relationship (e.g. for admin reports),
+# add a separate non-Base declarative class via ``Base.metadata`` so the
+# composite PK remains authoritative.

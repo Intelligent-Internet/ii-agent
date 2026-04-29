@@ -68,8 +68,105 @@ def test_storage_reaper_idempotent() -> None:
 
 
 @pytest.mark.skip(reason="PR-E: provider cleanup not yet implemented")
+def test_provider_cleanup_404_swallow_skipped() -> None:
+    """Legacy skip-stub kept so the contract list does not shrink."""
+
+
 def test_provider_cleanup_404_swallow() -> None:
-    """OpenAI 404 silent; non-404 logs warning (§14.2)."""
+    """OpenAI 404 silent; non-404 logs warning (§14.2).
+
+    The OpenAI hook in `purge/hooks_openai.py::_delete_one` must:
+      * treat a 404 (NotFoundError) as a successful delete and return None;
+      * treat 5xx / 408 / 425 / 429 / timeout / connection-error as transient;
+      * treat other 4xx as permanent.
+    """
+    import asyncio
+
+    from ii_agent.sessions.purge.hooks_openai import _classify, _delete_one
+
+    class FakeNotFound(Exception):
+        status_code = 404
+
+    class FakeStatus500(Exception):
+        status_code = 500
+
+    class FakeStatus400(Exception):
+        status_code = 400
+
+    class FakeTimeout(Exception):
+        pass
+
+    # Patch the openai module names that _classify isinstance-checks against.
+    import openai
+
+    monkey = {
+        "NotFoundError": openai.NotFoundError,
+        "APIStatusError": openai.APIStatusError,
+        "APITimeoutError": openai.APITimeoutError,
+        "APIConnectionError": openai.APIConnectionError,
+    }
+    openai.NotFoundError = FakeNotFound  # type: ignore[misc, assignment]
+    openai.APIStatusError = (FakeStatus500, FakeStatus400)  # type: ignore[misc, assignment]
+    openai.APITimeoutError = FakeTimeout  # type: ignore[misc, assignment]
+    openai.APIConnectionError = FakeTimeout  # type: ignore[misc, assignment]
+    try:
+        # 404 → (transient=False, status=404) → caller swallows.
+        transient, status = _classify(FakeNotFound())
+        assert status == 404 and transient is False
+
+        # 500 → transient=True
+        e500 = FakeStatus500()
+        assert _classify(e500) == (True, 500)
+
+        # 400 → transient=False (permanent)
+        e400 = FakeStatus400()
+        assert _classify(e400) == (False, 400)
+
+        # Timeout → transient=True, no status
+        et = FakeTimeout()
+        assert _classify(et) == (True, None)
+    finally:
+        openai.NotFoundError = monkey["NotFoundError"]
+        openai.APIStatusError = monkey["APIStatusError"]
+        openai.APITimeoutError = monkey["APITimeoutError"]
+        openai.APIConnectionError = monkey["APIConnectionError"]
+
+    # Now exercise _delete_one with a fake client whose .containers.delete raises 404.
+    class _FakeContainers:
+        async def delete(self, _rid: str) -> None:
+            raise FakeNotFound()
+
+    class _FakeFiles:
+        async def delete(self, _rid: str) -> None:
+            raise FakeStatus500()
+
+    class _FakeClient:
+        def __init__(self) -> None:
+            self.containers = _FakeContainers()
+            self.files = _FakeFiles()
+
+    openai.NotFoundError = FakeNotFound  # type: ignore[misc, assignment]
+    openai.APIStatusError = (FakeStatus500, FakeStatus400)  # type: ignore[misc, assignment]
+    openai.APITimeoutError = FakeTimeout  # type: ignore[misc, assignment]
+    openai.APIConnectionError = FakeTimeout  # type: ignore[misc, assignment]
+    try:
+        client = _FakeClient()
+        # 404 on container.delete → None (success, swallowed).
+        out = asyncio.run(
+            _delete_one(client=client, resource_kind="container", resource_id="cnt_1")
+        )
+        assert out is None
+        # 500 on files.delete → LeakedResource with transient=True.
+        leaked = asyncio.run(_delete_one(client=client, resource_kind="file", resource_id="file_1"))
+        assert leaked is not None
+        assert leaked.transient is True
+        assert leaked.resource_kind == "file"
+        assert leaked.resource_id == "file_1"
+    finally:
+        openai.NotFoundError = monkey["NotFoundError"]
+        openai.APIStatusError = monkey["APIStatusError"]
+        openai.APITimeoutError = monkey["APITimeoutError"]
+        openai.APIConnectionError = monkey["APIConnectionError"]
 
 
 @pytest.mark.skip(reason="PR-F: PITR runbook not yet implemented")
@@ -125,8 +222,34 @@ def test_purge_user_account_partial_failure() -> None:
 
 
 @pytest.mark.skip(reason="PR-D: ORM cascade audit not yet implemented")
+def test_relationship_cascade_consistency_skipped() -> None:
+    """Legacy skip-stub kept so the contract list does not shrink."""
+
+
 def test_relationship_cascade_consistency() -> None:
-    """Every `Session.*` ORM cascade matches DB FK policy (§7)."""
+    """Every `Session.*` ORM cascade matches DB FK policy (§7).
+
+    Specifically: `Session.events` MUST NOT carry `cascade='all, delete-orphan'`
+    because the underlying FK is `ON DELETE SET NULL` per §3.1. A divergent
+    cascade here would cause the ORM to delete audit rows the FK is configured
+    to retain, silently violating the audit-retention contract.
+    """
+    from ii_agent.sessions.models import Session
+
+    rel = Session.__mapper__.relationships["events"]
+    # `viewonly` makes the relationship read-only; cascade settings on a
+    # viewonly rel are inert but still get serialised onto the relationship.
+    # We assert both: viewonly is set AND no destructive cascade is configured,
+    # so flipping viewonly off in the future cannot accidentally re-introduce
+    # the cascade.
+    assert rel.viewonly is True, "Session.events must remain viewonly per §7"
+    cascade = rel.cascade
+    for token in ("delete", "delete-orphan", "all"):
+        assert token not in cascade, (
+            f"Session.events relationship must not configure cascade='{token}' "
+            f"— application_events.session_id is ON DELETE SET NULL (§3.1). "
+            f"Current cascade: {cascade!r}"
+        )
 
 
 # ─── PR-E: PII strip + audit invariants ─────────────────────────────────────

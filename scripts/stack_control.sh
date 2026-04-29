@@ -2103,12 +2103,24 @@ EOF
     # bytes actually shipped in the image).
     prior_manifest=$(_read_manifest "$target" 2>/dev/null || echo '')
     if [[ -n "$prior_manifest" ]]; then
-      manifest=$(MANIFEST="$manifest" PRIOR="$prior_manifest" python3 - <<'PY'
+      # NOTE: pass manifest payloads through temp files, not environment
+      # variables. Large manifests (tracked_files with thousands of entries)
+      # blow past ARG_MAX and produce
+      #   "/usr/bin/python3: Argument list too long"
+      # at exec time. Files have no such limit.
+      local _new_f _prior_f
+      _new_f=$(mktemp -t manifest-new.XXXXXX.json)
+      _prior_f=$(mktemp -t manifest-prior.XXXXXX.json)
+      printf '%s' "$manifest" > "$_new_f"
+      printf '%s' "$prior_manifest" > "$_prior_f"
+      manifest=$(NEW_FILE="$_new_f" PRIOR_FILE="$_prior_f" python3 - <<'PY'
 import json, os
-new = json.loads(os.environ["MANIFEST"])
+with open(os.environ["NEW_FILE"], "r") as f:
+    new = json.load(f)
 try:
-    prior = json.loads(os.environ["PRIOR"])
-except json.JSONDecodeError:
+    with open(os.environ["PRIOR_FILE"], "r") as f:
+        prior = json.load(f)
+except (json.JSONDecodeError, FileNotFoundError):
     prior = {}
 prior_tracked = prior.get("tracked_files")
 prior_truncated = prior.get("tracked_files_truncated")
@@ -2119,6 +2131,7 @@ if prior_truncated is not None:
 print(json.dumps(new))
 PY
 )
+      rm -f "$_new_f" "$_prior_f"
       echo "  preserved tracked_files from prior manifest (no content re-validation)"
     else
       echo "  NOTE: no prior manifest readable — new tracked_files reflects host working tree"
@@ -2126,6 +2139,13 @@ PY
 
     tmpfile=$(mktemp -t build-manifest.XXXXXX.json)
     printf '%s' "$manifest" > "$tmpfile"
+    # mktemp creates the file 0600. Both `docker cp` and `COPY` preserve
+    # source mode, and sandbox/a2a-adapter run as a non-root user (uid 1001),
+    # so without this chmod the baked manifest is unreadable inside the
+    # container — which surfaced as `verify` reporting
+    #   FAIL: could not read manifest
+    # for sandbox + a2a-adapter while backend (root user) worked fine.
+    chmod 0644 "$tmpfile"
 
     case "$target" in
       backend|frontend|a2a-adapter)
@@ -2173,9 +2193,10 @@ PY
         local builddir
         builddir=$(mktemp -d -t sandbox-manifest.XXXXXX)
         cp "$tmpfile" "${builddir}/build-manifest.json"
+        chmod 0644 "${builddir}/build-manifest.json"
         cat > "${builddir}/Dockerfile" <<EOF
 FROM ${image}
-COPY build-manifest.json ${BUILD_MANIFEST_PATH}
+COPY --chmod=0644 build-manifest.json ${BUILD_MANIFEST_PATH}
 EOF
         if docker build -q -t "$image" "$builddir" 2>&1 | sed -u "s/^/  /"; then
           echo "  OK: rebuilt $image with refreshed ${BUILD_MANIFEST_PATH}"
