@@ -2,7 +2,9 @@
 Scheduled tasks for cleaning up stale agent run tasks.
 """
 
+import os
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 import uuid
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
@@ -17,8 +19,86 @@ from ii_agent.chat.messages.models import ChatMessage
 from ii_agent.core.logger import logger
 
 
-# Initialize the scheduler
-scheduler = AsyncIOScheduler()
+# ──────────────────────────────────────────────────────────────────────────────
+# Host-environment detection for misfire tuning.
+#
+# APScheduler's AsyncIOScheduler schedules wake-ups against the asyncio event
+# loop's clock, which is derived from CLOCK_MONOTONIC. On a hypervisor guest
+# whose host suspends (laptops running WSL2, Hyper-V, VirtualBox, qemu/KVM
+# laptops, etc.) the guest's CLOCK_MONOTONIC freezes for the duration of the
+# host sleep. When the host thaws, every job that was scheduled to fire during
+# the suspend window is reported as "missed by N minutes" and — with the
+# default ``misfire_grace_time=1s`` — silently dropped. Long-period jobs
+# (e.g. the daily lifecycle-invariants probe) can be skipped for a full day
+# every time the developer closes the laptop lid.
+#
+# Bare-metal Linux servers do not suspend, so the production-grade defaults
+# would be fine there. To avoid one-environment-fits-all compromises we tune
+# misfire_grace_time and coalesce based on detected host class:
+#
+#   • bare-metal → tight grace (60 s) — surface real scheduler stalls fast
+#   • virtualised → generous grace (1 h) + coalesce — tolerate suspend gaps
+#
+# Detection is best-effort: inside a container ``/proc/cpuinfo`` exposes the
+# ``hypervisor`` CPU flag whenever the host CPU is virtualised, which is the
+# precise condition we care about (a paused vCPU stops the monotonic clock).
+# WSL2 is additionally probed via ``/proc/version`` to be explicit in logs.
+# Operators can force a class via ``IIA_CRON_HOST_CLASS=bare|vm`` if the
+# heuristic guesses wrong (e.g. running on a hypervisor server that genuinely
+# never suspends).
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def _detect_host_class() -> tuple[str, str]:
+    """Return ``(host_class, reason)`` where host_class is "bare" or "vm"."""
+    override = os.environ.get("IIA_CRON_HOST_CLASS", "").strip().lower()
+    if override in {"bare", "vm"}:
+        return override, f"forced by IIA_CRON_HOST_CLASS={override}"
+
+    # WSL2 → always treat as VM (host is a Hyper-V guest that suspends with
+    # the Windows host).
+    try:
+        version = Path("/proc/version").read_text(errors="ignore").lower()
+    except OSError:
+        version = ""
+    if "microsoft" in version or "wsl" in version:
+        return "vm", "WSL2 detected via /proc/version"
+
+    # Generic hypervisor guest detection. The ``hypervisor`` flag in
+    # /proc/cpuinfo is set by KVM/Hyper-V/VMware/Xen/etc. when the CPU is
+    # virtualised, regardless of whether we are inside a container.
+    try:
+        cpuinfo = Path("/proc/cpuinfo").read_text(errors="ignore")
+    except OSError:
+        cpuinfo = ""
+    for line in cpuinfo.splitlines():
+        if line.startswith("flags") and " hypervisor" in f" {line} ":
+            return "vm", "hypervisor flag in /proc/cpuinfo"
+
+    return "bare", "no virtualisation indicators detected"
+
+
+_HOST_CLASS, _HOST_CLASS_REASON = _detect_host_class()
+
+# Job-defaults tuning per host class. ``coalesce`` collapses a backlog of
+# missed fires (caused by host suspend) into a single catch-up run rather
+# than firing N times in quick succession when the clock thaws.
+if _HOST_CLASS == "vm":
+    _JOB_DEFAULTS = {
+        "coalesce": True,
+        "misfire_grace_time": 3600,  # 1 h — tolerate typical laptop sleep
+        "max_instances": 1,
+    }
+else:
+    _JOB_DEFAULTS = {
+        "coalesce": True,
+        "misfire_grace_time": 60,  # 60 s — bare metal should never miss
+        "max_instances": 1,
+    }
+
+
+# Initialize the scheduler with environment-aware misfire tolerance.
+scheduler = AsyncIOScheduler(job_defaults=_JOB_DEFAULTS)
 
 
 def _coerce_uuid(value: object) -> uuid.UUID:
@@ -258,6 +338,19 @@ def start_scheduler():
         # Daily probe of every DB-checkable invariant. Schema-enforced
         # invariants are policed at write time; this catches anything that
         # bypasses the ORM or drifts via raw SQL.
+        #
+        # Misfire tuning rationale:
+        #   - On a 24 h interval, a missed fire = the system goes a full day
+        #     without an integrity scan. We want to be very forgiving about
+        #     when the catch-up run actually executes.
+        #   - On a VM/laptop, the host can suspend for >1 h (overnight,
+        #     weekend), so we override the default grace to 6 h here and
+        #     keep coalesce=True so an extended outage produces exactly one
+        #     catch-up run, not a flood.
+        #   - On bare metal we still relax the default 60 s grace to 30 min
+        #     for this job so a transient event-loop stall doesn't drop the
+        #     daily run on the floor.
+        _invariants_grace = 6 * 3600 if _HOST_CLASS == "vm" else 1800
         scheduler.add_job(
             run_purge_invariants_check,
             trigger=IntervalTrigger(hours=24),
@@ -265,6 +358,8 @@ def start_scheduler():
             name="Run §2.3 lifecycle-invariants probe (DB_CHECKABLE tier)",
             replace_existing=True,
             max_instances=1,
+            misfire_grace_time=_invariants_grace,
+            coalesce=True,
         )
 
         # ── Billing recovery (temporarily disabled) ───────────────────────
@@ -303,7 +398,15 @@ def start_scheduler():
 
         # Start the scheduler
         scheduler.start()
-        logger.info("Scheduler started with {} jobs", len(scheduler.get_jobs()))
+        logger.info(
+            "Scheduler started with {} jobs (host_class={}, reason={}, "
+            "default_misfire_grace_time={}s, coalesce={})",
+            len(scheduler.get_jobs()),
+            _HOST_CLASS,
+            _HOST_CLASS_REASON,
+            _JOB_DEFAULTS["misfire_grace_time"],
+            _JOB_DEFAULTS["coalesce"],
+        )
 
     except Exception as e:
         logger.opt(exception=True).error(f"Error starting scheduler: {e}")
