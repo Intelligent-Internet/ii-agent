@@ -26,6 +26,8 @@ from ii_agent.clients.browser_extension.config import (
     CLIENT_SKILL_HEADING,
     DEFAULT_SYSTEM_PROMPT,
     LOG_PREFIX,
+    CLIENT_PROMPT_MODE_KEY,
+    CLIENT_PROMPT_HEADING,
 )
 from ii_agent.clients.proxy_capabilities import (
     RequestedCapabilities,
@@ -103,8 +105,15 @@ class BrowserExtensionAgentFactory:
                 "[browser_extension] Added %d client-defined tools",
                 len(client_tools),
             )
+        # Client skills — lazy-loaded. The system prompt gets a compact
+        # catalog (id + name + description + triggers); bodies are
+        # resolved on demand by the client-side `load_client_skill`
+        # tool (shipped via `requested_capabilities.client_tools`) so
+        # skill content never bloats every turn's context.
         client_skill_prompt = build_client_skill_prompt(
-            capabilities.client_skills, heading=CLIENT_SKILL_HEADING
+            capabilities.client_skills,
+            heading=CLIENT_SKILL_HEADING,
+            loader_tool_name="load_client_skill",
         )
 
         # Core tools — user's request wins; default kicks in if request is empty.
@@ -153,7 +162,21 @@ class BrowserExtensionAgentFactory:
 
         if not system_prompt:
             system_prompt = DEFAULT_SYSTEM_PROMPT
-        for prompt_section in (client_skill_prompt, core_skill_prompt):
+        # Mode fragment goes first so the model reads "what can I do this
+        # turn" before the skill catalogs that depend on those capabilities.
+        # Unknown keys inside ``client_prompt`` are ignored (the proxy layer
+        # ships the dict through verbatim — see proxy_capabilities.py).
+        client_mode_prompt = _build_client_mode_prompt(capabilities.client_prompt)
+        if client_mode_prompt:
+            logger.info(
+                "[browser_extension] Folded client_prompt.%s into system prompt",
+                CLIENT_PROMPT_MODE_KEY,
+            )
+        for prompt_section in (
+            client_mode_prompt,
+            client_skill_prompt,
+            core_skill_prompt,
+        ):
             if prompt_section:
                 system_prompt = f"{system_prompt}\n\n{prompt_section}"
 
@@ -183,3 +206,27 @@ class BrowserExtensionAgentFactory:
 
 
 browser_extension_agent_factory = BrowserExtensionAgentFactory(default_agent_factory)
+
+
+def _build_client_mode_prompt(client_prompt: dict[str, Any]) -> Optional[str]:
+    """Render the ``client_prompt.mode`` fragment for the system prompt.
+
+    The ii-browser extension ships a short turn-scoped instruction here
+    so the LLM knows whether this turn has the full agent toolset or only
+    the read-only chat subset (and, in chat mode, that it should suggest
+    a mode switch when the user asks for an action that's been filtered
+    out of ``client_tools``). See ``services/chat/chatMode.ts`` in the
+    browser extension for the canonical wording.
+
+    Returns ``None`` when no usable fragment is present so the caller can
+    skip the section without sprinkling ``if`` checks at every join site.
+    """
+    if not client_prompt:
+        return None
+    mode = client_prompt.get(CLIENT_PROMPT_MODE_KEY)
+    if not isinstance(mode, str):
+        return None
+    mode = mode.strip()
+    if not mode:
+        return None
+    return f"{CLIENT_PROMPT_HEADING}\n\n{mode}"

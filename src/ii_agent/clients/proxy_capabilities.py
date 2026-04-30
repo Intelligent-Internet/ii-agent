@@ -19,6 +19,13 @@ mix four sources:
                       ``allowed_core_tools`` whitelist.
 * ``core_skills``   — names from the user's persisted ``SkillTool`` registry
                       to keep, gated by an ``allowed_core_skills`` whitelist.
+* ``client_prompt`` — free-form dict of per-turn system-prompt fragments
+                      the client wants folded into the agent's prompt.
+                      This module stays agnostic about *which* keys the
+                      dict carries — the consuming client subpackage decides
+                      which keys it understands and how to render them.
+                      Unknown keys are passed through unchanged so future
+                      clients can add fragments without another rename.
 
 By default each client subpackage loads nothing from the core catalog —
 it only exposes what the request explicitly asks for AND what the client
@@ -117,6 +124,7 @@ class RequestedCapabilities:
     __slots__ = (
         "client_tools",
         "client_skills",
+        "client_prompt",
         "core_tools",
         "core_skills",
         "connector",
@@ -128,6 +136,7 @@ class RequestedCapabilities:
         *,
         client_tools: List[dict[str, Any]],
         client_skills: List[dict[str, Any]],
+        client_prompt: dict[str, Any],
         core_tools: List[str],
         core_skills: List[str],
         connector: Optional[str],
@@ -135,6 +144,7 @@ class RequestedCapabilities:
     ) -> None:
         self.client_tools = client_tools
         self.client_skills = client_skills
+        self.client_prompt = client_prompt
         self.core_tools = core_tools
         self.core_skills = core_skills
         self.connector = connector
@@ -156,9 +166,16 @@ class RequestedCapabilities:
         else:
             connector = connector.strip().lower()
 
+        # ``client_prompt`` is a free-form per-turn prompt-fragment bag.
+        client_prompt_raw = as_dict.get("client_prompt")
+        client_prompt = (
+            client_prompt_raw if isinstance(client_prompt_raw, dict) else {}
+        )
+
         return cls(
             client_tools=_list_of_dicts("client_tools"),
             client_skills=_list_of_dicts("client_skills"),
+            client_prompt=client_prompt,
             core_tools=_normalize_name_list(as_dict.get("core_tools")),
             core_skills=_normalize_name_list(as_dict.get("core_skills")),
             connector=connector,
@@ -421,12 +438,21 @@ def build_client_skill_prompt(
     client_skill_specs: Optional[Iterable[dict[str, Any]]],
     *,
     heading: str = "Skills available in the client runtime:",
+    loader_tool_name: str = "load_client_skill",
 ) -> Optional[str]:
-    """Render a short skill catalog for inclusion in the system prompt."""
+    """Render client-authored skills as a lazy catalog in the system prompt.
+
+    Skills follow a load-on-demand model: the catalog lists only ``name``
+    and ``description`` (plus the stable ``id`` used as the loader key),
+    and the LLM calls ``loader_tool_name`` with that id to pull the body
+    when a skill matches the user's intent. Embedding every body up front
+    would burn context on recipes that don't fire, pressure the LLM to
+    follow every recipe, and scale badly as users author more skills.
+    """
     if not client_skill_specs:
         return None
 
-    lines: List[str] = []
+    entries: List[str] = []
     for skill in client_skill_specs:
         if not isinstance(skill, dict):
             continue
@@ -436,8 +462,32 @@ def build_client_skill_prompt(
             continue
         if not isinstance(description, str) or not description.strip():
             continue
-        lines.append(f"- {name}: {description}")
 
-    if not lines:
+        # Prefer id as the loader key — names can collide on display but
+        # the wire payload treats id as stable. Fall back to name so a
+        # spec without an explicit id still resolves.
+        skill_id_raw = skill.get("id")
+        loader_key = (
+            skill_id_raw.strip()
+            if isinstance(skill_id_raw, str) and skill_id_raw.strip()
+            else name.strip()
+        )
+
+        entries.append(
+            f"- {name.strip()} (id: {loader_key}) — {description.strip()}"
+        )
+
+    if not entries:
         return None
-    return f"{heading}\n" + "\n".join(lines)
+
+    preamble = (
+        f"{heading}\n"
+        f"Each item is a user-authored recipe shown as "
+        f"'name (id: <id>) — description'. When a user request matches a "
+        f"skill by name or description, call {loader_tool_name} with the "
+        f"matching id to load the full recipe, then follow it as your "
+        f"execution plan. Do not speculate about a skill's contents; if "
+        f"in doubt, load it. Skills are advisory: adapt the recipe to the "
+        f"user's actual request."
+    )
+    return preamble + "\n\n" + "\n".join(entries)

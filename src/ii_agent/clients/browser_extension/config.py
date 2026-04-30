@@ -25,9 +25,10 @@ BROWSER_EXTENSION_DEFAULT_CONNECTORS: set[str] = set()
 
 #: Fallback system prompt — used only when the request doesn't ship its own.
 DEFAULT_SYSTEM_PROMPT = (
-    "You are an in-browser assistant running inside the ii-browser Chrome "
-    "extension. All tool execution happens inside the extension; pause and "
-    "wait after each tool call until the result is delivered."
+    "You are an in-browser AI assistant in the ii-browser Chrome extension. "
+    "Interact with the current page and selected text via available tools. "
+    "Call tools to read or act on page data; never guess missing information. "
+    "After each tool call, stop and wait for the result before continuing."
 )
 
 #: Heading for the client-defined skill catalog appended to the system prompt.
@@ -35,3 +36,11 @@ CLIENT_SKILL_HEADING = "Skills available in the ii-browser extension runtime:"
 
 #: Tag used by the shared capability helpers when emitting warnings.
 LOG_PREFIX = "browser_extension"
+
+# Recognised keys inside ``requested_capabilities.client_prompt`` for the
+# browser-extension client. Kept here (and not in :mod:`proxy_capabilities`)
+# because the proxy layer is intentionally agnostic about which prompt
+# fragments any particular client ships — each client subpackage decides
+# what it understands.
+CLIENT_PROMPT_MODE_KEY = "mode"
+CLIENT_PROMPT_HEADING = "Capability mode for this turn:"
