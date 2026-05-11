@@ -17,7 +17,8 @@ export const getFirstCharacters = (str: string) => {
     return str
         .trim()
         .split(/\s+/)
-        .map((word) => word.charAt(0).toUpperCase())
+        .map((word) => word.replace(/[^\p{L}\p{N}]/gu, '').charAt(0).toUpperCase())
+        .filter(Boolean)
         .join('')
 }
 

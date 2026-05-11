@@ -1173,7 +1173,12 @@ SQL
       note="${note} (deletes in $(_fmt_duration "$secs_delete"))"
     fi
 
-    if [[ -n "$secs_timeout" && "$secs_timeout" -lt 0 ]] 2>/dev/null; then
+    # Suppress [timed out] for AVAILABLE pool slots: their lifetime is
+    # governed by retire_at, not timeout_at. The R6 reaper in
+    # src/ii_agent/agents/sandboxes/orphan_cleanup.py explicitly excludes
+    # pool_state='available' rows, so a negative timeout_at on a standby
+    # slot is expected and not actionable.
+    if [[ -n "$secs_timeout" && "$secs_timeout" -lt 0 && "$pool_state" != "available" ]] 2>/dev/null; then
       note="${note} [timed out]"
     fi
 

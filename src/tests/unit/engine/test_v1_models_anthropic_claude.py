@@ -303,22 +303,32 @@ class TestFormatMessages:
             set(redacted_parts[0].keys()) == {"type", "data"}
         )
 
-    def test_assistant_with_reasoning_no_signature_uses_data_field(self):
-        """Fallback path (reasoning_content without signature) must also use 'data'."""
+    def test_assistant_with_reasoning_no_signature_drops_block(self):
+        """reasoning_content without an Anthropic signature MUST NOT be replayed.
+
+        Anthropic validates ``redacted_thinking.data`` as an opaque ciphertext
+        they issued. Sending plaintext reasoning text in ``data`` triggers a
+        non-retriable 400 ``Invalid data in redacted_thinking block`` which
+        bricks the session (see triage of session 9785de09, 2026-05-11).
+        Without a signature we cannot preserve thinking continuity, so the
+        block must be dropped entirely. The regular text/tool_use content of
+        the assistant message is still preserved.
+        """
         msgs = [
             Message(
                 role="assistant",
                 content="Answer",
                 reasoning_content="raw thoughts",
-                # no provider_data signature -> falls into redacted fallback
+                # no provider_data signature
             )
         ]
         formatted, _ = format_messages(msgs)
         parts = formatted[0]["content"]
-        redacted_parts = [p for p in parts if p.get("type") == "redacted_thinking"]
-        assert len(redacted_parts) == 1
-        assert redacted_parts[0]["data"] == "raw thoughts"
-        assert set(redacted_parts[0].keys()) == {"type", "data"}
+        assert not [p for p in parts if p.get("type") == "redacted_thinking"]
+        assert not [p for p in parts if p.get("type") == "thinking"]
+        # The original answer text must survive.
+        text_parts = [p for p in parts if p.get("type") == "text"]
+        assert any(p["text"] == "Answer" for p in text_parts)
 
     def test_assistant_with_tool_calls(self):
         tool_calls = [
@@ -883,27 +893,28 @@ class TestClaudeAinvokeHappyPath:
 
 
 class TestFormatMessagesAdditionalBranches:
-    def test_assistant_reasoning_content_fallback_no_signature(self):
-        """reasoning_content set without signature → redacted_thinking fallback (line 351).
+    def test_assistant_reasoning_content_no_signature_is_dropped(self):
+        """reasoning_content without an Anthropic signature must be dropped.
 
-        Per Anthropic Messages API, the encrypted blob must be in the ``data``
-        field. Using any other key triggers a 400 with
-        ``messages.N.content.0.redacted_thinking.data: Field required``.
+        ``redacted_thinking.data`` must be the opaque ciphertext Anthropic
+        issued. Plaintext reasoning is rejected with a 400 ``Invalid data in
+        redacted_thinking block``. Without a signature we have no valid blob,
+        so the only safe action is to drop the thinking block.
         """
         msgs = [
             Message(
                 role="assistant",
                 content="Answer",
                 reasoning_content="I thought about this",
-                # No redacted_reasoning_content, No provider_data signature
+                # No redacted_reasoning_content, no provider_data signature
             )
         ]
         formatted, _ = format_messages(msgs)
         parts = formatted[0]["content"]
-        redacted_parts = [p for p in parts if p.get("type") == "redacted_thinking"]
-        assert len(redacted_parts) == 1
-        assert redacted_parts[0]["data"] == "I thought about this"
-        assert set(redacted_parts[0].keys()) == {"type", "data"}
+        assert not [p for p in parts if p.get("type") == "redacted_thinking"]
+        assert not [p for p in parts if p.get("type") == "thinking"]
+        text_parts = [p for p in parts if p.get("type") == "text"]
+        assert any(p["text"] == "Answer" for p in text_parts)
 
     def test_assistant_message_with_list_content_dict_items(self):
         """Assistant message with list content – dicts with 'text' key (lines 362-364)."""

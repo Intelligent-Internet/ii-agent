@@ -254,6 +254,14 @@ class A2AInnerLoop:
             _reasoning_active = False
             _accumulated_reasoning = ""
 
+            # Track whether the stream produced ANY meaningful output.
+            # When the upstream backend (e.g. Copilot CLI) is quota-blocked,
+            # some sessions emit ASSISTANT_TURN_START → ASSISTANT_TURN_END
+            # with NO session.error and NO content deltas.  Without this
+            # flag the run silently "completes" with an empty assistant
+            # response and the user sees nothing on the frontend.
+            _tool_call_observed = False
+
             async for event in self.client.astream(
                 messages=messages,
                 context_id=context_id,
@@ -295,6 +303,7 @@ class A2AInnerLoop:
                 # paused — heartbeats from the adapter accumulate in httpx's
                 # buffer but are not consumed until execution completes.
                 if event.event_type == "tool.execution_request":
+                    _tool_call_observed = True
                     _tool_name = event.data.get("tool_name", "?")
                     _tool_t0 = __import__("time").perf_counter()
                     logger.info(
@@ -381,6 +390,23 @@ class A2AInnerLoop:
                     reasoning_content=_accumulated_reasoning or None,
                 )
                 messages.append(assistant_msg)
+
+            # Defensive: if the upstream backend (e.g. Copilot CLI when
+            # quota-blocked) closed the turn without emitting any content,
+            # reasoning, tool calls, OR an explicit session.error, surface
+            # this as a model-provider error instead of silently completing
+            # with an empty assistant response.  Without this, agent.py
+            # marks the run COMPLETED, the frontend never receives a
+            # response, and the user sees a "silent failure".
+            if not _accumulated_text and not _accumulated_reasoning and not _tool_call_observed:
+                raise ModelProviderError(
+                    "A2A backend closed turn without content (no text, "
+                    "reasoning, tool call, or session.error). The upstream "
+                    "model provider may be quota-limited or rate-limited. "
+                    "Check the sandbox adapter log for SESSION_ERROR events.",
+                    model_name=getattr(model, "name", model.id),
+                    model_id=model.id,
+                )
 
             await self.circuit_breaker.record_success()
             self._last_owner = "a2a"

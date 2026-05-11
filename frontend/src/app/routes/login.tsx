@@ -364,8 +364,14 @@ export function LoginPage() {
 }
 
 /**
- * Dev login button - only shows if DEV_AUTH_ENABLED is set on backend
+ * Dev login chooser - only shows when SANDBOX_LOCAL_MODE=true and DEV_USERS
+ * is configured on the backend. Each named dev user maps to a distinct
+ * database user (email dev+<username>@localhost), giving full session/credit
+ * isolation between household members.
  */
+type DevUserPublic = { username: string; display_name: string }
+type DevUsersResponse = { enabled: boolean; users: DevUserPublic[] }
+
 function DevLoginButton({
     apiBaseUrl,
     onSuccess
@@ -373,42 +379,130 @@ function DevLoginButton({
     apiBaseUrl: string
     onSuccess: (payload: IiAuthPayload | null | undefined) => Promise<void>
 }) {
-    const [isAvailable, setIsAvailable] = useState<boolean | null>(null)
+    const [users, setUsers] = useState<DevUserPublic[] | null>(null)
+    const [selected, setSelected] = useState<string>('')
+    const [pin, setPin] = useState<string>('')
+    const [submitting, setSubmitting] = useState(false)
+    const [error, setError] = useState<string | null>(null)
 
     useEffect(() => {
-        // Check if dev login is available
-        fetch(`${apiBaseUrl}/auth/dev/login`)
-            .then((res) => {
-                setIsAvailable(res.ok)
+        let cancelled = false
+        fetch(`${apiBaseUrl}/auth/dev/users`)
+            .then(async (res) => {
+                if (!res.ok) {
+                    throw new Error(`HTTP ${res.status}`)
+                }
+                return (await res.json()) as DevUsersResponse
             })
-            .catch(() => setIsAvailable(false))
+            .then((data) => {
+                if (cancelled) return
+                if (data.enabled && data.users.length > 0) {
+                    setUsers(data.users)
+                    setSelected(data.users[0].username)
+                } else {
+                    setUsers([])
+                }
+            })
+            .catch(() => {
+                if (!cancelled) setUsers([])
+            })
+        return () => {
+            cancelled = true
+        }
     }, [apiBaseUrl])
 
     const handleDevLogin = async () => {
+        setError(null)
+        if (!selected || pin.length < 4) {
+            setError('Pick a user and enter the PIN')
+            return
+        }
+        setSubmitting(true)
         try {
-            const res = await fetch(`${apiBaseUrl}/auth/dev/login`)
+            const res = await fetch(`${apiBaseUrl}/auth/dev/login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: selected, pin })
+            })
             if (!res.ok) {
-                throw new Error('Dev login failed')
+                let msg = 'Dev login failed'
+                try {
+                    const body = await res.json()
+                    if (typeof body?.detail === 'string') msg = body.detail
+                } catch {
+                    /* ignore body parse errors */
+                }
+                throw new Error(msg)
             }
             const data = await res.json()
+            setPin('')
             await onSuccess(data)
-        } catch (error) {
-            console.error('Dev login failed:', error)
+        } catch (err) {
+            console.error('Dev login failed:', err)
+            setError(err instanceof Error ? err.message : 'Dev login failed')
+        } finally {
+            setSubmitting(false)
         }
     }
 
-    if (isAvailable !== true) {
+    if (users === null) {
+        // Probe still in flight — render nothing to avoid flicker.
+        return null
+    }
+    if (users.length === 0) {
         return null
     }
 
     return (
-        <Button
-            size="xl"
-            onClick={handleDevLogin}
-            className="w-full mt-4 bg-amber-500 hover:bg-amber-600 text-black font-semibold shadow-btn"
-        >
-            Dev Login (Local Mode)
-        </Button>
+        <div className="w-full mt-4 flex flex-col gap-2 rounded-md border border-amber-500/40 bg-amber-500/5 p-3">
+            <div className="text-xs font-semibold text-amber-600 dark:text-amber-400">
+                Local-mode dev login
+            </div>
+            <div className="flex gap-2">
+                <select
+                    value={selected}
+                    onChange={(e) => setSelected(e.target.value)}
+                    disabled={submitting}
+                    className="flex-1 rounded-md border border-input bg-background text-foreground px-3 py-2 text-sm"
+                >
+                    {users.map((u) => (
+                        <option
+                            key={u.username}
+                            value={u.username}
+                            className="bg-background text-foreground"
+                        >
+                            {u.display_name}
+                        </option>
+                    ))}
+                </select>
+                <Input
+                    type="password"
+                    inputMode="numeric"
+                    autoComplete="off"
+                    placeholder="PIN"
+                    value={pin}
+                    disabled={submitting}
+                    onChange={(e) => setPin(e.target.value)}
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter') void handleDevLogin()
+                    }}
+                    className="w-28"
+                />
+            </div>
+            {error && (
+                <div className="text-xs text-red-600 dark:text-red-400">
+                    {error}
+                </div>
+            )}
+            <Button
+                size="lg"
+                onClick={handleDevLogin}
+                disabled={submitting || !selected || pin.length < 4}
+                className="w-full bg-amber-500 hover:bg-amber-600 text-black font-semibold shadow-btn"
+            >
+                {submitting ? 'Signing in…' : `Sign in as ${selected || '…'}`}
+            </Button>
+        </div>
     )
 }
 

@@ -1093,3 +1093,47 @@ async def test_a2a_inner_loop_appends_reasoning_to_assistant_message() -> None:
     assert assistant_msg.role == "assistant"
     assert assistant_msg.content == "Done."
     assert assistant_msg.reasoning_content == "Let me think..."
+
+
+@pytest.mark.asyncio
+async def test_a2a_inner_loop_raises_when_turn_closes_with_no_content() -> None:
+    """Empty turn (no content / reasoning / tool call / error) must raise.
+
+    Regression test for the silent-failure case where the upstream
+    Copilot CLI backend is quota-exhausted: the SDK emits
+    ASSISTANT_TURN_START -> SESSION_USAGE_INFO -> ASSISTANT_TURN_END with
+    NO content deltas and NO session.error event.  Without this guard the
+    A2A inner loop completes successfully with an empty response, the
+    agent marks the run COMPLETED, and the user sees nothing on the
+    frontend.
+
+    The empty-turn detection raises ModelProviderError so the outer
+    fallback path can either retry on native or surface the error to the
+    run status.
+    """
+    from ii_agent.agents.exceptions import ModelProviderError
+
+    strategy = A2AInnerLoop(
+        client=cast(
+            IIAgentA2AClient,
+            _FakeA2AClient(
+                events=[
+                    # No content, no reasoning, no tool calls, no error.
+                    # Just usage info — exactly what Copilot CLI emits
+                    # when out of quota but failing silently.
+                    A2AStreamEvent(
+                        event_type="assistant.usage",
+                        data={"input_tokens": 100, "output_tokens": 0},
+                    ),
+                ]
+            ),
+        ),
+        fallback_to_native=False,
+    )
+
+    with pytest.raises(ModelProviderError, match="closed turn without content"):
+        async for _ in strategy.aresponse_stream(
+            model=cast(Model, _FakeModel()),
+            messages=[],
+        ):
+            pass

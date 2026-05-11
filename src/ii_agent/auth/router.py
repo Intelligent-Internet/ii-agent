@@ -1,11 +1,12 @@
 """Authentication API endpoints."""
 
+import asyncio
 import base64
 import hashlib
 import json
 import secrets
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse, urlencode
 
 import httpx
@@ -13,6 +14,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi_sso.sso.google import GoogleSSO
 from itsdangerous import URLSafeSerializer, BadSignature
+from pydantic import BaseModel, Field
 
 from ii_agent.auth.dependencies import DBSession, CurrentUser, SettingsDep
 from ii_agent.auth.exceptions import AuthException, InvalidTokenException
@@ -30,9 +32,10 @@ II_STATE_SESSION_KEY = "ii_oauth_state"
 II_CODE_VERIFIER_SESSION_KEY = "ii_code_verifier"
 II_RETURN_TO_SESSION_KEY = "ii_return_to"
 
-# Simple in-memory rate limiter for dev login
+# Simple in-memory rate limiter for dev login (per username, then per IP fallback)
 _DEV_LOGIN_TIMESTAMPS: dict[str, float] = {}
-_DEV_LOGIN_RATE_LIMIT_SECONDS = 10  # Allow one request per 10 seconds per IP
+_DEV_LOGIN_RATE_LIMIT_SECONDS = 5  # Min seconds between attempts per identity key
+_DEV_LOGIN_FAIL_DELAY_SECONDS = 0.75  # Throttle wrong-PIN responses
 II_RETURN_URL_SESSION_KEY = "ii_return_url"
 
 # ---------------------------------------------------------------------------
@@ -476,43 +479,121 @@ async def reader_user_me(
     )
 
 
+class DevLoginRequest(BaseModel):
+    """Body for ``POST /auth/dev/login``."""
+
+    username: str = Field(..., min_length=1, max_length=64)
+    pin: str = Field(..., min_length=4, max_length=64)
+
+
+class DevUserPublic(BaseModel):
+    """Public dev-user descriptor (no PIN) returned by ``GET /auth/dev/users``."""
+
+    username: str
+    display_name: str
+
+
+class DevUsersResponse(BaseModel):
+    """Response for ``GET /auth/dev/users``."""
+
+    enabled: bool
+    users: List[DevUserPublic]
+
+
+def _dev_login_enabled(settings) -> bool:
+    """Dev login is enabled iff local mode is on AND at least one dev user is configured."""
+    return bool(settings.sandbox.local_mode and settings.dev_users)
+
+
+def _gc_rate_limiter(now: float) -> None:
+    """Drop rate-limit entries older than 1 hour."""
+    stale_threshold = now - 3600
+    for key in list(_DEV_LOGIN_TIMESTAMPS.keys()):
+        if _DEV_LOGIN_TIMESTAMPS[key] < stale_threshold:
+            del _DEV_LOGIN_TIMESTAMPS[key]
+
+
+@router.get("/dev/users", response_model=DevUsersResponse)
+async def dev_users(
+    settings: SettingsDep,
+) -> DevUsersResponse:
+    """List configured local-mode dev users for the login chooser UI.
+
+    Always returns 200 so the frontend can distinguish "feature off" from a
+    transport error. PINs are never returned.
+    """
+    if not _dev_login_enabled(settings):
+        return DevUsersResponse(enabled=False, users=[])
+
+    users = [
+        DevUserPublic(
+            username=u.username,
+            display_name=u.display_name or u.username.title(),
+        )
+        for u in settings.dev_users
+    ]
+    return DevUsersResponse(enabled=True, users=users)
+
+
 @router.post("/dev/login")
 async def dev_login(
     request: Request,
+    payload: DevLoginRequest,
     db: DBSession,
     settings: SettingsDep,
     user_service: UserServiceDep,
 ):
-    """Development-only login that creates/finds a local dev user.
+    """Local-mode multi-user dev login.
 
-    Only available when ``SANDBOX_LOCAL_MODE=true``.
-    Returns JWT tokens for a deterministic dev user without OAuth.
+    Picks the dev user matching ``payload.username`` from ``settings.dev_users``
+    and validates ``payload.pin`` in constant time. Each named dev user maps to
+    a distinct database user (email ``dev+<username>@localhost``), giving full
+    session/credit isolation between household members without OAuth.
+
+    Only available when ``SANDBOX_LOCAL_MODE=true`` AND ``DEV_USERS`` is set.
     """
-    if not settings.sandbox.local_mode:
-        raise ValidationError("Dev login is only available in local mode")
+    if not _dev_login_enabled(settings):
+        raise ValidationError(
+            "Dev login is disabled (requires SANDBOX_LOCAL_MODE=true and DEV_USERS configured)"
+        )
 
-    # Simple rate limiting by client IP
+    requested_username = payload.username.strip().lower()
     client_ip = request.client.host if request.client else "unknown"
+
+    # Per-username rate limit (with IP fallback for unknown usernames)
+    rate_key = f"u:{requested_username}" if requested_username else f"ip:{client_ip}"
     now = time.time()
-    last_request = _DEV_LOGIN_TIMESTAMPS.get(client_ip, 0)
+    last_request = _DEV_LOGIN_TIMESTAMPS.get(rate_key, 0.0)
     if now - last_request < _DEV_LOGIN_RATE_LIMIT_SECONDS:
         raise ValidationError(
-            f"Rate limited. Please wait {_DEV_LOGIN_RATE_LIMIT_SECONDS} seconds between requests."
+            f"Rate limited. Please wait {_DEV_LOGIN_RATE_LIMIT_SECONDS} seconds between attempts."
         )
-    _DEV_LOGIN_TIMESTAMPS[client_ip] = now
+    _DEV_LOGIN_TIMESTAMPS[rate_key] = now
+    _gc_rate_limiter(now)
 
-    # Clean up old entries (simple GC)
-    stale_threshold = now - 3600  # Remove entries older than 1 hour
-    for ip in list(_DEV_LOGIN_TIMESTAMPS.keys()):
-        if _DEV_LOGIN_TIMESTAMPS[ip] < stale_threshold:
-            del _DEV_LOGIN_TIMESTAMPS[ip]
+    # Look up by username and validate PIN in constant time. Always run a
+    # comparison even on unknown usernames to avoid leaking which names exist.
+    matched = next(
+        (u for u in settings.dev_users if u.username == requested_username),
+        None,
+    )
+    expected_pin = matched.pin if matched is not None else "\x00" * len(payload.pin)
+    pin_ok = secrets.compare_digest(payload.pin.encode("utf-8"), expected_pin.encode("utf-8"))
 
-    dev_email = "dev@localhost"
+    if matched is None or not pin_ok:
+        # Throttle to slow brute force; same generic error either way.
+        await asyncio.sleep(_DEV_LOGIN_FAIL_DELAY_SECONDS)
+        raise ValidationError("Invalid dev username or PIN")
+
+    dev_email = f"dev+{matched.username}@localhost"
+    display_first = (matched.display_name or matched.username.title()).split(" ", 1)[0]
+    display_last = "(dev)"
+
     user = await user_service.find_or_create_oauth_user(
         db,
         email=dev_email,
-        first_name="Local",
-        last_name="Developer",
+        first_name=display_first,
+        last_name=display_last,
         avatar=None,
         email_verified=True,
         login_provider="dev",
@@ -529,18 +610,3 @@ async def dev_login(
         refresh_token=token_payload["refresh_token"],
         expires_in=token_payload["expires_in"],
     )
-
-
-# Keep GET endpoint for backward compatibility but redirect to docs
-@router.get("/dev/login")
-async def dev_login_get(
-    request: Request,
-    db: DBSession,
-    settings: SettingsDep,
-    user_service: UserServiceDep,
-):
-    """Backward-compatible GET endpoint for dev login.
-
-    In local mode, redirects to login via POST semantics for convenience.
-    """
-    return await dev_login(request, db, settings, user_service)

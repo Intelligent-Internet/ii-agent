@@ -352,13 +352,26 @@ def format_messages(
                     }
                 )
             elif reasoning_content:
-                # Fallback: use reasoning_content as redacted if no signature.
-                # Per Anthropic API: {"type": "redacted_thinking", "data": "<blob>"}.
-                parts.append(
-                    {
-                        "type": "redacted_thinking",
-                        "data": str(reasoning_content),
-                    }
+                # We have plaintext reasoning but no Anthropic-issued signature
+                # and no Anthropic-issued opaque `redacted_thinking.data` blob.
+                #
+                # Do NOT synthesize a `redacted_thinking` block here: Anthropic
+                # validates `redacted_thinking.data` as an opaque ciphertext
+                # they issued themselves. Sending plaintext as `data` triggers
+                # a non-retriable 400 "Invalid data in redacted_thinking block"
+                # which permanently bricks replay of the conversation.
+                # (See triage of session 9785de09, 2026-05-11.)
+                #
+                # Without a signature we cannot preserve thinking continuity,
+                # so we drop the block entirely. Anthropic does not require us
+                # to echo prior thinking back when extended thinking is enabled
+                # for the current request.
+                logger.warning(
+                    "Dropping reasoning_content from replayed assistant message: "
+                    "no Anthropic signature available, so cannot emit a valid "
+                    "thinking or redacted_thinking block. role={}, rc_len={}",
+                    message.role,
+                    len(str(reasoning_content)),
                 )
 
         # Regular text content

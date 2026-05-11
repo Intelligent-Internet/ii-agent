@@ -1,7 +1,10 @@
 # Do not use base docker compose commands to do any kind of stack operations.
 # Instructions on restarting and rebuilding the stack:
-# Use the following tool preferentially and prefer --local mode:
+# Use the following tool preferentially :
 scripts/stack_control.sh
+
+# Use the following tool to determine which containers (if any) require a rebuild and why:
+/scripts/stack_control.sh verify
 
 # Other scripts are also available to you under:
 scripts/local/*
