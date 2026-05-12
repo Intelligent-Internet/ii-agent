@@ -71,7 +71,16 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _DEFAULT_CLI_PATH = "gh"  # GitHub CLI; Copilot CLI runs as `gh copilot agent`
-_DEFAULT_TIMEOUT = 300.0  # seconds per turn
+# Per-turn timeouts: split into an *activity* timeout (max time with no SDK
+# events — the genuine "hung backend" signal) and an *absolute* safety-net
+# timeout (hard wall-clock cap regardless of activity).  Long-running deep
+# research turns can stream events for hours without being hung; the prior
+# single fixed cap of 300/900 s was unnecessarily falling back to the native
+# (billed) Anthropic provider mid-task.  The activity timer is reset on every
+# non-heartbeat SDK event.
+_DEFAULT_ACTIVITY_TIMEOUT = 600.0  # seconds with no events before declaring hang (10 min)
+_DEFAULT_ABSOLUTE_TIMEOUT = 1800.0  # absolute wall-clock cap (30 min, was 300/900)
+_DEFAULT_TIMEOUT = _DEFAULT_ABSOLUTE_TIMEOUT  # legacy alias, kept for back-compat
 _DEFAULT_SESSION_IDLE_TTL = 1800.0  # seconds before an idle session is reaped (30 min)
 _REAPER_INTERVAL = 60.0  # seconds between reaper sweeps
 _HEARTBEAT_INTERVAL = 15.0  # seconds between heartbeat SSE events during tool execution
@@ -241,8 +250,18 @@ class CopilotConfig:
         Model override forwarded as ``SessionConfig.model``.  Empty string
         (default) lets Copilot use its own model selection policy.
     timeout:
-        Maximum per-turn wall-clock time in seconds.  The per-event wait
-        inside the stream is bounded by this value.
+        Absolute wall-clock cap for a single turn, in seconds.  This is the
+        safety-net upper bound — if exceeded the turn aborts even if the
+        backend is still producing events.  Genuine deep_research turns
+        should fit inside this budget; if they don't, raise this number
+        rather than relying on it firing.  Configured via the
+        ``A2A_COPILOT_TIMEOUT`` env var.
+    activity_timeout:
+        Maximum idle time (no SDK events) before the turn is declared hung,
+        in seconds.  This is the *real* "is the backend stuck?" signal.
+        Resets on every non-heartbeat SDK event, so a productive long turn
+        will never trip it.  Configured via the
+        ``A2A_COPILOT_ACTIVITY_TIMEOUT`` env var.
     working_directory:
         Working directory for the Copilot CLI process.  ``None`` defaults to
         ``/workspace`` (the standard ii-agent sandbox workspace path).
@@ -256,7 +275,8 @@ class CopilotConfig:
     github_token: str = ""
     cli_path: str = _DEFAULT_CLI_PATH
     model: str = ""
-    timeout: float = _DEFAULT_TIMEOUT
+    timeout: float = _DEFAULT_ABSOLUTE_TIMEOUT
+    activity_timeout: float = _DEFAULT_ACTIVITY_TIMEOUT
     working_directory: str | None = None
     extra_env: dict[str, str] = field(default_factory=dict)
     session_idle_ttl: float = _DEFAULT_SESSION_IDLE_TTL
@@ -905,6 +925,7 @@ class CopilotBackend:
         unsubscribe = session.on(_on_event)
         error_occurred = False
         turn_start = time.monotonic()
+        last_event_time = turn_start  # for activity-based timeout
 
         # Deduplication: the Copilot SDK may fire the event callback more
         # than once for resumed sessions.  Track fingerprints to skip
@@ -954,27 +975,58 @@ class CopilotBackend:
                             time.monotonic() - turn_start,
                         )
                         break
-                    # Check overall turn timeout
-                    elapsed = time.monotonic() - turn_start
+                    # Check both adaptive (idle) and absolute (safety-net)
+                    # turn timeouts.  The activity timer is reset on every
+                    # SDK event below; only a *genuinely hung* backend will
+                    # trip it.  The absolute timer is a hard wall-clock cap
+                    # that fires even mid-stream — keep it generous.
+                    now = time.monotonic()
+                    elapsed = now - turn_start
+                    idle = now - last_event_time
                     if elapsed > self.config.timeout:
                         yield _sse(
                             "session.error",
-                            {"message": f"Copilot CLI timed out after {self.config.timeout}s"},
+                            {
+                                "message": (
+                                    f"Copilot CLI absolute timeout exceeded "
+                                    f"({self.config.timeout:.0f}s wall-clock cap)"
+                                )
+                            },
+                        )
+                        error_occurred = True
+                        break
+                    if idle > self.config.activity_timeout:
+                        yield _sse(
+                            "session.error",
+                            {
+                                "message": (
+                                    f"Copilot CLI idle for {idle:.0f}s "
+                                    f"(activity timeout={self.config.activity_timeout:.0f}s, "
+                                    f"total elapsed={elapsed:.0f}s) — declaring backend hung"
+                                )
+                            },
                         )
                         error_occurred = True
                         break
                     # Send heartbeat to keep HTTP connection alive during
                     # long-running tool executions.
                     logger.info(
-                        "CopilotBackend._run_turn: yielding heartbeat (elapsed=%.1fs, context_id=%s)",
+                        "CopilotBackend._run_turn: yielding heartbeat "
+                        "(elapsed=%.1fs, idle=%.1fs, context_id=%s)",
                         elapsed,
+                        idle,
                         context_id,
                     )
-                    yield _sse("heartbeat", {"status": "waiting"})
+                    yield _sse(
+                        "heartbeat",
+                        {"status": "waiting", "elapsed_s": elapsed, "idle_s": idle},
+                    )
                     continue
 
-                # Any event received clears the continuation probe.
+                # Any event received clears the continuation probe and
+                # resets the activity (idle) timer.
                 _awaiting_continuation = False
+                last_event_time = time.monotonic()
 
                 # Log every event type for diagnostics.
                 _evt_type_raw = getattr(event, "type", type(event).__name__)

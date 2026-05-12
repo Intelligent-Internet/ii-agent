@@ -88,7 +88,9 @@ RUN curl -fsSL https://code-server.dev/install.sh | sh
 
 # GitHub CLI (gh) — required by the Copilot A2A backend (`gh copilot agent`)
 # Pinned: update gh version when upgrading github-copilot-sdk compatibility.
-ARG GH_CLI_VERSION=2.91.0
+# Bumped 2026-05-12: 2.91.0 was rolled out of the apt repo, breaking sandbox
+# rebuilds.  Keep this in sync with the latest GitHub CLI stable release.
+ARG GH_CLI_VERSION=2.92.0
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
   --mount=type=cache,target=/var/lib/apt,sharing=locked \
   curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \

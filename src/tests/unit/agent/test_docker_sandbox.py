@@ -1636,6 +1636,7 @@ class TestA2AAdapterEnv:
         cfg = MagicMock()
         cfg.agent.a2a_backend = backend
         cfg.agent.a2a_adapter_timeout_long_horizon = 3600
+        cfg.agent.a2a_adapter_activity_timeout_long_horizon = 900
         cfg.agent.a2a_adapter_long_horizon_agent_kinds = {"deep_research"}
         return cfg
 
@@ -1692,6 +1693,9 @@ class TestA2AAdapterEnv:
         assert env["A2A_COPILOT_TIMEOUT"] == "3600"
         assert env["A2A_CLAUDE_CODE_TIMEOUT"] == "3600"
         assert env["A2A_CODEX_TIMEOUT"] == "3600"
+        assert env["A2A_COPILOT_ACTIVITY_TIMEOUT"] == "900"
+        assert env["A2A_CLAUDE_CODE_ACTIVITY_TIMEOUT"] == "900"
+        assert env["A2A_CODEX_ACTIVITY_TIMEOUT"] == "900"
 
     @patch.dict("os.environ", {"A2A_COPILOT_TIMEOUT": "900"}, clear=True)
     def test_non_long_horizon_agent_kind_does_not_override(self):
@@ -1719,6 +1723,7 @@ class TestA2AAdapterGating:
         cfg.agent.inner_loop_mode = inner_loop_mode
         cfg.agent.a2a_backend = backend
         cfg.agent.a2a_adapter_timeout_long_horizon = 3600
+        cfg.agent.a2a_adapter_activity_timeout_long_horizon = 900
         cfg.agent.a2a_adapter_long_horizon_agent_kinds = {"deep_research"}
         cfg.sandbox.docker_image = "ii-agent-sandbox:latest"
         cfg.sandbox.docker_network = "test-net"

@@ -111,12 +111,15 @@ services:
       # taken from AGENT_A2A_BACKEND in .stack.env.local.
       SANDBOX_ADAPTER_BACKEND: ${AGENT_A2A_BACKEND:-copilot}
       SANDBOX_ADAPTER_PORT: "18100"
-      # Per-turn wall-clock timeouts (seconds) for each CLI backend.
-      # The historical 300 s default tripped long deep-research turns;
-      # 900 s (15 min) is a safer floor.  Override in .stack.env.local.
-      A2A_COPILOT_TIMEOUT: ${A2A_COPILOT_TIMEOUT:-900}
-      A2A_CLAUDE_CODE_TIMEOUT: ${A2A_CLAUDE_CODE_TIMEOUT:-900}
-      A2A_CODEX_TIMEOUT: ${A2A_CODEX_TIMEOUT:-900}
+      # Per-turn timeouts (seconds) for each CLI backend.  Two-stage
+      # model: absolute (safety net) + activity (idle/no-event).  See
+      # .stack.env.local for the rationale.  Defaults match the code.
+      A2A_COPILOT_TIMEOUT: ${A2A_COPILOT_TIMEOUT:-1800}
+      A2A_CLAUDE_CODE_TIMEOUT: ${A2A_CLAUDE_CODE_TIMEOUT:-1800}
+      A2A_CODEX_TIMEOUT: ${A2A_CODEX_TIMEOUT:-1800}
+      A2A_COPILOT_ACTIVITY_TIMEOUT: ${A2A_COPILOT_ACTIVITY_TIMEOUT:-600}
+      A2A_CLAUDE_CODE_ACTIVITY_TIMEOUT: ${A2A_CLAUDE_CODE_ACTIVITY_TIMEOUT:-600}
+      A2A_CODEX_ACTIVITY_TIMEOUT: ${A2A_CODEX_ACTIVITY_TIMEOUT:-600}
     # Read-only adapter — no workspace, no shared volume.  All state
     # lives in memory in the adapter task store.
     #

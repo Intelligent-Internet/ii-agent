@@ -1034,10 +1034,19 @@ def main() -> None:
 
         github_token = os.environ.get("GITHUB_TOKEN", "") or os.environ.get("GH_TOKEN", "")
         # Empty token is acceptable — CopilotBackend falls back to 'gh auth' login.
-        cp_timeout = _timeout_from_env("A2A_COPILOT_TIMEOUT", 900.0)
-        _backend = CopilotBackend(CopilotConfig(github_token=github_token, timeout=cp_timeout))
+        cp_timeout = _timeout_from_env("A2A_COPILOT_TIMEOUT", 1800.0)
+        cp_activity_timeout = _timeout_from_env("A2A_COPILOT_ACTIVITY_TIMEOUT", 600.0)
+        _backend = CopilotBackend(
+            CopilotConfig(
+                github_token=github_token,
+                timeout=cp_timeout,
+                activity_timeout=cp_activity_timeout,
+            )
+        )
         logging.getLogger(__name__).info(
-            "copilot backend configured with per-turn timeout=%.0fs", cp_timeout
+            "copilot backend configured with absolute timeout=%.0fs, activity timeout=%.0fs",
+            cp_timeout,
+            cp_activity_timeout,
         )
         _app = create_app(backend=_backend, allowed_keys=allowed_keys)
     else:

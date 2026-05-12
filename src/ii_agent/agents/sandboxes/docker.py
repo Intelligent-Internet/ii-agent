@@ -501,9 +501,11 @@ class DockerSandbox(Sandbox):
         by default), the per-turn adapter timeout env vars
         (``A2A_COPILOT_TIMEOUT`` / ``A2A_CLAUDE_CODE_TIMEOUT`` /
         ``A2A_CODEX_TIMEOUT``) are set to
-        ``cfg.agent.a2a_adapter_timeout_long_horizon`` (3600s by default).
+        ``cfg.agent.a2a_adapter_timeout_long_horizon`` (7200s by default)
+        and the matching ``*_ACTIVITY_TIMEOUT`` vars to
+        ``cfg.agent.a2a_adapter_activity_timeout_long_horizon`` (900s).
         Non-long-horizon agents keep whatever the operator configured
-        globally, or fall back to the adapter's own 900s default.
+        globally, or fall back to the adapter's own defaults.
         """
         env: dict[str, str] = {}
 
@@ -545,16 +547,24 @@ class DockerSandbox(Sandbox):
             "A2A_CLAUDE_CODE_TIMEOUT",
             "A2A_CODEX_TIMEOUT",
         )
+        activity_timeout_keys = (
+            "A2A_COPILOT_ACTIVITY_TIMEOUT",
+            "A2A_CLAUDE_CODE_ACTIVITY_TIMEOUT",
+            "A2A_CODEX_ACTIVITY_TIMEOUT",
+        )
         if use_long_horizon:
             long_value = str(int(cfg.agent.a2a_adapter_timeout_long_horizon))
             for key in timeout_keys:
                 env[key] = long_value
+            activity_value = str(int(cfg.agent.a2a_adapter_activity_timeout_long_horizon))
+            for key in activity_timeout_keys:
+                env[key] = activity_value
         else:
             # Forward per-turn adapter timeouts so long deep-research turns
             # don't hit the historical 300 s default baked into the backends.
             # Only forward when the operator has set them explicitly — the
-            # adapter_server itself picks a safe default (900 s) otherwise.
-            for key in timeout_keys:
+            # adapter_server itself picks a safe default otherwise.
+            for key in (*timeout_keys, *activity_timeout_keys):
                 value = os.environ.get(key, "")
                 if value:
                     env[key] = value

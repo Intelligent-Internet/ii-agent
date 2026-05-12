@@ -282,7 +282,13 @@ class TestCopilotConfig:
         assert cfg.github_token == ""
         assert cfg.cli_path == "gh"
         assert cfg.model == ""
-        assert cfg.timeout == 300.0
+        # Absolute (safety-net) timeout: was 300s historically; raised to
+        # 1800s when the activity-based timeout was introduced so that
+        # productive long turns aren't aborted mid-stream.
+        assert cfg.timeout == 1800.0
+        # Activity (idle) timeout: real "hung backend" signal, reset on
+        # every SDK event.
+        assert cfg.activity_timeout == 600.0
         assert cfg.working_directory is None
         assert cfg.extra_env == {}
 
@@ -490,8 +496,11 @@ class TestCopilotBackendStream:
 
     @pytest.mark.asyncio
     async def test_timeout_yields_error_and_done(self) -> None:
-        # Use a very short timeout and an event that never arrives.
-        backend = CopilotBackend(CopilotConfig(timeout=0.01))
+        # Use a very short absolute timeout (and matching activity timeout)
+        # with an event stream that never delivers anything.  Either timer
+        # firing first is acceptable — both emit a session.error and end
+        # the stream with [DONE].
+        backend = CopilotBackend(CopilotConfig(timeout=0.01, activity_timeout=0.01))
 
         mock_session = MagicMock()
         mock_session.session_id = "sess-timeout"
@@ -520,7 +529,7 @@ class TestCopilotBackendStream:
 
         error_chunks = [_parse_sse(c) for c in chunks if not c.startswith("data: [DONE]")]
         assert any(
-            "timed out" in c["data"]["message"]
+            "timeout" in c["data"]["message"].lower() or "idle" in c["data"]["message"].lower()
             for c in error_chunks
             if c.get("type") == "session.error"
         )

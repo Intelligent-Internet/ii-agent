@@ -211,16 +211,32 @@ class AgentSettings(BaseSettings):
     # A2A per-turn adapter timeouts (long-horizon override)
     # ------------------------------------------------------------------
     a2a_adapter_timeout_long_horizon: int = Field(
-        default=3600,
+        default=7200,
         description=(
-            "Per-turn A2A adapter timeout (seconds) for long-horizon agent "
-            "kinds such as deep_research. Applied to the sandbox adapter's "
-            "A2A_COPILOT_TIMEOUT / A2A_CLAUDE_CODE_TIMEOUT / A2A_CODEX_TIMEOUT "
-            "only when the agent creating the sandbox is in "
-            "a2a_adapter_long_horizon_agent_kinds. Non-long-horizon agents "
-            "continue to use the adapter's own default (900s) or whatever the "
-            "operator set globally via A2A_COPILOT_TIMEOUT. "
+            "Per-turn A2A adapter *absolute* timeout (seconds) for "
+            "long-horizon agent kinds such as deep_research. Applied to the "
+            "sandbox adapter's A2A_COPILOT_TIMEOUT / A2A_CLAUDE_CODE_TIMEOUT "
+            "/ A2A_CODEX_TIMEOUT only when the agent creating the sandbox is "
+            "in a2a_adapter_long_horizon_agent_kinds. Acts as a hard "
+            "wall-clock safety net; the *idle* (activity) timeout below is "
+            "what normally aborts genuinely hung backends. Non-long-horizon "
+            "agents use the adapter's own default (1800s) or the operator's "
+            "global value. "
             "Env: AGENT_A2A_ADAPTER_TIMEOUT_LONG_HORIZON"
+        ),
+        gt=0,
+    )
+
+    a2a_adapter_activity_timeout_long_horizon: int = Field(
+        default=900,
+        description=(
+            "Per-turn A2A adapter *activity* (idle) timeout (seconds) for "
+            "long-horizon agent kinds. Applied to "
+            "A2A_COPILOT_ACTIVITY_TIMEOUT etc. The timer is reset on every "
+            "SDK event from the adapter backend, so productive long-running "
+            "turns never trip it; only a genuinely hung backend does. Fall "
+            "back to native is reserved for these genuine failures. "
+            "Env: AGENT_A2A_ADAPTER_ACTIVITY_TIMEOUT_LONG_HORIZON"
         ),
         gt=0,
     )
