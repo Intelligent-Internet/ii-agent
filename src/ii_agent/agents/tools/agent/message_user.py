@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import mimetypes
 import os
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 from urllib.parse import urlparse
@@ -241,9 +242,14 @@ async def _process_attachment(
 
 
 def _generate_storage_path(filename: str, session_id: Optional[str]) -> str:
-    ext = os.path.splitext(filename or "attachment")[1].lstrip(".") or "bin"
+    stem, dot_ext = os.path.splitext(filename or "attachment")
+    ext = dot_ext.lstrip(".") or "bin"
+    # Sanitize stem so it satisfies the storage proxy's _SAFE_PATH regex
+    # ([\w.-]+, no ".." segments). The stem becomes the URL's final path
+    # segment, which browsers use as the default "Save as" filename.
+    safe_stem = re.sub(r"[^\w.-]+", "_", stem).strip("._-") or "attachment"
     identifier = uuid4().hex
-    return path_resolver.temp_file(identifier, "attachment", ext)
+    return path_resolver.temp_file(identifier, safe_stem, ext)
 
 
 def _is_remote_url(value: str) -> bool:

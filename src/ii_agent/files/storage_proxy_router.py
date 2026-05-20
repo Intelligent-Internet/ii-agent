@@ -16,6 +16,7 @@ import io
 import mimetypes
 import re
 import uuid
+from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
@@ -58,12 +59,24 @@ async def proxy_download(path: str) -> StreamingResponse:
     data.seek(0)
 
     content_type = mimetypes.guess_type(path)[0] or "application/octet-stream"
+
+    # The last URL segment is the human-meaningful filename (e.g. the
+    # original upload name). Set Content-Disposition so browsers use it
+    # for "Save as..." instead of falling back to the URL path. RFC 5987
+    # filename* handles non-ASCII; ASCII fallback covers older clients.
+    filename = path.rsplit("/", 1)[-1] or "download"
+    ascii_filename = filename.encode("ascii", "replace").decode("ascii").replace('"', "_")
+    disposition = (
+        f"inline; filename=\"{ascii_filename}\"; filename*=UTF-8''{quote(filename, safe='')}"
+    )
+
     return StreamingResponse(
         content=data,
         media_type=content_type,
         headers={
             "Cache-Control": "public, max-age=86400",
             "Content-Length": str(size),
+            "Content-Disposition": disposition,
         },
     )
 

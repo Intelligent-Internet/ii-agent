@@ -110,6 +110,12 @@ class TestProxyDownload:
         assert resp.content == content
         assert "image/png" in resp.headers["content-type"]
         assert resp.headers["cache-control"] == "public, max-age=86400"
+        # The URL's last path segment becomes the suggested download filename.
+        expected_filename = _STORAGE_PATH.rsplit("/", 1)[-1]
+        disposition = resp.headers["content-disposition"]
+        assert disposition.startswith("inline; ")
+        assert f'filename="{expected_filename}"' in disposition
+        assert f"filename*=UTF-8''{expected_filename}" in disposition
         mock_storage.read.assert_awaited_once_with(_STORAGE_PATH)
 
     def test_download_returns_404_for_missing_file(self):
