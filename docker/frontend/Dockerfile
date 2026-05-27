@@ -14,7 +14,7 @@ ENV VITE_STRIPE_PUBLISHABLE_KEY=$VITE_STRIPE_PUBLISHABLE_KEY
 ENV VITE_SENTRY_DSN=$VITE_SENTRY_DSN
 ENV VITE_DISABLE_CHAT_MODE=$VITE_DISABLE_CHAT_MODE
 
-RUN if [ -f pnpm-lock.yaml ]; then corepack enable pnpm && pnpm i --frozen-lockfile && pnpm run build; \
+RUN if [ -f pnpm-lock.yaml ]; then corepack enable && corepack prepare pnpm@9.15.9 --activate && pnpm i --frozen-lockfile && pnpm run build; \
     elif [ -f yarn.lock ]; then yarn --frozen-lockfile && yarn build; \
     elif [ -f package-lock.json ]; then npm ci && npm run build; \
     else echo "Lockfile not found." && exit 1; \

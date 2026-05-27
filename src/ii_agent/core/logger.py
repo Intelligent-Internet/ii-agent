@@ -100,7 +100,10 @@ LOGGING_CONFIG: dict[str, Any] = {
         # Application
         "ii_agent": {"level": LOG_LEVEL},
         # HTTP clients
-        "httpx": {"level": logging.WARNING},
+        # httpx at INFO so outgoing HTTP requests (e.g. POST api.anthropic.com)
+        # appear in the log. Without this, a hung native LLM streaming call is
+        # invisible until it eventually times out.
+        "httpx": {"level": logging.INFO},
         "httpcore": {"level": logging.WARNING},
         # Async
         "asyncio": {"level": logging.WARNING},

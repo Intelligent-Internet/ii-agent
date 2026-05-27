@@ -1,76 +1,5 @@
 # Docker on WSL2 — Failure Diagnosis & Safe Recovery
 
-## Auto-start via systemd (W82 cutover)
-
-As of W82 the ii-agent local stack is owned by a systemd unit on this host:
-
-```
-/etc/systemd/system/ii-agent-local.service
-# Source-of-truth copy in repo:
-docker/systemd/ii-agent-local.service
-```
-
-The unit wraps `scripts/stack_control.sh start|stop` as a `Type=oneshot
-RemainAfterExit=yes` service, runs as `User=mdear` with `Group=docker`,
-declares `Requires=docker.service After=docker.service network-online.target`,
-and honors `/tmp/.ii-agent-rebuild-lock` via `ConditionPathExists=!`.
-
-Why this matters: prior to W82 the stack was launched from `~/.bashrc`
-with an inline bash block. That pattern:
-
-* Hid container failures from `systemctl status` and `journalctl -u`.
-* Raced with login shells on every new terminal.
-* Did not auto-restart after a WSL2 guest reboot or a Windows host reboot
-  unless the operator opened a terminal first.
-
-### Operator commands
-
-```bash
-# Status
-systemctl status ii-agent-local.service
-docker compose --project-name ii-agent-local ps
-
-# Stop / start / restart
-sudo systemctl stop ii-agent-local.service
-sudo systemctl start ii-agent-local.service
-sudo systemctl restart ii-agent-local.service
-
-# Logs (the unit-level journal — for compose plumbing)
-journalctl -u ii-agent-local.service -f
-
-# Logs (per-container — for app behaviour)
-docker compose --project-name ii-agent-local logs -f backend
-```
-
-### Rebuild workflow (preserves systemd ownership)
-
-The unit honors a lock file so an operator-initiated rebuild is never
-clobbered by a stray `systemctl daemon-reload` or a reboot:
-
-```bash
-touch /tmp/.ii-agent-rebuild-lock
-sudo systemctl stop ii-agent-local.service
-scripts/stack_control.sh rebuild   # or build / patch-sandbox / etc.
-rm /tmp/.ii-agent-rebuild-lock
-sudo systemctl start ii-agent-local.service
-```
-
-While the lock exists, `systemctl start ii-agent-local.service` is a
-no-op (treated as success, see `ConditionPathExists=`). Forgetting to
-remove the lock means the stack will not auto-start on the next reboot;
-`systemctl status` will show `condition failed` if you check.
-
-### Reinstall the unit from the repo
-
-```bash
-sudo cp docker/systemd/ii-agent-local.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now ii-agent-local.service
-```
-
----
-
-
 This document covers how to diagnose and recover from apparent Docker daemon
 failures on this WSL2 host **without** destroying a healthy daemon.
 
@@ -160,14 +89,10 @@ WSL2 has historically had broken systemd integration. On this host:
   /usr/bin/dockerd --containerd=/run/containerd/containerd.sock
   ```
 
-- `/etc/docker/daemon.json` pins the host explicitly **and** the embedded-DNS
-  upstream resolvers (see [Container DNS resolution](#container-dns-resolution)):
+- `/etc/docker/daemon.json` pins the host explicitly:
 
   ```json
-  {
-    "hosts": ["unix:///var/run/docker.sock"],
-    "dns": ["1.1.1.1", "8.8.8.8", "1.0.0.1"]
-  }
+  { "hosts": ["unix:///var/run/docker.sock"] }
   ```
 
 - Restart-on-crash: the upstream `docker.service` ships with `Restart=always`
@@ -254,103 +179,3 @@ prefer a targeted restart over restarting the whole stack:
 ```bash
 ./scripts/stack_control.sh rebuild backend   # rebuild + restart one service
 ```
-
----
-
-## Container DNS resolution
-
-### Symptom
-
-Outbound API calls from inside a stack container (Anthropic, OpenAI, web
-fetches) fail with `httpx.ConnectError` / `curl (6) Could not resolve host`,
-after 4 retries the run is marked `failed`. The A2A inner-loop stream may
-still work because it goes container-to-container over the Docker bridge,
-but anything that needs public DNS dies.
-
-Backend logs look like:
-
-```
-ERROR | ii_agent.agents.models.anthropic.claude:ainvoke_stream | Connection error while calling Claude API: Connection error.
-ERROR | ii_agent.agents.models.base:_ainvoke_stream_with_retry  | Model provider error after 4 attempts: Connection error.
-```
-
-### Root cause
-
-Docker's embedded resolver inside each container is `127.0.0.11`. That
-resolver forwards to the upstream nameservers that `dockerd` captured at
-**daemon start time**. On WSL2 the daemon often captures the WSL host's
-internal gateway (e.g. `172.29.192.1`) instead of the real public resolvers
-from `/etc/resolv.conf`. The host gateway does not run a DNS server, so
-every lookup times out.
-
-Confirm with:
-
-```bash
-# Inside any stack container — look at "ExtServers:" line
-docker exec ii-agent-local-backend-1 cat /etc/resolv.conf
-
-# Bad case (host-gateway upstream, will fail):
-#   ExtServers: [host(172.29.192.1)]
-# Good case (public resolvers, will work):
-#   ExtServers: [1.1.1.1 8.8.8.8 1.0.0.1]
-```
-
-Cross-check that the host itself can resolve fine:
-
-```bash
-cat /etc/resolv.conf            # host should already point at 1.1.1.1 etc.
-getent hosts api.anthropic.com  # must succeed
-```
-
-### Fix
-
-Pin the upstream resolvers explicitly in `/etc/docker/daemon.json` so
-WSL networking churn cannot poison the capture:
-
-```bash
-sudo cp /etc/docker/daemon.json /etc/docker/daemon.json.bak.$(date +%s)
-sudo tee /etc/docker/daemon.json > /dev/null <<'EOF'
-{
-  "hosts": ["unix:///var/run/docker.sock"],
-  "dns": ["1.1.1.1", "8.8.8.8", "1.0.0.1"]
-}
-EOF
-sudo systemctl restart docker
-```
-
-The restart will bounce every container, but compose services have
-`restart: unless-stopped` and rejoin automatically (30–90 s — see
-[TL;DR — Recovery decision tree](#tldr--recovery-decision-tree)).
-
-> Note: this is one of the few daemon-config changes that legitimately
-> requires a restart. `dockerd` does **not** re-read `dns` settings via
-> SIGHUP — only `hosts`, log level, and a few others.
-
-### Verification
-
-```bash
-docker exec ii-agent-local-backend-1 sh -c '
-  cat /etc/resolv.conf
-  getent hosts api.anthropic.com
-  curl -sS -o /dev/null -w "HTTP %{http_code} dns=%{time_namelookup}s connect=%{time_connect}s\n" \
-       --max-time 10 https://api.anthropic.com/
-'
-```
-
-Expected: `ExtServers: [1.1.1.1 8.8.8.8 1.0.0.1]`, the hostname resolves,
-and `curl` returns `HTTP 404` (404 is correct for a GET on the API root;
-the point is that TLS connected).
-
-### Why this keeps happening
-
-The same failure has been observed multiple times on this host. It tends to
-appear after one of:
-
-- Cold Windows boot or `wsl --shutdown` followed by a fresh stack start
-  before WSL networking has fully converged.
-- WSL2 vEthernet adapter renumbering after a Windows update.
-- `dockerd` restart while the host's `/etc/resolv.conf` was being rewritten
-  by `wsl.conf` `generateResolvConf` / `wsl-vpnkit` / a corporate VPN client.
-
-Keeping the explicit `dns` list in `daemon.json` is the durable fix —
-do not remove it even if the symptom seems to have gone away.

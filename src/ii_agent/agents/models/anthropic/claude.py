@@ -19,6 +19,7 @@ from ii_agent.agents.models.response import ModelResponse
 from ii_agent.agents.runs.agent import RunOutput
 from ii_agent.agents.utils.http import get_default_async_client
 from ii_agent.core.logger import logger
+from ii_agent.core.redis.cancel import RunCancelledException, raise_if_cancelled
 
 try:
     from anthropic import Anthropic as AnthropicClient
@@ -888,6 +889,10 @@ class Claude(Model):
                 model_name=self.name,
                 model_id=self.id,
             ) from e
+        except RunCancelledException:
+            # Cancellation is not a provider error -- let it propagate so the
+            # outer agent loop can mark the run cancelled.
+            raise
         except Exception as e:
             logger.error(f"Unexpected error calling Claude API: {str(e)}")
             raise ModelProviderError(message=str(e), model_name=self.name, model_id=self.id) from e
@@ -924,12 +929,24 @@ class Claude(Model):
                 system_message, tools=tools, response_format=response_format
             )
             assistant_message.metrics.start_timer()
+            # Cancellation polling between stream chunks. Without this, a long
+            # extended-thinking turn (or a slow upstream) holds the run in a
+            # state where a user cancel sits in Redis as `aborting` until the
+            # full Claude response completes. Polling every chunk lets the
+            # cancel propagate within roughly one inter-chunk gap.
+            run_id_for_cancel: Optional[str] = (
+                run_response.run_id
+                if run_response is not None and getattr(run_response, "run_id", None)
+                else None
+            )
             async with self.get_async_client().beta.messages.stream(
                 model=self.id,
                 messages=chat_messages,  # type: ignore
                 **request_kwargs,
             ) as stream:
                 async for chunk in stream:
+                    if run_id_for_cancel is not None:
+                        await raise_if_cancelled(run_id_for_cancel)
                     yield self._parse_provider_response_delta(chunk)  # type: ignore
 
             assistant_message.metrics.stop_timer()
@@ -987,6 +1004,10 @@ class Claude(Model):
                 model_name=self.name,
                 model_id=self.id,
             ) from e
+        except RunCancelledException:
+            # Cancellation raised mid-stream (between chunks). Don't wrap as
+            # ModelProviderError -- let it bubble to the agent loop.
+            raise
         except Exception as e:
             logger.error(f"Unexpected error calling Claude API: {str(e)}")
             raise ModelProviderError(message=str(e), model_name=self.name, model_id=self.id) from e

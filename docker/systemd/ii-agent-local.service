@@ -1,0 +1,71 @@
+# /etc/systemd/system/ii-agent-local.service
+# ii-agent local development stack — backend + frontend + postgres +
+# redis + minio + a2a-adapter, wrapped by scripts/stack_control.sh.
+#
+# Cutover history: prior to W82 this stack was launched from
+# ~/.bashrc with an inline bash blob that probed `docker info` and
+# then ran `stack_control.sh start &`. Hidden failures, no
+# `systemctl status` visibility, no proper rebuild-lock semantics
+# coordinated with login shells. This unit replaces that.
+#
+# Lock-file honored: /tmp/.ii-agent-rebuild-lock
+#   Touch this file before `stack_control.sh rebuild` so that an
+#   unrelated `systemctl daemon-reload` / boot does NOT race the
+#   rebuild by re-upping the (now half-rebuilt) compose project.
+#   `systemctl start ii-agent-local.service` is a no-op while the
+#   lock exists; remove the lock when rebuild completes.
+#
+# Project name: ii-agent-local (from COMPOSE_PROJECT_NAME)
+# Containers:   ii-agent-local-backend-1 (8000)
+#               ii-agent-local-frontend-1 (1420)
+#               ii-agent-local-postgres-1 (5433)
+#               ii-agent-local-redis-1
+#               ii-agent-local-minio-1 (9000/9001)
+#               ii-agent-local-a2a-adapter-1 (18100)
+#
+# Install (one-time, requires sudo):
+#
+#   sudo cp ~/workspaces/git/ii-agent/docker/systemd/ii-agent-local.service \
+#       /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now ii-agent-local.service
+#   systemctl status ii-agent-local.service
+#
+# Verify:
+#
+#   docker compose --project-name ii-agent-local ps
+#   curl -sS http://127.0.0.1:8000/healthz
+#
+# Rebuild workflow (preserves systemd ownership):
+#
+#   touch /tmp/.ii-agent-rebuild-lock
+#   sudo systemctl stop ii-agent-local.service
+#   scripts/stack_control.sh rebuild
+#   rm /tmp/.ii-agent-rebuild-lock
+#   sudo systemctl start ii-agent-local.service
+
+[Unit]
+Description=ii-agent local docker-compose stack (backend 8000, frontend 1420)
+Documentation=https://github.com/intelligent-internet/ii-agent/blob/main/docs/runtime-docs/docker-wsl2-recovery.md
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+# Skip activation when an operator-initiated rebuild is in flight.
+# Negative match: unit is skipped (treated as success) if file exists.
+ConditionPathExists=!/tmp/.ii-agent-rebuild-lock
+StartLimitBurst=3
+StartLimitIntervalSec=120s
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=mdear
+Group=docker
+WorkingDirectory=/home/mdear/workspaces/git/ii-agent
+ExecStart=/home/mdear/workspaces/git/ii-agent/scripts/stack_control.sh start
+ExecStop=/home/mdear/workspaces/git/ii-agent/scripts/stack_control.sh stop
+TimeoutStartSec=600s
+TimeoutStopSec=300s
+
+[Install]
+WantedBy=multi-user.target

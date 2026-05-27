@@ -8,6 +8,7 @@
     ],
     "license": "MIT",
     "type": "module",
+    "packageManager": "pnpm@9.15.9",
     "scripts": {
         "dev": "vite",
         "build": "tsc && vite build",
