@@ -29,9 +29,17 @@ class UserInputField:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "UserInputField":
+        # Use a safe type lookup instead of eval() to prevent code injection
+        _SAFE_TYPES = {
+            "str": str, "int": int, "float": float, "bool": bool,
+            "list": list, "dict": dict, "tuple": tuple, "set": set,
+            "bytes": bytes, "NoneType": type(None),
+        }
+        field_type_name = data["field_type"]
+        field_type = _SAFE_TYPES.get(field_type_name, str)
         return cls(
             name=data["name"],
-            field_type=eval(data["field_type"]),  # Convert string type name to actual type
+            field_type=field_type,
             description=data["description"],
             value=data["value"],
         )
