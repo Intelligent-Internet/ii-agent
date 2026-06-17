@@ -773,6 +773,10 @@ class TestGeminiInteractionsGetMetrics:
         gi = _make_gi()
         assert gi._get_metrics(_make_usage(cached_t=30)).cache_read_tokens == 30
 
+    def test_cache_read_tokens_none(self):
+        gi = _make_gi()
+        assert gi._get_metrics(_make_usage(cached_t=None)).cache_read_tokens == 0
+
     def test_additional_metrics_populated(self):
         gi = _make_gi()
         assert gi._get_metrics(_make_usage()).additional_metrics is not None
