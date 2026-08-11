@@ -105,7 +105,7 @@ media:
       enabled: true
     minimax:
       provider: minimax
-      model: MiniMax-Hailuo-2.3
+      model: MiniMax-H3
       enabled: true
 
 auth:

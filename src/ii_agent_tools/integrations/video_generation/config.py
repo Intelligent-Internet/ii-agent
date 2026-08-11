@@ -12,5 +12,5 @@ class VideoGenerateConfig(BaseModel):
     fal_request_mode: str = "async"
     minimax_api_key: str | None = None
     minimax_base_url: str = "https://api.minimax.io/v1"
-    minimax_model_name: str | None = None
+    minimax_model_name: str | None = "MiniMax-H3"
     minimax_group_id: str | None = None

@@ -18,6 +18,11 @@ from ii_agent_tools.integrations.video_generation.config import VideoGenerateCon
 from ii_agent_tools.integrations.video_generation.factory import (
     create_video_generation_client,
 )
+from ii_agent_tools.integrations.video_generation.minimax import (
+    DEFAULT_MODEL as MINIMAX_DEFAULT_MODEL,
+    MODEL_SUPPORTED_DURATIONS as MINIMAX_MODEL_SUPPORTED_DURATIONS,
+    SUPPORTED_MODELS as MINIMAX_SUPPORTED_MODELS,
+)
 from ii_agent_tools.llm.client import LLMClient
 from ii_agent_tools.logger import get_logger
 from ii_agent_tools.storage.base import BaseStorage
@@ -41,6 +46,8 @@ INLINE_FRAME_MIME_TYPES = {
     "image/jpeg": "jpg",
     "image/webp": "webp",
 }
+MINIMAX_MODEL_NAMES = {model_name.lower(): model_name for model_name in MINIMAX_SUPPORTED_MODELS}
+MINIMAX_PROVIDER_ALIASES = {"minimax", "minimax-ai", "minimax_ai", "minimaxi"}
 
 
 def _normalize_model_name(model_name: str | None) -> str:
@@ -89,6 +96,10 @@ def _get_model_duration_seconds(
     if not normalized_model_name:
         return []
 
+    minimax_model_name = MINIMAX_MODEL_NAMES.get(normalized_model_name)
+    if minimax_model_name:
+        return list(MINIMAX_MODEL_SUPPORTED_DURATIONS[minimax_model_name])
+
     lookup_model_name = VIDEO_MODEL_CONFIG_ALIASES.get(
         normalized_model_name,
         normalized_model_name,
@@ -116,6 +127,8 @@ def is_supported_video_model(model_name: str | None) -> bool:
     if not normalized_model_name:
         return False
     if "veo-3" in normalized_model_name:
+        return True
+    if normalized_model_name in MINIMAX_MODEL_NAMES:
         return True
 
     lookup_model_name = VIDEO_MODEL_CONFIG_ALIASES.get(
@@ -431,7 +444,7 @@ class VideoGenerationService:
     async def generate_video(
         self,
         prompt: str,
-        model_name: str = "veo-3.1-generate-preview",
+        model_name: str | None = "veo-3.1-generate-preview",
         provider: str | None = None,
         aspect_ratio: Literal["auto", "1:1", "3:4", "4:3", "9:16", "16:9", "21:9"] = "16:9",
         duration_seconds: int = 5,
@@ -478,8 +491,11 @@ class VideoGenerationService:
         )
 
         provider_key = (provider or "").lower()
-        if model_name is None and provider_key not in {"fal", "fal-ai", "fal_ai"}:
-            model_name = "veo-3.1-generate-preview"
+        if model_name is None:
+            if provider_key in MINIMAX_PROVIDER_ALIASES:
+                model_name = self._config.minimax_model_name or MINIMAX_DEFAULT_MODEL
+            elif provider_key not in {"fal", "fal-ai", "fal_ai"}:
+                model_name = "veo-3.1-generate-preview"
         if not is_supported_video_model(model_name):
             raise ValueError(f"Unsupported video model: {model_name}")
 
