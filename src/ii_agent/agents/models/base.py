@@ -1158,8 +1158,13 @@ class Model(ABC):
                 for input_field in fc.arguments.get("user_input_fields", []):
                     field_type = input_field.get("field_type")
                     try:
+                        _SAFE_TYPES = {
+                            "str": str, "int": int, "float": float, "bool": bool,
+                            "list": list, "dict": dict, "tuple": tuple, "set": set,
+                            "bytes": bytes, "NoneType": type(None),
+                        }
                         python_type = (
-                            eval(field_type) if isinstance(field_type, str) else field_type
+                            _SAFE_TYPES.get(field_type, str) if isinstance(field_type, str) else field_type
                         )
                     except (NameError, SyntaxError):
                         python_type = str  # Default to str if type is invalid
