@@ -74,6 +74,13 @@ async def create_mcp(
         config = await request.json()
         if not config:
             return JSONResponse({"error": "Invalid request"}, status_code=400)
+
+        # Require API key authentication for MCP config registration
+        api_key = request.headers.get("X-API-Key") or request.query_params.get("api_key")
+        expected_key = os.getenv("MCP_API_KEY")
+        if not expected_key or api_key != expected_key:
+            return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
         mcp_servers = config.get("mcpServers", {})
         for server_name, server_conf in mcp_servers.items():
             single_config = {"mcpServers": {server_name: server_conf}}
