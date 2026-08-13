@@ -1,4 +1,4 @@
-import { selectMessages, useAppDispatch, useAppSelector } from '@/state'
+import { selectMessages, useAppDispatch, useAppSelector, selectIsStopped } from '@/state'
 import clsx from 'clsx'
 import { countBy, findLast } from 'lodash'
 import { useEffect, useMemo, useState } from 'react'
@@ -15,6 +15,7 @@ interface AgentTasksProps {
 const AgentTasks = ({ className }: AgentTasksProps) => {
     const { t } = useTranslation()
     const messages = useAppSelector(selectMessages)
+    const isStopped = useAppSelector(selectIsStopped)
     const dispatch = useAppDispatch()
     const [plans, setPlans] = useState<Plan[]>([])
 
@@ -28,6 +29,9 @@ const AgentTasks = ({ className }: AgentTasksProps) => {
     }, [messages])
 
     useEffect(() => {
+        // Don't auto-promote tasks if the agent is stopped
+        if (isStopped) return
+
         if (Array.isArray(plans)) {
             // Check if there are no in_progress tasks
             const hasInProgress = plans.some(
@@ -50,11 +54,11 @@ const AgentTasks = ({ className }: AgentTasksProps) => {
                 }
             }
         }
-    }, [plans, dispatch])
+    }, [plans, dispatch, isStopped])
 
     const inProgressPlans = useMemo(
-        () => countBy(plans, 'status').in_progress || 0,
-        [plans]
+        () => isStopped ? 0 : (countBy(plans, 'status').in_progress || 0),
+        [plans, isStopped]
     )
 
     const completedPlans = useMemo(
@@ -69,7 +73,7 @@ const AgentTasks = ({ className }: AgentTasksProps) => {
             className={`flex flex-col items-center justify-center w-full ${className}`}
         >
             <p className="text-lg md:text-[32px] font-semibold dark:text-white">
-                {t('agent.tasks.inProgress')}
+                {isStopped ? t('agent.tasks.stopped', 'Stopped') : t('agent.tasks.inProgress')}
             </p>
             <div className="mt-6 flex flex-col max-w-[580px] gap-y-4 w-full">
                 <div className="flex flex-col gap-y-4 max-h-[calc(100vh-350px)] overflow-auto">

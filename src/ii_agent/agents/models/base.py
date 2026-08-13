@@ -193,6 +193,11 @@ class Model(ABC):
 
         This method wraps the ainvoke_stream() call and retries on ModelProviderError
         with optional exponential backoff. Note that retries restart the entire stream.
+
+        HTTP 4xx responses (except 429 rate-limits, which are raised as
+        :class:`ModelRateLimitError`) indicate a malformed request and are
+        deterministically non-retriable — retrying the same bad payload only
+        wastes provider quota.
         """
         last_exception: Optional[ModelProviderError] = None
 
@@ -203,6 +208,14 @@ class Model(ABC):
                 return  # Success, exit the retry loop
             except ModelProviderError as e:
                 last_exception = e
+                # Non-retriable: 4xx client errors (other than 429) are
+                # guaranteed to fail identically on every retry.
+                status = getattr(e, "status_code", None)
+                if isinstance(status, int) and 400 <= status < 500 and status != 429:
+                    logger.error(
+                        f"Model provider error is non-retriable (status {status}): {e}"
+                    )
+                    raise
                 if attempt < self.retries:
                     delay = self._get_retry_delay(attempt)
                     logger.warning(
@@ -1334,8 +1347,7 @@ class Model(ABC):
                     cleanup_result, asyncio.CancelledError
                 ):
                     logger.debug(
-                        "Async generator task finished during cleanup with error: %s",
-                        cleanup_result,
+                        f"Async generator task finished during cleanup with error: {cleanup_result}"
                     )
 
         try:

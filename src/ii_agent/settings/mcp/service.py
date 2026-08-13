@@ -64,7 +64,7 @@ class MCPSettingService:
             updated_at=datetime.now(timezone.utc),
         )
 
-        created = await self._repo.create(db, new_setting)
+        created = await self._repo.save(db, new_setting)
         return _to_mcp_setting_info(created)
 
     async def update_mcp_settings(

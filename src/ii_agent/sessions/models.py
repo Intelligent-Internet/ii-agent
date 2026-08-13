@@ -4,7 +4,7 @@ ChatSummary (formerly ConversationSummary) has been moved to ii_agent.chat.model
 """
 
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy import BigInteger, Boolean, ForeignKey, Index, String
+from sqlalchemy import BigInteger, Boolean, ForeignKey, Index, Integer, String
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from datetime import datetime, timezone
 from typing import Optional, TYPE_CHECKING
@@ -12,7 +12,7 @@ import uuid
 
 from ii_agent.agents.types import AgentType
 from ii_agent.core.db.base import Base, TimestampColumn
-from ii_agent.sessions.types import AppKind, SessionState
+from ii_agent.sessions.types import AppKind, SessionCustody, SessionState
 
 # Forward references for relationships
 if TYPE_CHECKING:
@@ -67,6 +67,46 @@ class Session(Base):
         onupdate=lambda: datetime.now(timezone.utc),
     )
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    delete_after: Mapped[Optional[datetime]] = mapped_column(TimestampColumn, nullable=True)
+
+    # ---- Purge subsystem (§4.1, three-phase purge driver) ----
+    # See docs/design-docs/session-lifecycle-and-data-custody.md §3.5 + §4.1
+    # PR-A migration: 20260427_000008_session_purge_v34.py
+    # Hardening migration: 20260429_000011_invariant_hardening.py
+    #   adds CHECK constraints enforcing I1 atomically:
+    #     ck_sessions_purge_after_implies_deleted
+    #         (purge_after IS NULL OR is_deleted = true)
+    #     ck_sessions_purge_started_implies_deleted
+    #         (purge_started_at IS NULL OR is_deleted = true)
+    purge_after: Mapped[Optional[datetime]] = mapped_column(TimestampColumn, nullable=True)
+    """When grace expires and the session becomes eligible for hard purge.
+    Backfilled by the cleanup-loop bulk update (§4.1 step 0)."""
+
+    custody: Mapped[SessionCustody] = mapped_column(
+        String(32),
+        nullable=False,
+        default=SessionCustody.STANDARD,
+        server_default=SessionCustody.STANDARD.value,
+    )
+    """Retention custody (I1/I3): legal_hold blocks purge entirely."""
+
+    purge_started_at: Mapped[Optional[datetime]] = mapped_column(TimestampColumn, nullable=True)
+    """Phase-(a) claim timestamp. Set by claim_one_session, refreshed by
+    heartbeat_claim, cleared on release_claim. Stale (> claim_timeout) =
+    reclaimable (Adversarial #19)."""
+
+    purge_attempts: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    """Retry counter. >= max_attempts ⇒ permanent dead-letter (§4.5)."""
+
+    sar_priority: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    """SAR fast-track flag (I12). Set by ``intake_sar`` when a verified
+    Subject Access Request arrives for the owning user. Grace-sweep MUST
+    skip rows with sar_priority=true (they are driven directly via
+    ``purge_one_session(trigger=SAR_PRIORITY)`` from the SAR handler)."""
 
     # Relationships (using string references)
     user: Mapped["User"] = relationship("User", back_populates="sessions")
@@ -79,8 +119,10 @@ class Session(Base):
     events: Mapped[list["ApplicationEvent"]] = relationship(
         "ApplicationEvent",
         primaryjoin="Session.id == foreign(ApplicationEvent.session_id)",
-        cascade="all, delete-orphan",
         viewonly=True,
+        # PR-D (§7): no `cascade=` here — application_events.session_id is
+        # `ON DELETE SET NULL` per §3.1; cascade flags would diverge from the
+        # FK policy and silently activate if `viewonly=True` were ever flipped.
     )
     # NOTE: Files are linked via SessionAsset many-to-many, not direct FK.
     # Access session files via FileRepository.get_by_session_id() instead.

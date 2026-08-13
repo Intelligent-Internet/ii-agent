@@ -8,7 +8,7 @@ import {
     clearPlanModificationOptions,
     selectAvailableModels,
     selectMessages,
-    selectSelectedModel,
+    selectSelectedAgentModel,
     selectToolSettings,
     selectCurrentMessageFileIds,
     selectUploadedFiles,
@@ -38,6 +38,9 @@ import {
     selectSelectedGitHubRepository,
     selectBuildMode,
     selectHasPlan,
+    selectSelectedMilestone,
+    selectMilestones,
+    selectPlanSummary,
     moveSessionToTop,
     selectChats,
     selectProjects,
@@ -64,7 +67,7 @@ export function useQuestionHandlers() {
     const { sessionId } = useParams()
 
     const messages = useAppSelector(selectMessages)
-    const selectedModelId = useAppSelector(selectSelectedModel)
+    const selectedModelId = useAppSelector(selectSelectedAgentModel)
     const availableModels = useAppSelector(selectAvailableModels)
     const toolSettings = useAppSelector(selectToolSettings)
     const currentMessageFileIds = useAppSelector(selectCurrentMessageFileIds)
@@ -79,6 +82,9 @@ export function useQuestionHandlers() {
     )
     const buildMode = useAppSelector(selectBuildMode)
     const hasPlan = useAppSelector(selectHasPlan)
+    const selectedMilestone = useAppSelector(selectSelectedMilestone)
+    const planMilestones = useAppSelector(selectMilestones)
+    const planSummary = useAppSelector(selectPlanSummary)
     const chats = useAppSelector(selectChats)
     const projects = useAppSelector(selectProjects)
     const chatMediaPreference = useAppSelector(selectChatMediaPreference)
@@ -355,6 +361,33 @@ export function useQuestionHandlers() {
             buildModeValue === 'build'
                 ? CommandType.QUERY
                 : CommandType.PLAN
+
+        // When the user types a chat message while a plan is active and a
+        // milestone is the current "next milestone", treat it like clicking
+        // the Build button: attach milestone_ids + plan_context so the
+        // backend can mark the milestone completed and emit
+        // MilestoneUpdatedEvent. Without this, the GUI's "next milestone"
+        // tracker stays out of sync because the backend's
+        // PlanService.update_milestones_after_run() early-returns when
+        // milestone_ids is empty.
+        //
+        // Only attach for QUERY commands (build mode) -- never for PLAN
+        // commands which are used to create or modify plans.
+        if (
+            commandType === CommandType.QUERY &&
+            hasPlan &&
+            selectedMilestone &&
+            planSummary !== null &&
+            planMilestones.length > 0
+        ) {
+            ;(queryContent as Record<string, unknown>).milestone_ids = [
+                selectedMilestone.id
+            ]
+            ;(queryContent as Record<string, unknown>).plan_context = {
+                summary: planSummary,
+                milestones: planMilestones
+            }
+        }
 
         if (isCreatingNewSession) {
             // New session: Join session first, then wait for session_id event

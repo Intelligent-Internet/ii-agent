@@ -31,11 +31,14 @@ import {
     setMessages,
     fetchChats,
     fetchProjects,
+    fetchAllRemainingProjects,
     setActiveSessionId,
     selectChatsLoading,
     selectChatsHasMore,
     selectChatsPage,
     selectProjectsLoading,
+    selectProjectsHasMore,
+    selectProjectsPage,
     selectSessionsLimit,
     resetChatsPagination,
     resetProjectsPagination,
@@ -88,6 +91,8 @@ const Sidebar = ({ className, workspaceInfo }: SidebarButtonProps) => {
     const chatsHasMore = useAppSelector(selectChatsHasMore)
     const chatsPage = useAppSelector(selectChatsPage)
     const projectsLoading = useAppSelector(selectProjectsLoading)
+    const projectsHasMore = useAppSelector(selectProjectsHasMore)
+    const projectsPage = useAppSelector(selectProjectsPage)
     const limit = useAppSelector(selectSessionsLimit)
     const chatMediaPreference = useAppSelector(selectChatMediaPreference)
 
@@ -98,6 +103,7 @@ const Sidebar = ({ className, workspaceInfo }: SidebarButtonProps) => {
     const sessionId = sessionIdFromParams || searchParams.get('id') || ''
     const scrollContainerRef = useRef<HTMLDivElement>(null)
     const [loadingMoreChats, setLoadingMoreChats] = useState(false)
+    const [loadingMoreProjects, setLoadingMoreProjects] = useState(false)
 
     const handleNewChat = () => {
         // Reset all session state
@@ -181,14 +187,25 @@ const Sidebar = ({ className, workspaceInfo }: SidebarButtonProps) => {
                     () => setLoadingMoreChats(false)
                 )
             }
+            // Load more projects if available
+            if (!loadingMoreProjects && projectsHasMore && !projectsLoading) {
+                setLoadingMoreProjects(true)
+                dispatch(fetchProjects({ page: projectsPage + 1, limit })).finally(
+                    () => setLoadingMoreProjects(false)
+                )
+            }
         }
     }, [
         dispatch,
         chatsPage,
+        projectsPage,
         limit,
         chatsHasMore,
         chatsLoading,
-        loadingMoreChats
+        loadingMoreChats,
+        projectsHasMore,
+        projectsLoading,
+        loadingMoreProjects
     ])
 
     const header = (
@@ -265,7 +282,7 @@ const Sidebar = ({ className, workspaceInfo }: SidebarButtonProps) => {
         dispatch(resetChatsPagination())
         dispatch(resetProjectsPagination())
         dispatch(fetchChats({ page: 1, limit }))
-        dispatch(fetchProjects({ page: 1, limit: 100 }))
+        dispatch(fetchProjects({ page: 1, limit }))
     }, [dispatch, limit])
 
     useEffect(() => {
@@ -362,6 +379,16 @@ const Sidebar = ({ className, workspaceInfo }: SidebarButtonProps) => {
                             <ProjectList
                                 workspaceInfo={workspaceInfo}
                                 isLoading={projectsLoading}
+                                loadingMore={loadingMoreProjects}
+                                hasMore={projectsHasMore}
+                                onLoadMore={() => {
+                                    if (!loadingMoreProjects && projectsHasMore && !projectsLoading) {
+                                        setLoadingMoreProjects(true)
+                                        dispatch(fetchAllRemainingProjects()).finally(
+                                            () => setLoadingMoreProjects(false)
+                                        )
+                                    }
+                                }}
                                 handleResetState={handleResetState}
                                 handleNewProject={handleNewProject}
                             />

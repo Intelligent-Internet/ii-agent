@@ -148,7 +148,11 @@ async def copy_skill_to_sandbox(
         Sandbox skill directory path where skill was extracted
     """
     sandbox_skill_dir = f"{sandbox_base_path}/{skill_name}"
-    zip_path_in_sandbox = f"/tmp/{skill_name}.zip"
+    # Stage the upload zip under the writable /workspace bind volume.
+    # Docker put_archive() rejects writes to /tmp on hardened sandboxes
+    # (read_only=True rootfs) with "container rootfs is marked read-only",
+    # even though /tmp is a tmpfs mount.
+    zip_path_in_sandbox = f"{sandbox_base_path}/.{skill_name}.zip"
 
     # Determine source and get zip content
     if storage_uri.startswith("builtin:"):
@@ -165,19 +169,29 @@ async def copy_skill_to_sandbox(
         skill_dir = Path(storage_uri)
         zip_content = create_skill_zip_from_dir(skill_dir)
 
-    # Upload zip to sandbox
+    # All operations run as the default sandbox user (uid 1001, "user").
+    # /workspace is owned by user:user 755, so no root escalation is needed.
+    # Using user="root" for mkdir would create root-owned directories, making
+    # subsequent user-mode writes/deletes fail with Permission denied.
+
+    # Ensure the staging directory exists before uploading the zip.
+    await sandbox.run_command(f"mkdir -p {sandbox_base_path}")
+
+    # Upload zip — write_file (Docker: put_archive, E2B: files.write) creates
+    # files owned by the sandbox user, not root.
     await sandbox.write_file(zip_path_in_sandbox, zip_content)
 
-    # Create target directory and extract
-    await sandbox.run_command(f"mkdir -p {sandbox_skill_dir}", user="root")
-    await sandbox.run_command(f"unzip -o {zip_path_in_sandbox} -d {sandbox_skill_dir}", user="root")
+    # Create target directory and extract. Running as the default user means
+    # all extracted files are already user-owned; no chown step needed.
+    await sandbox.run_command(f"mkdir -p {sandbox_skill_dir}")
+    await sandbox.run_command(f"unzip -o {zip_path_in_sandbox} -d {sandbox_skill_dir}")
 
-    # Fix permissions so the sandbox user can read the files
-    await sandbox.run_command(f"chown -R user:user {sandbox_skill_dir}", user="root")
-    await sandbox.run_command(f"chmod -R 755 {sandbox_skill_dir}", user="root")
+    # Ensure all skill scripts are executable by the sandbox user.
+    await sandbox.run_command(f"chmod -R 755 {sandbox_skill_dir}")
 
-    # Clean up zip file
-    await sandbox.run_command(f"rm {zip_path_in_sandbox}", user="root")
+    # Remove staging zip — user owns the file and the directory, so this works
+    # without root. Use -f so a missing zip never raises an error on retry.
+    await sandbox.run_command(f"rm -f {zip_path_in_sandbox}")
 
     logger.debug(f"Extracted skill '{skill_name}' to {sandbox_skill_dir}")
     return sandbox_skill_dir

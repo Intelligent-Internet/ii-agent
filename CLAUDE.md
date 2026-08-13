@@ -18,7 +18,7 @@ src/ii_agent/
 │   ├── llm/                    # LLM billing service, execution service, base utilities
 │   ├── middleware/              # CORS, request tracing, exception handling
 │   ├── redis/                  # Async Redis client, cache, cancel tokens
-│   ├── storage/                # GCS/local file storage abstraction + path resolver
+│   ├── storage/                # GCS/MinIO file storage abstraction + path resolver
 │   └── container.py            # ApplicationContainer singleton (global + app.state)
 │
 ├── auth/                       # OAuth 2.0, JWT (uuid.UUID user_id), session management
@@ -29,7 +29,7 @@ src/ii_agent/
 │
 ├── tasks/                      # Unified run lifecycle tracker (RunTask + TaskLog) -- CANONICAL DOMAIN
 │
-├── sessions/                   # Chat sessions (CRUD, state, fork, title, validation)
+├── sessions/                   # Chat sessions (CRUD, state, fork, title, timed delete)
 │   ├── pin/                    # Session pins
 │   └── wishlist/               # Session wishlists/bookmarks
 │
@@ -185,6 +185,9 @@ Socket "chat_message" -> CommandHandlerFactory
 | `/connectors/composio` | `integrations/connectors/composio/router.py` | Composio |
 | `/connectors` | `integrations/connectors/router.py` | Connectors (GitHub, Google) |
 | `/enhance-prompt` | `integrations/enhance_prompt/router.py` | Prompt Enhancement |
+| `/storage` | `files/storage_proxy_router.py` | Storage Proxy (local deploy) |
+| `/files/slides/assets` | `files/slide_assets_router.py` | Slide Assets |
+| `/sandbox-files` | `files/sandbox_files_router.py` | Sandbox File Preview |
 
 Router registration: `app/routers.py::include_routers(app)`
 
@@ -295,6 +298,51 @@ Project 1──N ProjectCustomDomain
 Storybook 1──N StorybookPage 1──N StorybookPageLink
 SlideContent 1──N SlideVersion
 ```
+
+## Billing & Credit System
+
+### Credit Conversion
+
+```
+100 II-Agent credits == $1.50 USD
+1 USD ≈ 66.67 credits
+```
+
+Defined in `billing/utils.py`. All USD→credit math uses `Decimal` arithmetic to avoid floating-point loss.
+
+### Mandatory Rule
+
+**Never call `CreditService.deduct()` directly** for LLM or tool billing. All billable work flows through the event-driven `CreditUsageHandler` which subscribes to `ModelUsageEvent` and `ToolUsageEvent` on the pub/sub bus.
+
+### Native Billing Flow
+
+```
+LLM call completes → ModelUsageEvent published → CreditUsageHandler
+  → token_count × PricingInfo → USD → credits → CreditService.deduct()
+  → CreditsDeductedEvent (frontend balance update)
+  → if balance < minimum: cancel agent run
+```
+
+Tool billing follows the same pattern via `ToolUsageEvent` with a direct `cost_usd` field.
+
+### A2A Billing (Inner-Loop Subsidisation)
+
+When `billing_backend` on a `ModelUsageEvent` starts with `"a2a:"`, the handler uses a configurable strategy instead of standard token pricing. This accounts for subsidised backends like Copilot Business (unlimited) or Copilot Pro+ (premium-request pricing).
+
+| Strategy (`AGENT_A2A_BILLING_STRATEGY`) | Behaviour |
+|---|---|
+| `token_based` (default) | Standard token cost × `AGENT_A2A_BILLING_MULTIPLIER` (default 1.0) |
+| `provider_reported` | Copilot: `premium_requests × model_multiplier × $0.04`; others: adapter-reported USD |
+| `none` | Zero LLM charge (subscription covers inference) |
+
+Key details:
+- Tool costs (image gen, web search) are **always** billed at native rates regardless of strategy
+- `is_user_key=True` skips LLM billing entirely (user pays their own API bill)
+- Copilot premium-request multipliers are hot-configurable via `AGENT_A2A_COPILOT_MULTIPLIERS` (JSON env)
+
+**Full design doc:** [`docs/design-docs/a2a-billing-model.md`](docs/design-docs/a2a-billing-model.md) — strategies, deployment decision tree, cost comparisons, config examples.
+
+**Key files:** `credits/usage/handler.py` (billing logic), `core/config/agent.py` (A2A billing settings), `realtime/events/app_events.py` (ModelUsageEvent schema), `billing/utils.py` (USD↔credit conversion).
 
 ## External Services & Configuration
 
@@ -544,6 +592,77 @@ __all__ = [
 1. Create `workers/cron/jobs/{job_name}.py` with async runner
 2. Add `CronJobSpec` to `workers/cron/cron_jobs.py::CRON_JOBS`
 
+### Sandbox Cleanup Pipeline
+
+The sandbox cleanup loop (`agents/sandboxes/orphan_cleanup.py`) runs every 60 seconds (configurable) via `run_orphan_cleanup_loop()` with 6 stages executed in order:
+
+1. **`_soft_delete_expired_sessions`** — Mark sessions with `delete_after <= now()` as `is_deleted=True`
+2. **`_cleanup_orphans` (R1+R2)** — Kill Docker containers for deleted sessions; mark sandbox DELETED **only if** container confirmed removed (R1); use per-sandbox DB session to prevent rollback cascades (R2)
+3. **`_pause_stale_sandboxes`** — Stop running containers idle >30 min (→ PAUSED status)
+4. **`_cleanup_docker_zombies` (R4)** — Remove Docker containers with no matching active sandbox DB record; 120s timeout, 5 min grace period
+5. **`_cleanup_orphaned_volumes` (R9)** — Remove Docker volumes with `ii-sandbox-workspace-` prefix and no matching active record or container
+6. **`_kill_timed_out_sandboxes` (R6)** — Stop containers where `timeout_at <= now()` (pauses to preserve state)
+
+**Key patterns:**
+- **R1 — Conditional state marking:** Never mark a sandbox DELETED until the Docker container is confirmed removed. If removal times out or fails, skip the sandbox and retry next sweep.
+- **R2 — Per-item DB isolation:** Phase 1 reads all candidates in a single DB session. Phase 2 processes each candidate in its own `get_db_session_local()` context with try/except. One failure doesn't roll back others.
+- **R6 — Persistent timeout:** `AgentSandbox.timeout_at` column persists the deadline across backend restarts. In-memory `asyncio.Task` provides best-effort fast path; the cleanup loop enforces the deadline as fallback.
+
+**Design docs:** [`sandbox-lifecycle-assessment.md`](docs/design-docs/sandbox-lifecycle-assessment.md), [`sandbox-accumulation-root-cause-analysis.md`](docs/design-docs/sandbox-accumulation-root-cause-analysis.md)
+
+### Docker Sandbox Local Mode
+
+When `SANDBOX_PROVIDER=docker` and `SANDBOX_LOCAL_MODE=true`, sandboxes run as local Docker containers instead of E2B cloud instances.
+
+**Container hardening (applied in `agents/sandboxes/docker.py`):**
+- `read_only=True` with tmpfs mounts (`/tmp` 512 MB, `/var/tmp` 256 MB, `/run` 64 MB, `/home/user` 1 GB uid=1001)
+- `cap_drop=ALL`, selective `cap_add` (CHOWN, SETUID, SETGID, DAC_OVERRIDE, FOWNER)
+- `no-new-privileges`, `mem_limit=3 GB`, `pids_limit=512`
+- Docker socket auto-detection: `DOCKER_SOCK_PATH` env var, or auto-probes `/var/run/docker.sock`, Colima, OrbStack, Podman sockets
+
+**Sandbox filesystem and file ownership — see [`docs/design-docs/sandbox-filesystem-design.md`](docs/design-docs/sandbox-filesystem-design.md) for the full specification. Rules in brief:**
+
+1. **`/workspace` is the only valid destination for host-mediated uploads.** `write_file` / `upload_file` use Docker's `put_archive` API, which rejects writes outside the writable bind-mount on a `read_only=True` container (moby/moby#42333) — including `/tmp`, even though in-container writes to `/tmp` succeed. Stage all backend-uploaded files under `/workspace`.
+
+2. **`/workspace` is owned by `user:user 755` (uid=1001, gid=1001).** Every `put_archive` tar entry has `uid=1001, gid=1001` baked in (`_SANDBOX_USER_UID`/`_SANDBOX_USER_GID` in `docker.py`). All `run_command` calls default to the sandbox user. **Never use `user="root"` for operations under `/workspace`** — root-owned paths break subsequent user-mode cleanup (producing `Permission denied` on `rm`).
+
+3. **`user="root"` is reserved for system-level commands** (apt, system services, operations outside `/workspace`). Skill deployment, file staging, and cleanup must never escalate to root.
+
+**Orphan cleanup distributed lock:** `run_orphan_cleanup_loop` acquires a Redis advisory lock (`sandbox:cleanup:lock`, 5-min TTL, `SET NX EX`) so only one backend instance runs cleanup at a time.
+
+**Graceful shutdown:** On SIGTERM, the backend waits 10s for in-flight sandbox turns to complete before shutting down Redis/DB connections.
+
+### A2A Inner Loop
+
+The A2A inner loop replaces direct LLM calls with an adapter server that proxies the A2A protocol to a backend CLI (Copilot, Claude Code, Codex). **Two deployment topologies, do not confuse them:**
+
+- **Agent A2A** — adapter runs **inside each sandbox container** (started by `docker/sandbox/start-services.sh`). Each agent run owns a sandbox and resolves its adapter URL via `sandbox.expose_port(18100)`. Per-session, per-sandbox.
+- **Chat A2A** — chat sessions do NOT own sandboxes. The adapter runs as a **standalone sidecar** (`a2a-adapter` service in `docker/docker-compose.local.yaml`) and the backend resolves its URL **only** from `AGENT_A2A_AGENT_URL`. Sandbox-independent by design.
+
+```
+ChatService → A2AChatTurnLoop.run() → IIAgentA2AClient.astream()
+                                    → ChatA2AEventTranslator.translate()
+                                    → tool bridging via ChatToolService
+                                    → billing via pubsub (billing_backend="a2a:<backend>")
+```
+
+**Configuration:** Set `AGENT_CHAT_INNER_LOOP_MODE=a2a` to enable. Backends: `copilot` (default), `claude-code`, `codex`, `simulate` (mock).
+
+**Two failure classes (do not conflate):**
+
+- **Misconfig** — `AGENT_A2A_AGENT_URL` unset while chat A2A enabled. With `AGENT_A2A_CHAT_STRICT=true` (default since 2026-04-18) the backend **crashes at startup** with an actionable error. This is intentional: silent fallback to native LLM has historically caused unexpected 10×+ provider charges. With strict=false the backend logs ERROR and falls back to native (legacy back-compat only).
+- **Runtime A2A failure** — circuit breaker open, rate-limit `session.error`, transport error mid-stream. With `AGENT_A2A_FALLBACK_TO_NATIVE=true` (default) chat transparently falls back to direct LLM for that turn. No double-billing because A2A billing only fires after stream completion.
+
+The two settings gate orthogonal concerns: `a2a_chat_strict` covers "did the operator configure me?"; `a2a_fallback_to_native` covers "should I tolerate runtime failures?".
+
+**Optional dependencies:** `a2a-sdk` and `github-copilot-sdk` are in `[project.optional-dependencies.a2a]`. Install with `pip install -e ".[a2a]"`. The sandbox image and the `a2a-adapter` sidecar always have them (via `docker/sandbox/pyproject.toml`).
+
+**Startup validation (lifespan step 8b):** When `inner_loop_mode=a2a` or `chat_inner_loop_mode=a2a`, the backend validates that `a2a-sdk` is importable, logs active backend + required credentials, and — for chat A2A under strict mode — raises `RuntimeError` if `AGENT_A2A_AGENT_URL` is unset.
+
+**Key files:** `chat/application/a2a_turn_loop_service.py` (turn loop), `integrations/a2a/as_client.py` (HTTP streaming client), `integrations/a2a/circuit_breaker.py`, `integrations/a2a/adapter_server.py` (adapter binary, used by both sidecar and per-sandbox), `integrations/a2a/exceptions.py` (`A2AAdapterUnavailableError` → HTTP 503), `chat/api/dependencies.py` (DI wiring; **must not** probe Docker / discover sandboxes — enforced by `test_no_docker_socket_probing`).
+
+**Deployment contract:** [docs/design-docs/chat-a2a-adapter-sidecar.md](docs/design-docs/chat-a2a-adapter-sidecar.md)
+
 ### Import Patterns
 
 ```python
@@ -583,7 +702,7 @@ curl http://localhost:8000/health
 | `core/config/settings.py` | Pydantic settings (`get_settings` singleton) |
 | `core/db/base.py` | SQLAlchemy Base (UUID PK, DateTime timestamps), TimestampColumn, BaseRepository |
 | `core/redis/` | Redis client, cache, pubsub, lock, cancel management |
-| `core/storage/` | File storage abstraction (GCS, local) + path resolver |
+| `core/storage/` | File storage abstraction (GCS, MinIO) + path resolver |
 | `auth/dependencies.py` | CurrentUser, DBSession, get_current_user |
 | `tasks/` | Canonical domain implementation (RunTask, TaskLog, types, schemas, exceptions) |
 | `realtime/handlers/factory.py` | CommandHandlerFactory -- 21 Socket.IO command handlers |

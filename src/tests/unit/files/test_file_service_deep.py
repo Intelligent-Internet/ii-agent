@@ -213,6 +213,7 @@ def _make_service(
             file_upload_bucket_name="uploads-bucket",
             file_upload_size_limit=1_000_000,
             signed_url_ttl_seconds=3600,
+            serve_base_url=None,
         )
     )
     if storage is None:

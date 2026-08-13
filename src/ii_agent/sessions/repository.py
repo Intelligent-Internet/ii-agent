@@ -3,7 +3,7 @@
 import uuid
 from typing import Optional, List
 
-from sqlalchemy import desc, func, select
+from sqlalchemy import desc, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -146,3 +146,14 @@ class SessionRepository(BaseRepository[Session]):
             )
         )
         return list(result.scalars().all())
+
+    # ==================== Update Operations ====================
+
+    async def update_api_version(
+        self, db: AsyncSession, session_id: uuid.UUID, api_version: str
+    ) -> None:
+        """Update the api_version of a session."""
+        await db.execute(
+            update(Session).where(Session.id == session_id).values(api_version=api_version)
+        )
+        await db.flush()

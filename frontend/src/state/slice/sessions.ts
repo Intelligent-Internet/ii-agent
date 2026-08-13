@@ -113,6 +113,45 @@ export const fetchProjects = createAsyncThunk(
     }
 )
 
+// Fetch ALL remaining project pages in one go.
+//
+// IMPORTANT: the backend computes offset = (page - 1) * per_page, so the
+// `limit` used here MUST match the `limit` used by the initial fetch and the
+// infinite-scroll loader (both use state.sessions.limit, default 20).
+// Using a larger batchLimit here would jump the offset past already-loaded
+// rows and silently skip every session beyond the first page. (Bug history:
+// hardcoding batchLimit=100 caused all sessions past position 20 to vanish
+// from the sidebar after clicking "Load all projects".)
+export const fetchAllRemainingProjects = createAsyncThunk(
+    'sessions/fetchAllRemainingProjects',
+    async (_, { getState }) => {
+        const state = getState() as { sessions: SessionsState }
+        const batchLimit = state.sessions.limit
+        let currentPage = state.sessions.projects.page
+        const allSessions: ISession[] = []
+
+        // eslint-disable-next-line no-constant-condition
+        while (true) {
+            currentPage += 1
+            const result = await store.dispatch(
+                sessionApi.endpoints.getSessions.initiate(
+                    {
+                        page: currentPage,
+                        limit: batchLimit,
+                        session_type: 'agent'
+                    },
+                    { forceRefetch: true, subscribe: false }
+                )
+            )
+            const batch = result.data || []
+            allSessions.push(...batch)
+            if (batch.length < batchLimit) break
+        }
+
+        return { sessions: allSessions, lastPage: currentPage }
+    }
+)
+
 export const deleteSession = createAsyncThunk(
     'sessions/deleteSession',
     async (sessionId: string) => {
@@ -374,6 +413,22 @@ const sessionsSlice = createSlice({
                     newSessions.length === (action.meta.arg?.limit || 20)
             })
             .addCase(fetchProjects.rejected, (state) => {
+                state.projects.isLoading = false
+            })
+            // Fetch all remaining projects
+            .addCase(fetchAllRemainingProjects.pending, (state) => {
+                state.projects.isLoading = true
+            })
+            .addCase(fetchAllRemainingProjects.fulfilled, (state, action) => {
+                state.projects.isLoading = false
+                state.projects.sessions = [
+                    ...state.projects.sessions,
+                    ...action.payload.sessions
+                ]
+                state.projects.page = action.payload.lastPage
+                state.projects.hasMore = false
+            })
+            .addCase(fetchAllRemainingProjects.rejected, (state) => {
                 state.projects.isLoading = false
             })
     }

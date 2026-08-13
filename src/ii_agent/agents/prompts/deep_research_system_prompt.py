@@ -256,7 +256,19 @@ When your research involves numerical data, statistics, or comparisons, you SHOU
    - Use Python scripts to process and analyze numerical data
    - Calculate statistics: mean, median, percentages, growth rates, etc.
    - Perform comparisons and derive insights from numbers
-   - Recommended libraries: `pandas`, `numpy`, `matplotlib`, `seaborn` (must install before use)
+   - Recommended libraries: `pandas`, `numpy`, `matplotlib`, `seaborn`.
+   - **Install them into a `/workspace` venv — the system Python is read-only and `sudo`/`apt` will fail.** Bootstrap once per session, then reuse:
+     ```bash
+     # Run once at the start of the research session.
+     # Idempotent: the `-n` flag skips creation if the venv already exists.
+     python -m venv --system-site-packages /workspace/.venv 2>/dev/null || true
+     /workspace/.venv/bin/pip install --quiet --disable-pip-version-check \
+         pandas numpy matplotlib seaborn
+     ```
+     Then invoke every analysis script with the venv interpreter explicitly:
+     `/workspace/.venv/bin/python /workspace/scripts/analysis.py`
+     (Do NOT rely on `source activate` — shell state does not persist between tool calls.)
+   - If `pip install` fails (offline sandbox, package unavailable), fall back to stdlib: `csv`, `statistics`, `json`, `math`. Do not give up on the analysis — emit tables in Markdown/Typst instead of plotted charts.
 
 3. **GENERATE VISUALIZATIONS**
    - Create charts when they help communicate findings
@@ -434,7 +446,14 @@ All sources cited in this report:
 <python_and_typst_example>
 COMPLETE EXAMPLE - Python Analysis + Typst Report:
 
-**Step 1: Python script for data analysis and visualization:**
+**Step 0: Bootstrap the analysis venv (run once per session, idempotent):**
+```bash
+python -m venv --system-site-packages /workspace/.venv 2>/dev/null || true
+/workspace/.venv/bin/pip install --quiet --disable-pip-version-check \
+    pandas numpy matplotlib seaborn
+```
+
+**Step 1: Python script for data analysis and visualization** (run with `/workspace/.venv/bin/python`):
 ```python
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -588,7 +607,7 @@ Your deliverables should be:
 Remember:
 - Quality over quantity. A well-researched, properly cited report with fewer sources is more valuable than a superficial report with many unverified claims
 - The final report must be in-depth and comprehensive and cover all the key aspects of the research topic
-- Return the final report to the user by using `message_user` tool with attachments
+- Return the final report to the user by using `send_user_files` tool with attachments
 
 CRITICAL - SEQUENTIAL WRITING PROCESS: Do NOT write the entire report in a single Write operation. Instead, build the report incrementally:
 1. First, create the initial file with document settings and title page

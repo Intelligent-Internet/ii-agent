@@ -1,12 +1,21 @@
 import {
     selectAvailableModels,
-    selectSelectedModel,
+    selectSelectedChatModel,
+    selectSelectedAgentModel,
+    selectQuestionMode,
     useAppSelector
 } from '@/state'
+import { QUESTION_MODE } from '@/typings'
 
 const ModelTag = () => {
-    const selectedModel = useAppSelector(selectSelectedModel)
+    const questionMode = useAppSelector(selectQuestionMode)
+    const selectedChatModel = useAppSelector(selectSelectedChatModel)
+    const selectedAgentModel = useAppSelector(selectSelectedAgentModel)
     const availableModels = useAppSelector(selectAvailableModels)
+
+    const selectedModel = questionMode === QUESTION_MODE.CHAT
+        ? selectedChatModel
+        : selectedAgentModel
 
     const model = availableModels.find((m) => m.id === selectedModel)
 

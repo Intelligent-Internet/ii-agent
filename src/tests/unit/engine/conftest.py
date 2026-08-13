@@ -13,6 +13,29 @@ from __future__ import annotations
 import sys
 from unittest.mock import MagicMock
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _reset_host_monitor_state():
+    """Reset the process-global host-monitor state between tests.
+
+    Several tests (host_monitor + host_monitor_integration + sandbox
+    service tests) mutate ``host_monitor`` module-level state via
+    ``set_host_state(...)``. Without a teardown the OK/WARN/CRIT value
+    leaks across tests and creates ordering-dependent failures.
+    """
+    yield
+    try:
+        from ii_agent.agents.sandboxes import host_monitor as _hm
+
+        _hm.set_host_state(_hm.HostHealthState.OK, None)
+    except Exception:
+        # If the module isn't importable in some context, the leak is
+        # harmless because no other test could have set state either.
+        pass
+
+
 # Ensure google.genai.interactions has the InteractionEvent attribute
 # that the engine/runtime source code expects
 try:

@@ -49,6 +49,7 @@ from ii_agent.agents.exceptions import (
 )
 from ii_agent.files.media import Audio, File, Image, Video
 from ii_agent.agents.models.base import Model
+from ii_agent.agents.inner_loop import InnerLoopStrategy, NativeInnerLoop
 from ii_agent.agents.models.message import Message
 from ii_agent.agents.models.metrics import Metrics
 from ii_agent.agents.models.response import ModelResponse, ModelResponseEvent, ToolExecution
@@ -122,12 +123,40 @@ from ii_agent.agents.tools.base import AgentAsTool, BaseAgentTool
 from ii_agent.core.logger import logger
 
 
+def _agent_kind_from_name(name: str | None) -> str | None:
+    """Return the ``AgentType`` value encoded in the agent's ``name``, if any.
+
+    The factory names primary agents as ``"{AgentType.value}_agent"``
+    (see ``agents/factory/agent.py``).  Subagent / tool-owned agents use
+    different names (e.g. ``task_agent``, connector tool names) which must
+    NOT be treated as ``AgentType`` values.  This helper strips the
+    ``_agent`` suffix and validates the candidate against the enum — only
+    recognised ``AgentType`` values are returned, everything else maps to
+    ``None``.
+
+    Used by ``_ensure_sandbox_for_inner_loop`` to thread ``agent_kind`` into
+    sandbox metadata so the Docker provider can apply the long-horizon
+    adapter timeout to research-class agents.
+    """
+    if not name or not name.endswith("_agent"):
+        return None
+    candidate = name[: -len("_agent")]
+    # Lazy import avoids a circular import at module load time.
+    from ii_agent.agents.types import AgentType
+
+    try:
+        return AgentType(candidate).value
+    except ValueError:
+        return None
+
+
 @dataclass
 class IIAgent:
     user_id: str
     session_id: str
     model: Model
     name: str = None
+    inner_loop_strategy: Optional[InnerLoopStrategy] = None
 
     _internal_lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False, repr=False)
     _sandbox: Optional[Sandbox] = None
@@ -207,6 +236,9 @@ class IIAgent:
     role: Optional[str] = None
 
     def __post_init__(self) -> None:
+        if self.inner_loop_strategy is None:
+            self.inner_loop_strategy = NativeInnerLoop()
+
         # Ensure tools is a list
         if self.tools is not None:
             self.tools = list(self.tools)
@@ -458,6 +490,111 @@ class IIAgent:
     def sandbox(self, value: Optional[Sandbox]) -> None:
         """Set the sandbox."""
         self._sandbox = value
+        # Wire the sandbox into a deferred A2A inner loop strategy so the
+        # url_factory closure can resolve the adapter port at call time.
+        if value is not None and hasattr(self.inner_loop_strategy, "_sandbox_ref"):
+            self.inner_loop_strategy._sandbox_ref[0] = value
+
+    async def _ensure_sandbox_for_inner_loop(self) -> None:
+        """Eagerly initialise the sandbox for the A2A inner-loop adapter.
+
+        Uses the same double-checked locking pattern as
+        :meth:`BaseSandboxTool._ensure_sandbox` so that concurrent calls
+        (e.g. from tool pre-hooks) never create a second sandbox.
+
+        After the sandbox container is running the method polls the A2A
+        adapter ``/health`` endpoint (up to ~15 s) to avoid an immediate
+        ECONNREFUSED on the first ``aresponse_stream`` call.
+        """
+        import uuid as _uuid
+
+        from ii_agent.core.container import get_app_container
+        from ii_agent.core.db.base import get_db_session_local
+
+        if self._sandbox is not None:
+            return
+
+        async with self._internal_lock:
+            if self._sandbox is not None:
+                return
+
+            logger.info(
+                "Eagerly initializing sandbox for A2A inner loop (session={})",
+                self.session_id,
+            )
+            sandbox_service = get_app_container().sandbox_service
+            # Derive agent_kind from the agent name (e.g. "deep_research_agent"
+            # -> "deep_research") so the sandbox provider can apply the
+            # long-horizon adapter timeout for research-class agents.
+            agent_kind = _agent_kind_from_name(self.name)
+            sandbox_metadata = {"agent_kind": agent_kind} if agent_kind else None
+            async with get_db_session_local() as db:
+                sandbox = await sandbox_service.init_sandbox(
+                    db,
+                    session_id=_uuid.UUID(self.session_id),
+                    user_id=_uuid.UUID(self.user_id),
+                    metadata=sandbox_metadata,
+                )
+
+            self.sandbox = sandbox  # triggers setter → wires _sandbox_ref[0]
+            self._sandbox_was_initialized = True
+
+            # Wait for the A2A adapter to become healthy inside the sandbox.
+            await self._wait_for_a2a_adapter(sandbox)
+
+    async def _wait_for_a2a_adapter(self, sandbox: Sandbox) -> None:
+        """Poll the A2A adapter ``/health`` endpoint until it responds.
+
+        Retries with exponential back-off (0.5 s → 1 s → 2 s → 4 s …) for up
+        to ``_A2A_HEALTH_TIMEOUT`` seconds total.  If the adapter never becomes
+        healthy a warning is logged but execution continues — the circuit
+        breaker will handle genuine failures downstream.
+        """
+        import httpx
+
+        from ii_agent.agents.sandboxes.docker import ADAPTER_CONTAINER_PORT
+
+        _A2A_HEALTH_TIMEOUT = 20.0  # seconds
+        _A2A_HEALTH_INTERVAL = 0.5  # initial back-off
+
+        try:
+            # The health check runs from the backend container, so prefer the
+            # sandbox's internal Docker-network address rather than a host-mapped
+            # port that may not be reachable from inside the container.
+            url = await sandbox.expose_port(ADAPTER_CONTAINER_PORT, external=False)
+        except Exception:
+            logger.warning(
+                "Could not resolve A2A adapter port for sandbox; "
+                "skipping health check (session={})",
+                self.session_id,
+            )
+            return
+
+        health_url = f"{url}/health"
+        deadline = asyncio.get_event_loop().time() + _A2A_HEALTH_TIMEOUT
+        interval = _A2A_HEALTH_INTERVAL
+
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            while asyncio.get_event_loop().time() < deadline:
+                try:
+                    resp = await client.get(health_url)
+                    if resp.status_code < 500:
+                        logger.info(
+                            "A2A adapter healthy (session={}, status={})",
+                            self.session_id,
+                            resp.status_code,
+                        )
+                        return
+                except (httpx.ConnectError, httpx.TimeoutException, httpx.ReadError):
+                    pass
+                await asyncio.sleep(interval)
+                interval = min(interval * 2, 4.0)
+
+        logger.warning(
+            "A2A adapter did not become healthy within {}s (session={})",
+            _A2A_HEALTH_TIMEOUT,
+            self.session_id,
+        )
 
     def _set_session_summary_manager(self) -> None:
         if self.session_summary_manager is None:
@@ -2322,17 +2459,32 @@ class IIAgent:
 
         model_response = ModelResponse(content="")
 
-        stream_model_response = True
+        strategy = self.inner_loop_strategy or NativeInnerLoop()
 
-        model_response_stream = self.model.aresponse_stream(
+        # Ensure sandbox is running before an A2A inner-loop call.
+        # The sandbox hosts the A2A adapter; without it the URL factory
+        # raises RuntimeError and poisons the circuit breaker.
+        if hasattr(strategy, "_sandbox_ref") and self._sandbox is None:
+            try:
+                await self._ensure_sandbox_for_inner_loop()
+            except Exception as exc:
+                logger.warning(
+                    "A2A sandbox init failed; falling back to native inner loop "
+                    "(session={}, error={!r})",
+                    self.session_id,
+                    exc,
+                )
+                strategy = NativeInnerLoop()
+
+        model_response_stream = strategy.aresponse_stream(
+            model=self.model,
             messages=run_messages.messages,
             response_format=response_format,
             tools=tools,
             tool_choice=self.tool_choice,
             tool_call_limit=self.tool_call_limit,
-            stream_model_response=stream_model_response,
             run_response=run_response,
-        )  # type: ignore
+        )
 
         async for model_response_event in model_response_stream:  # type: ignore
             if self._sandbox_was_initialized is True and self._sandbox:
@@ -2491,6 +2643,15 @@ class IIAgent:
                 events_to_skip=self.events_to_skip,  # type: ignore
                 store_events=self.store_events,
             )
+        elif not isinstance(model_response_event, ModelResponse):
+            # Non-RunOutputEvent, non-ModelResponse events (e.g. CompactionAuthorityEvent)
+            # are bubbled up as-is without attempting to access ModelResponse attributes.
+            yield handle_event(  # type: ignore
+                model_response_event,  # type: ignore
+                run_response,
+                events_to_skip=self.events_to_skip,  # type: ignore
+                store_events=self.store_events,
+            )
         else:
             model_response_event = cast(ModelResponse, model_response_event)
 
@@ -2514,8 +2675,10 @@ class IIAgent:
             # If the model response is an assistant_response, yield a RunOutput
             if model_response_event.event == ModelResponseEvent.assistant_response.value:
                 if model_response_event.delta_status == "reasoning_started" and stream_events:
-                    # Reset reasoning content for new cycle
-                    model_response.reasoning_content = model_response_event.reasoning_content
+                    # Reset reasoning content for new cycle.
+                    # Use empty string so the accumulation block below handles
+                    # the first delta without doubling it.
+                    model_response.reasoning_content = ""
 
                     yield handle_event(  # type: ignore
                         create_reasoning_started_event(from_run_response=run_response),
@@ -2540,6 +2703,19 @@ class IIAgent:
                             model_response.reasoning_content or ""
                         ) + model_response_event.reasoning_content
                         run_response.reasoning_content = model_response.reasoning_content
+                    elif (
+                        model_response_event.reasoning_content is not None
+                        and not model_response_event.is_delta
+                    ):
+                        # Non-delta (e.g. A2A reasoning_done): replace rather
+                        # than append so we don't double the accumulated text.
+                        # If deltas already built the content, keep the richer
+                        # accumulated version; otherwise accept the replacement.
+                        if not model_response.reasoning_content:
+                            model_response.reasoning_content = (
+                                model_response_event.reasoning_content
+                            )
+                            run_response.reasoning_content = model_response.reasoning_content
 
                     if (
                         model_response_event.redacted_reasoning_content is not None
@@ -3571,10 +3747,10 @@ class IIAgent:
         Args:
             tool: The tool execution to update with user input
         """
-        for field in tool.user_input_schema or []:
+        for input_field in tool.user_input_schema or []:
             if not tool.tool_args:
                 tool.tool_args = {}
-            tool.tool_args[field.name] = field.value
+            tool.tool_args[input_field.name] = input_field.value
 
     def _handle_get_user_input_tool_update(self, run_messages: RunMessages, tool: ToolExecution):
         """Handle the special get_user_input tool update.

@@ -313,14 +313,6 @@ class FileService:
             if not file_data.url:
                 continue
 
-            files.append(
-                MediaFile(
-                    id=str(file_data.id),
-                    url=file_data.url,
-                    filename=file_data.name,
-                )
-            )
-
             # Detect images via centralized AssetType detection
             detected = AssetType.from_content_type(file_data.content_type)
             mime_type = file_data.content_type
@@ -332,6 +324,14 @@ class FileService:
 
             if detected.is_image:
                 images.append(MediaImage(url=file_data.url, mime_type=mime_type))
+            else:
+                files.append(
+                    MediaFile(
+                        id=str(file_data.id),
+                        url=file_data.url,
+                        filename=file_data.name,
+                    )
+                )
 
         return images, files
 
@@ -358,7 +358,14 @@ class FileService:
         ext = os.path.splitext(file_name)[1].lstrip(".") or "bin"
         asset_type = AssetType.from_content_type(content_type)
         blob_name = path_resolver.user_file(str(user_id), asset_type, str(file_id), ext)
-        signed_url = await self._storage.signed_upload_url(blob_name, content_type)
+
+        # When serve_base_url is set, route uploads through the backend proxy
+        # instead of directly to the storage provider (which may be internal).
+        serve_base = self._config.storage.serve_base_url
+        if serve_base:
+            upload_url = f"{serve_base.rstrip('/')}/storage/upload/{file_id}"
+        else:
+            upload_url = await self._storage.signed_upload_url(blob_name, content_type)
 
         await self._file_repo.create_asset(
             db,
@@ -373,7 +380,7 @@ class FileService:
             upload_status=UploadStatus.PENDING,
         )
 
-        return GenerateUploadUrlResponse(id=str(file_id), upload_url=signed_url)
+        return GenerateUploadUrlResponse(id=str(file_id), upload_url=upload_url)
 
     async def complete_upload(
         self,

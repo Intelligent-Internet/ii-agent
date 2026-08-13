@@ -12,8 +12,8 @@ EXPECTED_ROUTES = {
     ("POST", "/chat/conversations"),
     ("POST", "/chat/conversations/{session_id}/stop"),
     ("GET", "/chat/conversations/{session_id}"),
-    ("GET", "/chat/conversations/{session_id}/public"),
-    ("DELETE", "/chat/conversation/{session_id}"),
+    ("DELETE", "/chat/conversations/{session_id}/messages/{message_id}"),
+    ("DELETE", "/chat/conversations/{session_id}"),
 }
 
 
@@ -22,8 +22,4 @@ def test_chat_router_routes_registered():
 
 
 def test_chat_router_auth_contract():
-    assert_auth_contract(
-        router,
-        protected=EXPECTED_ROUTES - {("GET", "/chat/conversations/{session_id}/public")},
-        public={("GET", "/chat/conversations/{session_id}/public")},
-    )
+    assert_auth_contract(router, protected=EXPECTED_ROUTES)

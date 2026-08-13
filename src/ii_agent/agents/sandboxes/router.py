@@ -65,7 +65,7 @@ async def preview_sandbox_file(
     try:
         sandbox = await sandbox_service.get_sandbox_for_session(db, session_id)
     except Exception as exc:
-        logger.warning("Failed to connect to sandbox for preview session %s: %s", session_id, exc)
+        logger.warning(f"Failed to connect to sandbox for preview session {session_id}: {exc}")
         raise ServiceUnavailableError("Failed to connect to the sandbox for this session") from exc
     if not sandbox:
         raise ServiceUnavailableError("No active sandbox is available for this session")

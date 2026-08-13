@@ -4,9 +4,8 @@ import asyncio
 import logging
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Any, AsyncIterator, Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, AsyncIterator, Dict, List, Optional, Tuple, Union
 
-import anyio
 import openai
 from openai.types import FileObject
 from openai.types.containers import FileRetrieveResponse
@@ -118,7 +117,7 @@ class FileResponseObject(BaseModel):
 
     id: str
     provider_file_id: str
-    provider: Literal["openai", "anthropic"]
+    provider: str
     content_type: str
     file_name: str
     file_size: Optional[int] = 0
@@ -264,9 +263,7 @@ class OpenAIProvider(LLMClient):
     async def _upload_single_file(self, file_info: FileAsset) -> FileResponseObject:
         """Upload a single file to OpenAI."""
         try:
-            file_content = await anyio.to_thread.run_sync(
-                get_storage().read, file_info.storage_path
-            )
+            file_content = await get_storage().read(file_info.storage_path)
             try:
                 file_obj = await self.client.files.create(
                     file=(
@@ -284,7 +281,7 @@ class OpenAIProvider(LLMClient):
                 file_content.close()
 
             return FileResponseObject(
-                id=file_info.id,
+                id=str(file_info.id),
                 provider_file_id=file_obj.id,
                 provider=Provider.OPENAI.value,
                 raw_file_object=file_obj,
@@ -710,7 +707,7 @@ class OpenAIProvider(LLMClient):
 
                     # Create FileResponseObject
                     file_response = FileResponseObject(
-                        id=file_uuid,
+                        id=str(file_uuid),
                         provider_file_id=file_id,
                         provider=Provider.OPENAI.value,
                         content_type=content_type,
@@ -756,7 +753,7 @@ class OpenAIProvider(LLMClient):
             file_objects = []
             for provider_file, file_upload in result.all():
                 file_obj = FileResponseObject(
-                    id=provider_file.file_id,
+                    id=str(provider_file.file_id),
                     provider_file_id=provider_file.provider_file_id,
                     provider=provider_file.provider,
                     content_type=file_upload.content_type,
@@ -881,6 +878,9 @@ class OpenAIProvider(LLMClient):
             )
 
         # Build params using Pydantic model
+        reasoning_config = (
+            {"effort": "medium", "summary": "auto"} if self.llm_config.cot_model else None
+        )
         params = OpenAIResponseParams(
             model=self.model_name,
             input=user_messages if user_messages else [],
@@ -888,7 +888,7 @@ class OpenAIProvider(LLMClient):
             tools=openai_tools,
             stream=False,
             max_output_tokens=openai_opts.get("max_output_tokens"),
-            reasoning={"effort": "medium", "summary": "auto"},
+            reasoning=reasoning_config,
         )
 
         response: Response = await self.client.responses.create(**params.to_dict())
@@ -1015,6 +1015,9 @@ class OpenAIProvider(LLMClient):
         )
 
         # Build params using Pydantic model
+        reasoning_config = (
+            {"effort": "medium", "summary": "auto"} if self.llm_config.cot_model else None
+        )
         params = OpenAIResponseParams(
             model=self.model_name,
             input=openai_messages,
@@ -1022,7 +1025,7 @@ class OpenAIProvider(LLMClient):
             tools=openai_tools,
             stream=True,
             max_output_tokens=openai_opts.get("max_output_tokens"),
-            reasoning={"effort": "medium", "summary": "auto"},
+            reasoning=reasoning_config,
             previous_response_id=previous_response_id,
         )
 

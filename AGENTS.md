@@ -54,7 +54,7 @@ src/ii_agent/
 │   ├── llm/                # LLM billing service, execution service, base client
 │   ├── redis/              # Redis client, cache, pubsub, lock, cancel management
 │   ├── secrets/            # GCP Secret Manager integration
-│   ├── storage/            # File storage abstraction (GCS, local)
+│   ├── storage/            # File storage abstraction (GCS, MinIO)
 │   ├── container.py        # ServiceContainer for complex dependency graphs
 │   └── dependencies.py     # DBSession, SettingsDep (shared Dep aliases)
 │
@@ -72,7 +72,7 @@ src/ii_agent/
 │   └── webhook_handler.py  # Stripe webhook processing
 │
 ├── sessions/               # Chat session management
-│   ├── models.py           # Session model, SessionStateEnum, AppKind
+│   ├── models.py           # Session model, SessionStateEnum, AppKind, delete_after
 │   ├── service.py          # Session CRUD, state transitions
 │   ├── fork_service.py     # Session forking
 │   ├── title_service.py    # Auto-title generation
@@ -165,7 +165,7 @@ These `core/` modules are available to all domains:
 | `core/config/` | Application settings | `Settings`, `get_settings()` |
 | `core/db/` | Database connection | `Base`, `TimestampColumn`, `get_db_session_local()` |
 | `core/redis/` | Caching, pubsub, locks | `redis_client`, `EntityCache`, `AsyncIOPubSub` |
-| `core/storage/` | File storage (GCS) | `BaseStorage`, `storage`, `media_storage` |
+| `core/storage/` | File storage (GCS, MinIO) | `BaseStorage`, `storage`, `media_storage` |
 | `core/llm/` | LLM billing & execution | `LLMBillingService`, `LLMExecutionService` |
 | `core/secrets/` | Secret management | GCP Secret Manager integration |
 | `core/dependencies.py` | Shared Dep aliases | `DBSession`, `SettingsDep` |
@@ -226,6 +226,9 @@ WebSocket (Socket.IO)
 | slide_design | `/slides/design` | Slide design |
 | nano_banana | `/slides/nano-banana` | Nano banana slides |
 | health | `/health` | Health check |
+| storage_proxy | `/storage` | Storage proxy (local deploy) |
+| slide_assets | `/files/slides/assets` | Slide assets |
+| sandbox_files | `/sandbox-files` | Sandbox file preview |
 
 ### Key Design Decisions
 
@@ -233,8 +236,11 @@ WebSocket (Socket.IO)
 - **Dep aliases everywhere**: FastAPI dependency injection uses `Annotated[T, Depends(factory)]` pattern exclusively.
 - **Redis optional**: All Redis usage has in-memory fallbacks for single-worker deployments.
 - **Billing via reservations**: All billable work uses reserve -> settle -> release, never direct deductions.
-- **GCS for storage**: File uploads, media, and slides use Google Cloud Storage with signed URLs.
-- **E2B for sandboxes**: Code execution happens in isolated E2B sandbox environments.
+- **GCS/MinIO for storage**: File uploads, media, and slides use Google Cloud Storage (prod) or MinIO (local Docker) with signed or proxied URLs.
+- **E2B/Docker for sandboxes**: Code execution happens in isolated E2B (cloud) or Docker (local) sandbox environments. Docker sandboxes use `read_only=True` + tmpfs. File ownership rules: `/workspace` is `user:user 755` (uid=1001); **never use `user="root"` for operations under `/workspace`**. All host-mediated uploads (`write_file`/`put_archive`) must target `/workspace`, not `/tmp`. See [`docs/design-docs/sandbox-filesystem-design.md`](docs/design-docs/sandbox-filesystem-design.md).
+- **A2A optional extras**: `a2a-sdk` and `github-copilot-sdk` are optional deps (`pip install -e ".[a2a]"`). Backend runs without them; adapter server inside sandbox always has them.
+- **Chat A2A is sandbox-independent**: When `AGENT_CHAT_INNER_LOOP_MODE=a2a`, set `AGENT_A2A_AGENT_URL` to a standalone adapter (the local Docker stack ships an `a2a-adapter` sidecar at `http://a2a-adapter:18100`). With `AGENT_A2A_CHAT_STRICT=true` (default) a missing URL **crashes the backend at startup** — silent native-LLM fallback has historically cost real money. See [docs/design-docs/chat-a2a-adapter-sidecar.md](docs/design-docs/chat-a2a-adapter-sidecar.md).
+- **A2A fallback**: Genuine runtime A2A failures (circuit breaker open, rate-limit `session.error`, transport error) transparently fall back to native LLM when `AGENT_A2A_FALLBACK_TO_NATIVE=true` (default). No double-billing. Misconfig is gated separately by `AGENT_A2A_CHAT_STRICT`.
 
 ## Where to Look
 
@@ -249,6 +255,7 @@ WebSocket (Socket.IO)
 | Understand auth flow | [`docs/SECURITY.md`](docs/SECURITY.md) |
 | Work on WebSocket events | [`docs/FRONTEND.md`](docs/FRONTEND.md) |
 | Review design decisions | [`docs/design-docs/`](docs/design-docs/index.md) |
+| Sandbox file ownership & write paths | [`docs/design-docs/sandbox-filesystem-design.md`](docs/design-docs/sandbox-filesystem-design.md) |
 | Plan multi-step work | [`docs/PLANS.md`](docs/PLANS.md) |
 | Check code quality | [`docs/QUALITY_SCORE.md`](docs/QUALITY_SCORE.md) |
 | Understand the database | [`docs/generated/db-schema.md`](docs/generated/db-schema.md) |

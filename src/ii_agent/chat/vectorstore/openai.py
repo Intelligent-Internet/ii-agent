@@ -7,7 +7,6 @@ from functools import lru_cache
 from typing import Any, Optional
 import uuid
 
-import anyio
 from openai import AsyncOpenAI
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -126,10 +125,8 @@ class OpenAIVectorStore(VectorStore):
                 logger.error(f"File {file_id} not found in database")
                 return 0
 
-            # Read file from storage (blocking operation, run in thread)
-            file_content = await anyio.to_thread.run_sync(
-                get_storage().read, file_upload.storage_path
-            )
+            # Read file from storage
+            file_content = await get_storage().read(file_upload.storage_path)
             if not file_content:
                 logger.error(f"Failed to read file {file_id} from storage")
                 return False
@@ -209,10 +206,8 @@ class OpenAIVectorStore(VectorStore):
                     )
                     continue
 
-                # Read file from storage (blocking operation, run in thread)
-                file_content = await anyio.to_thread.run_sync(
-                    get_storage().read, file_upload.storage_path
-                )
+                # Read file from storage
+                file_content = await get_storage().read(file_upload.storage_path)
                 if not file_content:
                     logger.warning(f"Failed to read file {file_upload.id} from storage, skipping")
                     continue

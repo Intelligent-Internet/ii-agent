@@ -13,7 +13,6 @@ import uuid
 from pathlib import Path
 from typing import AsyncIterator, List, Literal, Optional, Dict, Any
 
-import anyio
 import anthropic
 from anthropic.types import (
     TextBlock,
@@ -94,7 +93,7 @@ class FileResponseObject(BaseModel):
 
     id: str
     provider_file_id: str
-    provider: Literal["openai", "anthropic"]
+    provider: str
     content_type: str
     file_name: str
     file_size: Optional[int] = 0
@@ -140,10 +139,8 @@ class AnthropicProvider(LLMClient):
             FileResponseObject with provider file ID, or None on failure
         """
         try:
-            # Read file from storage backend
-            file_content = await anyio.to_thread.run_sync(
-                get_storage().read, file_info.storage_path
-            )
+            # Read file from storage backend (async method)
+            file_content = await get_storage().read(file_info.storage_path)
 
             # Anthropic SDK requires a Path object, so write to temp file
             with tempfile.NamedTemporaryFile(delete=False, suffix=f"_{file_info.file_name}") as tmp:
@@ -160,7 +157,7 @@ class AnthropicProvider(LLMClient):
                     raw_file_obj = uploaded_file.model_dump(mode="json")
 
                 return FileResponseObject(
-                    id=file_info.id,
+                    id=str(file_info.id),
                     provider_file_id=uploaded_file.id,
                     provider=Provider.ANTHROPIC.value,
                     content_type=file_info.content_type,
@@ -257,7 +254,7 @@ class AnthropicProvider(LLMClient):
                 if file_upload:
                     all_file_responses.append(
                         FileResponseObject(
-                            id=file_id,
+                            id=str(file_id),
                             provider_file_id=pf.provider_file_id,
                             provider=Provider.ANTHROPIC.value,
                             content_type=file_upload.content_type,
@@ -349,12 +346,13 @@ class AnthropicProvider(LLMClient):
             and len(container_config["skills"]) > 0
         )
 
+        configured_max_tokens = (
+            anthropic_options.get("max_tokens", 8192) if anthropic_options else 8192
+        )
         params = {
             "model": self.model_name,
             "messages": anthropic_messages,
-            "max_tokens": (
-                anthropic_options.get("max_tokens", 8192) if anthropic_options else 8192
-            ),
+            "max_tokens": configured_max_tokens,
         }
 
         if has_skills:
@@ -384,12 +382,24 @@ class AnthropicProvider(LLMClient):
         # Add interleaved thinking beta header if using tools with extended thinking
         betas = []
         if enable_thinking:
-            # Extended thinking is not compatible with temperature modifications
-            # Minimum budget is 1,024 tokens, recommended 16k+ for complex tasks
+            # Extended thinking is not compatible with temperature modifications.
+            # Anthropic requires max_tokens to be greater than thinking.budget_tokens,
+            # so bump the response budget when tools + thinking are both enabled.
             if anthropic_tools:
+                budget_tokens = int(self.llm_config.thinking_tokens)
+                min_completion_tokens = budget_tokens + 1024
+                if int(params["max_tokens"]) <= budget_tokens:
+                    logger.info(
+                        "Adjusting Anthropic max_tokens from %s to %s for thinking budget %s",
+                        params["max_tokens"],
+                        min_completion_tokens,
+                        budget_tokens,
+                    )
+                    params["max_tokens"] = min_completion_tokens
+
                 params["thinking"] = {
                     "type": "enabled",
-                    "budget_tokens": self.llm_config.thinking_tokens,
+                    "budget_tokens": budget_tokens,
                 }
                 betas.append("interleaved-thinking-2025-05-14")
         else:
@@ -523,7 +533,10 @@ class AnthropicProvider(LLMClient):
             messages, tools, anthropic_options, provider_files
         )
 
-        response = await self.client.beta.messages.create(**params, betas=betas)
+        if betas:
+            response = await self.client.beta.messages.create(**params, betas=betas)
+        else:
+            response = await self.client.messages.create(**params)
 
         # Extract usage
         usage = TokenUsage(
@@ -618,7 +631,12 @@ class AnthropicProvider(LLMClient):
         content_started = False
         current_tool_call_id = None  # Track the current tool call being processed
 
-        async with self.client.beta.messages.stream(**params, betas=betas) as stream:
+        stream_cm = (
+            self.client.beta.messages.stream(**params, betas=betas)
+            if betas
+            else self.client.messages.stream(**params)
+        )
+        async with stream_cm as stream:
             async for event in stream:
                 # Content block start
                 match event.type:

@@ -928,13 +928,12 @@ class TestHelperFunctionsDeep:
     """Deep tests for helper functions."""
 
     def test_generate_tool_call_id_format(self):
-        """Tool call ID should be in format call_{timestamp}_{random}."""
+        """Tool call ID should be in format call_{hex_chars}."""
         id_ = generate_tool_call_id()
-        parts = id_.split("_")
-        assert parts[0] == "call"
-        assert len(parts) >= 3
-        assert parts[1].isdigit()
-        assert parts[2].isdigit()
+        assert id_.startswith("call_")
+        suffix = id_[len("call_") :]
+        assert len(suffix) > 0
+        assert all(c in "0123456789abcdef" for c in suffix)
 
     def test_get_thought_signature_encoding_consistency(self):
         """Encoding and decoding thought signature should be consistent."""

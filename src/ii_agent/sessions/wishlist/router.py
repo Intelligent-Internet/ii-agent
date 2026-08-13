@@ -4,7 +4,7 @@ import logging
 import uuid
 from fastapi import APIRouter
 
-from ii_agent.auth.dependencies import CurrentUser, DBSession
+from ii_agent.auth.dependencies import CurrentUser, DBSession, NotPurgingDep
 from ii_agent.sessions.wishlist.dependencies import WishlistServiceDep
 from ii_agent.sessions.wishlist.schemas import (
     SessionWishlistResponse,
@@ -30,11 +30,14 @@ async def get_wishlist_sessions(
 @router.post("/{session_id}", response_model=WishlistActionResponse)
 async def add_to_wishlist(
     session_id: uuid.UUID,
-    current_user: CurrentUser,
+    current_user: NotPurgingDep,
     wishlist_service: WishlistServiceDep,
     db: DBSession,
 ) -> WishlistActionResponse:
-    """Add a session to the current user's wishlist."""
+    """Add a session to the current user's wishlist.
+
+    Gated by ``NotPurgingDep`` (I3/I8 §16): blocked while ``users.is_purging``.
+    """
     success = await wishlist_service.add_to_wishlist(db, current_user.id, session_id)
 
     if not success:
@@ -52,11 +55,14 @@ async def add_to_wishlist(
 @router.delete("/{session_id}", response_model=WishlistActionResponse)
 async def remove_from_wishlist(
     session_id: uuid.UUID,
-    current_user: CurrentUser,
+    current_user: NotPurgingDep,
     wishlist_service: WishlistServiceDep,
     db: DBSession,
 ) -> WishlistActionResponse:
-    """Remove a session from the current user's wishlist."""
+    """Remove a session from the current user's wishlist.
+
+    Gated by ``NotPurgingDep`` (I3/I8 §16): blocked while ``users.is_purging``.
+    """
     success = await wishlist_service.remove_from_wishlist(db, current_user.id, session_id)
 
     if not success:

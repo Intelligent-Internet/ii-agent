@@ -1,0 +1,124 @@
+{
+  "timestamp": 1777121942.4629092,
+  "results": [
+    {
+      "test_id": "INF-01",
+      "name": "Backend health check",
+      "status": "PASS",
+      "notes": "status=ok, chat_loop=a2a, agent_loop=a2a, a2a_backend=copilot",
+      "elapsed": 0.034619631987879984
+    },
+    {
+      "test_id": "INF-03",
+      "name": "Sandbox container running",
+      "status": "PASS",
+      "notes": "Running: ii-sandbox-a29ff5fe-828, ii-sandbox-bbfa0c7f-c5a, ii-sandbox-20118112-25b, ii-sandbox-b9486418-549, ii-sandbox-7cf2d82f-f33, ii-sandbox-23b4ba1a-f92",
+      "elapsed": 0.12421974900644273
+    },
+    {
+      "test_id": "IMG-01",
+      "name": "Image upload flow",
+      "status": "PASS",
+      "notes": "Asset ID: ba61d37c-c19a-4c23-8e2a-a3f5f04c9b36",
+      "elapsed": 0.29693196099833585
+    },
+    {
+      "test_id": "IMG-02",
+      "name": "Chat image multi-turn retention",
+      "status": "PASS",
+      "notes": "Image retained across turns. Turn 1: The image is a small horizontal gradient with:\n- **Left side**: Blue\n- **Right s... | Turn 2: - **Left side**: Red\n- **Right side**: Blue\n\n(My previous response had them reve...",
+      "elapsed": 12.116528647995437
+    },
+    {
+      "test_id": "IMG-03",
+      "name": "Agent image multi-turn retention",
+      "status": "PASS",
+      "notes": "Image retained across agent turns. Turn 1: The image is a **20\u00d720 px** gradient. Based on what's visible, here's what the g... | Turn 2: - **Left side:** **Red**\n- **Right side:** **Blue**\n\nThe gradient transitions ho...",
+      "elapsed": 34.889020233997144
+    },
+    {
+      "test_id": "CODE-01",
+      "name": "Agent code execution",
+      "status": "PASS",
+      "notes": "Completed with 0 tool calls. Response: Output:\n```\n0\n1\n1\n2\n3\n5\n8\n13\n21\n34\n```",
+      "elapsed": 13.820499142006156
+    },
+    {
+      "test_id": "CODE-02",
+      "name": "Agent multi-file project",
+      "status": "PASS",
+      "notes": "Completed. Output has '15': True. Response: Both files created and `main.py` ran successfully, printing **15**.",
+      "elapsed": 15.078386403998593
+    },
+    {
+      "test_id": "SBOX-01",
+      "name": "FK constraint on session_id",
+      "status": "PASS",
+      "notes": "FK constraint correctly rejected orphaned sandbox INSERT",
+      "elapsed": 0.25844439399952535
+    },
+    {
+      "test_id": "SBOX-02",
+      "name": "Port pool overflow protection",
+      "status": "PASS",
+      "notes": "Port overflow guard active in create(). Full exhaustion test deferred (would require 142+ sandboxes).",
+      "elapsed": 0.03656607300217729
+    },
+    {
+      "test_id": "SBOX-03",
+      "name": "Orphaned volume cleanup",
+      "status": "PASS",
+      "notes": "Orphaned volume ii-sandbox-workspace-orphan-e2e-1dae996b-151 was removed by cleanup sweep",
+      "elapsed": 31.20505751699966
+    },
+    {
+      "test_id": "SBOX-04",
+      "name": "Persistent timeout_at column",
+      "status": "PASS",
+      "notes": "timeout_at column exists in agent_sandboxes table",
+      "elapsed": 0.19652963099360932
+    },
+    {
+      "test_id": "SBOX-05",
+      "name": "Cleanup loop active (6 stages + host monitor)",
+      "status": "PASS",
+      "notes": "Cleanup loop active (markers seen: Orphan cleanup, Sandbox pool, cleanup sweep)",
+      "elapsed": 0.1283381019893568
+    },
+    {
+      "test_id": "SBOX-06",
+      "name": "Concurrent-create semaphore wired",
+      "status": "PASS",
+      "notes": "limit=2, wait_log_threshold_ms=500, semaphore symbols importable",
+      "elapsed": 1.88872071300284
+    },
+    {
+      "test_id": "POOL-01",
+      "name": "/health/sandbox-pool shape",
+      "status": "PASS",
+      "notes": "configured=2 ready=2 stuck_initializing=0",
+      "elapsed": 0.04223764699418098
+    },
+    {
+      "test_id": "POOL-02",
+      "name": "stack_control.sh status --json modules.pool",
+      "status": "PASS",
+      "notes": "verdict=OK configured=2 ready=2",
+      "elapsed": 0.2973869090055814
+    },
+    {
+      "test_id": "POOL-03",
+      "name": "Claim \u2192 replenish cycle",
+      "status": "PASS",
+      "notes": "Pool recovered to ready>=2/2 after claim (session=f7246432-cd67-4896-8360-69b6d41df384)",
+      "elapsed": 17.653517333004856
+    },
+    {
+      "test_id": "POOL-04",
+      "name": "Stuck-INITIALIZING reap (Fix A)",
+      "status": "PASS",
+      "notes": "Reaped stuck row 43dc8858-bb65-42b1-bb09-b62f2104c313 (slot=101) \u2014 snapshot.stuck_initializing back to 0, row status=deleted",
+      "elapsed": 45.69942258100491
+    }
+  ]
+}

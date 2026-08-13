@@ -45,11 +45,7 @@ class ContinueRunHandler(BaseCommandHandler[ContinueRunContent]):
             for field in tool.user_input_schema:
                 if field.name in user_input:
                     field.value = user_input[field.name]
-                    logger.info(
-                        "User provided input for field '%s' in run %s",
-                        field.name,
-                        run_id,
-                    )
+                    logger.info(f"User provided input for field '{field.name}' in run {run_id}")
 
         if tool.tool_args is None:
             tool.tool_args = {}

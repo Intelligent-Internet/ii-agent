@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from decimal import Decimal
 
 import pytest
@@ -9,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ii_agent.users.models import WaitlistEntry
 from ii_agent.users.repository import APIKeyRepository, UserRepository
 from ii_agent.users.waitlist_repository import WaitlistRepository
+from ii_agent.credits.models import CreditBalance
 from ii_agent.credits.repository import CreditBalanceRepository
 
 try:
@@ -30,11 +32,12 @@ async def test_user_and_api_key_repositories_crud_and_credit_updates(
         db_session,
         email="CaseSensitive@Example.com",
         first_name="Case",
-        credits=10.0,
-        bonus_credits=5.0,
     )
     # Create matching credit_balances row
-    await balance_repo.create(db_session, user.id, credits=10.0, bonus_credits=5.0)
+    await balance_repo.save(
+        db_session,
+        CreditBalance(user_id=user.id, credits=10.0, bonus_credits=5.0),
+    )
 
     lookup = await user_repo.get_by_email(db_session, "casesensitive@example.com")
     assert lookup is not None
@@ -50,24 +53,35 @@ async def test_user_and_api_key_repositories_crud_and_credit_updates(
     await user_repo.set_language(db_session, user, "vi")
     await user_repo.set_active(db_session, user, is_active=False)
 
-    # Credit operations now go through CreditBalanceRepository
-    # All methods accept and return Decimal; compare with float() for readability
-    credits_after_deduct = await balance_repo.deduct_credits(db_session, user.id, Decimal("6.0"))
-    # Returns (old_credits, old_bonus, new_credits, new_bonus)
-    # Created with credits=10.0, bonus_credits=5.0; deducting 6.0 uses 5.0 bonus + 1.0 regular
-    assert tuple(float(v) for v in credits_after_deduct) == (10.0, 5.0, 9.0, 0.0)
+    # CreditBalanceRepository only exposes get_by_user_id / get_for_update;
+    # higher-level credit math lives in CreditService.  Test the repo layer
+    # by verifying we can read & mutate the balance row directly.
+    balance = await balance_repo.get_by_user_id(db_session, user.id)
+    assert balance is not None
+    assert float(balance.credits) == 10.0
+    assert float(balance.bonus_credits) == 5.0
 
-    credits_after_bonus = await balance_repo.add_credits(
-        db_session, user.id, Decimal("2.0"), is_bonus=True
-    )
-    # Returns (old_credits, old_bonus, new_credits, new_bonus)
-    assert tuple(float(v) for v in credits_after_bonus) == (9.0, 0.0, 9.0, 2.0)
+    # Simulate a deduction (repo-level: direct attribute update)
+    balance.credits -= Decimal("1.0")
+    balance.bonus_credits -= Decimal("5.0")
+    await db_session.flush()
+    await db_session.refresh(balance)
+    assert float(balance.credits) == 9.0
+    assert float(balance.bonus_credits) == 0.0
 
-    exact_credits = await balance_repo.set_credits(
-        db_session, user.id, Decimal("42.0"), bonus_amount=Decimal("3.5")
-    )
-    # Returns (old_credits, old_bonus, new_credits, new_bonus)
-    assert tuple(float(v) for v in exact_credits) == (9.0, 2.0, 42.0, 3.5)
+    # Simulate adding bonus credits
+    balance.bonus_credits += Decimal("2.0")
+    await db_session.flush()
+    await db_session.refresh(balance)
+    assert float(balance.bonus_credits) == 2.0
+
+    # Simulate set_credits
+    balance.credits = Decimal("42.0")
+    balance.bonus_credits = Decimal("3.5")
+    await db_session.flush()
+    await db_session.refresh(balance)
+    assert float(balance.credits) == 42.0
+    assert float(balance.bonus_credits) == 3.5
 
     api_key = await api_key_repo.create(
         db_session,
@@ -90,15 +104,16 @@ async def test_user_repository_optional_branches_and_not_found_paths(
         db_session,
         email="branches@example.com",
         first_name="Before",
-        credits=5.0,
-        bonus_credits=2.0,
     )
     # Create matching credit_balances row
-    await balance_repo.create(db_session, user.id, credits=5.0, bonus_credits=2.0)
+    await balance_repo.save(
+        db_session,
+        CreditBalance(user_id=user.id, credits=5.0, bonus_credits=2.0),
+    )
 
     loaded = await repo.get_by_id(db_session, user.id)
     assert loaded is not None
-    assert await repo.get_by_id(db_session, "missing-user-id") is None
+    assert await repo.get_by_id(db_session, uuid.uuid4()) is None
 
     await repo.update_fields(
         db_session,
@@ -124,18 +139,29 @@ async def test_user_repository_optional_branches_and_not_found_paths(
     )
     assert user.first_name == "Final Name"
 
-    # Credit operations now go through CreditBalanceRepository
-    regular_credit_update = await balance_repo.add_credits(
-        db_session, user.id, Decimal("3.0"), is_bonus=False
-    )
-    # Returns (old_credits, old_bonus, new_credits, new_bonus)
-    assert tuple(float(v) for v in regular_credit_update) == (5.0, 2.0, 8.0, 2.0)
+    # CreditBalanceRepository only exposes get_by_user_id / get_for_update;
+    # higher-level credit math lives in CreditService.  Test the repo layer.
+    balance = await balance_repo.get_by_user_id(db_session, user.id)
+    assert balance is not None
+    assert float(balance.credits) == 5.0
+    assert float(balance.bonus_credits) == 2.0
 
-    no_bonus_override = await balance_repo.set_credits(db_session, user.id, Decimal("9.0"))
-    # Returns (old_credits, old_bonus, new_credits, new_bonus)
-    assert tuple(float(v) for v in no_bonus_override) == (8.0, 2.0, 9.0, 2.0)
+    # Simulate adding regular credits
+    balance.credits += Decimal("3.0")
+    await db_session.flush()
+    await db_session.refresh(balance)
+    assert float(balance.credits) == 8.0
+    assert float(balance.bonus_credits) == 2.0
 
-    assert await balance_repo.deduct_credits(db_session, user.id, Decimal("1000.0")) is None
+    # Simulate set credits
+    balance.credits = Decimal("9.0")
+    await db_session.flush()
+    await db_session.refresh(balance)
+    assert float(balance.credits) == 9.0
+    assert float(balance.bonus_credits) == 2.0
+
+    # Verify missing user returns None
+    assert await balance_repo.get_by_user_id(db_session, uuid.uuid4()) is None
     assert await api_key_repo.get_active_for_user(db_session, user.id) is None
 
 
@@ -143,12 +169,12 @@ async def test_user_repository_uniqueness_conflict_rolls_back_savepoint(
     db_session: AsyncSession,
 ) -> None:
     repo = UserRepository()
-    created = await repo.create(db_session, email="dupe@example.com", credits=5.0)
+    created = await repo.create(db_session, email="dupe@example.com")
     assert created.email == "dupe@example.com"
 
     with pytest.raises(IntegrityError):
         async with db_session.begin_nested():
-            await repo.create(db_session, email="dupe@example.com", credits=1.0)
+            await repo.create(db_session, email="dupe@example.com")
 
     still_present = await repo.get_by_email(db_session, "dupe@example.com")
     assert still_present is not None

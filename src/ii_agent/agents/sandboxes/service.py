@@ -15,8 +15,17 @@ from typing import Any, Dict, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ii_agent.agents.sandboxes.base import Sandbox
+from ii_agent.agents.sandboxes.docker import DockerSandbox
 from ii_agent.agents.sandboxes.e2b import E2BSandbox
-from ii_agent.agents.sandboxes.exceptions import SandboxCreationError, SandboxNotFoundException
+from ii_agent.agents.sandboxes.exceptions import (
+    SandboxCreationError,
+    SandboxNotFoundException,
+    SandboxNotInitializedError,
+)
+from ii_agent.agents.sandboxes.host_monitor import (
+    HostHealthState,
+    get_host_state,
+)
 from ii_agent.agents.sandboxes.models import AgentSandbox
 from ii_agent.agents.sandboxes.repository import SandboxRepository
 from ii_agent.agents.sandboxes.shell import (
@@ -39,6 +48,42 @@ from ii_agent.sessions.repository import SessionRepository
 _SHELL_LOCKS: dict[str, asyncio.Lock] = {}
 
 
+# ── Concurrent-create gate ────────────────────────────────────────────────
+# A module-level asyncio.Semaphore caps the number of in-flight
+# provider `create()` calls across the whole backend process.  Pool
+# warming and request-driven creation both pass through here, so bursts
+# from either path cannot exceed the configured limit.
+#
+# The gate is created lazily on first use because settings are only
+# available at runtime and tests need to be able to reset it.
+_CREATE_SEMAPHORE: asyncio.Semaphore | None = None
+_CREATE_SEMAPHORE_LIMIT: int | None = None
+_CREATE_SEMAPHORE_LOCK = asyncio.Lock()
+
+
+async def _get_create_semaphore(limit: int) -> asyncio.Semaphore | None:
+    """Return the shared create-semaphore, creating it on first use.
+
+    When ``limit == 0`` the gate is disabled and ``None`` is returned so
+    callers skip the ``async with`` guard entirely.
+    """
+    global _CREATE_SEMAPHORE, _CREATE_SEMAPHORE_LIMIT
+    if limit <= 0:
+        return None
+    async with _CREATE_SEMAPHORE_LOCK:
+        if _CREATE_SEMAPHORE is None or _CREATE_SEMAPHORE_LIMIT != limit:
+            _CREATE_SEMAPHORE = asyncio.Semaphore(limit)
+            _CREATE_SEMAPHORE_LIMIT = limit
+        return _CREATE_SEMAPHORE
+
+
+def _reset_create_semaphore_for_tests() -> None:
+    """Tests only: drop the cached semaphore so the next call rebuilds it."""
+    global _CREATE_SEMAPHORE, _CREATE_SEMAPHORE_LIMIT
+    _CREATE_SEMAPHORE = None
+    _CREATE_SEMAPHORE_LIMIT = None
+
+
 class SandboxService:
     """Manages sandbox lifecycle with database persistence.
 
@@ -58,6 +103,30 @@ class SandboxService:
         self._sandbox_repo = sandbox_repo
         self._session_repo = session_repo
         self._config = config
+        # Pool manager is wired post-construction to avoid a circular import
+        # with ii_agent.agents.sandboxes.pool, which imports DockerSandbox.
+        self._pool_manager = None  # type: ignore[assignment]
+        # Optional pub/sub for soft warnings (``agent.warning`` events). Wired
+        # by the lifespan after the pubsub singleton is built. Service stays
+        # functional without it (warnings degrade to ERROR-level logs only).
+        self._pubsub = None  # type: ignore[assignment]
+
+    def attach_pool_manager(self, pool_manager) -> None:
+        """Inject the SandboxPoolManager (called by the container)."""
+        self._pool_manager = pool_manager
+
+    @property
+    def pool_manager(self):
+        return self._pool_manager
+
+    def set_pubsub(self, pubsub) -> None:
+        """Inject the pub/sub singleton (called by the lifespan after wiring).
+
+        See ``docs/design-docs/sandbox-pool-claim-mcp-handoff-audit.md`` #7
+        for why this is set post-construction rather than via the constructor:
+        ``ApplicationContainer`` builds services before the pub/sub bus exists.
+        """
+        self._pubsub = pubsub
 
     # ── Public API ────────────────────────────────────────────────────────
 
@@ -72,16 +141,39 @@ class SandboxService:
 
         1. Look for an existing active sandbox record.
         2. If the session is a fork, look up parent's sandbox via ``parent_session_id``.
-        3. Otherwise, create a new DB record and provision via the provider.
-        4. Configure MCP servers on newly created sandboxes.
+        3. Try to claim a pre-warmed pool sandbox (Docker local mode only).
+        4. Otherwise, create a new DB record and provision via the provider.
+        5. Configure MCP servers on newly created/claimed sandboxes.
 
         Returns the ready-to-use :class:`Sandbox`.
         """
         # 1. Try existing record, then fall back to the parent's sandbox for forks.
         record = await self._resolve_sandbox_record(db, session_id)
 
-        # 3. Create new record if none found
+        # 2. Try to claim a pool sandbox before provisioning a fresh one.
         is_new = False
+        is_pool_claim = False
+        if record is None and self._pool_manager is not None:
+            try:
+                claimed = await self._pool_manager.claim(db, session_id)
+            except Exception:
+                logger.exception("Sandbox pool claim failed; falling back to fresh create")
+                claimed = None
+            if claimed is not None:
+                record = claimed
+                is_pool_claim = True
+                is_new = True
+                logger.info(
+                    f"Claimed pool sandbox {record.id} (slot={record.pool_slot}) for session {session_id}"
+                )
+                # Commit the claim **immediately** so the session_id linkage is
+                # durable even if a later step (MCP configure, timeout refresh)
+                # raises. Without this, a transient failure rolls back the
+                # claim and leaves the pool with a duplicate slot after the
+                # async replenish task fires.
+                await db.commit()
+
+        # 3. Create new record if none found and no pool claim.
         if record is None:
             provider = self._resolve_provider()
             record = AgentSandbox(
@@ -95,7 +187,42 @@ class SandboxService:
 
         # 4. Connect or create provider sandbox
         if record.provider_sandbox_id:
-            sandbox_mgr = await self._connect_provider(record)
+            try:
+                sandbox_mgr = await self._connect_provider(record)
+                # Post-attach health probe: a long-lived container can be
+                # "running" at the Docker layer while its MCP server is
+                # wedged (process crashed inside, OOM-killed and respawned
+                # mid-init, etc.). Without this probe we'd silently hand a
+                # broken sandbox to the session. Failure -> treat exactly
+                # like a missing container so the existing fresh-provision
+                # branch fires. See
+                # docs/design-docs/sandbox-pool-claim-mcp-handoff-audit.md.
+                if record.provider == SandboxProviderType.DOCKER:
+                    healthy = await self._probe_mcp_health(sandbox_mgr)
+                    if not healthy:
+                        logger.warning(
+                            f"Post-attach MCP health probe failed for sandbox {record.id} "
+                            f"(container {record.provider_sandbox_id}); marking deleted "
+                            f"and provisioning a fresh sandbox."
+                        )
+                        raise SandboxNotFoundException(
+                            f"sandbox {record.id} attached but MCP health probe failed"
+                        )
+            except SandboxNotFoundException:
+                logger.warning(
+                    f"Sandbox container {record.provider_sandbox_id} gone for session {session_id} — marking deleted and creating new one"
+                )
+                await self._sandbox_repo.update_status(db, record.id, SandboxStatus.DELETED)
+                provider = self._resolve_provider()
+                record = AgentSandbox(
+                    session_id=session_id,
+                    provider=provider,
+                    status=SandboxStatus.INITIALIZING,
+                )
+                record = await self._sandbox_repo.save(db, record)
+                is_new = True
+                is_pool_claim = False
+                sandbox_mgr = await self._create_provider(record, metadata)
         else:
             sandbox_mgr = await self._create_provider(record, metadata)
 
@@ -109,9 +236,37 @@ class SandboxService:
             provider_data=sandbox_mgr.metadata,
         )
 
-        # 6. Configure MCP on new sandboxes
-        if is_new or not record.provider_sandbox_id:
-            await self._configure_mcp(sandbox_mgr, user_id, db)
+        # 6. Configure MCP on new sandboxes (including pool claims, since the
+        #    pre-warmed container has no user-specific MCP config yet).
+        #
+        # IMPORTANT: This runs as a fire-and-forget background task with its
+        # own DB session so a hung MCP handshake (fastmcp Client.__aenter__
+        # has been observed to wedge indefinitely without honouring
+        # asyncio.timeout) cannot block init_sandbox, which is on the
+        # user-visible session-startup path. If MCP configuration fails or
+        # times out, custom MCP tools are simply unavailable for that session
+        # — the agent itself still works.
+        if is_new or is_pool_claim or not record.provider_sandbox_id:
+            self._spawn_configure_mcp(sandbox_mgr, user_id, str(record.id), session_id=session_id)
+
+        # 7. Refresh per-session timeout when claiming a pool slot. The
+        #    pre-warmed container's timeout_at was set when it was first
+        #    booted (potentially many hours ago) and would otherwise cause
+        #    the cleanup loop to kill the freshly-claimed sandbox on its
+        #    next sweep.
+        #
+        # We pass ``db`` through so ``set_timeout`` mutates ``timeout_at`` on
+        # the caller's transaction (no second DB session, no row-lock
+        # contention with our own ``update_provider_info`` above). This is
+        # the structural fix for the 2026-04-24 self-deadlock incident; see
+        # docs/design-docs/sandbox-pool-claim-self-deadlock.md.
+        if is_pool_claim and self._config.sandbox.timeout_seconds:
+            try:
+                await sandbox_mgr.set_timeout(self._config.sandbox.timeout_seconds, db=db)
+            except Exception:
+                logger.exception(
+                    f"Failed to refresh timeout_at on pool-claimed sandbox {record.id}"
+                )
 
         return sandbox_mgr
 
@@ -133,7 +288,23 @@ class SandboxService:
         )
         if record is None:
             return None
-        return await self._connect_provider(record)
+
+        # Circuit breaker: if this sandbox has repeatedly failed to
+        # reconnect, short-circuit so we don't hammer the Docker daemon.
+        from ii_agent.agents.sandboxes import breaker as _breaker
+
+        if _breaker.should_fail_fast(str(record.id)):
+            raise SandboxNotInitializedError(
+                f"Sandbox {record.id} circuit breaker is open; refusing reconnect"
+            )
+
+        try:
+            sandbox = await self._connect_provider(record)
+            _breaker.record_success(str(record.id))
+            return sandbox
+        except Exception:
+            _breaker.record_failure(str(record.id))
+            raise
 
     async def get_sandbox_by_session_id(
         self,
@@ -280,9 +451,7 @@ class SandboxService:
 
             if stale_session_names:
                 logger.info(
-                    "Pruning stale PTY sessions for sandbox %s: %s",
-                    sandbox.sandbox_id,
-                    stale_session_names,
+                    f"Pruning stale PTY sessions for sandbox {sandbox.sandbox_id}: {stale_session_names}"
                 )
                 await self._save_shell_sessions(
                     sandbox.sandbox_id,
@@ -560,9 +729,64 @@ class SandboxService:
         record: AgentSandbox,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> Sandbox:
-        """Provision a new sandbox via the correct provider."""
+        """Provision a new sandbox via the correct provider.
+
+        All provider ``create()`` calls are serialised through a
+        module-level asyncio.Semaphore sized by
+        ``sandbox_concurrent_create_limit``.  This caps the veth/bridge
+        allocation burst that drives kernel high-order page
+        fragmentation — the 2026-04-23 force-reboot trigger.
+
+        Host monitor gating: when the integrated monitor reports CRIT
+        the call is refused with :class:`SandboxCreationError`
+        *before* the semaphore is acquired. The caller sees a clean
+        503-style error and existing sessions are unaffected. At
+        WARN we log but still proceed — only *new* pool-pre-warm
+        creates are skipped (see pool.py) since a user actively
+        waiting on a session is a higher priority than baseline
+        capacity.
+        """
+        host_state = get_host_state()
+        if host_state == HostHealthState.CRIT:
+            raise SandboxCreationError(
+                f"host under memory pressure (state={host_state.name}); "
+                "refusing new sandbox creation"
+            )
+
+        limit = self._config.sandbox.sandbox_concurrent_create_limit
+        semaphore = await _get_create_semaphore(limit)
+
+        if semaphore is None:
+            return await self._dispatch_create(record, metadata)
+
+        wait_start = asyncio.get_event_loop().time()
+        async with semaphore:
+            wait_ms = int((asyncio.get_event_loop().time() - wait_start) * 1000)
+            threshold_ms = self._config.sandbox.sandbox_create_wait_log_threshold_ms
+            if threshold_ms > 0 and wait_ms >= threshold_ms:
+                logger.info(
+                    "Sandbox create waited {}ms for concurrent-create semaphore "
+                    "(limit={}, sandbox_id={})",
+                    wait_ms,
+                    limit,
+                    record.id,
+                )
+            return await self._dispatch_create(record, metadata)
+
+    async def _dispatch_create(
+        self,
+        record: AgentSandbox,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> Sandbox:
+        """Provider-specific dispatch (no concurrency gate)."""
         if record.provider == SandboxProviderType.E2B:
             return await E2BSandbox.create(
+                sandbox_id=str(record.id),
+                session_id=str(record.session_id),
+                metadata=metadata,
+            )
+        if record.provider == SandboxProviderType.DOCKER:
+            return await DockerSandbox.create(
                 sandbox_id=str(record.id),
                 session_id=str(record.session_id),
                 metadata=metadata,
@@ -573,6 +797,12 @@ class SandboxService:
         """Connect to an existing provider sandbox."""
         if record.provider == SandboxProviderType.E2B:
             return await E2BSandbox.connect(
+                sandbox_id=str(record.id),
+                session_id=str(record.session_id),
+                provider_sandbox_id=record.provider_sandbox_id,
+            )
+        if record.provider == SandboxProviderType.DOCKER:
+            return await DockerSandbox.connect(
                 sandbox_id=str(record.id),
                 session_id=str(record.session_id),
                 provider_sandbox_id=record.provider_sandbox_id,
@@ -601,10 +831,7 @@ class SandboxService:
                 sessions[session_name] = ShellSessionRecord.model_validate(raw_record)
             except Exception as exc:  # noqa: BLE001
                 logger.warning(
-                    "Invalid shell session metadata for sandbox %s session %s: %s",
-                    sandbox_id,
-                    session_name,
-                    exc,
+                    f"Invalid shell session metadata for sandbox {sandbox_id} session {session_name}: {exc}"
                 )
         return sessions
 
@@ -672,9 +899,7 @@ class SandboxService:
             )
             if _usable(parent_record):
                 logger.info(
-                    "Session %s sharing sandbox from parent %s",
-                    session_id,
-                    session.parent_session_id,
+                    f"Session {session_id} sharing sandbox from parent {session.parent_session_id}"
                 )
                 return parent_record
 
@@ -684,23 +909,233 @@ class SandboxService:
 
     # ── MCP configuration ─────────────────────────────────────────────────
 
+    # Hard ceiling on MCP configuration. The handshake to the sandbox MCP
+    # server is normally <1 s. Anything longer than this means a hung
+    # connection (e.g. SSE stream that never receives initialize ack), and
+    # must NOT block sandbox initialization indefinitely — that strands the
+    # whole session with no error visible to the user.
+    _CONFIGURE_MCP_TIMEOUT_S = 30.0
+
+    # Bounded retry envelope inside ``_configure_mcp``. The first attempt
+    # commonly fails with ``All connection attempts failed`` while iptables
+    # finishes wiring up the host-to-container bridge for a freshly-claimed
+    # pool sandbox; a couple of fast retries fix it without a second
+    # configure pass. Total wall-clock <= ~1.5s.
+    _CONFIGURE_MCP_ATTEMPTS = 3
+    _CONFIGURE_MCP_BACKOFF_S: tuple[float, ...] = (0.2, 0.4, 0.8)
+
+    # Post-attach health-probe budget. Used in :meth:`_probe_mcp_health` to
+    # detect inert MCP servers inside a running container before a session
+    # is handed a broken sandbox.
+    _MCP_HEALTH_PROBE_TIMEOUT_S = 2.0
+
+    # Cooldown between lazy-retry attempts triggered by runtime MCP-tool
+    # factories when ``agent_sandboxes.mcp_configured`` is ``False``. Avoids
+    # hammering a wedged container on every tool invocation.
+    _MCP_LAZY_RETRY_COOLDOWN_S = 30.0
+
+    # Background tasks pinned here to keep strong references so the GC
+    # cannot collect them mid-flight. Tasks remove themselves from the set
+    # on completion via ``add_done_callback``.
+    _mcp_config_tasks: set[asyncio.Task[None]] = set()
+
+    def _spawn_configure_mcp(
+        self,
+        sandbox: Sandbox,
+        user_id: uuid.UUID,
+        sandbox_record_id: str,
+        session_id: uuid.UUID | None = None,
+    ) -> None:
+        """Schedule ``_configure_mcp`` to run as a fire-and-forget background task.
+
+        Uses a fresh DB session so the caller's transaction is unaffected.
+        Wraps the work in ``asyncio.wait_for`` over a dedicated child task so
+        cancellation propagates even when the inner coroutine misbehaves.
+
+        ``session_id`` is forwarded to the background task so it can publish
+        an ``agent.warning`` event on terminal failure (audit item #7).
+        """
+        task = asyncio.create_task(
+            self._configure_mcp_background(
+                sandbox, user_id, sandbox_record_id, session_id=session_id
+            ),
+            name=f"mcp-config-{sandbox_record_id}",
+        )
+        self._mcp_config_tasks.add(task)
+        task.add_done_callback(self._mcp_config_tasks.discard)
+
+    async def _configure_mcp_background(
+        self,
+        sandbox: Sandbox,
+        user_id: uuid.UUID,
+        sandbox_record_id: str,
+        session_id: uuid.UUID | None = None,
+    ) -> None:
+        """Background-task wrapper around ``_configure_mcp`` with hard timeout.
+
+        Runs with its own DB session and uses ``asyncio.wait_for`` (which
+        forcibly cancels the wrapped child task) rather than
+        ``asyncio.timeout`` so a stuck fastmcp ``Client.__aenter__`` is
+        guaranteed to be torn down even if it ignores cancellation hints.
+        """
+        from datetime import datetime, timezone
+
+        succeeded = False
+        try:
+            async with get_db_session_local() as db:
+                succeeded = await asyncio.wait_for(
+                    self._configure_mcp(sandbox, user_id, db),
+                    timeout=self._CONFIGURE_MCP_TIMEOUT_S,
+                )
+            if succeeded:
+                logger.info(f"MCP configuration complete for sandbox {sandbox_record_id}")
+        except asyncio.TimeoutError:
+            logger.error(
+                f"MCP configuration timed out after {self._CONFIGURE_MCP_TIMEOUT_S}s "
+                f"for sandbox {sandbox_record_id} (background task); custom MCP "
+                f"tools will be unavailable for this session until a runtime retry succeeds"
+            )
+        except Exception:
+            logger.exception(f"MCP background configuration failed for sandbox {sandbox_record_id}")
+
+        # Persist the durable ``mcp_configured`` flag. Runtime MCP-tool
+        # factories check this and lazy-retry the handshake on demand if
+        # ``False``. We mark the attempt timestamp regardless so the
+        # cooldown-throttled retry path has a reference point. Use a fresh
+        # DB session because we're outside the original wait_for scope.
+        try:
+            async with get_db_session_local() as flag_db:
+                await self._sandbox_repo.set_mcp_configured(
+                    flag_db,
+                    uuid.UUID(sandbox_record_id),
+                    configured=succeeded,
+                    attempted_at=datetime.now(timezone.utc),
+                )
+                await flag_db.commit()
+        except Exception:
+            logger.exception(
+                f"Failed to persist mcp_configured flag for sandbox {sandbox_record_id}"
+            )
+
+        # Audit item #7: surface terminal MCP-configure failures into the
+        # agent UI as a soft ``agent.warning`` so the user sees "tool subset
+        # may be unavailable" instead of a cryptic mid-conversation error.
+        # Skip when we have no pubsub (tests, non-lifespan callers) or no
+        # session_id (events require one).
+        if not succeeded and self._pubsub is not None and session_id is not None:
+            try:
+                from ii_agent.realtime.events.app_events import AgentWarningEvent
+
+                await self._pubsub.publish(
+                    AgentWarningEvent(
+                        session_id=session_id,
+                        warning_kind="mcp_configure_failed",
+                        message=(
+                            "Custom MCP tools could not be configured for this "
+                            "sandbox. The agent will retry automatically on the "
+                            "next tool call; basic tools remain available."
+                        ),
+                        details={"sandbox_id": sandbox_record_id},
+                    )
+                )
+            except Exception:
+                logger.exception(f"Failed to publish agent.warning for sandbox {sandbox_record_id}")
+
     async def _configure_mcp(
         self,
         sandbox: Sandbox,
         user_id: uuid.UUID,
         db: AsyncSession,
-    ) -> None:
-        """Configure MCP servers on a sandbox."""
+    ) -> bool:
+        """Configure MCP servers on a sandbox.
+
+        Called from a background task (see ``_spawn_configure_mcp``). The
+        outer task enforces a hard wall-clock timeout via ``asyncio.wait_for``
+        so a hung MCP handshake cannot leak resources indefinitely.
+
+        Performs a bounded retry loop with exponential backoff to cover
+        the iptables NAT-wiring window on freshly-attached containers and
+        transient fastmcp hiccups. Returns ``True`` on success, ``False``
+        on terminal failure (caller persists the durable
+        ``mcp_configured`` flag).
+        """
+        last_exc: Exception | None = None
+        # ``expose_port`` defaults to ``external=False`` (since 2026-04-25)
+        # which returns a container-internal URL reachable from the
+        # backend container without traversing host-LAN routing. Keeping
+        # this comment so the next reader doesn't accidentally flip it.
         try:
             sandbox_url = await sandbox.expose_port(self._config.mcp.port)
-            # Build and set credentials
-            sandbox.get_mcp_client(sandbox_url=sandbox_url)
-
-            # Register user MCP servers
-            await self._register_user_mcp_servers(sandbox, user_id, sandbox_url, db)
-
         except Exception as e:
-            logger.warning(f"Failed to configure MCP for sandbox {sandbox.sandbox_id}: {e}")
+            logger.error(f"Could not resolve MCP URL for sandbox {sandbox.sandbox_id}: {e}")
+            return False
+        sandbox.get_mcp_client(sandbox_url=sandbox_url)
+
+        for attempt in range(self._CONFIGURE_MCP_ATTEMPTS):
+            try:
+                await self._register_user_mcp_servers(sandbox, user_id, sandbox_url, db)
+                if attempt > 0:
+                    logger.info(
+                        f"MCP configure for sandbox {sandbox.sandbox_id} succeeded "
+                        f"on attempt {attempt + 1}/{self._CONFIGURE_MCP_ATTEMPTS}"
+                    )
+                return True
+            except Exception as e:
+                last_exc = e
+                if attempt + 1 < self._CONFIGURE_MCP_ATTEMPTS:
+                    backoff = self._CONFIGURE_MCP_BACKOFF_S[attempt]
+                    logger.warning(
+                        f"MCP configure attempt {attempt + 1}/{self._CONFIGURE_MCP_ATTEMPTS} "
+                        f"failed for sandbox {sandbox.sandbox_id} ({e}); retrying in {backoff}s"
+                    )
+                    await asyncio.sleep(backoff)
+        # All attempts exhausted. Log at ERROR with the full last
+        # exception so this surfaces in production telemetry; the
+        # durable ``mcp_configured=False`` flag drives lazy retry from
+        # runtime MCP-tool factories.
+        logger.error(
+            f"MCP configure exhausted {self._CONFIGURE_MCP_ATTEMPTS} attempts for "
+            f"sandbox {sandbox.sandbox_id} at {sandbox_url}; last error: {last_exc}. "
+            f"Custom MCP tools will lazy-retry on next invocation."
+        )
+        return False
+
+    async def _probe_mcp_health(
+        self,
+        sandbox: Sandbox,
+        timeout_s: float | None = None,
+    ) -> bool:
+        """Quick TCP-level probe of the sandbox MCP ``/health`` endpoint.
+
+        Used after attaching to a long-lived container (pool slot, backend
+        restart) to detect a wedged MCP server inside an otherwise-running
+        container before the row is handed to a session. Cheap (~50 ms
+        when healthy) and bounded to ``_MCP_HEALTH_PROBE_TIMEOUT_S`` so
+        it cannot stall the user-visible startup path.
+
+        Returns ``True`` only on a 2xx response. Connection refused, DNS
+        failure, or any HTTP status >= 400 are all treated as unhealthy.
+        """
+        import httpx
+
+        budget = timeout_s if timeout_s is not None else self._MCP_HEALTH_PROBE_TIMEOUT_S
+        try:
+            base = await sandbox.expose_port(self._config.mcp.port)
+        except Exception as e:
+            logger.warning(
+                f"MCP health probe could not resolve URL for sandbox {sandbox.sandbox_id}: {e}"
+            )
+            return False
+        url = f"{base.rstrip('/')}/health"
+        try:
+            async with httpx.AsyncClient(timeout=budget) as client:
+                resp = await client.get(url)
+                return 200 <= resp.status_code < 300
+        except Exception as e:
+            logger.warning(
+                f"MCP health probe failed for sandbox {sandbox.sandbox_id} at {url}: {e}"
+            )
+            return False
 
     async def _register_user_mcp_servers(
         self,

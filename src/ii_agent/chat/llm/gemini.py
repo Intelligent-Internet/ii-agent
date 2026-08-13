@@ -3,8 +3,7 @@
 import logging
 import json
 import base64
-import random
-import time
+import uuid
 from typing import AsyncIterator, List, Optional, Dict, Any
 from datetime import datetime
 from google import genai
@@ -578,14 +577,8 @@ def map_googe_finish_reason(finish_reason: str, has_tool_calls: bool) -> FinishR
 
 
 def generate_tool_call_id() -> str:
-    """Generate a unique ID for a tool call.
-
-    Returns:
-        A unique string ID combining timestamp and random number.
-    """
-    timestamp = int(time.time() * 1000)  # Current time in milliseconds
-    random_num = random.randint(1000, 9999)  # Random 4-digit number
-    return f"call_{timestamp}_{random_num}"
+    """Generate a unique ID for a tool call."""
+    return f"call_{uuid.uuid4().hex[:12]}"
 
 
 def get_tool_call_from_parts(parts: List[types.Part]) -> List[ToolCall]:

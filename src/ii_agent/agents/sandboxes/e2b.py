@@ -7,7 +7,7 @@ import os
 import stat as _stat_mod
 from datetime import datetime, timedelta, timezone
 from functools import wraps
-from typing import IO, Any, AsyncIterator, Dict, List, Literal, Optional
+from typing import IO, TYPE_CHECKING, Any, AsyncIterator, Dict, List, Literal, Optional
 
 from e2b import CommandResult, PtySize, SandboxState
 from e2b.exceptions import (
@@ -50,6 +50,9 @@ from ii_agent.agents.sandboxes.terminal import (
 from ii_agent.agents.sandboxes.types import SandboxProviderType, SandboxStatus
 from ii_agent.core.config.settings import Settings, get_settings
 from ii_agent.core.logger import logger
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 
 def _is_dir_entry(entry: Any) -> bool:
@@ -186,9 +189,15 @@ class E2BSandbox(Sandbox):
 
     async def get_info(self) -> SandboxInfo:
         vscode_url = None
+        vnc_url = None
         if self.status == SandboxStatus.RUNNING and self.sandbox:
             try:
-                vscode_url = await self.expose_port(self._config.vscode_port)
+                vscode_url = await self.expose_port(self._config.vscode_port, external=True)
+            except Exception:
+                pass
+            try:
+                vnc_base = await self.expose_port(self._config.sandbox.novnc_port, external=True)
+                vnc_url = f"{vnc_base}/vnc.html?autoconnect=true" if vnc_base else None
             except Exception:
                 pass
         return SandboxInfo(
@@ -198,6 +207,7 @@ class E2BSandbox(Sandbox):
             expired_at=self.expired_at,
             provider=SandboxProviderType.E2B,
             vscode_url=vscode_url,
+            vnc_url=vnc_url,
         )
 
     async def get_status(self) -> SandboxStatus:
@@ -298,7 +308,15 @@ class E2BSandbox(Sandbox):
             logger.info(f"Paused sandbox {self.sandbox_id} (provider: {self.provider_sandbox_id})")
 
     @e2b_exception_handler
-    async def set_timeout(self, timeout_seconds: int) -> None:
+    async def set_timeout(
+        self,
+        timeout_seconds: int,
+        db: "AsyncSession | None" = None,
+    ) -> None:
+        # E2B does not persist a per-row deadline (the provider tracks its own
+        # timeout), so the ``db`` parameter is accepted for interface parity
+        # with DockerSandbox but not used.
+        del db
         await self.sandbox.set_timeout(timeout=timeout_seconds)
         self.expired_at = self.expired_at + timedelta(seconds=timeout_seconds)
         logger.debug(
@@ -314,9 +332,12 @@ class E2BSandbox(Sandbox):
         background: bool = False,
         timeout: Optional[int] = None,
         cwd: Optional[str] = None,
+        user: Optional[str] = None,
         **kwargs,
     ) -> str:
         await self._ensure_sandbox_connection()
+        if user is not None:
+            kwargs["user"] = user
         result = await self.sandbox.commands.run(
             command,
             background=background,
@@ -653,7 +674,11 @@ class E2BSandbox(Sandbox):
 
     # ── Networking ────────────────────────────────────────────────────────
 
-    async def expose_port(self, port: int) -> str:
+    async def expose_port(self, port: int, *, external: bool = False) -> str:
+        # E2B sandboxes return the same public https URL regardless of
+        # ``external`` — the cloud platform doesn't distinguish between
+        # backend-internal and browser-accessible endpoints. The kwarg
+        # exists purely for ``Sandbox`` interface parity with Docker.
         await self._ensure_sandbox_connection()
         host = self.sandbox.get_host(port)
         return f"https://{host}"

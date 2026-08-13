@@ -4,7 +4,6 @@ Operates on SlideContent model which stores individual slide content
 for presentations within sessions.
 """
 
-import uuid
 from datetime import datetime, timezone
 from typing import Optional, List
 
@@ -126,7 +125,6 @@ class SlideContentRepository(BaseRepository[SlideContent]):
             return existing_slide.id
         else:
             new_slide = SlideContent(
-                id=str(uuid.uuid4()),
                 session_id=session_id,
                 presentation_name=presentation_name,
                 slide_number=slide_number,

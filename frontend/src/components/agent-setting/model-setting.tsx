@@ -6,10 +6,14 @@ import { useTranslation } from 'react-i18next'
 import { PROVIDERS_NAME, getProviderKey } from '@/constants/models'
 import {
     selectAvailableModels,
-    selectSelectedModel,
-    setSelectedModel,
+    selectSelectedAgentModel,
+    selectSelectedChatModel,
+    selectQuestionMode,
+    setSelectedAgentModel,
+    setSelectedChatModel,
     setAvailableModels
 } from '@/state'
+import { QUESTION_MODE } from '@/typings'
 import { IModel } from '@/typings/settings'
 import { settingsService } from '@/services/settings.service'
 import { Button } from '../ui/button'
@@ -28,7 +32,19 @@ const ModelSetting = ({ className }: ModelSettingProps) => {
     const [editingModel, setEditingModel] = useState<IModel | null>(null)
 
     const availableModels = useAppSelector(selectAvailableModels)
-    const selectedModel = useAppSelector(selectSelectedModel)
+    const questionMode = useAppSelector(selectQuestionMode)
+    const selectedAgentModel = useAppSelector(selectSelectedAgentModel)
+    const selectedChatModel = useAppSelector(selectSelectedChatModel)
+    const isChatMode = questionMode === QUESTION_MODE.CHAT
+    const selectedModelId = isChatMode ? selectedChatModel : selectedAgentModel
+
+    const setSelectedModelForMode = (id: string | undefined) => {
+        if (isChatMode) {
+            dispatch(setSelectedChatModel(id))
+        } else {
+            dispatch(setSelectedAgentModel(id))
+        }
+    }
 
     const fetchAvailableModels = async () => {
         try {
@@ -40,7 +56,7 @@ const ModelSetting = ({ className }: ModelSettingProps) => {
     }
 
     const saveConfig = async (model: IModel, isEdit: boolean) => {
-        dispatch(setSelectedModel(model.id))
+        setSelectedModelForMode(model.id)
         await fetchAvailableModels()
         setIsAddEditModelOpen(false)
         toast.success(
@@ -59,14 +75,14 @@ const ModelSetting = ({ className }: ModelSettingProps) => {
             await fetchAvailableModels()
 
             // If the deleted model was selected, select the first available model
-            if (selectedModel === modelToDelete) {
+            if (selectedModelId === modelToDelete) {
                 const remainingModels = availableModels.filter(
                     (m) => m.id !== modelToDelete
                 )
                 if (remainingModels.length > 0) {
-                    dispatch(setSelectedModel(remainingModels[0].id))
+                    setSelectedModelForMode(remainingModels[0].id)
                 } else {
-                    dispatch(setSelectedModel(undefined))
+                    setSelectedModelForMode(undefined)
                 }
             }
 
@@ -93,7 +109,7 @@ const ModelSetting = ({ className }: ModelSettingProps) => {
                 {t('agentSetting.modelSetting.title')}
             </p>
             {availableModels?.map((model) => {
-                const isActive = selectedModel === model?.id
+                const isActive = selectedModelId === model?.id
                 const providerKey = getProviderKey(model)
 
                 return (
@@ -101,7 +117,7 @@ const ModelSetting = ({ className }: ModelSettingProps) => {
                         key={model?.id}
                         className={`h-[77px] cursor-pointer flex items-center justify-between rounded-2xl ${isActive ? 'border-2 border-firefly dark:border-sky-blue-2 bg-sky-blue dark:bg-sky-blue-2/20 p-[14px]' : 'bg-firefly/10 dark:bg-sky-blue-2/5 p-4'}`}
                         onClick={() => {
-                            dispatch(setSelectedModel(model?.id))
+                            setSelectedModelForMode(model?.id)
                         }}
                     >
                         <div className="flex items-center gap-x-4">

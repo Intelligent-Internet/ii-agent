@@ -87,23 +87,23 @@ class TestE2BSandboxInit:
 
 
 # ---------------------------------------------------------------------------
-# _to_sandbox_state static method
+# _to_sandbox_status static method
 # ---------------------------------------------------------------------------
 
 
-class TestToSandboxState:
+class TestToSandboxStatus:
     def test_running_state(self):
         state = MagicMock()
         state.RUNNING = True
         state.PAUSED = False
-        result = E2BSandbox._to_sandbox_state(state)
+        result = E2BSandbox._to_sandbox_status(state)
         assert result == SandboxStatus.RUNNING
 
     def test_paused_state(self):
         state = MagicMock()
         state.RUNNING = False
         state.PAUSED = True
-        result = E2BSandbox._to_sandbox_state(state)
+        result = E2BSandbox._to_sandbox_status(state)
         assert result == SandboxStatus.PAUSED
 
     def test_unknown_state_raises_value_error(self):
@@ -111,7 +111,7 @@ class TestToSandboxState:
         state.RUNNING = False
         state.PAUSED = False
         with pytest.raises(ValueError, match="Unrecognize"):
-            E2BSandbox._to_sandbox_state(state)
+            E2BSandbox._to_sandbox_status(state)
 
 
 # ---------------------------------------------------------------------------
@@ -163,19 +163,22 @@ class TestEnsureSandboxConnection:
         sandbox_info = MagicMock()
         sandbox_info.state = MagicMock()
         sandbox_info.state.PAUSED = False
+        sandbox_info.state.RUNNING = True
         sandbox_info.end_at = datetime.now(timezone.utc) + timedelta(hours=2)
 
-        sb.get_info = AsyncMock(return_value=sandbox_info)
         mgr = _make_manager(sandbox=sb)
 
         fake_settings = MagicMock()
         fake_settings.sandbox.e2b_api_key = "key"
+        fake_settings.sandbox.e2b_domain = None
         fake_settings.sandbox.timeout_seconds = 3600
 
-        with patch("ii_agent.agents.sandboxes.e2b.get_settings", return_value=fake_settings):
+        with patch("ii_agent.agents.sandboxes.e2b.get_settings", return_value=fake_settings), \
+             patch("ii_agent.agents.sandboxes.e2b.AsyncSandbox") as mock_cls:
+            mock_cls.get_info = AsyncMock(return_value=sandbox_info)
             await mgr._ensure_sandbox_connection()
 
-        sb.get_info.assert_called_once()
+        mock_cls.get_info.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
@@ -201,7 +204,15 @@ class TestGetStatus:
         sb.get_info = AsyncMock(return_value=sandbox_info)
 
         mgr = _make_manager(sandbox=sb)
-        status = await mgr.get_status()
+
+        fake_settings = MagicMock()
+        fake_settings.sandbox.e2b_api_key = "key"
+        fake_settings.sandbox.e2b_domain = None
+
+        with patch("ii_agent.agents.sandboxes.e2b.get_settings", return_value=fake_settings), \
+             patch("ii_agent.agents.sandboxes.e2b.AsyncSandbox") as mock_cls:
+            mock_cls.get_info = AsyncMock(return_value=sandbox_info)
+            status = await mgr.get_status()
         assert status == SandboxStatus.RUNNING
 
 
@@ -219,12 +230,10 @@ class TestPause:
 
         mgr = _make_manager(sandbox=sb)
 
-        with patch.object(mgr, "_update_sandbox_db", new=AsyncMock()) as mock_db:
-            await mgr.pause()
+        await mgr.pause()
 
         sb.beta_pause.assert_called_once()
         assert mgr.status == SandboxStatus.PAUSED
-        mock_db.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_pause_skipped_when_not_running(self):
@@ -234,11 +243,9 @@ class TestPause:
 
         mgr = _make_manager(sandbox=sb)
 
-        with patch.object(mgr, "_update_sandbox_db", new=AsyncMock()) as mock_db:
-            await mgr.pause()
+        await mgr.pause()
 
         sb.beta_pause.assert_not_called()
-        mock_db.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

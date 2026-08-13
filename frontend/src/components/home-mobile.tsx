@@ -11,7 +11,8 @@ import {
     selectAvailableModels,
     selectQuestionMode,
     selectSelectedFeature,
-    selectSelectedModel,
+    selectSelectedChatModel,
+    selectSelectedAgentModel,
     setChatMediaPreference,
     setQuestionMode,
     setSelectedFeature,
@@ -178,10 +179,20 @@ const HomeMobile = ({
     const { t } = useTranslation()
     const dispatch = useAppDispatch()
     const questionMode = useAppSelector(selectQuestionMode)
-    const selectedModel = useAppSelector(selectSelectedModel)
+    const selectedChatModel = useAppSelector(selectSelectedChatModel)
+    const selectedAgentModel = useAppSelector(selectSelectedAgentModel)
     const availableModels = useAppSelector(selectAvailableModels)
     const selectedFeature = useAppSelector(selectSelectedFeature)
     const isSage = useIsSageTheme()
+
+    // Select the appropriate model based on current mode
+    const selectedModel = useMemo(
+        () =>
+            questionMode === QUESTION_MODE.CHAT
+                ? selectedChatModel
+                : selectedAgentModel,
+        [questionMode, selectedChatModel, selectedAgentModel]
+    )
 
     const [showMediaTemplateExplorer, setShowMediaTemplateExplorer] =
         useState(false)
@@ -324,7 +335,7 @@ const HomeMobile = ({
     }, [dispatch, chatMediaPreference])
 
     return (
-        <div className="relative w-full min-h-screen overflow-hidden bg-white">
+        <div className="relative w-full min-h-screen overflow-x-hidden bg-white">
             <div
                 className={clsx(
                     "absolute inset-0 w-[calc(100vw)] bg-cover bg-center bg-[url('/images/bg-light.png')] dark:bg-[url('/images/bg.png')]",

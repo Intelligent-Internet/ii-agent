@@ -31,16 +31,22 @@ from ii_agent.chat.application.file_processing_service import ChatFileProcessor
 from ii_agent.chat.application.tool_service import ChatToolService
 from ii_agent.chat.application.turn_loop_service import LLMTurnLoopService
 from ii_agent.chat.messages.history_service import ChatMessageHistoryService
+
+if TYPE_CHECKING:
+    from ii_agent.chat.application.a2a_turn_loop_service import A2AChatTurnLoop
+    from ii_agent.realtime.pubsub.asyncio_pubsub import AsyncIOPubSub
 from ii_agent.chat.application.council_service import CouncilService, MIN_COUNCIL_MODELS
 from ii_agent.billing.exceptions import InsufficientCreditsError
 from ii_agent.credits.constants import MINIMUM_REQUIRED_CREDITS
 from ii_agent.credits.service import CreditService
 from ii_agent.sessions.models import Session
 from ii_agent.sessions.repository import SessionRepository
+from ii_agent.core.config.settings import get_settings
 from ii_agent.core.redis import cancel
 from ii_agent.chat.exceptions import ModelNotFoundError
 from ii_agent.sessions.exceptions import SessionNotFoundError
 from ii_agent.sessions.title_service import SessionTitleService
+from ii_agent.realtime.events.app_events import ModelUsageEvent
 
 if TYPE_CHECKING:
     from ii_agent.core.container import ApplicationContainer
@@ -64,6 +70,8 @@ class ChatService:
         credit_service: CreditService | None = None,
         container: ApplicationContainer,
         title_service: SessionTitleService,
+        a2a_loop: A2AChatTurnLoop | None = None,
+        pubsub: AsyncIOPubSub | None = None,
     ) -> None:
         self._file_processor = file_processor
         self._tool_service = tool_service
@@ -75,6 +83,75 @@ class ChatService:
         self._credit_service = credit_service
         self._container = container
         self._title_service = title_service
+        self._a2a_loop = a2a_loop
+        self._pubsub = pubsub
+
+    def _select_turn_loop(
+        self,
+        *,
+        model_config: ModelConfig,
+        chat_request: ChatMessageRequest,
+    ) -> LLMTurnLoopService:
+        """Choose between A2A and direct turn loops.
+
+        Falls back to the direct loop when:
+        - No A2A loop or factory configured
+        - Council mode is active (uses its own multi-model execution path
+          with per-member A2A/direct routing — see ``CouncilService``)
+        - BYOK model in cloud deployment (user pays own API bill)
+        - Custom/LiteLLM provider (no A2A adapter mapping)
+        - Storybook media type (requires Celery streaming path)
+
+        **Local vs cloud BYOK handling:**
+
+        In cloud (multitenant) deployments, BYOK users provide their own
+        API keys and expect direct model calls — routing through the
+        platform's A2A adapter (e.g. Copilot) would charge the platform's
+        subscription instead of the user's key.
+
+        In local/self-hosted deployments (``ENVIRONMENT=local``), there is
+        no system/user model distinction — the operator controls all keys
+        and explicitly opts into A2A routing via
+        ``AGENT_CHAT_INNER_LOOP_MODE=a2a``.  All compatible models route
+        through A2A regardless of ``config_type``.
+        """
+        # Fast-path early returns that don't need an A2A loop.
+        # Council uses parallel direct LLM calls — incompatible with the
+        # standard A2A loop (council uses the A2A *client* directly, not
+        # the loop, and wires it up in stream_council_chat_response).
+        council = getattr(chat_request, "council_preferences", None)
+        if council and getattr(council, "enabled", False):
+            logger.info("turn-loop-select: direct (council mode active)")
+            return self._llm_loop
+
+        # BYOK users in cloud deployments go direct — the user pays their
+        # own API bill and the A2A adapter would use platform credentials.
+        # In local mode the operator owns all keys, so BYOK is irrelevant.
+        if model_config.is_user_model() and get_settings().environment != "local":
+            logger.info("turn-loop-select: direct (BYOK user model, cloud deployment)")
+            return self._llm_loop
+
+        # Custom/LiteLLM providers have no A2A adapter mapping
+        from ii_agent.settings.llm.types import Provider
+
+        if model_config.provider == Provider.CUSTOM:
+            logger.info("turn-loop-select: direct (custom provider)")
+            return self._llm_loop
+
+        # Storybook uses Celery streaming — A2A tool bridge can't invoke
+        # start_celery_generation(), so storybook.run() returns an error.
+        media = getattr(chat_request, "media_preferences", None)
+        if media and getattr(media, "type", None) == "storybook":
+            logger.info("turn-loop-select: direct (storybook media)")
+            return self._llm_loop
+
+        # Resolve the A2A loop (legacy directly-injected singleton).
+        if self._a2a_loop is None:
+            logger.info("turn-loop-select: direct (no A2A loop available)")
+            return self._llm_loop
+
+        logger.info("turn-loop-select: a2a")
+        return self._a2a_loop  # type: ignore[return-value]
 
     @staticmethod
     def _find_model_info(all_models, model_id: str):
@@ -218,6 +295,8 @@ class ChatService:
             return
         if model_config.is_user_model():
             return
+        if not get_settings().credits.billing_enabled:
+            return
 
         has_credits = await self._credit_service.has_sufficient_credits(
             db, user_id, MINIMUM_REQUIRED_CREDITS
@@ -229,6 +308,52 @@ class ChatService:
                 "Insufficient credits to start chat. Please add more credits.",
                 available_credits=available,
                 required_credits=float(MINIMUM_REQUIRED_CREDITS),
+            )
+
+    async def _publish_council_usage(
+        self,
+        *,
+        usage,
+        model_config: ModelConfig,
+        session_id: uuid.UUID,
+        user_id: uuid.UUID,
+        run_id: uuid.UUID,
+        billing_backend: str = "native",
+        provider_reported_cost: float = 0.0,
+        premium_requests: int = 0,
+    ) -> None:
+        """Publish ModelUsageEvent for a single council member or synthesis call."""
+        if not self._pubsub:
+            return
+        if not usage:
+            return
+
+        try:
+            await self._pubsub.publish(
+                ModelUsageEvent(
+                    session_id=session_id,
+                    user_id=user_id,
+                    run_id=run_id,
+                    setting_id=model_config.id,
+                    model_id=model_config.model_id,
+                    provider=model_config.provider,
+                    pricing=model_config.pricing,
+                    input_tokens=usage.input_tokens,
+                    output_tokens=usage.output_tokens,
+                    cache_read_tokens=usage.cache_read_tokens,
+                    cache_write_tokens=usage.cache_write_tokens,
+                    reasoning_tokens=usage.reasoning_tokens,
+                    is_user_key=model_config.is_user_model(),
+                    billing_backend=billing_backend,
+                    provider_reported_cost=provider_reported_cost,
+                    premium_requests=premium_requests,
+                )
+            )
+        except Exception:
+            logger.exception(
+                "Failed to publish council usage event (session=%s, model=%s)",
+                session_id,
+                model_config.model_id,
             )
 
     async def build_message_history_response(
@@ -350,6 +475,14 @@ class ChatService:
                 display_content=display_content,
             )
 
+            # Persist binary/text parts added by file processing so that
+            # subsequent turns can access images from the conversation history.
+            if any(isinstance(p, BinaryContent) for p in user_message.parts):
+                await self._message_service.update_message_parts(
+                    db, user_message.id, user_message.parts
+                )
+                await db.commit()
+
         # Build LLM user message with repo context and media parts (pure in-memory)
         media_message_parts = media_context.llm_message_parts if media_context else []
 
@@ -394,9 +527,13 @@ class ChatService:
         provider = LLMProviderFactory.create_provider(model_config)
         is_code_interpreter_enabled = bool(tools and tools.get("code_interpreter"))
 
-        # Phase 3: Run LLM turn loop (loop manages its own DB sessions)
+        # Phase 3: Run LLM turn loop (loop manages its own DB sessions).
+        loop = self._select_turn_loop(
+            model_config=model_config,
+            chat_request=chat_request,
+        )
         try:
-            async for event in self._llm_loop.run(
+            async for event in loop.run(
                 messages=messages,
                 provider=provider,
                 tool_registry=tool_registry,
@@ -517,6 +654,14 @@ class ChatService:
                 display_content=display_content,
             )
 
+            # Persist binary/text parts added by file processing so that
+            # subsequent turns can access images from the conversation history.
+            if any(isinstance(p, BinaryContent) for p in user_message.parts):
+                await self._message_service.update_message_parts(
+                    db, user_message.id, user_message.parts
+                )
+                await db.commit()
+
             # Resolve model configs for all council models + synthesis model
             all_model_ids = [m.model_id for m in council_prefs.council_models]
             if council_prefs.synthesis_model_id not in all_model_ids:
@@ -538,6 +683,11 @@ class ChatService:
                 except Exception as e:
                     logger.warning(f"Could not resolve config for council model {mid}: {e}")
                     failed_models.append(mid)
+
+            # Pre-run credit check using synthesis model config as representative
+            synthesis_config = model_configs.get(council_prefs.synthesis_model_id)
+            if synthesis_config:
+                await self._check_credits(db, user_id=user_id, model_config=synthesis_config)
 
         run_id = str(user_message.id)
         await cancel.register_run(run_id)
@@ -592,6 +742,12 @@ class ChatService:
         synthesis_model_id = council_prefs.synthesis_model_id
 
         try:
+            # Council runs multiple LLMs in parallel.  Each member
+            # independently decides A2A vs direct via the per-model
+            # is_cloud_byok check inside CouncilService.
+            a2a_client = self._a2a_loop._client if self._a2a_loop is not None else None
+            a2a_backend = self._a2a_loop._a2a_backend if self._a2a_loop is not None else "copilot"
+
             # Council LLM streaming — NO DB connection held
             async for event in CouncilService.stream_council_response(
                 user_id=user_id,
@@ -602,6 +758,8 @@ class ChatService:
                 model_names=model_names,
                 run_id=run_id,
                 session_id=session_id,
+                a2a_client=a2a_client,
+                a2a_backend=a2a_backend,
             ):
                 event_type = event.get("type")
 
@@ -616,7 +774,31 @@ class ChatService:
                     yield event
                     continue
 
-                yield event
+                # Publish billing events for completed member/synthesis calls
+                if event_type in ("council_member_complete", "council_synthesis_complete"):
+                    event_usage = event.get("usage")
+                    event_model_config = event.get("model_config")
+                    if event_usage and event_model_config:
+                        await self._publish_council_usage(
+                            usage=event_usage,
+                            model_config=event_model_config,
+                            session_id=session_id,
+                            user_id=user_id,
+                            run_id=uuid.UUID(run_id),
+                            billing_backend=event.get("billing_backend", "native"),
+                            provider_reported_cost=event.get("provider_reported_cost", 0.0),
+                            premium_requests=event.get("premium_requests", 0),
+                        )
+
+                # Strip billing-internal fields before yielding to frontend
+                _billing_keys = {
+                    "usage",
+                    "model_config",
+                    "billing_backend",
+                    "provider_reported_cost",
+                    "premium_requests",
+                }
+                yield {k: v for k, v in event.items() if k not in _billing_keys}
 
             # Persist assistant message + post-summarization — short-lived DB session
             async with get_db_session_local() as db:

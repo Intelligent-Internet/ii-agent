@@ -99,6 +99,103 @@ def _make_connected_shell(
 
 
 @pytest.mark.asyncio
+async def test_init_sandbox_pool_claim_passes_caller_db_to_set_timeout(
+    settings_factory, monkeypatch
+):
+    """Regression test for the 2026-04-24 pool-claim self-deadlock.
+
+    The pool-claim branch of ``init_sandbox`` MUST pass the caller's
+    ``db`` session to ``sandbox_mgr.set_timeout(...)``. If a future
+    refactor drops the ``db=db`` keyword and falls back to the
+    ``db=None`` separate-session path, ``set_timeout`` opens its own
+    ``AsyncSession`` and races for the same ``agent_sandboxes`` row-lock
+    that the caller's ``update_provider_info`` flush is still holding —
+    producing a self-deadlock that wedges every subsequent agent run
+    silently.
+
+    This test is the service-layer companion to
+    ``TestSetTimeout::test_uses_caller_session_when_db_passed`` (which
+    only proves ``set_timeout`` itself is correct). Together they lock
+    in both halves of the structural fix described in
+    docs/design-docs/sandbox-pool-claim-self-deadlock.md.
+    """
+    session_id = uuid.uuid4()
+    user_id = uuid.uuid4()
+
+    # ── Fake claimed pool record ──
+    record = SimpleNamespace(
+        id=uuid.uuid4(),
+        session_id=session_id,
+        provider=SandboxProviderType.DOCKER,
+        provider_sandbox_id="container-abc",
+        status=SandboxStatus.RUNNING,
+        expired_at=None,
+        provider_data={},
+        pool_state="claimed",
+        pool_slot=None,
+    )
+
+    # ── Mock pool manager that returns the claimed record. ──
+    pool_manager = SimpleNamespace(claim=AsyncMock(return_value=record))
+
+    # ── Sandbox repo: no existing record (forces pool claim). ──
+    sandbox_repo = SimpleNamespace(
+        get_active_by_session_id=AsyncMock(return_value=None),
+        update_provider_info=AsyncMock(return_value=record),
+    )
+    session_repo = FakeSessionRepo({})
+
+    settings = settings_factory()
+    # Use a non-zero timeout so the pool-claim set_timeout branch fires.
+    settings.sandbox.timeout_seconds = 3600
+
+    service = SandboxService(
+        sandbox_repo=sandbox_repo,
+        session_repo=session_repo,
+        config=settings,
+    )
+    service.attach_pool_manager(pool_manager)
+
+    # ── Mock _connect_provider so we avoid touching the real Docker SDK. ──
+    sandbox_mgr = SimpleNamespace(
+        status=SandboxStatus.RUNNING,
+        provider_sandbox_id="container-abc",
+        expired_at=None,
+        metadata={},
+        set_timeout=AsyncMock(),
+    )
+    monkeypatch.setattr(service, "_connect_provider", AsyncMock(return_value=sandbox_mgr))
+    # Bypass the post-attach MCP /health probe; the SimpleNamespace mock
+    # has no expose_port/sandbox_id and the real probe is exercised by
+    # dedicated unit tests in test_sandbox_service_mcp_handoff.py.
+    monkeypatch.setattr(service, "_probe_mcp_health", AsyncMock(return_value=True))
+    # Suppress fire-and-forget MCP background task.
+    monkeypatch.setattr(service, "_spawn_configure_mcp", lambda *a, **kw: None)
+
+    # ── db must support .commit() (await db.commit() runs after the claim). ──
+    db = MagicMock()
+    db.commit = AsyncMock()
+
+    # We need the sentinel object to *be* the db that init_sandbox uses.
+    # init_sandbox accepts ``db`` as its first positional arg, so just pass it.
+    await service.init_sandbox(db, session_id=session_id, user_id=user_id)
+
+    # ── Critical invariant: set_timeout was called with the caller's db. ──
+    sandbox_mgr.set_timeout.assert_awaited_once()
+    call_args = sandbox_mgr.set_timeout.await_args
+    # Positional: timeout_seconds. Keyword: db must be the same object.
+    assert call_args.args == (3600,), call_args
+    assert "db" in call_args.kwargs, (
+        "init_sandbox MUST pass db=db to set_timeout on the pool-claim path; "
+        "see docs/design-docs/sandbox-pool-claim-self-deadlock.md"
+    )
+    assert call_args.kwargs["db"] is db, (
+        "set_timeout received a different db than the caller's — this "
+        "would re-introduce the 2026-04-24 self-deadlock"
+    )
+
+
+@pytest.mark.asyncio
 async def test_get_by_session_id_falls_back_to_parent_session(settings_factory):
     parent_id = uuid.uuid4()
     child_id = uuid.uuid4()

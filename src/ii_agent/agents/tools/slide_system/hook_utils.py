@@ -31,7 +31,7 @@ def _build_storage():
     try:
         return get_storage()
     except Exception as exc:  # pragma: no cover - defensive
-        logger.warning("Slide content processing skipped: %s", exc)
+        logger.warning(f"Slide content processing skipped: {exc}")
         return None
 
 
@@ -159,8 +159,12 @@ async def process_slide_content(
     user_display_content: Any,
     url_cache: Optional[Dict[str, str]] = None,
 ) -> Any:
-    if not get_settings().storage.custom_domain:
-        return user_display_content
+    settings = get_settings()
+    # Skip only when using local filesystem storage with no serving capability.
+    # MinIO and GCS can serve content even without a custom domain.
+    if not settings.storage.custom_domain and not settings.storage.serve_base_url:
+        if settings.storage.provider != "gcs":
+            return user_display_content
 
     sandbox = getattr(agent, "sandbox", None)
     if not sandbox:
@@ -170,10 +174,18 @@ async def process_slide_content(
     if storage is None:
         return user_display_content
 
+    # When there's no custom domain (e.g., local MinIO), use the backend's
+    # slide assets endpoint so images are served through our API.
+    slide_assets_base_url: str | None = None
+    if not settings.storage.custom_domain and settings.storage.serve_base_url:
+        base = settings.storage.serve_base_url.rstrip("/")
+        slide_assets_base_url = f"{base}/files/slides/assets"
+
     content_processor = SlideContentProcessor(
         storage,
         sandbox,
         url_cache=url_cache or {},
+        slide_assets_base_url=slide_assets_base_url,
     )
 
     try:
@@ -217,7 +229,7 @@ async def process_slide_content(
 
         return user_display_content
     except Exception as exc:  # pragma: no cover - defensive
-        logger.error("Error processing slide content for %s: %s", tool_name, exc)
+        logger.error(f"Error processing slide content for {tool_name}: {exc}")
         return user_display_content
 
 
@@ -256,8 +268,5 @@ async def persist_slide_tool_result(
                 )
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning(
-            "Failed to persist slide tool result for session %s (%s): %s",
-            normalized_session_id,
-            tool_name,
-            exc,
+            f"Failed to persist slide tool result for session {normalized_session_id} ({tool_name}): {exc}"
         )

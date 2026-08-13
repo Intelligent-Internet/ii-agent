@@ -74,10 +74,10 @@ async def test_prepare_agent_files_returns_typed_image_and_file() -> None:
         session_id=uuid.uuid4(),
     )
 
-    assert len(files) == 2
+    assert len(files) == 1
     assert all(isinstance(f, File) for f in files)
-    assert files[0].url == "https://cdn/photo.png"
-    assert files[0].filename == "photo.png"
+    assert files[0].url == "https://cdn/doc.pdf"
+    assert files[0].filename == "doc.pdf"
 
     assert len(images) == 1
     assert all(isinstance(i, Image) for i in images)

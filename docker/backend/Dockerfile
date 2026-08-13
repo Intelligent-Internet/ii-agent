@@ -50,7 +50,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
     --mount=type=ssh \
     mkdir -p /root/.ssh && ssh-keyscan github.com >> /root/.ssh/known_hosts && \
-    uv sync --locked --no-install-project --no-dev
+    uv sync --locked --no-install-project --no-dev --extra a2a
 
 # Install only headless shell (no full Chromium browser — saves ~600MB)
 # --with-deps installs required system libraries
@@ -73,13 +73,21 @@ COPY docker/backend/entrypoint.sh /entrypoint.sh
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=ssh \
     mkdir -p /root/.ssh && ssh-keyscan github.com >> /root/.ssh/known_hosts && \
-    uv sync --locked --no-dev
+    uv sync --locked --no-dev --extra a2a
 
 # Remove build-only tools not needed at runtime
 RUN apt-get purge -y --auto-remove openssh-client git \
  && rm -rf /var/lib/apt/lists/* /root/.ssh
 
 RUN chmod +x /entrypoint.sh /app/scripts/start.sh
+
+# Build manifest — written by stack_control.sh at build time.
+# Inspect with: docker exec <container> cat /app/build-manifest.json
+# Manifest is written to <repo>/build-manifest-backend.json by
+# scripts/stack_control.sh before invoking the build (file rather than
+# build-arg avoids Linux ARG_MAX limits on large tracked_files lists).
+ARG MANIFEST_FILE=build-manifest-backend.json
+COPY ${MANIFEST_FILE} /app/build-manifest.json
 
 # Place executables in the environment at the front of the path
 ENV PATH="/app/.venv/bin:$PATH"

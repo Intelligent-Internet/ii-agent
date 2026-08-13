@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, TYPE_CHECKING
 
 from ii_agent.agents.sandboxes import Sandbox
+from ii_agent.agents.sandboxes.novnc import NOVNC_PORT, decorate_novnc_url
 from ii_agent.agents.tools.sandbox.base import BaseSandboxTool
 from ii_agent.agents.tools.base import ToolResult
 
@@ -74,10 +75,23 @@ RETURNS:
             )
 
         try:
-            public_url = await self.sandbox.expose_port(port)
+            # Browser-facing: ``public_url`` is rendered to the user.
+            public_url = await self.sandbox.expose_port(port, external=True)
+            public_url = await decorate_novnc_url(self.sandbox, port, public_url)
+            if port == NOVNC_PORT:
+                llm_msg = (
+                    f"Successfully exposed port {port} (noVNC). The returned URL is "
+                    f"a ready-to-click viewer link with the per-sandbox VNC password "
+                    f"embedded as a query parameter — share it with the user as-is "
+                    f"(do NOT append /vnc.html or any other path). URL: {public_url}"
+                )
+                user_msg = f"noVNC viewer ready (port {port}).\nURL: {public_url}"
+            else:
+                llm_msg = f"Successfully exposed port {port}. Public URL: {public_url}"
+                user_msg = f"Port {port} exposed successfully.\nPublic URL: {public_url}"
             return ToolResult(
-                llm_content=f"Successfully exposed port {port}. Public URL: {public_url}",
-                user_display_content=f"Port {port} exposed successfully.\nPublic URL: {public_url}",
+                llm_content=llm_msg,
+                user_display_content=user_msg,
                 is_error=False,
             )
         except Exception as e:
