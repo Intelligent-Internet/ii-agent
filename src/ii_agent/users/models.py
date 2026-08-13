@@ -6,10 +6,10 @@
 """
 
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy import String, Boolean, ForeignKey, Index
+from sqlalchemy import String, Boolean, Text, ForeignKey, Index, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from datetime import datetime, timezone
-from typing import Optional, TYPE_CHECKING
+from typing import Any, Dict, Optional, TYPE_CHECKING
 import uuid
 
 from ii_agent.core.db.base import Base, TimestampColumn
@@ -99,6 +99,9 @@ class User(Base):
     skills: Mapped[list["Skill"]] = relationship(
         "Skill", back_populates="user", cascade="all, delete-orphan"
     )
+    user_agents = relationship(
+        "UserAgent", back_populates="user", cascade="all, delete-orphan"
+    )
 
     # Add index for email lookup
     __table_args__ = (Index("idx_users_email", "email"),)
@@ -142,4 +145,63 @@ class WaitlistEntry(Base):
     created_at: Mapped[datetime] = mapped_column(
         TimestampColumn,
         default=lambda: datetime.now(timezone.utc),
+    )
+
+class UserAgent(Base):
+    """User-defined custom agents.
+
+    Stores per-user agent configurations including custom system prompts,
+    tool toggles, skill/connector modes, and model preferences.
+    Used by the CUSTOM agent type flow in ii_claw.
+    """
+
+    __tablename__ = "user_agents"
+
+    # id, created_at, updated_at inherited from Base
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+
+    # Identity
+    agent_name: Mapped[str] = mapped_column(String(128), nullable=False)
+    tag: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+
+    # Model preference (e.g. "claude-sonnet-4-20250514"); NULL = use session default
+    model_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+
+    # System prompt (injected as custom_system_prompt)
+    system_prompt: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # Tool toggles (same shape as CallAgentInput.tool_args)
+    # e.g. {"media_generation": false, "browser": true}
+    tool_args: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB, nullable=True, default=dict)
+
+    # Skill / connector modes
+    # e.g. "default" | "custom_skill" | "default_and_custom_skill" | null
+    skill_mode: Mapped[Optional[str]] = mapped_column(String, nullable=True, default="default")
+    connector_mode: Mapped[Optional[str]] = mapped_column(String, nullable=True, default="default")
+
+    # Flexible JSONB bags for future extension
+    skill_config: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB, nullable=True)
+    connector_config: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB, nullable=True)
+    agent_metadata: Mapped[Optional[Dict[str, Any]]] = mapped_column("metadata", JSONB, nullable=True)
+
+    # Status
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    # Relationships
+    user: Mapped["User"] = relationship("User", back_populates="user_agents")
+
+    # Indexes & constraints
+    __table_args__ = (
+        UniqueConstraint("user_id", "agent_name", name="uq_user_agents_user_name"),
+        Index("idx_user_agents_user_id", "user_id"),
+        Index("idx_user_agents_active", "user_id", "is_active"),
+    )
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "agent_name", name="uq_user_agents_user_name"),
+        Index("idx_user_agents_user_id", "user_id"),
+        Index("idx_user_agents_active", "user_id", "is_active"),
     )

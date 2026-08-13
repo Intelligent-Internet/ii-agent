@@ -124,6 +124,7 @@ class AgentType(str, Enum):
     FAST_RESEARCH = "fast_research"
     RESEARCH_TO_WEBSITE = "research_to_website"
     MOBILE_APP = "mobile_app"
+    CUSTOM = "custom"
 
 
 @dataclass
@@ -534,6 +535,54 @@ AGENT_CONFIGS: Dict[AgentType, AgentConfig] = {
         ),
         max_turns=200,
         supports_media=True,
+    ),
+    AgentType.CUSTOM: AgentConfig(
+        agent_type=AgentType.CUSTOM,
+        description="Custom agent with user-defined behavior",
+        tool_config=AgentToolConfig(
+            core_tools=[
+                ShellRunCommand.name,
+                ShellView.name,
+                ShellList.name,
+                FileReadTool.name,
+                FileWriteTool.name,
+                FileEditTool.name,
+                WebSearchTool.name,
+                WebVisitTool.name,
+                ImageSearchTool.name,
+                # Dev tools
+                FullStackInitTool.name,
+                RestartServerTool.name,
+                AddUserEnvTool.name,
+                AskUserEnvTool.name,
+                GetServerStatusTool.name,
+                SaveCheckpointTool.name,
+                # SaveCheckpointTool.name,
+                # Productivity
+                TodoWriteTool.name,
+                SendUserFile.name,
+            ],
+            model_exclusions={
+                Provider.OPENAI: [
+                    FileWriteTool.name,
+                    FileEditTool.name,
+                    ShellList.name,
+                    ShellWriteToProcessTool.name,
+                ],
+                Provider.ANTHROPIC: [
+                    FileWriteTool.name,
+                    FileEditTool.name,
+                    ShellList.name,
+                    ShellWriteToProcessTool.name,
+                ],
+            },
+            model_additions={
+                Provider.OPENAI: [ApplyPatchTool.name],
+                Provider.ANTHROPIC: [StrReplaceEditorTool.name],
+            },
+        ),
+        supports_media=True,
+        supports_design_doc=True,
     ),
 }
 

@@ -226,6 +226,21 @@ const createAppRouter = () =>
                     }
                 },
                 {
+                    path: 'ii-claw',
+                    async lazy() {
+                        const { Component } = await import(
+                            '@/app/routes/ii-claw'
+                        )
+                        return {
+                            Component: () => (
+                                <ProtectedRoute>
+                                    <Component />
+                                </ProtectedRoute>
+                            )
+                        }
+                    }
+                },
+                {
                     path: 'share/:sessionId',
                     async lazy() {
                         const { Component } = await import('@/app/routes/share')

@@ -2543,5 +2543,238 @@
                 "unableToUpdate": "シークレットを更新できませんでした"
             }
         }
+    },
+    "iiClaw": {
+        "title": "II-Claw",
+        "version": "II-Claw v0.1.0",
+        "agents": {
+            "title": "エージェント",
+            "subtitle": "組み込みエージェントモードを選択するか、カスタムエージェントを作成してください。",
+            "customCard": {
+                "title": "エージェントをカスタマイズ",
+                "description": "カスタムプロンプト、ツール、モデルでパーソナライズされたエージェントを作成"
+            },
+            "availableAgents": "利用可能なエージェント",
+            "dialog": {
+                "createTitle": "カスタムエージェントを作成",
+                "editTitle": "エージェントを編集",
+                "stepOf": "ステップ {{current}} / {{total}}",
+                "steps": {
+                    "identity": "ID & プロンプト",
+                    "model": "モデル選択",
+                    "tools": "ツール設定",
+                    "skills": "スキル & コネクタ"
+                },
+                "sidebar": {
+                    "title": "あなたのエージェント",
+                    "empty": "カスタムエージェントはまだありません",
+                    "emptyHint": "最初のエージェントを作成してください",
+                    "noTag": "タグなし"
+                },
+                "placeholder": "編集するエージェントを選択するか、+をクリックして新規作成",
+                "fields": {
+                    "agentName": "エージェント名",
+                    "tag": "タグ",
+                    "tagPlaceholder": "例: research-ai",
+                    "systemPrompt": "システムプロンプト",
+                    "systemPromptPlaceholder": "エージェントへのカスタム指示...",
+                    "systemPromptHint": "空白の場合、デフォルトのベースプロンプトが使用されます。",
+                    "llmModel": "LLMモデル",
+                    "llmModelDefault": "デフォルト（セッション）",
+                    "llmModelHint": "エージェントが使用するモデルを選択してください。「デフォルト」はセッションのモデルを使用します。",
+                    "toolsDescription": "エージェントで使用するツールを切り替えます。",
+                    "skillMode": "スキルモード",
+                    "connectorMode": "コネクタモード"
+                },
+                "skillModes": {
+                    "default": "デフォルト",
+                    "customOnly": "カスタムのみ",
+                    "defaultAndCustom": "デフォルト + カスタム"
+                },
+                "connectorModes": {
+                    "default": "デフォルト",
+                    "customOnly": "カスタムのみ",
+                    "defaultAndCustom": "デフォルト + カスタム"
+                },
+                "buttons": {
+                    "back": "戻る",
+                    "next": "次へ",
+                    "create": "エージェントを作成",
+                    "update": "エージェントを更新",
+                    "saving": "保存中...",
+                    "newAgent": "新しいエージェント"
+                },
+                "delete": {
+                    "title": "エージェントを削除しますか？",
+                    "description": "このエージェントを削除してもよろしいですか？この操作は元に戻せません。",
+                    "confirm": "削除",
+                    "cancel": "キャンセル"
+                }
+            },
+            "builtinAgents": {
+                "general": { "name": "汎用エージェント", "description": "デフォルトの多目的エージェント" },
+                "fastResearch": { "name": "高速リサーチエージェント", "description": "ウェブ検索と要約" },
+                "deepResearch": { "name": "深層リサーチエージェント", "description": "引用付きの詳細な調査" },
+                "websiteBuilder": { "name": "ウェブサイトビルダーエージェント", "description": "フルスタックWeb開発" },
+                "mobileApp": { "name": "モバイルアプリエージェント", "description": "React Nativeモバイル開発" },
+                "media": { "name": "メディアエージェント", "description": "画像・動画生成" },
+                "slide": { "name": "スライド作成エージェント", "description": "プレゼンテーション作成" },
+                "codex": { "name": "Codexエージェント", "description": "OpenAI Codexによるコード生成" },
+                "claudeCode": { "name": "Claude Codeエージェント", "description": "Claudeによる自律コーディング" }
+            }
+        },
+        "channels": {
+            "title": "チャンネル",
+            "subtitle": "II-Clawが複数のチャンネルで通信できるよう、メッセージングプラットフォームを接続します。",
+            "connected": "接続済み",
+            "status": {
+                "connected": "接続済み",
+                "disconnected": "未接続"
+            },
+            "configure": "設定",
+            "loading": "チャンネルを読み込み中...",
+            "error": "チャンネルを読み込めませんでした。バックエンドは稼働していますか？",
+            "setupSteps": "セットアップ手順",
+            "advanced": "詳細設定",
+            "required": "必須",
+            "secret": "シークレット",
+            "commaSeparated": "カンマ区切りの値",
+            "saving": "保存中...",
+            "removing": "削除中...",
+            "disconnect": "切断",
+            "connect": "接続",
+            "update": "更新",
+            "agent": "エージェント",
+            "selectAgent": "エージェントを選択",
+            "builtinAgents": "ビルトイン",
+            "customAgents": "カスタム",
+            "telegram": {
+                "displayName": "Telegram",
+                "description": "Telegram Bot API — ロングポーリングアダプター",
+                "quickSetup": "@BotFatherからボットトークンを貼り付けてください",
+                "setupSteps": ["Telegramで@BotFatherを開く", "/newbotを送信し、指示に従う", "下にトークンを貼り付ける"],
+                "fields": {
+                    "bot_token_env": "ボットトークン",
+                    "allowed_users": "許可されたユーザーID",
+                    "default_agent": "デフォルトエージェント",
+                    "poll_interval_secs": "ポーリング間隔（秒）"
+                }
+            },
+            "discord": {
+                "displayName": "Discord",
+                "description": "Discord Gatewayボットアダプター",
+                "quickSetup": "Discord Developer Portalからボットトークンを貼り付けてください",
+                "setupSteps": ["discord.com/developers/applicationsにアクセス", "ボットを作成してトークンをコピー", "下に貼り付ける"],
+                "fields": {
+                    "bot_token_env": "ボットトークン",
+                    "allowed_guilds": "許可されたギルドID",
+                    "allowed_users": "許可されたユーザーID",
+                    "default_agent": "デフォルトエージェント",
+                    "intents": "インテントビットマスク"
+                }
+            },
+            "slack": {
+                "displayName": "Slack",
+                "description": "Slack Socket Mode + Events API",
+                "quickSetup": "api.slack.comからApp TokenとBot Tokenを貼り付けてください",
+                "setupSteps": ["api.slack.com/appsでアプリを作成", "Socket Modeを有効にしてApp Tokenをコピー", "OAuth & PermissionsからBot Tokenをコピー"],
+                "fields": {
+                    "app_token_env": "App Token (xapp-)",
+                    "bot_token_env": "Bot Token (xoxb-)",
+                    "allowed_channels": "許可されたチャンネルID",
+                    "default_agent": "デフォルトエージェント"
+                }
+            }
+        },
+        "cronJobs": {
+            "title": "定期タスク",
+            "subtitle": "自動タスクとメッセージをスケジュールします。",
+            "active": "アクティブ",
+            "create": "タスク作成",
+            "creating": "作成中...",
+            "createJob": "定期タスクを作成",
+            "createJobDesc": "トリガーとアクションを設定してスケジュールタスクを作成します。",
+            "jobName": "タスク名",
+            "label": "ラベル",
+            "oneShot": "ワンショット（成功後に自動削除）",
+            "oneShotBadge": "ワンショット",
+            "schedule": "スケジュール",
+            "action": "アクション",
+            "history": "履歴",
+            "historyDesc": "このタスクの最近の実行履歴です。",
+            "noHistory": "まだ実行履歴がありません",
+            "noJobs": "定期タスクが設定されていません",
+            "noJobsHint": "「タスク作成」をクリックして最初のタスクをスケジュールしてください",
+            "delete": "削除",
+            "deleting": "削除中...",
+            "confirmDeleteTitle": "定期タスクを削除しますか？",
+            "confirmDeleteDesc": "「{{name}}」を削除してもよろしいですか？この操作は元に戻せません。",
+            "nameRequired": "タスク名は必須です",
+            "everyValue": "間隔",
+            "everyUnit": "単位",
+            "units": {
+                "minutes": "分",
+                "hours": "時間",
+                "days": "日"
+            },
+            "cronPreset": "頻度",
+            "cronExpr": "Cron式",
+            "cronExprHint": "形式: 分 時 日 月 曜日",
+            "cronPresets": {
+                "daily_9am": "毎日午前9時",
+                "daily_midnight": "毎日深夜0時",
+                "daily_6pm": "毎日午後6時",
+                "weekdays_9am": "平日午前9時",
+                "weekdays_6pm": "平日午後6時",
+                "weekly_monday": "毎週月曜日午前9時",
+                "weekly_friday": "毎週金曜日午後5時",
+                "twice_daily": "1日2回（午前9時・午後6時）",
+                "every_6h": "6時間ごと",
+                "monthly_first": "毎月1日午前9時",
+                "monthly_last_friday": "毎月最終金曜日午後5時",
+                "quarterly": "四半期ごと（1月・4月・7月・10月1日）",
+                "custom": "カスタム式"
+            },
+            "timezone": "タイムゾーン",
+            "runAt": "実行日時",
+            "scheduleTypes": {
+                "every": "定期",
+                "cron": "Cron",
+                "at": "1回のみ"
+            },
+            "actionTypes": {
+                "channel_message": "メッセージ送信",
+                "assistant_task": "AIタスク"
+            },
+            "actionFields": {
+                "channelBot": "チャンネル / Bot",
+                "recipient": "宛先",
+                "message": "メッセージ",
+                "agentId": "エージェントID",
+                "context": "プロンプト / コンテキスト"
+            },
+            "selectChannelBot": "チャンネルBotを選択...",
+            "noChannelsConfigured": "チャンネルが設定されていません。先にチャンネルを設定してください。",
+            "deliverTo": "AI応答の送信先",
+            "searchPlaceholder": "タスクを検索...",
+            "noMatchingJobs": "フィルターに一致するタスクがありません",
+            "filters": {
+                "enabled": "状態",
+                "schedule": "スケジュール",
+                "label": "ラベル",
+                "all": "すべて",
+                "enabledOnly": "有効",
+                "disabledOnly": "無効",
+                "clear": "フィルターをクリア"
+            },
+            "edit": "編集",
+            "editJob": "定期タスクを編集",
+            "editJobDesc": "このタスクのスケジュール、アクション、設定を変更します。",
+            "save": "変更を保存",
+            "saving": "保存中...",
+            "testJob": "テスト実行",
+            "testResult": "テスト結果",
+            "testing": "テスト中..."
+        }
     }
 }

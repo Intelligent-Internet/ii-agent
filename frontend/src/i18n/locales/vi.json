@@ -2603,5 +2603,238 @@
                 "unableToUpdate": "Không thể cập nhật secrets"
             }
         }
+    },
+    "iiClaw": {
+        "title": "II-Claw",
+        "version": "II-Claw v0.1.0",
+        "agents": {
+            "title": "Agents",
+            "subtitle": "Chọn chế độ agent có sẵn hoặc tạo agent tùy chỉnh của bạn.",
+            "customCard": {
+                "title": "Tùy chỉnh Agent",
+                "description": "Tạo agent cá nhân với prompt, công cụ & mô hình tùy chỉnh"
+            },
+            "availableAgents": "Agent có sẵn",
+            "dialog": {
+                "createTitle": "Tạo Agent tùy chỉnh",
+                "editTitle": "Chỉnh sửa Agent",
+                "stepOf": "Bước {{current}} / {{total}}",
+                "steps": {
+                    "identity": "Định danh & Prompt",
+                    "model": "Chọn mô hình",
+                    "tools": "Cấu hình công cụ",
+                    "skills": "Kỹ năng & Kết nối"
+                },
+                "sidebar": {
+                    "title": "Agent của bạn",
+                    "empty": "Chưa có agent tùy chỉnh",
+                    "emptyHint": "Tạo agent đầu tiên",
+                    "noTag": "Không có tag"
+                },
+                "placeholder": "Chọn agent để chỉnh sửa, hoặc nhấn + để tạo mới",
+                "fields": {
+                    "agentName": "Tên Agent",
+                    "tag": "Tag",
+                    "tagPlaceholder": "vd. research-ai",
+                    "systemPrompt": "System Prompt",
+                    "systemPromptPlaceholder": "Hướng dẫn tùy chỉnh cho agent...",
+                    "systemPromptHint": "Để trống để sử dụng prompt mặc định.",
+                    "llmModel": "Mô hình LLM",
+                    "llmModelDefault": "Mặc định (Phiên)",
+                    "llmModelHint": "Chọn mô hình agent sẽ sử dụng. \"Mặc định\" dùng mô hình của phiên hiện tại.",
+                    "toolsDescription": "Bật/tắt các công cụ cho agent này.",
+                    "skillMode": "Chế độ kỹ năng",
+                    "connectorMode": "Chế độ kết nối"
+                },
+                "skillModes": {
+                    "default": "Mặc định",
+                    "customOnly": "Tùy chỉnh",
+                    "defaultAndCustom": "Mặc định + Tùy chỉnh"
+                },
+                "connectorModes": {
+                    "default": "Mặc định",
+                    "customOnly": "Tùy chỉnh",
+                    "defaultAndCustom": "Mặc định + Tùy chỉnh"
+                },
+                "buttons": {
+                    "back": "Quay lại",
+                    "next": "Tiếp theo",
+                    "create": "Tạo Agent",
+                    "update": "Cập nhật Agent",
+                    "saving": "Đang lưu...",
+                    "newAgent": "Agent mới"
+                },
+                "delete": {
+                    "title": "Xóa agent?",
+                    "description": "Bạn có chắc muốn xóa agent này? Hành động này không thể hoàn tác.",
+                    "confirm": "Xóa",
+                    "cancel": "Hủy"
+                }
+            },
+            "builtinAgents": {
+                "general": { "name": "Agent Tổng hợp", "description": "Agent đa năng mặc định" },
+                "fastResearch": { "name": "Agent Nghiên cứu Nhanh", "description": "Tìm kiếm web nhanh & tóm tắt" },
+                "deepResearch": { "name": "Agent Nghiên cứu Sâu", "description": "Nghiên cứu chuyên sâu với trích dẫn" },
+                "websiteBuilder": { "name": "Agent Xây dựng Website", "description": "Phát triển web full-stack" },
+                "mobileApp": { "name": "Agent Ứng dụng Di động", "description": "Phát triển React Native" },
+                "media": { "name": "Agent Media", "description": "Tạo hình ảnh & video" },
+                "slide": { "name": "Agent Tạo Slide", "description": "Tạo bài thuyết trình" },
+                "codex": { "name": "Agent Codex", "description": "Tạo mã với OpenAI Codex" },
+                "claudeCode": { "name": "Agent Claude Code", "description": "Lập trình tự động với Claude" }
+            }
+        },
+        "channels": {
+            "title": "Kênh",
+            "subtitle": "Kết nối các nền tảng nhắn tin để II-Claw giao tiếp đa kênh.",
+            "connected": "đã kết nối",
+            "status": {
+                "connected": "Đã kết nối",
+                "disconnected": "Chưa kết nối"
+            },
+            "configure": "Cấu hình",
+            "loading": "Đang tải kênh...",
+            "error": "Không thể tải kênh. Backend đang chạy chưa?",
+            "setupSteps": "Các bước thiết lập",
+            "advanced": "Nâng cao",
+            "required": "Bắt buộc",
+            "secret": "bí mật",
+            "commaSeparated": "Các giá trị phân cách bằng dấu phẩy",
+            "saving": "Đang lưu...",
+            "removing": "Đang xóa...",
+            "disconnect": "Ngắt kết nối",
+            "connect": "Kết nối",
+            "update": "Cập nhật",
+            "agent": "Agent",
+            "selectAgent": "Chọn agent",
+            "builtinAgents": "Có sẵn",
+            "customAgents": "Tùy chỉnh",
+            "telegram": {
+                "displayName": "Telegram",
+                "description": "Telegram Bot API — bộ điều hợp long-polling",
+                "quickSetup": "Dán token bot từ @BotFather",
+                "setupSteps": ["Mở @BotFather trên Telegram", "Gửi /newbot và làm theo hướng dẫn", "Dán token bên dưới"],
+                "fields": {
+                    "bot_token_env": "Token Bot",
+                    "allowed_users": "ID người dùng được phép",
+                    "default_agent": "Agent mặc định",
+                    "poll_interval_secs": "Chu kỳ poll (giây)"
+                }
+            },
+            "discord": {
+                "displayName": "Discord",
+                "description": "Bộ điều hợp bot Discord Gateway",
+                "quickSetup": "Dán token bot từ Discord Developer Portal",
+                "setupSteps": ["Truy cập discord.com/developers/applications", "Tạo bot và sao chép token", "Dán bên dưới"],
+                "fields": {
+                    "bot_token_env": "Token Bot",
+                    "allowed_guilds": "ID Guild được phép",
+                    "allowed_users": "ID người dùng được phép",
+                    "default_agent": "Agent mặc định",
+                    "intents": "Bitmask Intent"
+                }
+            },
+            "slack": {
+                "displayName": "Slack",
+                "description": "Slack Socket Mode + Events API",
+                "quickSetup": "Dán App Token và Bot Token từ api.slack.com",
+                "setupSteps": ["Tạo app tại api.slack.com/apps", "Bật Socket Mode và sao chép App Token", "Sao chép Bot Token từ OAuth & Permissions"],
+                "fields": {
+                    "app_token_env": "App Token (xapp-)",
+                    "bot_token_env": "Bot Token (xoxb-)",
+                    "allowed_channels": "ID kênh được phép",
+                    "default_agent": "Agent mặc định"
+                }
+            }
+        },
+        "cronJobs": {
+            "title": "Tác vụ định kỳ",
+            "subtitle": "Lên lịch các tác vụ và tin nhắn tự động.",
+            "active": "đang hoạt động",
+            "create": "Tạo tác vụ",
+            "creating": "Đang tạo...",
+            "createJob": "Tạo tác vụ định kỳ",
+            "createJobDesc": "Thiết lập tác vụ theo lịch với điều kiện kích hoạt và hành động.",
+            "jobName": "Tên tác vụ",
+            "label": "Nhãn",
+            "oneShot": "Chạy một lần (tự xóa sau khi thành công)",
+            "oneShotBadge": "một lần",
+            "schedule": "Lịch trình",
+            "action": "Hành động",
+            "history": "Lịch sử",
+            "historyDesc": "Các lần chạy gần đây của tác vụ này.",
+            "noHistory": "Chưa có lần chạy nào",
+            "noJobs": "Chưa có tác vụ định kỳ nào",
+            "noJobsHint": "Nhấn \"Tạo tác vụ\" để lên lịch tác vụ đầu tiên",
+            "delete": "Xóa",
+            "deleting": "Đang xóa...",
+            "confirmDeleteTitle": "Xóa tác vụ định kỳ?",
+            "confirmDeleteDesc": "Bạn có chắc muốn xóa \"{{name}}\"? Hành động này không thể hoàn tác.",
+            "nameRequired": "Tên tác vụ là bắt buộc",
+            "everyValue": "Chạy mỗi",
+            "everyUnit": "Đơn vị",
+            "units": {
+                "minutes": "Phút",
+                "hours": "Giờ",
+                "days": "Ngày"
+            },
+            "cronPreset": "Tần suất",
+            "cronExpr": "Biểu thức Cron",
+            "cronExprHint": "Định dạng: phút giờ ngày-trong-tháng tháng ngày-trong-tuần",
+            "cronPresets": {
+                "daily_9am": "Hàng ngày lúc 9:00 sáng",
+                "daily_midnight": "Hàng ngày lúc nửa đêm",
+                "daily_6pm": "Hàng ngày lúc 6:00 chiều",
+                "weekdays_9am": "Ngày thường lúc 9:00 sáng",
+                "weekdays_6pm": "Ngày thường lúc 6:00 chiều",
+                "weekly_monday": "Thứ Hai hàng tuần lúc 9:00 sáng",
+                "weekly_friday": "Thứ Sáu hàng tuần lúc 5:00 chiều",
+                "twice_daily": "Hai lần/ngày (9 sáng & 6 chiều)",
+                "every_6h": "Mỗi 6 giờ",
+                "monthly_first": "Ngày đầu tháng lúc 9:00 sáng",
+                "monthly_last_friday": "Thứ Sáu cuối tháng lúc 5 chiều",
+                "quarterly": "Hàng quý (1 Tháng 1, 4, 7, 10)",
+                "custom": "Biểu thức tùy chỉnh"
+            },
+            "timezone": "Múi giờ",
+            "runAt": "Chạy lúc",
+            "scheduleTypes": {
+                "every": "Định kỳ",
+                "cron": "Cron",
+                "at": "Một lần"
+            },
+            "actionTypes": {
+                "channel_message": "Gửi tin nhắn",
+                "assistant_task": "Tác vụ AI"
+            },
+            "actionFields": {
+                "channelBot": "Kênh / Bot",
+                "recipient": "Người nhận",
+                "message": "Tin nhắn",
+                "agentId": "ID Agent",
+                "context": "Prompt / Ngữ cảnh"
+            },
+            "selectChannelBot": "Chọn một kênh bot...",
+            "noChannelsConfigured": "Chưa có kênh nào. Hãy thiết lập kênh trước.",
+            "deliverTo": "Gửi phản hồi AI đến",
+            "searchPlaceholder": "Tìm tác vụ...",
+            "noMatchingJobs": "Không có tác vụ nào phù hợp với bộ lọc",
+            "filters": {
+                "enabled": "Trạng thái",
+                "schedule": "Lịch trình",
+                "label": "Nhãn",
+                "all": "Tất cả",
+                "enabledOnly": "Đang bật",
+                "disabledOnly": "Đang tắt",
+                "clear": "Xóa bộ lọc"
+            },
+            "edit": "Sửa",
+            "editJob": "Sửa tác vụ định kỳ",
+            "editJobDesc": "Thay đổi lịch trình, hành động hoặc cài đặt của tác vụ này.",
+            "save": "Lưu thay đổi",
+            "saving": "Đang lưu...",
+            "testJob": "Thử nghiệm",
+            "testResult": "Kết quả thử nghiệm",
+            "testing": "Đang thử..."
+        }
     }
 }

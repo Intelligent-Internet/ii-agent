@@ -2744,5 +2744,238 @@
                 "unableToUpdate": "Unable to update secrets"
             }
         }
+    },
+    "iiClaw": {
+        "title": "II-Claw",
+        "version": "II-Claw v0.1.0",
+        "agents": {
+            "title": "Agents",
+            "subtitle": "Choose a built-in agent mode or create your own custom agent.",
+            "customCard": {
+                "title": "Custom your Agent",
+                "description": "Create a personalized agent with custom prompt, tools & model"
+            },
+            "availableAgents": "Available Agents",
+            "dialog": {
+                "createTitle": "Create Custom Agent",
+                "editTitle": "Edit Agent",
+                "stepOf": "Step {{current}} of {{total}}",
+                "steps": {
+                    "identity": "Identity & Prompt",
+                    "model": "Choose Model",
+                    "tools": "Configure Tools",
+                    "skills": "Skills & Connectors"
+                },
+                "sidebar": {
+                    "title": "Your Agents",
+                    "empty": "No custom agents yet",
+                    "emptyHint": "Create your first one",
+                    "noTag": "No tag"
+                },
+                "placeholder": "Select your agent to edit, or click + to add a new one",
+                "fields": {
+                    "agentName": "Agent Name",
+                    "tag": "Tag",
+                    "tagPlaceholder": "e.g. research-ai",
+                    "systemPrompt": "System Prompt",
+                    "systemPromptPlaceholder": "Custom instructions for this agent...",
+                    "systemPromptHint": "Leave blank to use the default base prompt.",
+                    "llmModel": "LLM Model",
+                    "llmModelDefault": "Default (Session)",
+                    "llmModelHint": "Choose the model this agent will use. \"Default\" uses your session model.",
+                    "toolsDescription": "Toggle the tools available to this agent.",
+                    "skillMode": "Skill Mode",
+                    "connectorMode": "Connector Mode"
+                },
+                "skillModes": {
+                    "default": "Default",
+                    "customOnly": "Custom Only",
+                    "defaultAndCustom": "Default + Custom"
+                },
+                "connectorModes": {
+                    "default": "Default",
+                    "customOnly": "Custom Only",
+                    "defaultAndCustom": "Default + Custom"
+                },
+                "buttons": {
+                    "back": "Back",
+                    "next": "Next",
+                    "create": "Create Agent",
+                    "update": "Update Agent",
+                    "saving": "Saving...",
+                    "newAgent": "New Agent"
+                },
+                "delete": {
+                    "title": "Delete agent?",
+                    "description": "Are you sure you want to delete this agent? This action cannot be undone.",
+                    "confirm": "Delete",
+                    "cancel": "Cancel"
+                }
+            },
+            "builtinAgents": {
+                "general": { "name": "General Agent", "description": "Default multi-purpose agent" },
+                "fastResearch": { "name": "Fast Research Agent", "description": "Quick web research & summarization" },
+                "deepResearch": { "name": "Deep Research Agent", "description": "In-depth research with citations" },
+                "websiteBuilder": { "name": "Website Builder Agent", "description": "Full-stack web development" },
+                "mobileApp": { "name": "Mobile App Agent", "description": "React Native mobile development" },
+                "media": { "name": "Media Agent", "description": "Image & video generation" },
+                "slide": { "name": "Slide Creator Agent", "description": "Create presentations" },
+                "codex": { "name": "Codex Agent", "description": "OpenAI Codex code generation" },
+                "claudeCode": { "name": "Claude Code Agent", "description": "Claude autonomous coding" }
+            }
+        },
+        "channels": {
+            "title": "Channels",
+            "subtitle": "Connect messaging platforms to enable II-Claw to communicate across channels.",
+            "connected": "connected",
+            "status": {
+                "connected": "Connected",
+                "disconnected": "Disconnected"
+            },
+            "configure": "Configure",
+            "loading": "Loading channels...",
+            "error": "Could not load channels. Is the backend running?",
+            "setupSteps": "Setup steps",
+            "advanced": "Advanced",
+            "required": "Required",
+            "secret": "secret",
+            "commaSeparated": "Comma-separated values",
+            "saving": "Saving...",
+            "removing": "Removing...",
+            "disconnect": "Disconnect",
+            "connect": "Connect",
+            "update": "Update",
+            "agent": "Agent",
+            "selectAgent": "Select agent",
+            "builtinAgents": "Built-in",
+            "customAgents": "Custom",
+            "telegram": {
+                "displayName": "Telegram",
+                "description": "Telegram Bot API — long-polling adapter",
+                "quickSetup": "Paste your bot token from @BotFather",
+                "setupSteps": ["Open @BotFather on Telegram", "Send /newbot and follow the prompts", "Paste the token below"],
+                "fields": {
+                    "bot_token_env": "Bot Token",
+                    "allowed_users": "Allowed User IDs",
+                    "default_agent": "Default Agent",
+                    "poll_interval_secs": "Poll Interval (sec)"
+                }
+            },
+            "discord": {
+                "displayName": "Discord",
+                "description": "Discord Gateway bot adapter",
+                "quickSetup": "Paste your bot token from the Discord Developer Portal",
+                "setupSteps": ["Go to discord.com/developers/applications", "Create a bot and copy the token", "Paste it below"],
+                "fields": {
+                    "bot_token_env": "Bot Token",
+                    "allowed_guilds": "Allowed Guild IDs",
+                    "allowed_users": "Allowed User IDs",
+                    "default_agent": "Default Agent",
+                    "intents": "Intents Bitmask"
+                }
+            },
+            "slack": {
+                "displayName": "Slack",
+                "description": "Slack Socket Mode + Events API",
+                "quickSetup": "Paste your App Token and Bot Token from api.slack.com",
+                "setupSteps": ["Create app at api.slack.com/apps", "Enable Socket Mode and copy App Token", "Copy Bot Token from OAuth & Permissions"],
+                "fields": {
+                    "app_token_env": "App Token (xapp-)",
+                    "bot_token_env": "Bot Token (xoxb-)",
+                    "allowed_channels": "Allowed Channel IDs",
+                    "default_agent": "Default Agent"
+                }
+            }
+        },
+        "cronJobs": {
+            "title": "Cron Jobs",
+            "subtitle": "Schedule automated tasks and messages.",
+            "active": "active",
+            "create": "Create Job",
+            "creating": "Creating...",
+            "createJob": "Create Cron Job",
+            "createJobDesc": "Set up a scheduled task with a trigger and action.",
+            "jobName": "Job Name",
+            "label": "Label",
+            "oneShot": "One-shot (auto-delete after success)",
+            "oneShotBadge": "one-shot",
+            "schedule": "Schedule",
+            "action": "Action",
+            "history": "History",
+            "historyDesc": "Recent execution runs for this job.",
+            "noHistory": "No runs yet",
+            "noJobs": "No cron jobs configured",
+            "noJobsHint": "Click \"Create Job\" to schedule your first task",
+            "delete": "Delete",
+            "deleting": "Deleting...",
+            "confirmDeleteTitle": "Delete cron job?",
+            "confirmDeleteDesc": "Are you sure you want to delete \"{{name}}\"? This action cannot be undone.",
+            "nameRequired": "Job name is required",
+            "everyValue": "Run every",
+            "everyUnit": "Unit",
+            "units": {
+                "minutes": "Minutes",
+                "hours": "Hours",
+                "days": "Days"
+            },
+            "cronPreset": "Frequency",
+            "cronExpr": "Cron Expression",
+            "cronExprHint": "Format: minute hour day-of-month month day-of-week",
+            "cronPresets": {
+                "daily_9am": "Daily at 9:00 AM",
+                "daily_midnight": "Daily at midnight",
+                "daily_6pm": "Daily at 6:00 PM",
+                "weekdays_9am": "Weekdays at 9:00 AM",
+                "weekdays_6pm": "Weekdays at 6:00 PM",
+                "weekly_monday": "Every Monday at 9:00 AM",
+                "weekly_friday": "Every Friday at 5:00 PM",
+                "twice_daily": "Twice daily (9 AM & 6 PM)",
+                "every_6h": "Every 6 hours",
+                "monthly_first": "First of month at 9:00 AM",
+                "monthly_last_friday": "Last Friday of month at 5 PM",
+                "quarterly": "Quarterly (Jan, Apr, Jul, Oct 1st)",
+                "custom": "Custom expression"
+            },
+            "timezone": "Timezone",
+            "runAt": "Run At",
+            "scheduleTypes": {
+                "every": "Every",
+                "cron": "Cron",
+                "at": "One-Time"
+            },
+            "actionTypes": {
+                "channel_message": "Post Message",
+                "assistant_task": "AI Task"
+            },
+            "actionFields": {
+                "channelBot": "Channel / Bot",
+                "recipient": "Recipient",
+                "message": "Message",
+                "agentId": "Agent ID",
+                "context": "Prompt / Context"
+            },
+            "selectChannelBot": "Select a channel bot...",
+            "noChannelsConfigured": "No channels configured. Set up a channel first.",
+            "deliverTo": "Deliver AI response to",
+            "searchPlaceholder": "Search jobs...",
+            "noMatchingJobs": "No jobs match your filters",
+            "filters": {
+                "enabled": "Status",
+                "schedule": "Schedule",
+                "label": "Label",
+                "all": "All",
+                "enabledOnly": "Enabled",
+                "disabledOnly": "Disabled",
+                "clear": "Clear filters"
+            },
+            "edit": "Edit",
+            "editJob": "Edit Cron Job",
+            "editJobDesc": "Modify the schedule, action, or settings for this job.",
+            "save": "Save Changes",
+            "saving": "Saving...",
+            "testJob": "Test Job",
+            "testResult": "Test Result",
+            "testing": "Testing..."
+        }
     }
 }
