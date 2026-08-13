@@ -103,6 +103,10 @@ media:
       provider: fal
       model: fal-ai/kling-video/v1.6/pro
       enabled: true
+    minimax:
+      provider: minimax
+      model: MiniMax-H3
+      enabled: true
 
 auth:
   jwt_algorithm: HS256

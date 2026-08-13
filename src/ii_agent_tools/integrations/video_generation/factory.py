@@ -11,6 +11,9 @@ from ii_agent_tools.integrations.video_generation.gemini import (
 from ii_agent_tools.integrations.video_generation.fal import (
     FalVideoGenerationClient,
 )
+from ii_agent_tools.integrations.video_generation.minimax import (
+    MiniMaxVideoGenerationClient,
+)
 from ii_agent_tools.logger import get_logger
 
 logger = get_logger(__name__)
@@ -22,6 +25,7 @@ class VideoGenerationProvider(Enum):
     VERTEX = "vertex"
     GEMINI = "gemini"
     FAL = "fal"
+    MINIMAX = "minimax"
 
 
 # Alias mapping for provider names
@@ -31,6 +35,10 @@ PROVIDER_ALIASES: dict[str, VideoGenerationProvider] = {
     "fal": VideoGenerationProvider.FAL,
     "fal-ai": VideoGenerationProvider.FAL,
     "fal_ai": VideoGenerationProvider.FAL,
+    "minimax": VideoGenerationProvider.MINIMAX,
+    "minimax-ai": VideoGenerationProvider.MINIMAX,
+    "minimax_ai": VideoGenerationProvider.MINIMAX,
+    "minimaxi": VideoGenerationProvider.MINIMAX,
 }
 
 
@@ -96,6 +104,23 @@ def create_video_generation_client(
             project_id=settings.gcp_project_id,
         )
 
+    if provider == VideoGenerationProvider.MINIMAX.value:
+        if not settings.minimax_api_key:
+            raise ValueError("minimax provider requires minimax_api_key")
+        logger.info(
+            "Using MiniMax for video generation",
+            extra={"provider": provider},
+        )
+        return MiniMaxVideoGenerationClient(
+            api_key=settings.minimax_api_key,
+            model_name=settings.minimax_model_name,
+            base_url=settings.minimax_base_url,
+            group_id=settings.minimax_group_id,
+            output_bucket=settings.gcs_output_bucket,
+            project_id=settings.gcp_project_id,
+            custom_domain=settings.custom_domain,
+        )
+
     # Auto-select provider based on available configuration
     # Prefer Gemini if API key is available
     if settings.google_ai_studio_api_key:
@@ -122,6 +147,18 @@ def create_video_generation_client(
             request_mode=settings.fal_request_mode,
             output_bucket=settings.gcs_output_bucket,
             project_id=settings.gcp_project_id,
+        )
+
+    if settings.minimax_api_key:
+        logger.info("Using MiniMax for video generation (auto-selected)")
+        return MiniMaxVideoGenerationClient(
+            api_key=settings.minimax_api_key,
+            model_name=settings.minimax_model_name,
+            base_url=settings.minimax_base_url,
+            group_id=settings.minimax_group_id,
+            output_bucket=settings.gcs_output_bucket,
+            project_id=settings.gcp_project_id,
+            custom_domain=settings.custom_domain,
         )
 
     raise ValueError("No video generation client available")
