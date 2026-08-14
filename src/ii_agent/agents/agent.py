@@ -235,6 +235,15 @@ class IIAgent:
             for sub_agent in self.sub_agents:
                 self._initialize_sub_agent(sub_agent)
 
+        # Opt-in SAGE persistent memory integration. Activated only when
+        # SAGE_ENABLED=true in the environment; otherwise a no-op.
+        try:
+            from ii_agent.integrations.sage import register_sage_hooks
+
+            register_sage_hooks(self)
+        except Exception as exc:  # noqa: BLE001 — integration must never block agent init
+            logger.debug(f"SAGE integration skipped: {exc}")
+
     def _initialize_sub_agent(self, sub_agent: "IIAgent") -> None:
         """Initialize a sub-agent with shared context from parent."""
         # Share session store if not set
