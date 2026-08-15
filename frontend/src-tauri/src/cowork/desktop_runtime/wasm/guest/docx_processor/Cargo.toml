@@ -1,0 +1,21 @@
+[package]
+name = "docx_processor"
+version = "0.1.0"
+edition = "2021"
+description = "WASI preview1 module for the desktop docx skill. Parses Word OOXML containers with docx-rs inside the cowork WASM runtime."
+license = "MIT"
+
+[[bin]]
+name = "docx_processor"
+path = "src/main.rs"
+
+[dependencies]
+docx-rs = { version = "0.4", default-features = false }
+serde_json = { version = "1", default-features = false, features = ["std"] }
+
+[profile.release]
+opt-level = "z"
+lto = true
+strip = true
+codegen-units = 1
+panic = "abort"

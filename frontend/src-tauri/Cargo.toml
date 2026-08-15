@@ -14,8 +14,22 @@ tauri-build = { version = "2.0.3", features = [] }
 tauri = { version = "2.1.1", features = [] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+chrono = { version = "0.4", features = ["clock"] }
 tauri-plugin-shell = "2"
 tauri-plugin-process = "2.3.0"
+tauri-plugin-dialog = "2.6.0"
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
+futures-util = "0.3"
+rust_socketio = "0.6"
+glob = "0.3"
+regex = "1"
+sha2 = "0.10"
+zstd = "0.13"
+wasmtime = { version = "26", default-features = false, features = ["cranelift", "runtime"] }
+wasmtime-wasi = { version = "26", default-features = false, features = ["preview1"] }
+wat = "1.218"
+lopdf = { version = "0.36", default-features = false }
+tokio = { version = "1", features = ["rt", "sync", "time"] }
 
 [features]
 # This feature is used for production builds or when a dev server is not specified, DO NOT REMOVE!!

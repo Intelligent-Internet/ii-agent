@@ -1,6 +1,11 @@
 import { useEffect } from 'react'
-import { ACCESS_TOKEN } from '@/constants/auth'
 import { useWebSocketContext } from '@/contexts/websocket-context'
+import { ACCESS_TOKEN } from '@/constants/auth'
+import {
+    AUTH_TOKEN_CLEARED_EVENT,
+    AUTH_TOKEN_SET_EVENT,
+    getStoredAccessToken
+} from '@/utils/auth-token'
 
 /**
  * Hook that monitors auth token changes and reconnects the WebSocket
@@ -17,25 +22,50 @@ export function useWebSocketAuthSync() {
         // Detect token changes from other browser tabs
         const handleStorageChange = (e: StorageEvent) => {
             if (e.key === ACCESS_TOKEN && e.newValue && !socket?.connected) {
-                console.log('WebSocket: Token changed via storage event, reconnecting...')
+                console.log(
+                    'WebSocket: Token changed via storage event, reconnecting...'
+                )
                 connectSocket()
+                return
+            }
+
+            if (e.key === ACCESS_TOKEN && !e.newValue && socket?.connected) {
+                console.log(
+                    'WebSocket: Token cleared via storage event, disconnecting...'
+                )
+                socket.disconnect()
             }
         }
 
         // Detect token set in the same tab (e.g. after login or token refresh)
         const handleAuthTokenSet = () => {
-            const token = localStorage.getItem(ACCESS_TOKEN)
+            const token = getStoredAccessToken()
             if (token && !socket?.connected) {
                 console.log('WebSocket: Auth token set event, reconnecting...')
                 connectSocket()
             }
         }
 
+        const handleAuthTokenCleared = () => {
+            if (socket?.connected) {
+                console.log('WebSocket: Auth token cleared, disconnecting...')
+                socket.disconnect()
+            }
+        }
+
         window.addEventListener('storage', handleStorageChange)
-        window.addEventListener('auth-token-set', handleAuthTokenSet)
+        window.addEventListener(AUTH_TOKEN_SET_EVENT, handleAuthTokenSet)
+        window.addEventListener(
+            AUTH_TOKEN_CLEARED_EVENT,
+            handleAuthTokenCleared
+        )
         return () => {
             window.removeEventListener('storage', handleStorageChange)
-            window.removeEventListener('auth-token-set', handleAuthTokenSet)
+            window.removeEventListener(AUTH_TOKEN_SET_EVENT, handleAuthTokenSet)
+            window.removeEventListener(
+                AUTH_TOKEN_CLEARED_EVENT,
+                handleAuthTokenCleared
+            )
         }
     }, [connectSocket, socket?.connected])
 }

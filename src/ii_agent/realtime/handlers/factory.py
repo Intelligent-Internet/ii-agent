@@ -38,6 +38,8 @@ from ii_agent.realtime.handlers.design_get_state import DesignGetStateHandler
 from ii_agent.realtime.handlers.design_save_state import DesignSaveStateHandler
 from ii_agent.realtime.handlers.design_sync_state import DesignSyncStateHandler
 from ii_agent.realtime.handlers.slide_deck_sync_state import SlideDeckSyncStateHandler
+from ii_agent.realtime.handlers.cowork_query import CoworkQueryHandler
+from ii_agent.realtime.handlers.cowork_continue_run import CoworkContinueRunHandler
 
 
 class CommandHandlerFactory:
@@ -92,6 +94,9 @@ class CommandHandlerFactory:
             CommandType.DESIGN_SAVE_STATE: DesignSaveStateHandler(pubsub=ps, container=ct),
             CommandType.DESIGN_SYNC_STATE: DesignSyncStateHandler(pubsub=ps, container=ct),
             CommandType.SLIDE_DECK_SYNC_STATE: SlideDeckSyncStateHandler(pubsub=ps, container=ct),
+            CommandType.COWORK_QUERY: CoworkQueryHandler(pubsub=ps, container=ct),
+            CommandType.COWORK_CONTINUE_RUN: CoworkContinueRunHandler(pubsub=ps, container=ct),
+
         }
 
     def get_handler(self, command_type: CommandType) -> BaseCommandHandler | None:

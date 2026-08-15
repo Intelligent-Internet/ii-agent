@@ -24,7 +24,8 @@ export enum VIEW_MODE {
 
 export enum QUESTION_MODE {
     AGENT = 'agent',
-    CHAT = 'chat'
+    CHAT = 'chat',
+    COWORK = 'cowork'
 }
 
 export enum BUILD_MODE {
@@ -132,7 +133,7 @@ export enum ErrorCode {
     UNKNOWN_FORK_TYPE = 'unknown_fork_type',
     // Design mode
     DESIGN_SYNC_STATE_ERROR = 'design_sync_state_error',
-    SLIDE_DECK_SYNC_STATE_ERROR = 'slide_deck_sync_state_error',
+    SLIDE_DECK_SYNC_STATE_ERROR = 'slide_deck_sync_state_error'
 }
 
 export enum AgentEvent {
@@ -335,6 +336,8 @@ export enum TOOL {
     ASK_USER_ENV = 'ask_user_env',
     ASK_USER_SELECT = 'ask_user_select',
     SKILL = 'Skill',
+    DESKTOP_SKILL_RUN = 'desktop_skill_run',
+    WASM_RUN = 'wasm_run',
     MOBILE_APP_INIT = 'mobile_app_init',
     RESTART_MOBILE_SERVER = 'restart_mobile_server'
 }
@@ -472,6 +475,16 @@ export type ActionStep = {
             secrets?: Array<{ key: string; value: string }>
             attachments?: string[]
             skill?: string
+            skill_name?: string
+            module?: string
+            entrypoint?: string
+            keep_workspace?: boolean
+            timeout_seconds?: number
+            input_json?: Record<string, unknown>
+            input_files?: Array<{
+                path: string
+                name?: string
+            }>
         }
         result?:
             | string
@@ -570,6 +583,7 @@ export interface ISession {
     metadata?: {
         media?: ChatMediaPreference
         fork_info?: ForkInfo
+        question_mode?: QUESTION_MODE
         [key: string]: unknown
     }
 }

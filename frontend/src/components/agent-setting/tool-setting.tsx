@@ -27,6 +27,7 @@ import CodexSetting from './codex-setting'
 import ClaudeCodeSetting from './claude-code-setting'
 import { selectQuestionMode } from '@/state'
 import { useTranslation } from 'react-i18next'
+import { isAgenticQuestionMode } from '@/utils/question-mode'
 
 interface ToolSettingProps {
     className?: string
@@ -165,7 +166,7 @@ const ToolSetting = ({ className }: ToolSettingProps) => {
             }
             return { ...tool, isActive }
         })
-    }, [toolSettings, chatToolSettings])
+    }, [toolSettings, chatToolSettings, questionMode])
 
     const handleToggle = async (
         toolName: string,
@@ -579,7 +580,7 @@ const ToolSetting = ({ className }: ToolSettingProps) => {
                     </>
                 )}
             </div>
-            {questionMode === QUESTION_MODE.AGENT && (
+            {isAgenticQuestionMode(questionMode) && (
                 <div className="w-full px-3 md:px-6 pb-4 absolute left-0 bottom-0 bg-white dark:bg-charcoal shadow-top">
                     <Button
                         className="h-12 w-full bg-firefly dark:bg-sky-blue text-sky-blue-2 dark:text-black text-base gap-x-[6px] rounded-xl mt-6"

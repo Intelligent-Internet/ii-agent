@@ -1,4 +1,5 @@
 import { useGoogleLogin } from '@react-oauth/google'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
@@ -10,6 +11,14 @@ import { Button } from '@/components/ui/button'
 import { Icon } from '@/components/ui/icon'
 import { Form, FormControl, FormField, FormItem } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+import { authService } from '@/services/auth.service'
+import { useAppDispatch } from '@/state/store'
+import { setUser } from '@/state/slice/user'
+import { fetchWishlist } from '@/state/slice/favorites'
+import { storeAccessToken } from '@/utils/auth-token'
+
+const isTauri = !!(window as unknown as { __TAURI_INTERNALS__: unknown })
+    .__TAURI_INTERNALS__
 
 const FormSchema = z.object({
     name: z.string({ error: 'Name is required' }).min(1, {
@@ -21,10 +30,19 @@ const FormSchema = z.object({
     })
 })
 
+type AuthPayload = {
+    access_token: string
+    refresh_token?: string
+    token_type?: string
+    expires_in?: number
+}
+
 export function SignupPage() {
     const { t } = useTranslation()
     const navigate = useNavigate()
     const { loginWithAuthCode } = useAuth()
+    const dispatch = useAppDispatch()
+    const authHandledRef = useRef(false)
 
     const form = useForm<z.infer<typeof FormSchema>>({
         resolver: zodResolver(FormSchema),
@@ -49,6 +67,80 @@ export function SignupPage() {
             console.log('Login Failed:', errorResponse)
         }
     })
+
+    const apiBaseUrl = useMemo(
+        () => import.meta.env.VITE_API_URL || 'http://localhost:8000',
+        []
+    )
+
+    const handleAuthSuccess = useCallback(
+        async (payload: AuthPayload | null | undefined) => {
+            if (!payload || typeof payload.access_token !== 'string') {
+                authHandledRef.current = false
+                return
+            }
+            if (authHandledRef.current) return
+            authHandledRef.current = true
+
+            try {
+                storeAccessToken(payload.access_token)
+                const userRes = await authService.getCurrentUser()
+                dispatch(setUser(userRes))
+                dispatch(fetchWishlist())
+                navigate('/')
+            } catch (error) {
+                console.error('Failed to finalize Google login:', error)
+                authHandledRef.current = false
+            }
+        },
+        [dispatch, navigate]
+    )
+
+    const apiOrigin = useMemo(() => {
+        try {
+            return new URL(apiBaseUrl).origin
+        } catch {
+            return apiBaseUrl
+        }
+    }, [apiBaseUrl])
+
+    useEffect(() => {
+        const handler = (event: MessageEvent) => {
+            if (event.origin !== apiOrigin) return
+            const data = event.data as {
+                type?: string
+                payload?: AuthPayload
+            }
+            if (!data || data.type !== 'google-auth-success') return
+            void handleAuthSuccess(data.payload)
+        }
+        window.addEventListener('message', handler)
+        return () => window.removeEventListener('message', handler)
+    }, [apiOrigin, handleAuthSuccess])
+
+    const loginWithGoogleDesktop = useCallback(async () => {
+        authHandledRef.current = false
+
+        const state = crypto.randomUUID()
+        const frontendOrigin =
+            import.meta.env.VITE_FRONTEND_URL || 'http://localhost:1420'
+        const url = `${frontendOrigin}/login?desktop_state=${state}`
+
+        const { open } = await import('@tauri-apps/plugin-shell')
+        await open(url)
+
+        const poll = setInterval(async () => {
+            try {
+                const token = await authService.pollDesktopToken(state)
+                if (!token) return
+                clearInterval(poll)
+                void handleAuthSuccess(token)
+            } catch {
+                // keep polling
+            }
+        }, 2000)
+        setTimeout(() => clearInterval(poll), 5 * 60 * 1000)
+    }, [handleAuthSuccess])
 
     const onSubmit = async (data: z.infer<typeof FormSchema>) => {
         console.log(data)
@@ -179,7 +271,9 @@ export function SignupPage() {
                 </p>
                 <Button
                     size="xl"
-                    onClick={() => googleLogin()}
+                    onClick={() =>
+                        isTauri ? loginWithGoogleDesktop() : googleLogin()
+                    }
                     className="w-full bg-white text-black font-semibold shadow-btn"
                 >
                     <Icon name="google" className="size-[22px]" />

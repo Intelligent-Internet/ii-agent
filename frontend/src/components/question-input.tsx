@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useLocation, useParams } from 'react-router'
+import { useLocation, useNavigate, useParams } from 'react-router'
 
 import { type MiniTool } from '@/constants/media-tools'
 import { getMediaTypeConfig } from '@/constants/media-type-config'
@@ -74,6 +74,10 @@ import clsx from 'clsx'
 import { useMediaModels } from '@/hooks/use-media-models'
 import { useChat } from '@/hooks/use-chat-query'
 import { StorybookStylePicker } from './media/image/image-settings-picker'
+import {
+    COWORK_ROUTE,
+    isAgenticQuestionMode
+} from '@/utils/question-mode'
 
 interface QuestionInputProps {
     value: string
@@ -84,6 +88,7 @@ interface QuestionInputProps {
     textareaClassName?: string
     placeholder?: string
     isDisabled?: boolean
+    submitDisabled?: boolean
     handleEnhancePrompt?: (payload: {
         prompt: string
         onSuccess: (res: string) => void
@@ -128,6 +133,7 @@ const QuestionInput = ({
     handleKeyDown,
     handleSubmit,
     isDisabled,
+    submitDisabled = false,
     handleEnhancePrompt,
     handleCancel,
     onFilesChange,
@@ -159,6 +165,7 @@ const QuestionInput = ({
 }: QuestionInputProps) => {
     const { t } = useTranslation()
     const dispatch = useAppDispatch()
+    const navigate = useNavigate()
     const requireClearFiles = useAppSelector(selectRequireClearFiles)
     const uploadedFiles = useAppSelector(selectUploadedFiles)
     const currentMessageFileIds = useAppSelector(selectCurrentMessageFileIds)
@@ -214,6 +221,7 @@ const QuestionInput = ({
     const isChatRoute =
         normalizedPathname === '/chat' || normalizedPathname.endsWith('/chat')
     const isSessionView = Boolean(sessionId) || isChatRoute
+    const isAgenticMode = isAgenticQuestionMode(questionMode)
 
     const textareaRef = useRef<HTMLTextAreaElement | null>(null)
     const clearedAttachmentIdsRef = useRef<Set<string>>(new Set())
@@ -353,6 +361,7 @@ const QuestionInput = ({
                 if (
                     !submissionValue ||
                     isDisabled ||
+                    submitDisabled ||
                     isCreatingSession ||
                     files?.some((file) => file.loading) ||
                     isUploading
@@ -516,6 +525,12 @@ const QuestionInput = ({
     }
 
     const handleSelectMode = (mode: QUESTION_MODE) => {
+        if (mode === QUESTION_MODE.COWORK) {
+            clearMediaPreference()
+            navigate(COWORK_ROUTE)
+            return
+        }
+
         dispatch(setQuestionMode(mode))
         setTimeout(() => {
             textareaRef.current?.focus()
@@ -523,7 +538,7 @@ const QuestionInput = ({
         if (mode === QUESTION_MODE.CHAT) {
             dispatch(setSelectedFeature(AGENT_TYPE.GENERAL))
         }
-        if (mode === QUESTION_MODE.AGENT) {
+        if (isAgenticQuestionMode(mode)) {
             clearMediaPreference()
         }
     }
@@ -1250,7 +1265,7 @@ const QuestionInput = ({
                                         </div>
                                     )}
                                 {!hideBuildModeSelector &&
-                                    questionMode === QUESTION_MODE.AGENT &&
+                                    isAgenticMode &&
                                     (selectedFeature === AGENT_TYPE.GENERAL ||
                                         selectedFeature ===
                                         AGENT_TYPE.WEBSITE_BUILD ||
@@ -1339,7 +1354,7 @@ const QuestionInput = ({
                                     }
                                 />
 
-                                {questionMode === QUESTION_MODE.AGENT && (
+                                {isAgenticMode && (
                                     <EnhanceButton
                                         isGenerating={isGeneratingPrompt}
                                         onClick={() => {
@@ -1379,6 +1394,7 @@ const QuestionInput = ({
                                         (!currentTextareaValue.trim() &&
                                             !hasMiniToolSelection) ||
                                         isDisabled ||
+                                        submitDisabled ||
                                         isCreatingSession ||
                                         files?.some((file) => file.loading) ||
                                         isUploading ||
@@ -1452,7 +1468,7 @@ const QuestionInput = ({
             </div>
 
             {!hideSuggestions &&
-                questionMode === QUESTION_MODE.AGENT &&
+                isAgenticMode &&
                 selectedFeature !== AGENT_TYPE.GENERAL && (
                     <Suggestions
                         className="mt-6"
@@ -1471,7 +1487,7 @@ const QuestionInput = ({
                 )}
 
             {!hideFeatureSelector &&
-                questionMode === QUESTION_MODE.AGENT &&
+                isAgenticMode &&
                 selectedFeature === AGENT_TYPE.GENERAL && (
                     <div className="hidden md:flex items-center justify-center w-full mt-6 z-10">
                         <div className="flex items-center gap-3 md:gap-4 md:justify-center flex-wrap">

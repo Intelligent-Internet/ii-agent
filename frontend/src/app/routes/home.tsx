@@ -37,6 +37,7 @@ import {
     selectCurrentQuestion,
     selectQuestionMode,
     setCurrentQuestion,
+    setQuestionMode,
     setSelectedGitHubRepository,
     useAppDispatch,
     useAppSelector
@@ -60,6 +61,12 @@ function HomePageContent() {
     )
     const questionMode = useAppSelector(selectQuestionMode)
     const isChatMode = questionMode === QUESTION_MODE.CHAT
+
+    useEffect(() => {
+        if (questionMode === QUESTION_MODE.COWORK) {
+            dispatch(setQuestionMode(QUESTION_MODE.AGENT))
+        }
+    }, [dispatch, questionMode])
 
     const toggleTheme = () => {
         setTheme(theme === 'dark' ? 'light' : 'dark')

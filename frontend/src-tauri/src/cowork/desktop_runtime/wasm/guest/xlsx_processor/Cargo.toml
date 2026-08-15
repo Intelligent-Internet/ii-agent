@@ -1,0 +1,21 @@
+[package]
+name = "xlsx_processor"
+version = "0.1.0"
+edition = "2021"
+description = "WASI preview1 module for the desktop xlsx skill. Reads spreadsheet workbooks with calamine inside the cowork WASM runtime."
+license = "MIT"
+
+[[bin]]
+name = "xlsx_processor"
+path = "src/main.rs"
+
+[dependencies]
+calamine = { version = "0.26", default-features = false }
+serde_json = { version = "1", default-features = false, features = ["std"] }
+
+[profile.release]
+opt-level = "z"
+lto = true
+strip = true
+codegen-units = 1
+panic = "abort"

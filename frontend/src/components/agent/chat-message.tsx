@@ -138,7 +138,7 @@ function debounce<T extends (...args: never[]) => unknown>(
     return debounced
 }
 
-interface ChatMessageProps {
+export interface ChatMessageProps {
     isReplayMode: boolean
     messagesEndRef: React.RefObject<HTMLDivElement | null>
     handleClickAction: (
@@ -173,6 +173,7 @@ interface ChatMessageProps {
     }) => void
     handleModifyPlan?: () => void
     handleSubmitPlanModification?: (text: string) => void
+    submitDisabled?: boolean
 }
 
 const ChatMessage = ({
@@ -197,7 +198,8 @@ const ChatMessage = ({
     handleBuildMilestone,
     handleBuildAllMilestones,
     handleModifyPlan,
-    handleSubmitPlanModification
+    handleSubmitPlanModification,
+    submitDisabled = false
 }: ChatMessageProps) => {
     const { t } = useTranslation()
     const dispatch = useAppDispatch()
@@ -651,6 +653,7 @@ const ChatMessage = ({
                             handleCancel={handleCancel}
                             hideFeatureSelector
                             isDisabled={isLoading}
+                            submitDisabled={submitDisabled}
                         />
                     </div>
                 ) : (
@@ -715,6 +718,7 @@ const ChatMessage = ({
                             handleCancel={handleCancel}
                             isDisabled={isLoading || isWaitingForInput}
                             hideFeatureSelector
+                            submitDisabled={submitDisabled}
                         />
                     </motion.div>
                 )
@@ -730,6 +734,7 @@ export default memo(ChatMessage, (prevProps, nextProps) => {
         prevProps.messagesEndRef === nextProps.messagesEndRef &&
         prevProps.handleClickAction === nextProps.handleClickAction &&
         prevProps.handleQuestionSubmit === nextProps.handleQuestionSubmit &&
-        prevProps.handleEditMessage === nextProps.handleEditMessage
+        prevProps.handleEditMessage === nextProps.handleEditMessage &&
+        prevProps.submitDisabled === nextProps.submitDisabled
     )
 })

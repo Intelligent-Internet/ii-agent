@@ -58,6 +58,10 @@ class CommandType(StrEnum):
     APPLE_CHECK_AUTH = "apple_check_auth"
     SAVE_EXPO_TOKEN = "save_expo_token"
 
+    # Cowork mode
+    COWORK_QUERY = "cowork_query"
+    COWORK_CONTINUE_RUN = "cowork_continue_run"
+
 
 # ---------------------------------------------------------------------------
 # Base empty content (shared fields for no-payload commands)
@@ -419,17 +423,41 @@ class SlideDeckSyncStateContent(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Cowork mode content models
+# ---------------------------------------------------------------------------
+
+class CoworkQueryCommandContent(BaseCommandQuery):
+    """Payload for the ``cowork_query`` command."""
+
+    command: Literal[CommandType.COWORK_QUERY] = CommandType.COWORK_QUERY
+    system_prompt: str | None = None
+    requested_capabilities: dict[str, Any] | None = None
+
+
+class CoworkContinueRunContent(BaseModel):
+    """Payload for cowork_continue_run command."""
+
+    command: Literal[CommandType.COWORK_CONTINUE_RUN] = CommandType.COWORK_CONTINUE_RUN
+    run_id: str
+    confirmed: bool
+    user_input: dict[str, str] = {}
+    external_tool_results: list[dict[str, Any]] | None = None
+
+
+# ---------------------------------------------------------------------------
 # Discriminated union of all command content types
 # ---------------------------------------------------------------------------
 
 CommandContent = Annotated[
     Union[
         QueryCommandContent,
+        CoworkQueryCommandContent,
         PlanCommandContent,
         InitAgentContent,
         EnhancePromptContent,
         StartForkContent,
         ContinueRunContent,
+        CoworkContinueRunContent,
         PublishProjectContent,
         CloudRunPublishContent,
         SaveEnvContent,

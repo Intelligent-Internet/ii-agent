@@ -7,12 +7,14 @@ import {
 import { useNavigationLeaveSession } from '@/hooks/use-navigation-leave-session'
 import { useWebSocketAuthSync } from '@/hooks/use-websocket-auth-sync'
 import { ChatProvider } from '@/hooks/use-chat-query'
+import { useCoworkAuthSync } from '@/hooks/use-cowork-auth-sync'
 
 function RootLayoutContent() {
     useNavigationLeaveSession()
     // Establish WebSocket connection immediately when auth token is available
     useWebSocketAuthSync()
-
+    useCoworkAuthSync()
+    
     return <Outlet />
 }
 
