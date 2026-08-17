@@ -23,7 +23,7 @@ import {
 } from './ui/alert-dialog'
 import RenameSessionDialog from './rename-session-dialog'
 import ShareConversation from './agent/share-conversation'
-import { useAppDispatch, useAppSelector } from '@/state'
+import { useAppDispatch, useAppSelector, setRunStatus, setLoading } from '@/state'
 import { deleteSession } from '@/state/slice/sessions'
 import { clearSessionState } from '@/state/slice/session-state'
 import { selectIsPinned, togglePinAsync, removePin } from '@/state/slice/pins'
@@ -97,6 +97,7 @@ const SessionItem = ({
     const handleDelete = (e: React.MouseEvent) => {
         e.preventDefault()
         e.stopPropagation()
+        setIsDropdownOpen(false)
         setIsDeleteDialogOpen(true)
     }
 
@@ -105,6 +106,10 @@ const SessionItem = ({
             await dispatch(deleteSession(session.id)).unwrap()
             dispatch(clearSessionState(session.id))
             dispatch(removePin(session.id))
+            if (isActive) {
+                dispatch(setRunStatus(null))
+                dispatch(setLoading(false))
+            }
             setIsDeleteDialogOpen(false)
         } catch (error) {
             console.error('Failed to delete session:', error)

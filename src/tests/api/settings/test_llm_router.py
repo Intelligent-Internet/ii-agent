@@ -9,7 +9,7 @@ pytestmark = pytest.mark.unit
 EXPECTED_ROUTES = {
     ("POST", "/models"),
     ("GET", "/models"),
-    ("GET", "/models/{model_id}"),
+    ("GET", "/models/{setting_id}"),
     ("PUT", "/models/{model_id}"),
     ("DELETE", "/models/{model_id}"),
 }

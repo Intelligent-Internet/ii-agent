@@ -3,10 +3,12 @@
 from ii_agent.realtime.events.app_events import (
     # Base + top-level union
     AppEvent,
+    ApplicationEvent,
     BaseEvent,
     ERROR_MESSAGES,
     ErrorCode,
     EventGroup,
+    EventType,
     # Group unions
     AgentAppEvent,
     BillingAppEvent,
@@ -39,6 +41,7 @@ from ii_agent.realtime.events.app_events import (
     AgentToolConfirmationEvent,
     AgentToolResultEvent,
     SubAgentCompleteEvent,
+    DelegationFallbackEvent,
     # Session
     SessionCreatedEvent,
     SessionDeletedEvent,
@@ -94,8 +97,8 @@ from ii_agent.realtime.events.app_events import (
     TestFlightLogEvent,
 )
 
-# DB model — needed for repository / migrations
-from ii_agent.realtime.events.models import ApplicationEvent
+# DB model — accessible at realtime.events.models.ApplicationEvent
+import ii_agent.realtime.events.models as _db_models  # noqa: F401 (keep accessible)
 
 __all__ = [
     # Core + top-level union
@@ -104,6 +107,8 @@ __all__ = [
     "ERROR_MESSAGES",
     "ErrorCode",
     "EventGroup",
+    "EventType",
+    "ApplicationEvent",
     # Group unions
     "AgentAppEvent",
     "BillingAppEvent",
@@ -135,6 +140,7 @@ __all__ = [
     "AgentToolConfirmationEvent",
     "AgentToolResultEvent",
     "SubAgentCompleteEvent",
+    "DelegationFallbackEvent",
     # Session
     "SessionEvent",
     "SessionCreatedEvent",
@@ -188,6 +194,4 @@ __all__ = [
     "AppleAuthCheckResultEvent",
     "ExpoTokenSavedEvent",
     "TestFlightLogEvent",
-    # DB model
-    "ApplicationEvent",
 ]

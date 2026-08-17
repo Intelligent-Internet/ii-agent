@@ -28,6 +28,7 @@ import { useSearchParams } from 'react-router'
 import { useNavigate } from 'react-router'
 import { deleteSession } from '@/state/slice/sessions'
 import { clearSessionState } from '@/state/slice/session-state'
+import { setRunStatus } from '@/state/slice/agent'
 import ShareConversation from '@/components/agent/share-conversation'
 import {
     AlertDialog,
@@ -126,6 +127,10 @@ const ChatHeader = ({
         try {
             await dispatch(deleteSession(sessionId)).unwrap()
             dispatch(clearSessionState(sessionId))
+            resetSessionState()
+            resetConversationState()
+            setSessionId(null)
+            dispatch(setRunStatus(null))
             setIsDeleteDialogOpen(false)
             navigate('/')
         } catch (error) {

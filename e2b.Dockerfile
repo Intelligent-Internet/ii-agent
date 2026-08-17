@@ -57,6 +57,10 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
   unzip \
   libmagic1 \
   xvfb \
+  x11vnc \
+  novnc \
+  websockify \
+  fluxbox \
   pandoc \
   weasyprint \
   libpq-dev \
@@ -81,6 +85,16 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 
 # Optimization: Combine all curl installs and npm installs into fewer layers
 RUN curl -fsSL https://code-server.dev/install.sh | sh
+
+# GitHub CLI (gh) — required by the Copilot A2A backend (`gh copilot agent`)
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+  --mount=type=cache,target=/var/lib/apt,sharing=locked \
+  curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+    -o /usr/share/keyrings/githubcli-archive-keyring.gpg && \
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+    > /etc/apt/sources.list.d/github-cli.list && \
+  apt-get update && apt-get install -y gh && \
+  rm -rf /var/lib/apt/lists/*
 
 # Optimization: Use npm cache mount and install playwright package and system deps as root
 RUN --mount=type=cache,target=/root/.npm \
@@ -144,6 +158,12 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 COPY src/ii_server /app/ii_sandbox/src/ii_server
 COPY src/ii_agent_tools /app/ii_sandbox/src/ii_agent_tools
 
+# Copy the A2A adapter subtree + minimal parent __init__.py files so
+# `python -m ii_agent.integrations.a2a.adapter_server` resolves inside the sandbox.
+COPY src/ii_agent/__init__.py /app/ii_sandbox/src/ii_agent/__init__.py
+COPY src/ii_agent/integrations/__init__.py /app/ii_sandbox/src/ii_agent/integrations/__init__.py
+COPY src/ii_agent/integrations/a2a /app/ii_sandbox/src/ii_agent/integrations/a2a
+
 # Optimization: Copy from cached location in codex-builder
 COPY --from=codex-builder /sse-http-server /usr/local/bin/sse-http-server
 
@@ -185,10 +205,21 @@ ENV PATH="/home/user/.bun/bin:/app/ii_sandbox/.venv/bin:$PATH"
 
 USER user
 
-# Install Playwright browser binaries
+# Install Playwright browser binaries and create system symlinks
 RUN playwright install chromium
+USER root
+RUN CHROME_BIN=$(find /home/user/.cache/ms-playwright -name chrome -path '*/chrome-linux/*' | head -1) && \
+    ln -sf "$CHROME_BIN" /usr/local/bin/chromium-browser && \
+    ln -sf "$CHROME_BIN" /usr/local/bin/chromium && \
+    ln -sf "$CHROME_BIN" /usr/local/bin/google-chrome
+USER user
 
 WORKDIR /home/user
+
+# A2A adapter port — served by ii_agent.integrations.a2a.adapter_server
+# (launched by start-services.sh; default 18100 is in the control-plane range 18000-18999)
+ENV SANDBOX_ADAPTER_PORT=18100
+EXPOSE 18100
 
 ENTRYPOINT ["/app/entrypoint.sh"]
 CMD ["bash", "/app/start-services.sh"]

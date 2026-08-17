@@ -10,6 +10,8 @@ Key components:
 
 from ii_agent.agents.sandboxes.base import Sandbox
 from ii_agent.agents.sandboxes.media_uploader import upload_media_to_sandbox
+from ii_agent.agents.sandboxes.docker import DockerSandbox
+from ii_agent.agents.sandboxes.docker_shell import DockerShell
 from ii_agent.agents.sandboxes.e2b import E2BSandbox
 from ii_agent.agents.sandboxes.shell import Shell
 from ii_agent.agents.sandboxes.exceptions import (
@@ -32,6 +34,8 @@ __all__ = [
     "Shell",
     # Provider implementations
     "E2BSandbox",
+    "DockerSandbox",
+    "DockerShell",
     # ORM
     "AgentSandbox",
     # Repository

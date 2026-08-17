@@ -7,6 +7,7 @@ import {
     selectIsLoading,
     selectIsSandboxIframeAwake,
     selectMessages,
+    selectSandboxStatus,
     useAppSelector
 } from '@/state'
 import { CommandType, TAB, TOOL } from '@/typings/agent'
@@ -15,7 +16,7 @@ import MobileResult from './mobile-result'
 import { Icon } from '../ui/icon'
 import AwakeMeUpScreen from './awake-me-up-screen'
 import { useLocation, useParams } from 'react-router'
-import { cn, isE2bLink } from '@/lib/utils'
+import { cn, isSandboxLink, rewriteLocalhostUrl } from '@/lib/utils'
 import { DesignModeWrapper } from '@/components/design-mode'
 import { useTranslation } from 'react-i18next'
 import {
@@ -45,6 +46,7 @@ const AgentResult = ({ className }: AgentResultProps) => {
 
     const activeTab = useAppSelector(selectActiveTab)
     const isSandboxIframeAwake = useAppSelector(selectIsSandboxIframeAwake)
+    const sandboxStatus = useAppSelector(selectSandboxStatus)
     const messages = useAppSelector(selectMessages)
     const isRunning = useAppSelector(selectIsLoading)
     const isShareMode = useMemo(
@@ -89,7 +91,7 @@ const AgentResult = ({ className }: AgentResultProps) => {
                 mobileAppResult as { web_preview_url?: string }
             ).web_preview_url
             if (webPreviewUrl) {
-                return webPreviewUrl
+                return rewriteLocalhostUrl(webPreviewUrl)
             }
         }
 
@@ -106,7 +108,7 @@ const AgentResult = ({ className }: AgentResultProps) => {
         if (result && typeof result === 'object') {
             const previewUrl = (result as { preview_url?: string }).preview_url
             if (previewUrl) {
-                return previewUrl
+                return rewriteLocalhostUrl(previewUrl)
             }
         }
         return ''
@@ -256,12 +258,12 @@ const AgentResult = ({ className }: AgentResultProps) => {
 
     const shouldShowAwakeScreen = useMemo(() => {
         return (
-            isE2bLink(resultUrl) &&
+            sandboxStatus === 'paused' &&
             !isSandboxIframeAwake &&
             !isRunning &&
             !isShareMode
         )
-    }, [resultUrl, isSandboxIframeAwake, isRunning, isShareMode])
+    }, [sandboxStatus, isSandboxIframeAwake, isRunning, isShareMode])
 
     // Extract slide data from SlideWrite and SlideEdit messages
     const slideContent = useMemo(() => {
@@ -323,7 +325,7 @@ const AgentResult = ({ className }: AgentResultProps) => {
     // Check if design mode should be available (only for e2b sandbox websites)
     const isDesignModeAvailable = useMemo(() => {
         if (!resultUrl) return false
-        if (!isE2bLink(resultUrl)) return false
+        if (!isSandboxLink(resultUrl)) return false
         if (detectUrlType(resultUrl) !== 'website') return false
         if (isShareMode) return false
         return true
@@ -338,8 +340,6 @@ const AgentResult = ({ className }: AgentResultProps) => {
         )
     }
 
-    if (!resultUrl && !mobileAppUrl) return null
-
     if (shouldShowAwakeScreen)
         return (
             <AwakeMeUpScreen
@@ -347,6 +347,8 @@ const AgentResult = ({ className }: AgentResultProps) => {
                 onAwakeClick={handleAwakeClick}
             />
         )
+
+    if (!resultUrl && !mobileAppUrl) return null
 
     if (hasMobileAppTools && activeTab === TAB.RESULT) {
         return (

@@ -6,10 +6,11 @@ readme = "README.md"
 authors = [{ name = "Intelligent Internet", email = "info@ii.inc" }]
 requires-python = ">=3.10"
 dependencies = [
-  "a2a-sdk==0.3.9",
+  "a2a-sdk==0.3.25",
   "httpx>=0.28.1",
   "anthropic[vertex]>=0.72.0",
   "dataclasses-json>=0.6.7",
+  "docker>=7.0.0",
   "duckduckgo-search>=8.0.1",
   "fastapi>=0.115.12",
   "google-cloud-aiplatform>=1.133.0",
@@ -54,6 +55,7 @@ dependencies = [
   "pydantic==2.11.7",
   "pydantic-settings>=2.10.1",
   "e2b-code-interpreter>=2.4.1",
+  "github-copilot-sdk>=0.1.25",
   "elevenlabs==2.32.0",
   "python-socketio>=5.13.0",
   "gcloud-aio-storage==9.5.0",
@@ -121,7 +123,7 @@ dev = [
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["src/tests"]
-addopts = "-ra --strict-markers --strict-config"
+addopts = "-ra --strict-markers --strict-config --capture=sys"
 markers = [
     "unit: Unit tests",
     "integration: Integration tests",

@@ -8,8 +8,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-pytest.skip("ii_agent.integrations.a2a was removed during refactoring", allow_module_level=True)
-
 from ii_agent.realtime.events import ApplicationEvent, EventGroup, EventType
 
 
@@ -297,10 +295,8 @@ class TestStatusBuilders:
 class TestArtifactUpdate:
     def test_empty_text_returns_empty_list(self):
         adapter = _make_adapter()
-        # Empty dict → _summarize_content returns JSON "{}" which is non-empty text
-        # Use None content to get empty text
-        event = _make_event(EventType.REASONING_DELTA)
-        event.content = None
+        # {"text": ""} → _summarize_content returns "" → falsy → _artifact_update returns []
+        event = _make_event(EventType.REASONING_DELTA, {"text": ""})
         result = adapter._artifact_update(event)
         assert result == []
 
@@ -660,3 +656,59 @@ class TestNextSequence:
         adapter._artifact_streams["k2"] = "id2"
         adapter._reset_streams()
         assert adapter._artifact_streams == {}
+
+
+# ---------------------------------------------------------------------------
+# Multimodal artifact events
+# ---------------------------------------------------------------------------
+
+
+class TestMultimodalArtifactEvents:
+    """Test that content with image/file references produces multimodal Parts."""
+
+    def test_content_with_image_url_produces_file_part(self):
+        adapter = _make_adapter()
+        event = _make_event(
+            EventType.RUN_CONTENT,
+            {
+                "text": "Generated image",
+                "image_url": "https://example.com/result.png",
+            },
+        )
+        results = adapter._convert_event(event)
+        assert len(results) == 1
+        artifact = results[0].artifact
+        # Should have a TextPart and a FilePart
+        assert len(artifact.parts) == 2
+        from a2a.types import TextPart, FilePart
+
+        assert isinstance(artifact.parts[0].root, TextPart)
+        assert isinstance(artifact.parts[1].root, FilePart)
+
+    def test_content_with_image_output_dict(self):
+        adapter = _make_adapter()
+        event = _make_event(
+            EventType.RUN_CONTENT,
+            {
+                "text": "Here is the image",
+                "image_output": {
+                    "url": "https://example.com/gen.png",
+                    "mime_type": "image/png",
+                },
+            },
+        )
+        results = adapter._convert_event(event)
+        assert len(results) == 1
+        from a2a.types import FilePart
+
+        file_parts = [p for p in results[0].artifact.parts if isinstance(p.root, FilePart)]
+        assert len(file_parts) == 1
+
+    def test_content_without_media_uses_text_only(self):
+        adapter = _make_adapter()
+        event = _make_event(EventType.RUN_CONTENT, {"text": "plain text"})
+        results = adapter._convert_event(event)
+        assert len(results) == 1
+        from a2a.types import TextPart
+
+        assert all(isinstance(p.root, TextPart) for p in results[0].artifact.parts)

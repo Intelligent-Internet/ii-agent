@@ -547,7 +547,7 @@ class ProjectDesignService:
             except Exception:
                 try:
                     resolved = await self._model_setting_service.resolve_system_config(
-                        db, setting_id=model_id
+                        db, model_id=model_id
                     )
                     return resolved.model_copy(deep=True)
                 except Exception:
@@ -560,7 +560,7 @@ class ProjectDesignService:
         # Fallback: use "default" system config from DB
         try:
             resolved = await self._model_setting_service.resolve_system_config(
-                db, setting_id="default"
+                db, model_id="default"
             )
             return resolved.model_copy(deep=True)
         except ValueError:

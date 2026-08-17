@@ -14,6 +14,7 @@ import {
 } from '@/state'
 import { deleteSession } from '@/state/slice/sessions'
 import { clearSessionState } from '@/state/slice/session-state'
+import { setRunStatus } from '@/state/slice/agent'
 import { type ISession } from '@/typings/agent'
 import HeaderDropdownMenu from '@/components/header-dropdown-menu'
 import ShareConversation from '@/components/agent/share-conversation'
@@ -74,6 +75,7 @@ const ChatHeaderMobile = ({
         try {
             await dispatch(deleteSession(sessionId)).unwrap()
             dispatch(clearSessionState(sessionId))
+            dispatch(setRunStatus(null))
             setIsDeleteDialogOpen(false)
             navigate('/')
         } catch (error) {
