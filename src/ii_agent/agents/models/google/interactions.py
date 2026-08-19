@@ -978,7 +978,7 @@ class GeminiInteractions(Model):
         metrics.reasoning_tokens = response_usage.total_thought_tokens or 0
         metrics.total_tokens = response_usage.total_tokens
 
-        metrics.cache_read_tokens = response_usage.total_cached_tokens
+        metrics.cache_read_tokens = response_usage.total_cached_tokens or 0
         # raw metrics
         metrics.additional_metrics = response_usage.model_dump()
         return metrics
