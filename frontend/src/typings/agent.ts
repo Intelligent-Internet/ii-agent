@@ -599,6 +599,7 @@ export interface ToolSettings {
     design_document: boolean
     codex_tools: boolean
     claude_code: boolean
+    agentic_memory: boolean
 }
 
 export type {

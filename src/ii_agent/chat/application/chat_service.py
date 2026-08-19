@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
-from typing import AsyncIterator, Dict, Optional, TYPE_CHECKING
+from typing import AsyncIterator, Dict, List, Optional, TYPE_CHECKING
 from datetime import datetime, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -46,6 +47,117 @@ if TYPE_CHECKING:
     from ii_agent.core.container import ApplicationContainer
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Memory helpers (chat mode)
+# ---------------------------------------------------------------------------
+
+
+async def _load_memory_context_for_chat(
+    user_id: uuid.UUID,
+    container: "ApplicationContainer",
+) -> Optional[Message]:
+    """Build a system-role Message containing user memories.
+
+    Returns None when memory is disabled or user has no memories.
+    Uses the same cached path as the agent (MemoryManager.aget_user_memories).
+    """
+    try:
+        memory_service = container.memory_service
+        # Check user preference
+        async with get_db_session_local() as db:
+            prefs = await memory_service.load_user_memory_preferences(db, user_id)
+        if not prefs.get("has_memory", True):
+            return None
+
+        # Fetch memories via cache (no DB session needed on hit)
+        cache_svc = memory_service._cache
+        user_id_str = str(user_id)
+        cached = await cache_svc.get_user_memories(user_id_str)
+
+        if cached is None:
+            # Cache miss — query DB and populate
+            async with get_db_session_local() as db:
+                memories = await memory_service.get_user_memories(db, user_id)
+            mem_dicts = [
+                {"memory": m.memory}
+                for m in memories
+            ]
+        else:
+            mem_dicts = cached
+
+        if not mem_dicts:
+            return None
+
+        # Build the same XML format as agent mode
+        lines = [
+            "You have access to user info and preferences from previous interactions "
+            "that you can use to personalize your response:\n",
+            "<memories_from_previous_interactions>",
+        ]
+        for mem in mem_dicts:
+            lines.append(f"- {mem['memory']}")
+        lines.append("</memories_from_previous_interactions>\n")
+        lines.append(
+            "Note: this information is from previous interactions and may be updated "
+            "in this conversation. Always prefer information from the current conversation."
+        )
+
+        return Message(
+            id=uuid.uuid4(),
+            role=MessageRole.SYSTEM,
+            session_id=uuid.UUID(int=0),
+            parts=[TextContent(text="\n".join(lines))],
+            created_at=int(datetime.now(timezone.utc).timestamp()),
+            updated_at=int(datetime.now(timezone.utc).timestamp()),
+        )
+
+    except Exception as e:
+        logger.warning(f"Failed to load memory context for chat: {e}")
+        return None
+
+
+async def _extract_memories_for_chat(
+    user_message_text: str,
+    user_id: uuid.UUID,
+    model_config: ModelConfig,
+    container: "ApplicationContainer",
+) -> None:
+    """Background task: extract memories from the user message (chat mode).
+
+    Uses MemoryManager with a lightweight model call, same as agent mode.
+    """
+    try:
+        # Check preference
+        memory_service = container.memory_service
+        async with get_db_session_local() as db:
+            prefs = await memory_service.load_user_memory_preferences(db, user_id)
+        if not prefs.get("has_memory", True):
+            return
+
+        from ii_agent.memory.manager import MemoryManager
+        from ii_agent.agents.models.utils import get_model
+        from ii_agent.core.config.llm_config import LLMConfig
+
+        # Convert ModelConfig → LLMConfig for get_model()
+        llm_config = LLMConfig(
+            setting_id=model_config.setting_id,
+            model=model_config.model_id,
+            api_key=model_config.api_key,
+            base_url=model_config.base_url,
+            provider=model_config.provider,
+            api_type=model_config.api_type,
+            temperature=model_config.temperature,
+        )
+        model = get_model(llm_config.provider, llm_config=llm_config)
+        manager = MemoryManager(model=model)
+        await manager.acreate_user_memories(
+            message=user_message_text,
+            user_id=str(user_id),
+        )
+    except Exception as e:
+        logger.warning(f"Background memory extraction failed (chat): {e}")
 
 
 class ChatService:
@@ -296,6 +408,12 @@ class ChatService:
                     f"Loaded full context for session {session_id} ({len(messages)} messages)"
                 )
 
+            # Inject user memories into context (system-role message at the start)
+            memory_msg = await _load_memory_context_for_chat(user_id, self._container)
+            if memory_msg is not None:
+                messages.insert(0, memory_msg)
+                logger.info(f"Injected memory context for user {user_id}")
+
             # Build user message content
             display_content = chat_request.content
             llm_content = chat_request.content
@@ -416,6 +534,16 @@ class ChatService:
             await cancel.cleanup_run(run_id)
             logger.info(f"Completed chat run {run_id} for session {session_id}")
 
+            # Background memory extraction (fire-and-forget)
+            asyncio.create_task(
+                _extract_memories_for_chat(
+                    user_message_text=chat_request.content,
+                    user_id=user_id,
+                    model_config=model_config,
+                    container=self._container,
+                )
+            )
+
         except (cancel.RunCancelledException, Exception) as e:
             is_cancelled = isinstance(e, cancel.RunCancelledException)
 
@@ -481,6 +609,12 @@ class ChatService:
             logger.info(
                 f"Council: loaded context for session {session_id} ({len(messages)} messages)"
             )
+
+            # Inject user memories into context
+            memory_msg = await _load_memory_context_for_chat(user_id, self._container)
+            if memory_msg is not None:
+                messages.insert(0, memory_msg)
+                logger.info(f"Council: injected memory context for user {user_id}")
 
             # Build user message content
             display_content = chat_request.content
@@ -679,6 +813,19 @@ class ChatService:
             }
 
             logger.info(f"Completed council run {run_id} for session {session_id}")
+
+            # Background memory extraction (fire-and-forget)
+            # Use first council model config for memory extraction LLM
+            first_council_model_id = council_prefs.council_models[0].model_id
+            if first_council_model_id in model_configs:
+                asyncio.create_task(
+                    _extract_memories_for_chat(
+                        user_message_text=display_content,
+                        user_id=user_id,
+                        model_config=model_configs[first_council_model_id],
+                        container=self._container,
+                    )
+                )
 
         except (cancel.RunCancelledException, Exception) as e:
             is_cancelled = isinstance(e, cancel.RunCancelledException)

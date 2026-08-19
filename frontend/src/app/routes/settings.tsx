@@ -8,6 +8,7 @@ import GeneralTab from '@/components/settings/general-tab'
 import { Button } from '@/components/ui/button'
 import { Icon } from '@/components/ui/icon'
 import DataControlTab from '@/components/settings/data-control-tab'
+import PersonalizationTab from '@/components/settings/personalization-tab'
 import CreditUsage from '@/components/credit-usage'
 import SubscriptionTab from '@/components/settings/subscription-tab'
 import { Logo } from '@/components/logo'
@@ -18,6 +19,7 @@ import { useIsSageTheme } from '@/hooks/use-is-sage-theme'
 
 enum SettingTab {
     GENERAL = 'general',
+    PERSONALIZATION = 'personalization',
     ACCOUNT = 'account',
     NOTIFICATIONS = 'notifications',
     CONNECTORS = 'connectors',
@@ -37,6 +39,7 @@ const Settings = () => {
 
     const tabs = [
         { key: SettingTab.GENERAL, label: t('settings.tabs.general') },
+        { key: SettingTab.PERSONALIZATION, label: t('settings.tabs.personalization') },
         { key: SettingTab.ACCOUNT, label: t('settings.tabs.account') },
         // { key: SettingTab.NOTIFICATIONS, label: t('settings.tabs.notifications') },
         // { key: SettingTab.CONNECTORS, label: t('settings.tabs.connectors') },
@@ -56,6 +59,8 @@ const Settings = () => {
         switch (activeTab) {
             case SettingTab.GENERAL:
                 return <GeneralTab />
+            case SettingTab.PERSONALIZATION:
+                return <PersonalizationTab />
             case SettingTab.ACCOUNT:
                 return <AccountTab />
             case SettingTab.DATA_CONTROLS:

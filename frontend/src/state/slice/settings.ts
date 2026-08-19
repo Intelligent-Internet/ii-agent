@@ -42,7 +42,8 @@ const initialState: SettingsState = {
         thinking_tokens: 10000,
         enable_reviewer: false,
         codex_tools: false,
-        claude_code: false
+        claude_code: false,
+        agentic_memory: false
     },
     chatToolSettings: {
         web_search: true,

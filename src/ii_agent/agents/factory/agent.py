@@ -15,6 +15,7 @@ from ii_agent.agents.connector import BaseConnectorTool
 from ii_agent.agents.factory.tools import AgentConfigManager, AgentType
 from ii_agent.agents.factory.tool_manager import AgentToolManager
 from ii_agent.agents.models.utils import get_model
+from ii_agent.memory.manager import MemoryManager
 from ii_agent.agents.sessions import SessionStore
 from ii_agent.agents.tools.task import SYSTEM_PROMPT, TaskAgentTool, DESCRIPTION
 from ii_agent.core.logger import logger
@@ -94,6 +95,8 @@ class AgentFactory:
         has_task_agent = tool_args.get("task_agent", False)
         has_researcher = tool_args.get("deep_research", False)
         has_design_doc = tool_args.get("design_document", False)
+        has_memory = tool_args.get("has_memory", True)
+        has_agentic_memory_tool = tool_args.get("agentic_memory", False)
 
         # Get LLM client and model
         provider = llm_config.provider
@@ -162,6 +165,11 @@ class AgentFactory:
 
         system_prompt = _append_prompt_section(system_prompt, skill_prompt_section)
 
+        # Build memory manager if any memory feature is enabled
+        memory_manager: Optional[MemoryManager] = None
+        if has_memory or has_agentic_memory_tool:
+            memory_manager = MemoryManager(model=model)
+
         sub_agents = []
         if has_task_agent:
             task_agent = await self.create_task_agent_tool(
@@ -187,6 +195,10 @@ class AgentFactory:
             stream=True,
             stream_events=True,
             store_events=True,
+            memory_manager=memory_manager,
+            update_memory_on_run=has_memory,
+            enable_agentic_memory=has_agentic_memory_tool,
+            add_memories_to_context=has_memory or has_agentic_memory_tool,
         )
 
         # Set agent ID

@@ -265,7 +265,8 @@
             "connectors": "Connectors",
             "dataControls": "Data Controls",
             "usage": "Usage",
-            "subscription": "Subscription"
+            "subscription": "Subscription",
+            "personalization": "Personalization"
         },
         "general": {
             "theme": "Theme",
@@ -307,6 +308,30 @@
             "noSharedLinks": "You haven't shared any conversations yet",
             "linkDeleted": "Shared link deleted successfully",
             "deleteError": "Failed to delete shared link"
+        },
+        "personalization": {
+            "referenceMemories": "Reference saved memories",
+            "referenceMemoriesDescription": "Let IIAgent save and use memories when responding.",
+            "memoriesTitle": "Saved Memories",
+            "memoriesDescription": "View and manage memories that IIAgent has saved about you.",
+            "searchPlaceholder": "Search memories...",
+            "filterByTopics": "Filter by topics",
+            "allTopics": "All topics",
+            "addMemory": "Add Memory",
+            "editMemory": "Edit Memory",
+            "deleteMemory": "Delete Memory",
+            "deleteMemoryConfirmTitle": "Delete Memory",
+            "deleteMemoryConfirmDescription": "Are you sure you want to delete this memory? This action cannot be undone.",
+            "memoryContent": "Memory",
+            "memoryContentPlaceholder": "Enter a memory...",
+            "topicsLabel": "Topics",
+            "topicsPlaceholder": "Enter topics separated by commas",
+            "noMemories": "No memories saved yet",
+            "noMatchingMemories": "No memories match your search",
+            "columnMemory": "Memory",
+            "columnTopics": "Topics",
+            "columnUpdatedAt": "Updated",
+            "expandCreatedAt": "Created"
         }
     },
     "userMenu": {
@@ -2390,6 +2415,10 @@
             "claudeCode": {
                 "name": "Claude Code",
                 "description": "Enable Claude Code for autonomous code generation"
+            },
+            "agenticMemory": {
+                "name": "Agentic Memory",
+                "description": "Enables the agent to update user memories during a run, only when real-time updates, explicit memory commands, or complex memory reasoning are required."
             }
         },
         "chatTools": {

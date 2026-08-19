@@ -3,6 +3,10 @@ import type { CreditUsageResponse } from '@/typings/user'
 import { userService } from '@/services/user.service'
 import { SubscriptionPlan, type BillingCycle } from '@/typings/subscription'
 
+export interface UserPreferences {
+    has_memory: boolean
+}
+
 export interface User {
     id: string
     first_name: string
@@ -15,6 +19,7 @@ export interface User {
     subscription_billing_cycle?: BillingCycle
     subscription_current_period_end?: string
     language?: string
+    preferences?: UserPreferences
 }
 
 interface UserState {
@@ -127,3 +132,5 @@ export const selectSubscriptionBillingCycle = (state: { user: UserState }) =>
     state.user.user?.subscription_billing_cycle
 export const selectUserLanguage = (state: { user: UserState }) =>
     state.user.user?.language || 'en'
+export const selectUserPreferences = (state: { user: UserState }): UserPreferences =>
+    state.user.user?.preferences ?? { has_memory: true }

@@ -207,7 +207,8 @@
             "connectors": "Kết nối",
             "dataControls": "Kiểm soát dữ liệu",
             "usage": "Sử dụng",
-            "subscription": "Gói dịch vụ"
+            "subscription": "Gói dịch vụ",
+            "personalization": "Cá nhân hóa"
         },
         "general": {
             "theme": "Giao diện",
@@ -249,6 +250,30 @@
             "noSharedLinks": "Bạn chưa chia sẻ cuộc trò chuyện nào",
             "linkDeleted": "Liên kết chia sẻ đã được xóa thành công",
             "deleteError": "Không thể xóa liên kết chia sẻ"
+        },
+        "personalization": {
+            "referenceMemories": "Tham khảo ký ức đã lưu",
+            "referenceMemoriesDescription": "Cho phép IIAgent lưu và sử dụng ký ức khi phản hồi.",
+            "memoriesTitle": "Ký ức đã lưu",
+            "memoriesDescription": "Xem và quản lý ký ức mà IIAgent đã lưu về bạn.",
+            "searchPlaceholder": "Tìm kiếm ký ức...",
+            "filterByTopics": "Lọc theo chủ đề",
+            "allTopics": "Tất cả chủ đề",
+            "addMemory": "Thêm ký ức",
+            "editMemory": "Sửa ký ức",
+            "deleteMemory": "Xóa ký ức",
+            "deleteMemoryConfirmTitle": "Xóa ký ức",
+            "deleteMemoryConfirmDescription": "Bạn có chắc chắn muốn xóa ký ức này? Hành động này không thể hoàn tác.",
+            "memoryContent": "Ký ức",
+            "memoryContentPlaceholder": "Nhập ký ức...",
+            "topicsLabel": "Chủ đề",
+            "topicsPlaceholder": "Nhập chủ đề cách nhau bằng dấu phẩy",
+            "noMemories": "Chưa có ký ức nào được lưu",
+            "noMatchingMemories": "Không có ký ức nào phù hợp",
+            "columnMemory": "Ký ức",
+            "columnTopics": "Chủ đề",
+            "columnUpdatedAt": "Cập nhật",
+            "expandCreatedAt": "Tạo lúc"
         }
     },
     "userMenu": {
@@ -2249,6 +2274,10 @@
             "claudeCode": {
                 "name": "Claude Code",
                 "description": "Bật Claude Code để tạo code tự động"
+            },
+            "agenticMemory": {
+                "name": "Bộ nhớ chủ động",
+                "description": "Cho phép agent cập nhật ký ức người dùng trong phiên chạy, chỉ khi cần cập nhật thời gian thực, lệnh ghi nhớ rõ ràng hoặc suy luận ký ức phức tạp."
             }
         },
         "chatTools": {
