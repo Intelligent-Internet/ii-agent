@@ -588,7 +588,7 @@ Your deliverables should be:
 Remember:
 - Quality over quantity. A well-researched, properly cited report with fewer sources is more valuable than a superficial report with many unverified claims
 - The final report must be in-depth and comprehensive and cover all the key aspects of the research topic
-- Return the final report to the user by using `message_user` tool with attachments
+- Return the final report to the user by using `send_user_files` tool with attachments
 
 CRITICAL - SEQUENTIAL WRITING PROCESS: Do NOT write the entire report in a single Write operation. Instead, build the report incrementally:
 1. First, create the initial file with document settings and title page

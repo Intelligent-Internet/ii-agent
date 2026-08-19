@@ -176,8 +176,8 @@ async def copy_skill_to_sandbox(
     await sandbox.run_command(f"chown -R user:user {sandbox_skill_dir}", user="root")
     await sandbox.run_command(f"chmod -R 755 {sandbox_skill_dir}", user="root")
 
-    # Clean up zip file
-    await sandbox.run_command(f"rm {zip_path_in_sandbox}", user="root")
+    # Clean up zip file (owned by sandbox user via _put_file, no root needed)
+    await sandbox.run_command(f"rm -f {zip_path_in_sandbox}")
 
     logger.debug(f"Extracted skill '{skill_name}' to {sandbox_skill_dir}")
     return sandbox_skill_dir

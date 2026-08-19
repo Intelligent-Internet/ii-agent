@@ -299,7 +299,7 @@ class VideoMediaHandler(BaseMediaHandler):
                 f"\n✅ KEY POINTS:"
                 f"\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
                 f"\n• Extension API returns MERGED video (original + extension combined)"
-                f"\n• NO concat_video needed - each extension builds on the previous"
+                f"\n• NO concatenate_videos needed - each extension builds on the previous"
                 f"\n• Audio coherence is maintained across extensions"
                 f"\n• Always pass the LATEST video URL as source_video"
                 f"\n• The prompt for extensions should describe how the scene CONTINUES"

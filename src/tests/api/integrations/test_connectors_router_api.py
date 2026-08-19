@@ -58,7 +58,7 @@ def test_connectors_github_callback_invalid_state_returns_400():
         )
 
     assert resp.status_code == 400
-    assert resp.json()["error"] == "connector_state"
+    assert resp.json()["error_code"] == "connector_state"
 
 
 def test_connectors_github_callback_uses_state_redirect_uri(monkeypatch):
@@ -232,7 +232,7 @@ def test_connectors_google_drive_picker_config_validation(monkeypatch):
             headers={"Authorization": "Bearer token"},
         )
         assert bad.status_code == 500
-        assert bad.json()["error"] == "connector_config"
+        assert bad.json()["error_code"] == "connector_config"
 
 
 def test_connectors_github_status_disconnect_and_app_config(monkeypatch):

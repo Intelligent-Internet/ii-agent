@@ -397,7 +397,6 @@ async def process_files_for_message(
         # Strategy 2: Small PDF/images → BinaryContent (with page limit check for PDFs)
         if is_binary_file(file_upload.content_type, file_upload.file_name):
             try:
-                import anyio
                 import httpx
 
                 if is_remote_url(file_upload.storage_path):
@@ -411,10 +410,8 @@ async def process_files_for_message(
                             or "application/octet-stream"
                         )
                 else:
-                    # All files use unified storage
-                    file_content = await anyio.to_thread.run_sync(
-                        get_storage().read, file_upload.storage_path
-                    )
+                    # All files use unified storage (async read)
+                    file_content = await get_storage().read(file_upload.storage_path)
                     file_bytes = file_content.read()
                     file_content.close()
                     mime_type = file_upload.content_type
@@ -550,12 +547,8 @@ async def process_files_for_message(
         # Strategy 3: Small text-extractable files → TextContent (with token limit check)
         if is_text_extractable(file_upload.content_type, file_upload.file_name):
             try:
-                import anyio
-
                 # All files use unified storage
-                file_content = await anyio.to_thread.run_sync(
-                    get_storage().read, file_upload.storage_path
-                )
+                file_content = await get_storage().read(file_upload.storage_path)
 
                 # Extract text using ContentExtractorFactory
                 extracted_text = ContentExtractorFactory.extract_content(

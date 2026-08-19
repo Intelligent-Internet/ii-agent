@@ -25,6 +25,14 @@ class Metrics:
     # Tokens employed in reasoning
     reasoning_tokens: int = 0
     cost: float = 0.0
+
+    # Backend that served this turn (e.g. "native", "a2a:copilot",
+    # "a2a:claude-code", "a2a:codex").  Set by the inner-loop strategy
+    # so billing can apply backend-specific pricing.
+    billing_backend: str = "native"
+    # Number of premium requests consumed (Copilot billing model).
+    premium_requests: int = 0
+
     # Time metrics
     # Internal timer utility for tracking execution time
     timer: Optional[Timer] = None
@@ -48,6 +56,7 @@ class Metrics:
             for k, v in metrics_dict.items()
             if v is not None
             and (not isinstance(v, (int, float)) or v != 0)
+            and (not isinstance(v, str) or v not in ("", "native"))
             and (not isinstance(v, dict) or len(v) > 0)
         }
         return metrics_dict
@@ -66,6 +75,8 @@ class Metrics:
             cache_write_tokens=self.cache_write_tokens + other.cache_write_tokens,
             reasoning_tokens=self.reasoning_tokens + other.reasoning_tokens,
             cost=(self.cost or 0.0) + (other.cost or 0.0),
+            billing_backend=other.billing_backend or self.billing_backend,
+            premium_requests=self.premium_requests + other.premium_requests,
         )
 
         # Handle provider_metrics

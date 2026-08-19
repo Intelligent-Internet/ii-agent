@@ -14,8 +14,6 @@ EXPECTED_ROUTES = {
     ("GET", "/sessions/{session_id}/files"),
     ("POST", "/sessions/{session_id}/publish"),
     ("POST", "/sessions/{session_id}/unpublish"),
-    ("GET", "/sessions/{session_id}/public"),
-    ("GET", "/sessions/{session_id}/public/events"),
     ("DELETE", "/sessions/{session_id}"),
     ("POST", "/sessions/{session_id}/fork"),
     ("PATCH", "/sessions/{session_id}"),
@@ -28,12 +26,4 @@ def test_sessions_router_routes_registered():
 
 
 def test_sessions_router_auth_contract():
-    public_routes = {
-        ("GET", "/sessions/{session_id}/public"),
-        ("GET", "/sessions/{session_id}/public/events"),
-    }
-    assert_auth_contract(
-        router,
-        protected=EXPECTED_ROUTES - public_routes,
-        public=public_routes,
-    )
+    assert_auth_contract(router, protected=EXPECTED_ROUTES)

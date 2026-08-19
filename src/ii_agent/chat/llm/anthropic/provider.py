@@ -13,7 +13,6 @@ import uuid
 from pathlib import Path
 from typing import AsyncIterator, List, Literal, Optional, Dict, Any
 
-import anyio
 import anthropic
 from anthropic.types import (
     TextBlock,
@@ -140,10 +139,8 @@ class AnthropicProvider(LLMClient):
             FileResponseObject with provider file ID, or None on failure
         """
         try:
-            # Read file from storage backend
-            file_content = await anyio.to_thread.run_sync(
-                get_storage().read, file_info.storage_path
-            )
+            # Read file from storage backend (async method)
+            file_content = await get_storage().read(file_info.storage_path)
 
             # Anthropic SDK requires a Path object, so write to temp file
             with tempfile.NamedTemporaryFile(delete=False, suffix=f"_{file_info.file_name}") as tmp:
@@ -523,7 +520,10 @@ class AnthropicProvider(LLMClient):
             messages, tools, anthropic_options, provider_files
         )
 
-        response = await self.client.beta.messages.create(**params, betas=betas)
+        if betas:
+            response = await self.client.beta.messages.create(**params, betas=betas)
+        else:
+            response = await self.client.messages.create(**params)
 
         # Extract usage
         usage = TokenUsage(
@@ -618,7 +618,12 @@ class AnthropicProvider(LLMClient):
         content_started = False
         current_tool_call_id = None  # Track the current tool call being processed
 
-        async with self.client.beta.messages.stream(**params, betas=betas) as stream:
+        stream_cm = (
+            self.client.beta.messages.stream(**params, betas=betas)
+            if betas
+            else self.client.messages.stream(**params)
+        )
+        async with stream_cm as stream:
             async for event in stream:
                 # Content block start
                 match event.type:

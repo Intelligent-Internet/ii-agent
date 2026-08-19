@@ -48,11 +48,15 @@ class CreditUsageHandler(EventCallbackHandler):
         *,
         credit_service: CreditService,
         pubsub: AsyncIOPubSub,
+        billing_enabled: bool = True,
     ) -> None:
         self._credit_service = credit_service
         self._pubsub = pubsub
+        self._billing_enabled = billing_enabled
 
     async def on_event(self, event: BaseEvent) -> None:
+        if not self._billing_enabled:
+            return
         if isinstance(event, ModelUsageEvent):
             await self._handle_llm_usage(event)
         elif isinstance(event, ToolUsageEvent):

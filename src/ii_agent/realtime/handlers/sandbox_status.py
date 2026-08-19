@@ -32,6 +32,7 @@ class SandboxStatusHandler(BaseCommandHandler[SandboxStatusContent]):
         """Handle get sandbox status request."""
         status = SandboxStatus.NOT_INITIALIZED.value
         vscode_url = None
+        vnc_url = None
         sandbox_service = self._container.sandbox_service
 
         async with get_db_session_local() as db:
@@ -41,6 +42,7 @@ class SandboxStatusHandler(BaseCommandHandler[SandboxStatusContent]):
                     sandbox_info = await sandbox.get_info()
                     status = sandbox_info.status.value
                     vscode_url = sandbox_info.vscode_url
+                    vnc_url = sandbox_info.vnc_url
             except Exception as e:
                 logger.error(f"Failed to get sandbox status for session {session_info.id}: {e}")
                 status = SandboxStatus.ERROR.value
@@ -52,8 +54,9 @@ class SandboxStatusHandler(BaseCommandHandler[SandboxStatusContent]):
         await self.send_event(
             SandboxStatusChangedEvent(
                 session_id=session_info.id,
-                content={"status": status, "vscode_url": vscode_url},
+                content={"status": status, "vscode_url": vscode_url, "vnc_url": vnc_url},
                 status=event_status,
                 vscode_url=vscode_url,
+                vnc_url=vnc_url,
             )
         )

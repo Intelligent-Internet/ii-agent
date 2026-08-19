@@ -28,6 +28,17 @@ class CreditsSettings(BaseSettings):
         extra="ignore",
     )
 
+    # Global billing toggle — set CREDITS_BILLING_ENABLED=false to disable
+    # all credit deductions.  Useful for self-hosted / local deployments
+    # where the operator pays directly for their own API keys.
+    billing_enabled: bool = Field(
+        default=True,
+        description=(
+            "Master toggle for credit billing.  When False, no credits are "
+            "deducted for any LLM or tool usage regardless of config_type."
+        ),
+    )
+
     # Default credits for new users
     default_user_credits: float = Field(
         default=300.0,

@@ -20,23 +20,26 @@ pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 async def test_media_template_repository_pagination_and_filters(
     db_session: AsyncSession,
 ) -> None:
+    media_id_1 = uuid.uuid4()
+    media_id_2 = uuid.uuid4()
+    media_id_3 = uuid.uuid4()
     repo = MediaTemplateRepository()
     db_session.add_all(
         [
             MediaTemplate(
-                id="media-1",
+                id=media_id_1,
                 name="Landscape Shot",
                 prompt="A landscape",
                 type="image",
             ),
             MediaTemplate(
-                id="media-2",
+                id=media_id_2,
                 name="Portrait Shot",
                 prompt="A portrait",
                 type="image",
             ),
             MediaTemplate(
-                id="media-3",
+                id=media_id_3,
                 name="Voice Intro",
                 prompt="Narration",
                 type="audio",
@@ -45,7 +48,7 @@ async def test_media_template_repository_pagination_and_filters(
     )
     await db_session.flush()
 
-    by_id = await repo.get_by_id(db_session, "media-1")
+    by_id = await repo.get_by_id(db_session, media_id_1)
     by_name = await repo.get_by_name(db_session, "Portrait Shot")
     assert by_id is not None
     assert by_name is not None
@@ -70,7 +73,7 @@ async def test_skill_repository_builtin_user_scopes_and_delete(
     other_user = await user_factory()
 
     builtin_skill = Skill(
-        id=str(uuid.uuid4()),
+        id=uuid.uuid4(),
         user_id=None,
         name="lint-skill",
         description="Builtin lint skill",
@@ -80,7 +83,7 @@ async def test_skill_repository_builtin_user_scopes_and_delete(
         storage_uri="gcs://skills/lint",
     )
     user_skill = Skill(
-        id=str(uuid.uuid4()),
+        id=uuid.uuid4(),
         user_id=user.id,
         name="deploy-skill",
         description="User deploy skill",
@@ -91,7 +94,7 @@ async def test_skill_repository_builtin_user_scopes_and_delete(
         storage_uri="gcs://skills/deploy",
     )
     builtin_override = Skill(
-        id=str(uuid.uuid4()),
+        id=uuid.uuid4(),
         user_id=user.id,
         name="lint-skill-override",
         description="User override for builtin",
@@ -206,8 +209,8 @@ async def test_slide_template_repository_create_get_and_paginated_search(
     full = await repo.get_full_by_id(db_session, created_a.id)
     paged = await repo.list_paginated(db_session, page=1, page_size=2, search="Deck")
     paged_no_search = await repo.list_paginated(db_session, page=1, page_size=10)
-    missing_by_id = await repo.get_by_id(db_session, "missing-template")
-    missing_full = await repo.get_full_by_id(db_session, "missing-template")
+    missing_by_id = await repo.get_by_id(db_session, uuid.uuid4())
+    missing_full = await repo.get_full_by_id(db_session, uuid.uuid4())
 
     assert by_id is not None
     assert by_id["slide_template_name"] == "Investor Deck"
@@ -229,7 +232,7 @@ async def test_storybook_repository_create_pages_and_generation_updates(
     session = await session_factory()
 
     storybook = Storybook(
-        id=str(uuid.uuid4()),
+        id=uuid.uuid4(),
         session_id=session.id,
         name="Storybook Alpha",
         version=1,
@@ -237,11 +240,11 @@ async def test_storybook_repository_create_pages_and_generation_updates(
         aspect_ratio="16:9",
         resolution="2K",
     )
-    created = await repo.create(db_session, storybook)
+    created = await repo.save(db_session, storybook)
 
     pages = [
-        StorybookPage(id=str(uuid.uuid4()), page_number=1, text_content="Page 1"),
-        StorybookPage(id=str(uuid.uuid4()), page_number=2, text_content="Page 2"),
+        StorybookPage(id=uuid.uuid4(), page_number=1, text_content="Page 1"),
+        StorybookPage(id=uuid.uuid4(), page_number=2, text_content="Page 2"),
     ]
     await repo.create_pages_batch(db_session, pages, created.id)
 
@@ -281,7 +284,7 @@ async def test_storybook_repository_single_page_not_found_and_version_paths(
     session = await session_factory()
 
     root = Storybook(
-        id=str(uuid.uuid4()),
+        id=uuid.uuid4(),
         session_id=session.id,
         name="Root",
         version=1,
@@ -290,7 +293,7 @@ async def test_storybook_repository_single_page_not_found_and_version_paths(
         resolution="1K",
     )
     child = Storybook(
-        id=str(uuid.uuid4()),
+        id=uuid.uuid4(),
         session_id=session.id,
         name="Child",
         version=2,
@@ -300,11 +303,11 @@ async def test_storybook_repository_single_page_not_found_and_version_paths(
         aspect_ratio="1:1",
         resolution="1K",
     )
-    await repo.create(db_session, root)
-    await repo.create(db_session, child)
+    await repo.save(db_session, root)
+    await repo.save(db_session, child)
 
     page = StorybookPage(
-        id=str(uuid.uuid4()),
+        id=uuid.uuid4(),
         page_number=1,
         text_content="First Page",
     )
@@ -325,11 +328,11 @@ async def test_storybook_repository_single_page_not_found_and_version_paths(
     assert updated_page.text_content == "Updated text"
     assert updated_page.audio_link == "audio://clip"
 
-    assert await repo.update_page(db_session, "missing-page-id", html_content="<p>x</p>") is None
+    assert await repo.update_page(db_session, uuid.uuid4(), html_content="<p>x</p>") is None
     assert (
         await repo.update_generation_status(
             db_session,
-            "missing-storybook-id",
+            uuid.uuid4(),
             status="failed",
             error_message="missing",
         )

@@ -2,9 +2,21 @@ FROM node:22-alpine AS builder
 WORKDIR /app
 COPY frontend/ .
 
-RUN if [ -f yarn.lock ]; then yarn --frozen-lockfile && yarn build; \
+# Build-time environment variables for Vite
+ARG VITE_API_URL=http://localhost:8000
+ARG VITE_GOOGLE_CLIENT_ID=
+ARG VITE_STRIPE_PUBLISHABLE_KEY=
+ARG VITE_SENTRY_DSN=
+ARG VITE_DISABLE_CHAT_MODE=false
+ENV VITE_API_URL=$VITE_API_URL
+ENV VITE_GOOGLE_CLIENT_ID=$VITE_GOOGLE_CLIENT_ID
+ENV VITE_STRIPE_PUBLISHABLE_KEY=$VITE_STRIPE_PUBLISHABLE_KEY
+ENV VITE_SENTRY_DSN=$VITE_SENTRY_DSN
+ENV VITE_DISABLE_CHAT_MODE=$VITE_DISABLE_CHAT_MODE
+
+RUN if [ -f pnpm-lock.yaml ]; then corepack enable pnpm && pnpm i --frozen-lockfile && pnpm run build; \
+    elif [ -f yarn.lock ]; then yarn --frozen-lockfile && yarn build; \
     elif [ -f package-lock.json ]; then npm ci && npm run build; \
-    elif [ -f pnpm-lock.yaml ]; then corepack enable pnpm && pnpm i --frozen-lockfile && pnpm run build; \
     else echo "Lockfile not found." && exit 1; \
     fi
 

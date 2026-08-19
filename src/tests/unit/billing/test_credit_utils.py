@@ -27,3 +27,44 @@ def test_credits_to_usd_accepts_float():
     result = credits_to_usd(100.0)
     assert isinstance(result, Decimal)
     assert result == Decimal("1.5")
+
+
+# ---------------------------------------------------------------------------
+# billing/utils.py – finalize_storybook_async_operation
+# ---------------------------------------------------------------------------
+
+import asyncio
+from unittest.mock import MagicMock
+
+
+class TestBillingUtilsFinalize:
+    def test_finalize_storybook_logs_warning(self):
+        from ii_agent.billing.utils import finalize_storybook_async_operation
+
+        mock_reservation = MagicMock()
+        mock_scope = MagicMock()
+
+        asyncio.run(
+            finalize_storybook_async_operation(
+                reservation_service=mock_reservation,
+                scope=mock_scope,
+                reservation_id="res-123",
+                result=None,
+                release_reason="unused",
+            )
+        )
+        # Function completes without error (logs a warning internally)
+
+    def test_finalize_storybook_with_result(self):
+        from ii_agent.billing.utils import finalize_storybook_async_operation
+
+        asyncio.run(
+            finalize_storybook_async_operation(
+                reservation_service=MagicMock(),
+                scope=MagicMock(),
+                reservation_id="res-456",
+                result={"output": "done"},
+                release_reason="completed",
+                settlement_error=None,
+            )
+        )

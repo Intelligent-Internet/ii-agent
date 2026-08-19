@@ -200,6 +200,10 @@ export enum AgentEvent {
     PONG = 'system.pong',
     SYSTEM = 'system.notification',
 
+    // A2A delegation events
+    DELEGATION_FALLBACK = 'agent.delegation.fallback',
+    COMPACTION_AUTHORITY = 'agent.compaction.authority',
+
     // Integration events
     APPLE_AUTH_STATUS = 'integration.apple.auth.status',
     APPLE_2FA_REQUIRED = 'integration.apple.auth.2fa_required',
@@ -376,7 +380,7 @@ export interface AgentContext {
     nestingLevel: number
     startTime?: number
     endTime?: number
-    status?: 'running' | 'completed' | 'failed'
+    status?: 'running' | 'completed' | 'failed' | 'stopped'
 }
 
 export type ActionStep = {

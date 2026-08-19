@@ -57,7 +57,7 @@ class ChatProviderFile(Base):
     id = Column(UUID, primary_key=True, default=uuid.uuid4)
     file_id = Column(
         UUID(as_uuid=True),
-        ForeignKey("file_uploads.id", ondelete="CASCADE"),
+        ForeignKey("user_assets.id", ondelete="CASCADE"),
         nullable=False,
     )
     session_id = Column(

@@ -2514,8 +2514,10 @@ class IIAgent:
             # If the model response is an assistant_response, yield a RunOutput
             if model_response_event.event == ModelResponseEvent.assistant_response.value:
                 if model_response_event.delta_status == "reasoning_started" and stream_events:
-                    # Reset reasoning content for new cycle
-                    model_response.reasoning_content = model_response_event.reasoning_content
+                    # Reset reasoning content for new cycle.
+                    # Use empty string so the accumulation block below handles
+                    # the first delta without doubling it.
+                    model_response.reasoning_content = ""
 
                     yield handle_event(  # type: ignore
                         create_reasoning_started_event(from_run_response=run_response),
@@ -3571,10 +3573,10 @@ class IIAgent:
         Args:
             tool: The tool execution to update with user input
         """
-        for field in tool.user_input_schema or []:
+        for input_field in tool.user_input_schema or []:
             if not tool.tool_args:
                 tool.tool_args = {}
-            tool.tool_args[field.name] = field.value
+            tool.tool_args[input_field.name] = input_field.value
 
     def _handle_get_user_input_tool_update(self, run_messages: RunMessages, tool: ToolExecution):
         """Handle the special get_user_input tool update.

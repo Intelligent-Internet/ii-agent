@@ -516,6 +516,7 @@ class SandboxStatusChangedEvent(SandboxEvent):
     name: Literal["sandbox.status_changed"] = "sandbox.status_changed"
     status: Literal["starting", "ready", "paused", "terminated", "error"] = "starting"
     vscode_url: str | None = None
+    vnc_url: str | None = None
 
 
 # ---------------------------------------------------------------------------

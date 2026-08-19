@@ -2,9 +2,10 @@
 
 import logging
 import uuid
+from datetime import datetime, timedelta, timezone
 from typing import Literal, Optional
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 
 from ii_agent.auth.dependencies import CurrentUser, DBSession
 from ii_agent.core.exceptions import InternalError
@@ -18,6 +19,7 @@ from ii_agent.sessions.schemas import (
     BulkDeleteResponse,
     ForkSessionRequest,
     ForkSessionResponse,
+    ScheduleDeleteRequest,
     SessionInfo,
     SessionResponse,
     SessionFile,
@@ -262,6 +264,39 @@ async def delete_session(
     """Soft delete a session by setting is_deleted flag."""
     await session_service.soft_delete_session(db, session_id, current_user.id)
     return {"message": f"Session {session_id} deleted successfully"}
+
+
+@router.post("/{session_id}/schedule-delete")
+async def schedule_delete_session(
+    session_id: uuid.UUID,
+    payload: ScheduleDeleteRequest,
+    db: DBSession,
+    current_user: CurrentUser,
+    session_service: SessionServiceDep,
+) -> dict:
+    """Schedule a session for automatic deletion at a future time.
+
+    The session and its sandbox will remain available for inspection until
+    the scheduled time passes, at which point the background cleanup loop
+    will soft-delete the session and reap its sandbox container.
+    """
+    if payload.delete_after_seconds is not None:
+        delete_at = datetime.now(timezone.utc) + timedelta(seconds=payload.delete_after_seconds)
+    elif payload.delete_at is not None:
+        delete_at = datetime.fromisoformat(payload.delete_at)
+        if delete_at.tzinfo is None:
+            delete_at = delete_at.replace(tzinfo=timezone.utc)
+    else:
+        raise HTTPException(
+            status_code=422,
+            detail="Provide either delete_after_seconds or delete_at",
+        )
+
+    await session_service.schedule_deletion(db, session_id, current_user.id, delete_at)
+    return {
+        "message": f"Session {session_id} scheduled for deletion",
+        "delete_at": delete_at.isoformat(),
+    }
 
 
 @router.post("/{session_id}/fork", response_model=ForkSessionResponse)

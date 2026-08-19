@@ -18,7 +18,7 @@ src/ii_agent/
 │   ├── llm/                    # LLM billing service, execution service, base utilities
 │   ├── middleware/              # CORS, request tracing, exception handling
 │   ├── redis/                  # Async Redis client, cache, cancel tokens
-│   ├── storage/                # GCS/local file storage abstraction + path resolver
+│   ├── storage/                # GCS/MinIO file storage abstraction + path resolver
 │   └── container.py            # ApplicationContainer singleton (global + app.state)
 │
 ├── auth/                       # OAuth 2.0, JWT (uuid.UUID user_id), session management
@@ -29,7 +29,7 @@ src/ii_agent/
 │
 ├── tasks/                      # Unified run lifecycle tracker (RunTask + TaskLog) -- CANONICAL DOMAIN
 │
-├── sessions/                   # Chat sessions (CRUD, state, fork, title, validation)
+├── sessions/                   # Chat sessions (CRUD, state, fork, title, timed delete)
 │   ├── pin/                    # Session pins
 │   └── wishlist/               # Session wishlists/bookmarks
 │
@@ -185,6 +185,9 @@ Socket "chat_message" -> CommandHandlerFactory
 | `/connectors/composio` | `integrations/connectors/composio/router.py` | Composio |
 | `/connectors` | `integrations/connectors/router.py` | Connectors (GitHub, Google) |
 | `/enhance-prompt` | `integrations/enhance_prompt/router.py` | Prompt Enhancement |
+| `/storage` | `files/storage_proxy_router.py` | Storage Proxy (local deploy) |
+| `/files/slides/assets` | `files/slide_assets_router.py` | Slide Assets |
+| `/sandbox-files` | `files/sandbox_files_router.py` | Sandbox File Preview |
 
 Router registration: `app/routers.py::include_routers(app)`
 
@@ -295,6 +298,51 @@ Project 1──N ProjectCustomDomain
 Storybook 1──N StorybookPage 1──N StorybookPageLink
 SlideContent 1──N SlideVersion
 ```
+
+## Billing & Credit System
+
+### Credit Conversion
+
+```
+100 II-Agent credits == $1.50 USD
+1 USD ≈ 66.67 credits
+```
+
+Defined in `billing/utils.py`. All USD→credit math uses `Decimal` arithmetic to avoid floating-point loss.
+
+### Mandatory Rule
+
+**Never call `CreditService.deduct()` directly** for LLM or tool billing. All billable work flows through the event-driven `CreditUsageHandler` which subscribes to `ModelUsageEvent` and `ToolUsageEvent` on the pub/sub bus.
+
+### Native Billing Flow
+
+```
+LLM call completes → ModelUsageEvent published → CreditUsageHandler
+  → token_count × PricingInfo → USD → credits → CreditService.deduct()
+  → CreditsDeductedEvent (frontend balance update)
+  → if balance < minimum: cancel agent run
+```
+
+Tool billing follows the same pattern via `ToolUsageEvent` with a direct `cost_usd` field.
+
+### A2A Billing (Inner-Loop Subsidisation)
+
+When `billing_backend` on a `ModelUsageEvent` starts with `"a2a:"`, the handler uses a configurable strategy instead of standard token pricing. This accounts for subsidised backends like Copilot Business (unlimited) or Copilot Pro+ (premium-request pricing).
+
+| Strategy (`AGENT_A2A_BILLING_STRATEGY`) | Behaviour |
+|---|---|
+| `token_based` (default) | Standard token cost × `AGENT_A2A_BILLING_MULTIPLIER` (default 1.0) |
+| `provider_reported` | Copilot: `premium_requests × model_multiplier × $0.04`; others: adapter-reported USD |
+| `none` | Zero LLM charge (subscription covers inference) |
+
+Key details:
+- Tool costs (image gen, web search) are **always** billed at native rates regardless of strategy
+- `is_user_key=True` skips LLM billing entirely (user pays their own API bill)
+- Copilot premium-request multipliers are hot-configurable via `AGENT_A2A_COPILOT_MULTIPLIERS` (JSON env)
+
+**Full design doc:** [`docs/design-docs/a2a-billing-model.md`](docs/design-docs/a2a-billing-model.md) — strategies, deployment decision tree, cost comparisons, config examples.
+
+**Key files:** `credits/usage/handler.py` (billing logic), `core/config/agent.py` (A2A billing settings), `realtime/events/app_events.py` (ModelUsageEvent schema), `billing/utils.py` (USD↔credit conversion).
 
 ## External Services & Configuration
 
@@ -583,7 +631,7 @@ curl http://localhost:8000/health
 | `core/config/settings.py` | Pydantic settings (`get_settings` singleton) |
 | `core/db/base.py` | SQLAlchemy Base (UUID PK, DateTime timestamps), TimestampColumn, BaseRepository |
 | `core/redis/` | Redis client, cache, pubsub, lock, cancel management |
-| `core/storage/` | File storage abstraction (GCS, local) + path resolver |
+| `core/storage/` | File storage abstraction (GCS, MinIO) + path resolver |
 | `auth/dependencies.py` | CurrentUser, DBSession, get_current_user |
 | `tasks/` | Canonical domain implementation (RunTask, TaskLog, types, schemas, exceptions) |
 | `realtime/handlers/factory.py` | CommandHandlerFactory -- 21 Socket.IO command handlers |

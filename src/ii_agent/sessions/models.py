@@ -67,6 +67,7 @@ class Session(Base):
         onupdate=lambda: datetime.now(timezone.utc),
     )
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    delete_after: Mapped[Optional[datetime]] = mapped_column(TimestampColumn, nullable=True)
 
     # Relationships (using string references)
     user: Mapped["User"] = relationship("User", back_populates="sessions")
