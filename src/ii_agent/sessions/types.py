@@ -16,3 +16,4 @@ class AppKind(StrEnum):
 
     AGENT = "agent"
     CHAT = "chat"
+    BROWSER_EXTENSION = "browser_extension"

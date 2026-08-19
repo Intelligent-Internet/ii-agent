@@ -1,6 +1,6 @@
 import { useGoogleLogin } from '@react-oauth/google'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
-import { Link, useNavigate } from 'react-router'
+import { Link, useNavigate, useSearchParams } from 'react-router'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -30,9 +30,26 @@ type IiAuthPayload = {
 export function LoginPage() {
     const { t } = useTranslation()
     const navigate = useNavigate()
+    const [searchParams] = useSearchParams()
     const { loginWithAuthCode } = useAuth()
     const dispatch = useAppDispatch()
     const isSage = useIsSageTheme()
+
+    // `return_to` is a relative path on this origin we should send the user
+    // back to after a successful login. Used by /extension-auth and
+    // /oauth-consent so protected flows survive a login bounce.
+    const safeReturnTo = useMemo(() => {
+        const raw = searchParams.get('return_to')
+        if (!raw) return '/'
+        try {
+            // Block absolute URLs / protocol-relative paths — only allow
+            // in-app paths to avoid open-redirect abuse.
+            if (!raw.startsWith('/') || raw.startsWith('//')) return '/'
+            return raw
+        } catch {
+            return '/'
+        }
+    }, [searchParams])
 
     const FormSchema = useMemo(
         () =>
@@ -64,7 +81,7 @@ export function LoginPage() {
         onSuccess: async (codeResponse) => {
             try {
                 await loginWithAuthCode(codeResponse.code)
-                navigate('/')
+                navigate(safeReturnTo)
             } catch (error: unknown) {
                 const apiError = error as {
                     response: { data: { detail: string } }
@@ -121,7 +138,7 @@ export function LoginPage() {
                 dispatch(fetchWishlist())
                 dispatch(fetchPins())
 
-                navigate('/')
+                navigate(safeReturnTo)
             } catch (error) {
                 console.error('Failed to finalize II login:', error)
                 authHandledRef.current = false

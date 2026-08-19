@@ -58,6 +58,9 @@ class CommandType(StrEnum):
     APPLE_CHECK_AUTH = "apple_check_auth"
     SAVE_EXPO_TOKEN = "save_expo_token"
 
+    # Browser extension (ii-browser)
+    BROWSER_EXTENSION_QUERY = "browser_extension_query"
+    BROWSER_EXTENSION_CONTINUE_RUN = "browser_extension_continue_run"
 
 # ---------------------------------------------------------------------------
 # Base empty content (shared fields for no-payload commands)
@@ -419,6 +422,33 @@ class SlideDeckSyncStateContent(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Browser-extension (ii-browser) content models
+# ---------------------------------------------------------------------------
+
+
+class BrowserExtensionCommandContent(BaseCommandQuery):
+    """Payload for ``browser_extension_query``."""
+
+    command: Literal[CommandType.BROWSER_EXTENSION_QUERY] = (
+        CommandType.BROWSER_EXTENSION_QUERY
+    )
+    system_prompt: str | None = None
+    requested_capabilities: dict[str, Any] | None = None
+
+
+class BrowserExtensionContinueRunContent(ContinueRunContent):
+    """Payload for ``browser_extension_continue_run``."""
+
+    command: Literal[CommandType.BROWSER_EXTENSION_CONTINUE_RUN] = (
+        CommandType.BROWSER_EXTENSION_CONTINUE_RUN
+    )
+    run_id: str
+    confirmed: bool
+    user_input: dict[str, str] = {}
+    external_tool_results: list[dict[str, Any]] | None = None
+
+
+# ---------------------------------------------------------------------------
 # Discriminated union of all command content types
 # ---------------------------------------------------------------------------
 
@@ -430,6 +460,8 @@ CommandContent = Annotated[
         EnhancePromptContent,
         StartForkContent,
         ContinueRunContent,
+        BrowserExtensionCommandContent,
+        BrowserExtensionContinueRunContent,
         PublishProjectContent,
         CloudRunPublishContent,
         SaveEnvContent,
