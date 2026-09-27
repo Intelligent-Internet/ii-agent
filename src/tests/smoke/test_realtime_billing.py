@@ -1,4 +1,5 @@
 import pytest
+from unittest.mock import MagicMock
 
 from ii_agent.billing.exceptions import StripeConfigError
 from ii_agent.billing.service import BillingService
@@ -24,11 +25,15 @@ class FakeSio:
 
 @pytest.mark.asyncio
 async def test_realtime_connect_sanity(monkeypatch):
-    manager = SocketIOManager(FakeSio())
+    fake_pubsub = MagicMock()
+    fake_container = MagicMock()
+    fake_container.live_terminal_service.bind_socketio = MagicMock()
+
+    manager = SocketIOManager(FakeSio(), pubsub=fake_pubsub, container=fake_container)
 
     monkeypatch.setattr(
         "ii_agent.realtime.manager.jwt_handler.verify_access_token",
-        lambda token: {"user_id": "u1"},
+        lambda token: {"user_id": "00000000-0000-0000-0000-000000000001"},
     )
 
     accepted = await manager.connect("sid-1", {}, auth={"token": "ok"})

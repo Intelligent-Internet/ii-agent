@@ -57,7 +57,7 @@ async def upload_media_to_sandbox(
             filename = file.filename or f"file_{file.id}"
             return (file.id or "", f"{upload_path}/{filename}", response.content, "file")
         except Exception as exc:
-            logger.warning("Failed to download file %s: %s", file.filename, exc)
+            logger.warning(f"Failed to download file {file.filename}: {exc}")
             return None
 
     async def _download_image(
@@ -77,7 +77,7 @@ async def upload_media_to_sandbox(
             filepath = f"{upload_path}/{filename}"
             return (image, filepath, response.content, "image")
         except Exception as exc:
-            logger.warning("Failed to download image: %s", exc)
+            logger.warning(f"Failed to download image: {exc}")
             return None
 
     async with httpx.AsyncClient() as client:
@@ -103,10 +103,13 @@ async def upload_media_to_sandbox(
         elif result[3] == "image":
             image, filepath, content, _ = result
             file_uploads.append(FileUpload(path=filepath, content=content))
+            # Store downloaded bytes as content so the image is accessible
+            # from both the A2A adapter (via base64) and the native model
+            # fallback path (which doesn't support sandbox filepath).
             sandbox_images.append(
                 Image(
                     id=image.id,
-                    url=image.url,
+                    content=content,
                     mime_type=image.mime_type,
                     format=image.format,
                 )
@@ -119,12 +122,10 @@ async def upload_media_to_sandbox(
         try:
             await sandbox.write_files(file_uploads)
             logger.info(
-                "Uploaded %d files and %d images to sandbox",
-                len(sandbox_files),
-                len(sandbox_images),
+                f"Uploaded {len(sandbox_files)} files and {len(sandbox_images)} images to sandbox",
             )
         except Exception as exc:
-            logger.error("Failed to batch upload files to sandbox: %s", exc)
+            logger.error(f"Failed to batch upload files to sandbox: {exc}")
             return [], list(images)
 
     return sandbox_files, sandbox_images

@@ -1,7 +1,7 @@
-import { selectMessages, useAppDispatch, useAppSelector } from '@/state'
+import { selectMessages, useAppSelector, selectIsStopped } from '@/state'
 import clsx from 'clsx'
 import { countBy, findLast } from 'lodash'
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { Icon } from '../ui/icon'
 import { Progress } from '../ui/progress'
 import { Skeleton } from '../ui/skeleton'
@@ -15,46 +15,45 @@ interface AgentTasksProps {
 const AgentTasks = ({ className }: AgentTasksProps) => {
     const { t } = useTranslation()
     const messages = useAppSelector(selectMessages)
-    const dispatch = useAppDispatch()
-    const [plans, setPlans] = useState<Plan[]>([])
+    const isStopped = useAppSelector(selectIsStopped)
 
-    useEffect(() => {
-        setPlans(
+    // Single source of truth: derive plans from the latest TODO_WRITE.
+    // No useState/useEffect setState cascade -- previously two effects
+    // wrote to each other's input on every messages tick, which can
+    // trigger React error #185 ("Maximum update depth exceeded") under
+    // chatty agent streams.
+    const plans = useMemo<Plan[]>(() => {
+        const sourcePlans: Plan[] =
             findLast(
                 messages,
                 (m: Message) => m?.action?.type === TOOL.TODO_WRITE
             )?.action?.data?.tool_input?.todos || []
-        )
-    }, [messages])
 
-    useEffect(() => {
-        if (Array.isArray(plans)) {
-            // Check if there are no in_progress tasks
-            const hasInProgress = plans.some(
-                (plan) => plan.status === 'in_progress'
-            )
-
-            if (!hasInProgress && plans.length > 0) {
-                // Find the first pending task
-                const firstPendingIndex = plans.findIndex(
-                    (plan) => plan.status === 'pending'
-                )
-
-                if (firstPendingIndex !== -1) {
-                    const updatedPlans = [...plans]
-                    updatedPlans[firstPendingIndex] = {
-                        ...updatedPlans[firstPendingIndex],
-                        status: 'in_progress'
-                    }
-                    setPlans(updatedPlans)
-                }
-            }
+        if (
+            isStopped ||
+            sourcePlans.length === 0 ||
+            sourcePlans.some((p) => p.status === 'in_progress')
+        ) {
+            return sourcePlans
         }
-    }, [plans, dispatch])
+
+        // Auto-promote the first pending plan to in_progress for display.
+        const firstPendingIndex = sourcePlans.findIndex(
+            (p) => p.status === 'pending'
+        )
+        if (firstPendingIndex === -1) return sourcePlans
+
+        const next = sourcePlans.slice()
+        next[firstPendingIndex] = {
+            ...next[firstPendingIndex],
+            status: 'in_progress'
+        }
+        return next
+    }, [messages, isStopped])
 
     const inProgressPlans = useMemo(
-        () => countBy(plans, 'status').in_progress || 0,
-        [plans]
+        () => (isStopped ? 0 : countBy(plans, 'status').in_progress || 0),
+        [plans, isStopped]
     )
 
     const completedPlans = useMemo(
@@ -69,7 +68,7 @@ const AgentTasks = ({ className }: AgentTasksProps) => {
             className={`flex flex-col items-center justify-center w-full ${className}`}
         >
             <p className="text-lg md:text-[32px] font-semibold dark:text-white">
-                {t('agent.tasks.inProgress')}
+                {isStopped ? t('agent.tasks.stopped', 'Stopped') : t('agent.tasks.inProgress')}
             </p>
             <div className="mt-6 flex flex-col max-w-[580px] gap-y-4 w-full">
                 <div className="flex flex-col gap-y-4 max-h-[calc(100vh-350px)] overflow-auto">

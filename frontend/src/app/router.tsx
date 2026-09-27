@@ -1,12 +1,14 @@
 import { createBrowserRouter, RouterProvider } from 'react-router'
 import { ProtectedRoute } from '@/components/protected-route'
 import { RootLayout } from '@/components/layouts/root-layout'
+import { RouteErrorBoundary } from '@/components/route-error-boundary'
 
 const createAppRouter = () =>
     createBrowserRouter([
         {
             path: '/',
             element: <RootLayout />,
+            errorElement: <RouteErrorBoundary />,
             children: [
                 {
                     index: true,

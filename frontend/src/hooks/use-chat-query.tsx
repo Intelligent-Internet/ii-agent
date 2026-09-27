@@ -20,7 +20,7 @@ import {
 import {
     useAppSelector,
     useAppDispatch,
-    selectSelectedModel,
+    selectSelectedChatModel,
     selectCurrentMessageFileIds,
     selectUploadedFiles,
     clearCurrentMessageFileIds,
@@ -220,7 +220,7 @@ function useChatProviderValue(): ChatContextValue {
     const dispatch = useAppDispatch()
     const currentMessageFileIds = useAppSelector(selectCurrentMessageFileIds)
     const uploadedFiles = useAppSelector(selectUploadedFiles) as UploadedFile[]
-    const selectedModelId = useAppSelector(selectSelectedModel)
+    const selectedModelId = useAppSelector(selectSelectedChatModel)
     const chatMediaPreferenceFromStore = useAppSelector(selectChatMediaPreference)
     const { i18n } = useTranslation()
     const navigate = useNavigate()
@@ -2251,7 +2251,6 @@ function useChatProviderValue(): ChatContextValue {
 
                             const timestamp = Date.now()
                             const targetId = streamingMessageIdRef.current
-                            streamingMessageIdRef.current = null
 
                             if (targetId) {
                                 // Finalize any active reasoning by giving it a unique ID
@@ -2280,7 +2279,34 @@ function useChatProviderValue(): ChatContextValue {
                                         })
                                     )
                                 }
+
+                                // Add error text to the message so it's not blank
+                                const errorText =
+                                    message ||
+                                    'Something went wrong while processing your request.'
+                                const currentParts =
+                                    stateRef.current.messages.find(
+                                        (m) => m.id === targetId
+                                    )?.parts || []
+                                const hasTextContent = currentParts.some(
+                                    (p) =>
+                                        p.type === 'text' &&
+                                        'text' in p &&
+                                        (p.text ?? '').trim().length > 0
+                                )
+                                if (!hasTextContent) {
+                                    updateMessagePart(
+                                        `error-${targetId}`,
+                                        () => ({
+                                            type: 'text' as const,
+                                            id: `error-${targetId}`,
+                                            text: `⚠️ ${errorText}`
+                                        })
+                                    )
+                                }
                             }
+
+                            streamingMessageIdRef.current = null
 
                             setChatState((prev) => ({
                                 ...prev,

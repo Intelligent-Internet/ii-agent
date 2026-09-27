@@ -23,23 +23,35 @@ def include_routers(app: FastAPI) -> None:
     from ii_agent.content.storybook.router import public_router as storybook_public_router
     from ii_agent.files.router import router as files_router
     from ii_agent.files.router import public_router as files_public_router
+    from ii_agent.files.slide_assets_router import router as slide_assets_router
+    from ii_agent.files.storage_proxy_router import router as storage_proxy_router
     from ii_agent.integrations.connectors.router import router as connectors_router
     from ii_agent.integrations.enhance_prompt.router import router as enhance_prompt_router
     from ii_agent.projects.router import router as project_router
     from ii_agent.sessions.router import router as sessions_router
     from ii_agent.sessions.router import public_router as sessions_public_router
+    from ii_agent.sessions.purge.router import router as sessions_purge_router
+    from ii_agent.sessions.purge.router import admin_router as sessions_purge_admin_router
     from ii_agent.settings.router import router as settings_router
+    from ii_agent.agents.sandboxes.router import router as sandbox_files_router
 
     # ── Root-level routes (no /v1 prefix) ────────────────────────────────
     app.include_router(health_router)
     app.include_router(auth_router)
     app.include_router(users_router)
     app.include_router(billing_router)
+    app.include_router(slide_assets_router)  # /files/slides/assets/* (legacy compat)
+    app.include_router(storage_proxy_router)  # /storage/* (upload/download proxy for local)
+    app.include_router(sandbox_files_router)  # /sandbox-files/* (live sandbox preview)
 
     # ── Versioned API routes (/v1) ───────────────────────────────────────
     v1_router = APIRouter(prefix="/v1")
 
     v1_router.include_router(sessions_router)  # /v1/sessions (includes /pins, /wishlist)
+    v1_router.include_router(sessions_purge_router)  # /v1/sessions/{id}/restore, /purge-now
+    v1_router.include_router(
+        sessions_purge_admin_router
+    )  # /v1/admin/users/{id}/purge, /sar, /unblock
     v1_router.include_router(credits_router)  # /v1/credits
     v1_router.include_router(chat_router)  # /v1/chat
     v1_router.include_router(files_router)  # /v1/assets/*

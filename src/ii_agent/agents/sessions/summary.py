@@ -20,7 +20,12 @@ DEFAULT_TOKEN_THRESHOLD = 150_000
 # Model-specific token thresholds (context window based)
 # Models with larger context windows can have higher thresholds
 MODEL_TOKEN_THRESHOLDS: Dict[str, int] = {
-    # Anthropic Claude models
+    # Anthropic Claude models — Opus 5, Fable 5, Opus 4.8, and Opus 4.7 have a 1M token context
+    # window; trigger compression at 800k to leave headroom for output + thinking tokens.
+    "claude-opus-5": 800_000,
+    "claude-fable-5": 800_000,
+    "claude-opus-4-8": 800_000,
+    "claude-opus-4-7": 800_000,
     "claude-sonnet-4-6": 200_000,
     "claude-sonnet-4": 200_000,
     "claude-sonnet-4-5": 200_000,

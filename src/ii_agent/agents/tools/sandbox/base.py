@@ -30,6 +30,7 @@ class BaseSandboxTool(BaseAgentTool):
     display_name: str
     metadata: Optional[Dict[str, Any]] = None
     requires_sandbox: bool = True
+    sandbox: Any = None
 
     async def on_tool_start(self, agent: "IIAgent", fc: "FunctionCall") -> None:
         """Pre-hook: ensure sandbox exists, then expose it to the tool."""
@@ -70,4 +71,9 @@ class BaseSandboxTool(BaseAgentTool):
         return get_app_container().sandbox_service
 
     def get_session_id(self) -> _uuid.UUID:
+        if self.sandbox is None:
+            raise RuntimeError(
+                "Sandbox not available — initialization likely failed. "
+                "Check backend logs for sandbox errors."
+            )
         return _uuid.UUID(self.sandbox.session_id)

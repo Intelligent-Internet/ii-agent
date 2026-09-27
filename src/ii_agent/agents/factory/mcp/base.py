@@ -5,7 +5,6 @@ from ii_agent.agents.tools.sandbox.base import BaseSandboxTool
 from ii_agent.agents.tools.base import ImageContent, TextContent, ToolResult
 from ii_agent.core.config.settings import get_settings
 from fastmcp.exceptions import ToolError
-from fastmcp import Client
 
 DEFAULT_TIMEOUT = 1800
 
@@ -42,19 +41,24 @@ class MCPTool(BaseSandboxTool):
             self.input_schema = input_schema
         else:
             self.format = input_schema
-        self.mcp_client: Client = None
         self.requires_confirmation = requires_confirmation
 
     async def on_tool_start(self, agent: IIAgent, fc: FunctionCall):
         await super().on_tool_start(agent, fc)
         sandbox = agent.sandbox
+        # Lazy-retry the MCP handshake if the post-claim configure pass
+        # exhausted its retries. See
+        # docs/design-docs/sandbox-pool-claim-mcp-handoff-audit.md.
+        from ii_agent.agents.factory.mcp.lazy_retry import ensure_mcp_configured
+
+        await ensure_mcp_configured(sandbox.sandbox_id, agent.user_id)
         sandbox_url = await sandbox.expose_port(get_settings().mcp.port)
-        self.mcp_client = sandbox.get_mcp_client(sandbox_url)
+        self._sandbox_url = sandbox_url
 
     async def execute(self, tool_input: dict[str, Any]) -> ToolResult:
         try:
-            async with self.mcp_client:
-                mcp_results = await self.mcp_client.call_tool(
+            async with self.sandbox.get_mcp_client(self._sandbox_url) as mcp_client:
+                mcp_results = await mcp_client.call_tool(
                     self.name,
                     tool_input,
                     timeout=DEFAULT_TIMEOUT,

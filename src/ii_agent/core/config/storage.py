@@ -5,7 +5,7 @@ from typing import Literal, Optional
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-StorageProvider = Literal["gcs", "local", "minio"]
+StorageProvider = Literal["gcs", "minio"]
 
 
 class StorageSettings(BaseSettings):
@@ -27,7 +27,7 @@ class StorageSettings(BaseSettings):
 
     provider: StorageProvider = Field(
         default="gcs",
-        description="Storage provider (gcs, local)",
+        description="Storage provider (gcs, minio)",
     )
 
     project_id: Optional[str] = Field(
@@ -57,15 +57,18 @@ class StorageSettings(BaseSettings):
         gt=0,
     )
 
-    # Local provider settings (development)
-    local_base_dir: str = Field(
-        default="~/.ii_agent/storage",
-        description="Local file store path",
-    )
-
-    local_serve_url: str = Field(
-        default="http://localhost:8000/storage",
-        description="URL prefix for serving local files",
+    # Browser-reachable backend base URL.  When set, file upload/download
+    # URLs are routed through the backend proxy instead of directly to the
+    # storage provider.  Required for local Docker deployments where MinIO
+    # is only reachable inside the Docker network.
+    # Example: http://192.168.2.2:8000
+    serve_base_url: Optional[str] = Field(
+        default=None,
+        description=(
+            "Browser-reachable backend base URL for proxied storage. "
+            "When set, file URLs route through the backend instead of "
+            "directly to the storage provider."
+        ),
     )
 
     # MinIO provider settings

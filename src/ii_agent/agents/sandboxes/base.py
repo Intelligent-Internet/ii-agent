@@ -6,9 +6,12 @@ All database persistence is handled by :class:`SandboxService`.
 
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import IO, AsyncIterator, Dict, Any, List, Literal, Optional
+from typing import IO, TYPE_CHECKING, AsyncIterator, Dict, Any, List, Literal, Optional
 
 from fastmcp import Client
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 from ii_agent.agents.sandboxes.schemas import (
     FileContentResponse,
@@ -115,8 +118,20 @@ class Sandbox(ABC):
         ...
 
     @abstractmethod
-    async def set_timeout(self, timeout_seconds: int) -> None:
-        """Set or update the sandbox timeout."""
+    async def set_timeout(
+        self,
+        timeout_seconds: int,
+        db: "AsyncSession | None" = None,
+    ) -> None:
+        """Set or update the sandbox timeout.
+
+        When ``db`` is provided, any persistent-deadline write performed by
+        the implementation MUST run on that session (no separate DB session).
+        This avoids a row-lock self-deadlock when the caller is mid-transaction
+        on the same ``agent_sandboxes`` row. The caller retains ownership of
+        commit/rollback. When ``db`` is ``None``, the implementation may open
+        its own short-lived session (with a ``lock_timeout`` backstop).
+        """
         ...
 
     # ── Command execution ─────────────────────────────────────────────────
@@ -128,8 +143,24 @@ class Sandbox(ABC):
         background: bool = False,
         timeout: Optional[int] = None,
         cwd: Optional[str] = None,
+        user: Optional[str] = None,
     ) -> str:
-        """Run a shell command and return stdout."""
+        """Run a shell command and return stdout.
+
+        Args:
+            command: Shell command to execute.
+            background: If True, launch detached and return immediately.
+            timeout: Maximum seconds to wait for completion.
+            cwd: Working directory inside the sandbox.
+            user: Override the executing Unix user (e.g. "root").
+                  Provider support: Docker — honoured via exec_run user=.
+                  E2B — honoured if the E2B SDK accepts the parameter;
+                  otherwise ignored (E2B sandboxes typically run as a
+                  fixed user configured in the template).
+                  Callers MUST NOT rely on ``user`` for security-critical
+                  isolation — use only for file-ownership convenience where
+                  the provider is known to be Docker.
+        """
         ...
 
     @abstractmethod
@@ -240,8 +271,25 @@ class Sandbox(ABC):
     # ── Networking ────────────────────────────────────────────────────────
 
     @abstractmethod
-    async def expose_port(self, port: int) -> str:
-        """Expose a port and return its public URL."""
+    async def expose_port(self, port: int, *, external: bool = False) -> str:
+        """Expose a port and return its URL.
+
+        Args:
+            port: The port number to expose.
+            external: If False (default), return a backend/sandbox-internal URL
+                using the container IP. This is the correct mode for any
+                backend code that needs to talk to a service inside the
+                sandbox (MCP server, A2A adapter, codex, etc.) — it does not
+                rely on host-network routing or hairpin NAT.
+                If True, return a browser-accessible URL (host-mapped port
+                with the configured ``SANDBOX_DOCKER_HOST``, or the public
+                cloud URL on E2B). Use this only when minting a URL the
+                browser will fetch directly.
+
+        The default flipped to ``False`` on 2026-04-25 — see
+        ``docs/design-docs/sandbox-pool-claim-mcp-handoff-audit.md``
+        for the rationale and blast-radius analysis.
+        """
         ...
 
     @abstractmethod

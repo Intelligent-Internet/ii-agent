@@ -1,0 +1,327 @@
+{
+  "timestamp": 1790517154.986268,
+  "results": [
+    {
+      "test_id": "INF-01",
+      "name": "Backend health check",
+      "status": "PASS",
+      "notes": "status=ok, chat_loop=a2a, agent_loop=native, a2a_backend=copilot",
+      "elapsed": 0.034929185996588785
+    },
+    {
+      "test_id": "INF-02",
+      "name": "LLM models available",
+      "status": "PASS",
+      "notes": "12 models: claude-sonnet-4-6, claude-opus-4-6, claude-sonnet-4-5-20250929, gpt-4o, claude-opus-4-7, claude-fable-5, claude-opus-4-8, claude-opus-5, gpt-4o, claude-sonnet-4-5-20250929, claude-opus-4-6, claude-sonnet-4-6",
+      "elapsed": 0.043481315005919896
+    },
+    {
+      "test_id": "INF-03",
+      "name": "Sandbox container running",
+      "status": "PASS",
+      "notes": "Running: ii-sandbox-137bae7b-cdf, ii-sandbox-470ca2aa-577, ii-sandbox-03a5b92c-399, ii-sandbox-599ef735-ce8, ii-sandbox-83111658-61c, ii-sandbox-b02fd8d5-190, ii-sandbox-d51706bd-a79, ii-sandbox-b28c9d77-a2b",
+      "elapsed": 0.17658200000005309
+    },
+    {
+      "test_id": "CHAT-01",
+      "name": "Chat basic \u2014 Anthropic",
+      "status": "PASS",
+      "notes": "Response: 4 | session=e7a4f1a8-20d2-4933-915c-9ddf4bae971a",
+      "elapsed": 5.371305207001569
+    },
+    {
+      "test_id": "CHAT-02",
+      "name": "Chat basic \u2014 OpenAI",
+      "status": "PASS",
+      "notes": "Response: 8 | session=5742c00e-3e23-4a2e-8c82-7e438c2ac74b",
+      "elapsed": 2.8704091499967035
+    },
+    {
+      "test_id": "CHAT-03",
+      "name": "Chat multi-turn context",
+      "status": "PASS",
+      "notes": "Context preserved. Turn 2: Your favorite planet is **Neptune**!",
+      "elapsed": 6.267331434995867
+    },
+    {
+      "test_id": "CHAT-04",
+      "name": "Chat web search tool",
+      "status": "PASS",
+      "notes": "Tool invoked: False | Response: Iceland's population in 2026 is approximately **394,000\u2013403,000 people**, depending on the source and reference date:\n\n- <cite index=\"4\">According to ",
+      "elapsed": 11.509294879993831
+    },
+    {
+      "test_id": "CHAT-05",
+      "name": "Chat long streaming response",
+      "status": "PASS",
+      "notes": "Response length: 1365 chars, done=True",
+      "elapsed": 8.407990996995068
+    },
+    {
+      "test_id": "CHAT-06",
+      "name": "Chat stop conversation",
+      "status": "PASS",
+      "notes": "Response collected (7273 chars), done=True",
+      "elapsed": 38.08508384000015
+    },
+    {
+      "test_id": "IMG-01",
+      "name": "Image upload flow",
+      "status": "PASS",
+      "notes": "Asset ID: 2d10f22b-b233-4074-995f-9881fbd631e1",
+      "elapsed": 0.2301452409956255
+    },
+    {
+      "test_id": "IMG-02",
+      "name": "Chat image multi-turn retention",
+      "status": "PASS",
+      "notes": "Image retained across turns. Turn 1: The image shows a **horizontal color gradient** with the following:\n\n- **Left si... | Turn 2: - **Left side:** \ud83d\udd35 **Blue**\n- **Right side:** \ud83d\udd34 **Red**...",
+      "elapsed": 10.628704110000399
+    },
+    {
+      "test_id": "IMG-03",
+      "name": "Agent image multi-turn retention",
+      "status": "PASS",
+      "notes": "Image retained across agent turns. Turn 1: Here's what the pixel data reveals:\n\n### \ud83c\udfa8 Colors\n| Position | Color | RGB Value... | Turn 2: Based on the pixel analysis already done:\n\n- **Left side** \u2192 \ud83d\udd34 **Red** `RGB(255,...",
+      "elapsed": 60.200383310999314
+    },
+    {
+      "test_id": "WEB-01",
+      "name": "Agent web search",
+      "status": "PASS",
+      "notes": "Completed. Tool used: False. Response: **Python 3.13** was officially released on **October 7, 2024**.\n\nHere are some key highlights from that release, as confirmed by multiple sources including [python.org](https://www.python.org/download",
+      "elapsed": 11.408241115997953
+    },
+    {
+      "test_id": "WEB-02",
+      "name": "Agent browser navigation",
+      "status": "PASS",
+      "notes": "Completed. Browser used: False. Response: The heading text on **example.com** is:\n\n> **Example Domain** *(h1)*\n\nThat's the sole heading on the page, accompanied by a \"Learn more\" link below it.",
+      "elapsed": 29.74668378100614
+    },
+    {
+      "test_id": "CODE-01",
+      "name": "Agent code execution",
+      "status": "PASS",
+      "notes": "Completed with 4 tool calls. Response: Output:\n```\n[0, 1, 1, 2, 3, 5, 8, 13, 21, 34]\n```\n\nThe first 10 Fibonacci numbers, starting from 0: **0, 1, 1, 2, 3, 5, 8, 13, 21, 34**.",
+      "elapsed": 14.183249156005331
+    },
+    {
+      "test_id": "CODE-02",
+      "name": "Agent multi-file project",
+      "status": "PASS",
+      "notes": "Completed. Output has '15': True. Response: Both files created and executed successfully:\n\n- **`utils.py`** \u2014 defines `add(a, b)` returning `a + b`.\n- **`main.py`** \u2014 imports `add` and calls `add(7, 8)`.\n- **Output:** `15` \u2713",
+      "elapsed": 15.314774736005347
+    },
+    {
+      "test_id": "SESS-01",
+      "name": "List sessions",
+      "status": "PASS",
+      "notes": "Found 20 sessions",
+      "elapsed": 0.046115803001157474
+    },
+    {
+      "test_id": "SESS-02",
+      "name": "Session events retrieval",
+      "status": "PASS",
+      "notes": "Session 331f60b8-6faa-4884-b744-f067118738a1: 8 events",
+      "elapsed": 4.3677098999978625
+    },
+    {
+      "test_id": "SESS-03",
+      "name": "Session pin/unpin",
+      "status": "PASS",
+      "notes": "Pinned session ddbf814a-8447-49e3-96e7-e2a534f351f9. Pins list: 200",
+      "elapsed": 2.0964615990014863
+    },
+    {
+      "test_id": "SESS-04",
+      "name": "Session fork",
+      "status": "PASS",
+      "notes": "Forked 4d330223-93b9-4009-989d-64564066c67e \u2192 0fc2e094-3aa7-47c7-9c9d-fe0a8b45d832",
+      "elapsed": 62.34502183000586
+    },
+    {
+      "test_id": "AGEN-01",
+      "name": "Agent multi-turn context",
+      "status": "PASS",
+      "notes": "Context preserved! Response: Your cat's name is Muffin! \ud83d\udc31",
+      "elapsed": 4.739555058993574
+    },
+    {
+      "test_id": "AGEN-02",
+      "name": "Agent multi-turn tool use",
+      "status": "PASS",
+      "notes": "File created and read back correctly. Response: The contents of `/workspace/data.txt` is:\n\n```\nHello E2E Test\n```",
+      "elapsed": 11.941288257999986
+    },
+    {
+      "test_id": "XFEAT-01",
+      "name": "Web search + file save",
+      "status": "PASS",
+      "notes": "Completed with 6 tool calls. Response: Everything confirmed. Here's what was done:\n\n1. **Searched** the web for `FastAPI framework` and gathered information from multiple authoritative sources (official docs, Wikipedia, GeeksforGeeks, GitH",
+      "elapsed": 23.495692079995933
+    },
+    {
+      "test_id": "XFEAT-02",
+      "name": "Chat vs agent independence",
+      "status": "PASS",
+      "notes": "Chat session: aa1c4257-8719-4d8f-8c45-51130313755a, Agent session: e921f4e7-5229-403b-be7e-cb03d76cbf06. Agent knows '42': False (should be False for proper isolation)",
+      "elapsed": 8.478998721002426
+    },
+    {
+      "test_id": "HIST-01",
+      "name": "Chat message history",
+      "status": "PASS",
+      "notes": "Session 0829283d-2897-40c1-89fa-7d3a3e34d09b: 2 messages. Keys: ['messages', 'has_more', 'total_count']",
+      "elapsed": 6.514017948000401
+    },
+    {
+      "test_id": "CNCL-01",
+      "name": "Council mode basic 2-model run",
+      "status": "PASS",
+      "notes": "2 members started, 2 completed, 1 synthesis. Has '56' in member output: True. Session: 6b4e36cd-a3da-42ba-b68b-812e5ce94a57",
+      "elapsed": 5.231911786999262
+    },
+    {
+      "test_id": "CNCL-02",
+      "name": "Council mode validation (< 2 models)",
+      "status": "PASS",
+      "notes": "Correctly rejected: Council mode requires at least 2 models",
+      "elapsed": 0.1614877720057848
+    },
+    {
+      "test_id": "CNCL-03",
+      "name": "Council mode billing (usage events)",
+      "status": "PASS",
+      "notes": "Members: 2, Synthesis: 1, Usage events: 0, Session: a9406504-e591-4373-b998-5572ac7d46c8",
+      "elapsed": 2.7517675340059213
+    },
+    {
+      "test_id": "A2A-01",
+      "name": "A2A config active in health endpoint",
+      "status": "SKIP",
+      "notes": "Standalone A2A adapter is not running in the local stack",
+      "elapsed": 0.0
+    },
+    {
+      "test_id": "A2A-02",
+      "name": "Chat uses A2A turn loop (log check)",
+      "status": "SKIP",
+      "notes": "Standalone A2A adapter is not running in the local stack",
+      "elapsed": 0.0
+    },
+    {
+      "test_id": "A2A-03",
+      "name": "Agent uses A2A inner loop (log check)",
+      "status": "SKIP",
+      "notes": "Standalone A2A adapter is not running in the local stack",
+      "elapsed": 0.0
+    },
+    {
+      "test_id": "A2A-04",
+      "name": "Council uses A2A for member inference",
+      "status": "SKIP",
+      "notes": "Standalone A2A adapter is not running in the local stack",
+      "elapsed": 0.0
+    },
+    {
+      "test_id": "A2A-05",
+      "name": "Chat selected model reaches A2A runtime",
+      "status": "SKIP",
+      "notes": "Standalone A2A adapter is not running in the local stack",
+      "elapsed": 0.0
+    },
+    {
+      "test_id": "A2A-06",
+      "name": "Agent selected model reaches A2A runtime",
+      "status": "SKIP",
+      "notes": "Standalone A2A adapter is not running in the local stack",
+      "elapsed": 0.0
+    },
+    {
+      "test_id": "SBOX-01",
+      "name": "FK constraint on session_id",
+      "status": "PASS",
+      "notes": "FK constraint correctly rejected orphaned sandbox INSERT",
+      "elapsed": 0.27068263499677414
+    },
+    {
+      "test_id": "SBOX-02",
+      "name": "Port pool overflow protection",
+      "status": "PASS",
+      "notes": "Port overflow guard active in create(). Full exhaustion test deferred (would require 142+ sandboxes).",
+      "elapsed": 0.035098149004625157
+    },
+    {
+      "test_id": "SBOX-03",
+      "name": "Orphaned volume cleanup",
+      "status": "PASS",
+      "notes": "Orphaned volume ii-sandbox-workspace-orphan-e2e-885098d6-c20 was removed by cleanup sweep",
+      "elapsed": 31.454119426001853
+    },
+    {
+      "test_id": "SBOX-04",
+      "name": "Persistent timeout_at column",
+      "status": "PASS",
+      "notes": "timeout_at column exists in agent_sandboxes table",
+      "elapsed": 0.20135646900598658
+    },
+    {
+      "test_id": "SBOX-05",
+      "name": "Cleanup loop active (6 stages + host monitor)",
+      "status": "PASS",
+      "notes": "Cleanup loop active (markers seen: Orphan cleanup, host_monitor, Sandbox pool, cleanup sweep)",
+      "elapsed": 0.1294190569969942
+    },
+    {
+      "test_id": "SBOX-06",
+      "name": "Concurrent-create semaphore wired",
+      "status": "PASS",
+      "notes": "limit=2, wait_log_threshold_ms=500, semaphore symbols importable",
+      "elapsed": 2.5238579910001135
+    },
+    {
+      "test_id": "POOL-01",
+      "name": "/health/sandbox-pool shape",
+      "status": "PASS",
+      "notes": "configured=2 ready=2 stuck_initializing=0",
+      "elapsed": 0.03786634199786931
+    },
+    {
+      "test_id": "POOL-02",
+      "name": "stack_control.sh status --json modules.pool",
+      "status": "PASS",
+      "notes": "verdict=OK configured=2 ready=2",
+      "elapsed": 0.48310219899576623
+    },
+    {
+      "test_id": "POOL-03",
+      "name": "Claim \u2192 replenish cycle",
+      "status": "PASS",
+      "notes": "Pool recovered to ready>=2/2 after claim (session=a403579b-a866-45ef-bc36-1f7f91d6d072)",
+      "elapsed": 12.09136113400018
+    },
+    {
+      "test_id": "POOL-04",
+      "name": "Stuck-INITIALIZING reap (Fix A)",
+      "status": "PASS",
+      "notes": "Reaped stuck row d43cb515-db54-4b49-958f-951abc951572 (slot=101) \u2014 snapshot.stuck_initializing back to 0, row status=deleted",
+      "elapsed": 45.68580785399536
+    },
+    {
+      "test_id": "HOST-01",
+      "name": "/health/host shape",
+      "status": "PASS",
+      "notes": "state=BOOTSTRAP (baseline still warming)",
+      "elapsed": 0.03513325699896086
+    },
+    {
+      "test_id": "HOST-02",
+      "name": "stack_control.sh status --json modules.backend",
+      "status": "PASS",
+      "notes": "verdict=OK state=BOOTSTRAP warm=False",
+      "elapsed": 0.2926440539959003
+    }
+  ]
+}

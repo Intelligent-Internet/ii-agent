@@ -1,4 +1,5 @@
 import pytest
+from uuid import uuid4
 
 from ii_agent.billing.exceptions import BillingUnsupportedPlanError
 from ii_agent.billing.schemas import CreateCheckoutParams
@@ -16,6 +17,6 @@ async def test_billing_checkout_rejects_free_plan(settings_factory):
         # free plan must not proceed to checkout
         await billing_service.create_checkout_session(
             CreateCheckoutParams(
-                plan_id="free", billing_cycle="monthly", user_id="u1", return_url=None
+                plan_id="free", billing_cycle="monthly", user_id=uuid4(), return_url=None
             ),
         )

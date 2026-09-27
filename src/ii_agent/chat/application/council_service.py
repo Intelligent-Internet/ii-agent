@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
-from typing import Any, AsyncIterator, Dict, List
+from typing import Any, AsyncIterator, Dict, List, Optional, Tuple, TYPE_CHECKING
 
 from ii_agent.chat.types import (
     Message,
@@ -15,7 +15,12 @@ from ii_agent.chat.types import (
 )
 from ii_agent.chat.llm import get_client
 from ii_agent.settings.llm.schemas import ModelConfig
+from ii_agent.core.config.settings import get_settings
 from ii_agent.core.redis import cancel
+
+if TYPE_CHECKING:
+    from ii_agent.billing.schemas import TokenUsage
+    from ii_agent.integrations.a2a.as_client import IIAgentA2AClient
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +52,94 @@ def _extract_text(content) -> str:
     if isinstance(content, str):
         return content
     return "".join(p.text for p in content if isinstance(p, TextContent))
+
+
+def _should_fallback_to_direct(exc: Exception) -> bool:
+    """Return True when an A2A failure should degrade gracefully to direct inference."""
+    details = f"{type(exc).__name__}: {exc}".lower()
+    return any(
+        marker in details
+        for marker in (
+            "connect",
+            "connection",
+            "timeout",
+            "rate limit",
+            "429",
+            "temporar",
+            "unavailable",
+            "overloaded",
+            "execution failed",
+            "failed to list",
+        )
+    )
+
+
+async def _call_via_a2a(
+    *,
+    a2a_client: IIAgentA2AClient,
+    messages: List[Message],
+    context_id: str,
+    metadata: Dict[str, Any] | None = None,
+) -> Tuple[str, Optional[TokenUsage], float, int]:
+    """Execute a council member call via A2A, collecting content + usage.
+
+    Returns ``(content, usage, provider_reported_cost, premium_requests)``.
+    """
+    from ii_agent.agents.models.message import Message as AgentMessage
+    from ii_agent.billing.schemas import TokenUsage
+
+    # Convert chat messages to A2A agent messages (text only, no tool bridging)
+    a2a_messages: List[AgentMessage] = []
+    for msg in messages:
+        role = msg.role.value if hasattr(msg.role, "value") else str(msg.role)
+        if role == "tool":
+            continue
+        text = _extract_text(msg.parts if hasattr(msg, "parts") else "")
+        a2a_messages.append(AgentMessage(role=role, content=text))
+
+    content_parts: List[str] = []
+    full_content: str | None = None
+    usage_data: Dict[str, Any] = {}
+
+    async for event in a2a_client.astream(
+        messages=a2a_messages,
+        context_id=context_id,
+        metadata=metadata,
+    ):
+        et = event.event_type
+        if et in ("assistant.message", "message_complete", "content_done"):
+            c = event.data.get("content", "")
+            if c:
+                full_content = str(c)
+        elif et in ("assistant.message_delta", "text_delta", "message_delta"):
+            delta = event.data.get("delta", "")
+            if delta:
+                content_parts.append(str(delta))
+        elif et in ("assistant.usage", "usage"):
+            usage_data = event.data
+        elif et in ("session.error", "error"):
+            raise RuntimeError(event.data.get("message", "A2A agent returned an error"))
+
+    # Prefer the full message if available; fall back to joined deltas
+    content = full_content if full_content is not None else "".join(content_parts)
+
+    usage: TokenUsage | None = None
+    if usage_data:
+        usage = TokenUsage(
+            input_tokens=int(usage_data.get("input_tokens") or 0),
+            output_tokens=int(usage_data.get("output_tokens") or 0),
+            cache_read_tokens=int(usage_data.get("cache_read_tokens") or 0),
+            cache_write_tokens=int(usage_data.get("cache_write_tokens") or 0),
+            reasoning_tokens=int(usage_data.get("reasoning_tokens") or 0),
+            cost_usd=float(usage_data.get("cost") or 0.0),
+        )
+
+    return (
+        content,
+        usage,
+        float(usage_data.get("cost") or 0.0),
+        int(usage_data.get("premium_requests") or 0),
+    )
 
 
 class CouncilService:
@@ -87,6 +180,8 @@ class CouncilService:
         model_names: Dict[str, str],
         run_id: str,
         session_id: uuid.UUID,
+        a2a_client: IIAgentA2AClient | None = None,
+        a2a_backend: str = "copilot",
     ) -> AsyncIterator[Dict[str, Any]]:
         """Run council models in parallel, then synthesize.
 
@@ -115,23 +210,91 @@ class CouncilService:
                     }
                 )
 
-                client = get_client(config)
+                # BYOK users go direct in cloud; in local mode all models
+                # route through A2A (operator owns all keys).
+                is_cloud_byok = config.is_user_model() and get_settings().environment != "local"
+                use_a2a = a2a_client is not None and not is_cloud_byok
 
-                async def _call() -> str:
-                    response = await client.send(messages=messages)
-                    return _extract_text(response.content)
+                if use_a2a:
+                    # A2A path — billing via a2a:{backend}
+                    context_id = f"council-{session_id}-{model_id}"
+                    metadata = {"model": config.model_id, "source": "council"}
+                    try:
+                        content, usage, cost, prem_req = await asyncio.wait_for(
+                            _call_via_a2a(
+                                a2a_client=a2a_client,
+                                messages=messages,
+                                context_id=context_id,
+                                metadata=metadata,
+                            ),
+                            timeout=COUNCIL_MODEL_TIMEOUT,
+                        )
+                    except asyncio.TimeoutError:
+                        # Explicit timeout handling — fall back to direct LLM
+                        logger.warning(
+                            "Council model %s A2A timed out after %ss, falling back to direct",
+                            model_id,
+                            COUNCIL_MODEL_TIMEOUT,
+                        )
+                        use_a2a = False  # fall through to direct path below
+                    except (ConnectionError, OSError) as conn_err:
+                        # A2A adapter unreachable — fall back to direct LLM
+                        # so the council can still produce output.
+                        logger.warning(
+                            "Council model %s A2A unreachable (%s), falling back to direct",
+                            model_id,
+                            conn_err,
+                        )
+                        use_a2a = False  # noqa: F841 — fall through to direct path below
+                    except Exception as a2a_exc:
+                        if _should_fallback_to_direct(a2a_exc):
+                            logger.warning(
+                                "Council model %s A2A failed (%s), falling back to direct",
+                                model_id,
+                                a2a_exc,
+                            )
+                            use_a2a = False  # fall through to direct path below
+                        else:
+                            raise
+                    else:
+                        member_outputs[model_id] = content
 
-                content = await asyncio.wait_for(_call(), timeout=COUNCIL_MODEL_TIMEOUT)
-                member_outputs[model_id] = content
+                        await queue.put(
+                            {
+                                "type": "council_member_complete",
+                                "model_id": model_id,
+                                "model_name": display_name,
+                                "content": content,
+                                "usage": usage,
+                                "model_config": config,
+                                "billing_backend": f"a2a:{a2a_backend}",
+                                "provider_reported_cost": cost,
+                                "premium_requests": prem_req,
+                            }
+                        )
 
-                await queue.put(
-                    {
-                        "type": "council_member_complete",
-                        "model_id": model_id,
-                        "model_name": display_name,
-                        "content": content,
-                    }
-                )
+                if not use_a2a:
+                    # Direct path — native billing
+                    client = get_client(config)
+
+                    async def _call():
+                        response = await client.send(messages=messages)
+                        return _extract_text(response.content), response.usage
+
+                    content, usage = await asyncio.wait_for(_call(), timeout=COUNCIL_MODEL_TIMEOUT)
+                    member_outputs[model_id] = content
+
+                    await queue.put(
+                        {
+                            "type": "council_member_complete",
+                            "model_id": model_id,
+                            "model_name": display_name,
+                            "content": content,
+                            "usage": usage,
+                            "model_config": config,
+                            "billing_backend": "native",
+                        }
+                    )
 
             except asyncio.TimeoutError:
                 council_had_error = True
@@ -226,15 +389,66 @@ class CouncilService:
 
             yield {"type": "council_synthesis_start", "model_id": synthesis_model_id}
 
-            synthesis_client = get_client(synthesis_config)
-            synthesis_response = await synthesis_client.send(messages=[synthesis_message])
-            synthesis_content = _extract_text(synthesis_response.content)
+            is_cloud_byok_synth = (
+                synthesis_config.is_user_model() and get_settings().environment != "local"
+            )
+            use_a2a_synthesis = a2a_client is not None and not is_cloud_byok_synth
 
-            yield {
-                "type": "council_synthesis_complete",
-                "model_id": synthesis_model_id,
-                "content": synthesis_content,
-            }
+            if use_a2a_synthesis:
+                context_id = f"council-synthesis-{session_id}"
+                metadata = {"model": synthesis_config.model_id, "source": "council-synthesis"}
+                try:
+                    synthesis_content, syn_usage, syn_cost, syn_prem = await _call_via_a2a(
+                        a2a_client=a2a_client,
+                        messages=[synthesis_message],
+                        context_id=context_id,
+                        metadata=metadata,
+                    )
+                except asyncio.TimeoutError:
+                    logger.warning(
+                        "Council synthesis A2A timed out, falling back to direct",
+                    )
+                    use_a2a_synthesis = False
+                except (ConnectionError, OSError) as conn_err:
+                    logger.warning(
+                        "Council synthesis A2A unreachable (%s), falling back to direct",
+                        conn_err,
+                    )
+                    use_a2a_synthesis = False
+                except Exception as a2a_exc:
+                    if _should_fallback_to_direct(a2a_exc):
+                        logger.warning(
+                            "Council synthesis A2A failed (%s), falling back to direct",
+                            a2a_exc,
+                        )
+                        use_a2a_synthesis = False
+                    else:
+                        raise
+                else:
+                    yield {
+                        "type": "council_synthesis_complete",
+                        "model_id": synthesis_model_id,
+                        "content": synthesis_content,
+                        "usage": syn_usage,
+                        "model_config": synthesis_config,
+                        "billing_backend": f"a2a:{a2a_backend}",
+                        "provider_reported_cost": syn_cost,
+                        "premium_requests": syn_prem,
+                    }
+
+            if not use_a2a_synthesis:
+                synthesis_client = get_client(synthesis_config)
+                synthesis_response = await synthesis_client.send(messages=[synthesis_message])
+                synthesis_content = _extract_text(synthesis_response.content)
+
+                yield {
+                    "type": "council_synthesis_complete",
+                    "model_id": synthesis_model_id,
+                    "content": synthesis_content,
+                    "usage": synthesis_response.usage,
+                    "model_config": synthesis_config,
+                    "billing_backend": "native",
+                }
 
             yield {
                 "type": "council_result",

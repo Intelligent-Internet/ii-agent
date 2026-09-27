@@ -125,6 +125,48 @@ class EventGroup(StrEnum):
     SYSTEM = "system"
     INTEGRATION = "integration"
     METRICS = "metrics"
+    # Sub-groups used by A2A adapters
+    AGENT_RUN = "agent_run"
+    AGENT_TOOL = "agent_tool"
+    AGENT_REASONING = "agent_reasoning"
+
+
+class EventType(StrEnum):
+    """Canonical event-type identifiers used by the A2A adapter layer.
+
+    These values are the canonical names for the events that flow through the
+    realtime event bus.  They map 1-to-1 to the ``name`` field of
+    :class:`BaseEvent` subclasses and are used by :class:`EventStreamAdapter`
+    to classify incoming events for A2A SSE translation.
+    """
+
+    # System / connection
+    CONNECTION_ESTABLISHED = "connection.established"
+    STATUS_UPDATE = "status.update"
+    AGENT_INITIALIZED = "agent.initialized"
+    WORKSPACE_INFO = "workspace.info"
+    SANDBOX_STATUS = "sandbox.status"
+    STREAM_COMPLETE = "stream.complete"
+    ERROR = "error"
+
+    # Agent run lifecycle
+    PROCESSING = "agent.processing"
+    RUN_CONTENT = "agent.response"
+    RUN_INTERRUPTED = "run.interrupted"
+    SUB_AGENT_COMPLETED = "sub_agent.completed"
+
+    # Agent reasoning
+    REASONING_DELTA = "agent.reasoning_delta"
+
+    # Tool calls
+    TOOL_CALL_STARTED = "agent.tool_call"
+    TOOL_CALL_COMPLETED = "agent.tool_result"
+
+    # File mutations
+    FILE_EDIT = "file.edit"
+
+    # A2A delegation events
+    DELEGATION_FALLBACK = "agent.delegation.fallback"
 
 
 class BaseEvent(BaseModel):
@@ -174,6 +216,17 @@ class BaseEvent(BaseModel):
         field is injected.
         """
         return self.model_dump(mode="json", exclude_none=True)
+
+
+class ApplicationEvent(BaseEvent):
+    """Mutable variant of :class:`BaseEvent` for use as a live event DTO.
+
+    Unlike :class:`BaseEvent`, this class is not frozen so its fields can be
+    updated after construction.  It is the canonical type used by the A2A
+    adapter and event-stream tests.
+    """
+
+    model_config = ConfigDict(frozen=False)
 
 
 class AgentRunEvent(BaseEvent):
@@ -394,6 +447,83 @@ class AgentPromptGeneratedEvent(AgentRunEvent):
     prompt: str = ""
 
 
+class DelegationFallbackEvent(AgentRunEvent):
+    """Emitted when the A2A inner loop falls back to native execution.
+
+    Carries the circuit-breaker state and failure counters so the frontend
+    can display a warning and the backend can log detailed telemetry.
+
+    The event is **not** transient — it is persisted so that post-hoc analysis
+    can identify which sessions experienced A2A instability.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    group: EventGroup = EventGroup.AGENT
+    name: Literal["agent.delegation.fallback"] = "agent.delegation.fallback"
+    transient: bool = False
+    reason: str = ""
+    context_id: str = ""
+    circuit_state: str = ""  # CircuitState value
+    failure_count: int = 0
+    cooldown_remaining: float = 0.0
+
+
+class CompactionAuthorityEvent(AgentRunEvent):
+    """Records which compaction authority is active for a delegated turn.
+
+    Emitted at the start of an A2A-delegated turn so telemetry can attribute
+    any subsequent compaction to the correct authority (``native``,
+    ``copilot_sdk``, ``claude_code``, or ``codex``).
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    group: EventGroup = EventGroup.AGENT
+    name: Literal["agent.compaction.authority"] = "agent.compaction.authority"
+    transient: bool = False
+    authority: str = ""  # e.g. "native", "copilot_sdk", "claude_code", "codex"
+    context_id: str = ""
+    compaction_locked: bool = False  # True when ii-agent holds the compaction lock
+
+
+class CompactionSkippedEvent(AgentRunEvent):
+    """Native summarization was skipped because a delegated turn held the lock.
+
+    Persisted for post-hoc analysis of compaction contention.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    group: EventGroup = EventGroup.AGENT
+    name: Literal["agent.compaction.skipped"] = "agent.compaction.skipped"
+    transient: bool = False
+    reason: str = ""  # e.g. "a2a_lock_held"
+    context_id: str = ""
+
+
+class AgentWarningEvent(AgentRunEvent):
+    """Soft warning surfaced from infrastructure into the agent UI.
+
+    Used for non-fatal degradations that the user should know about (a
+    subset of tools may be unavailable, a sandbox may be slower than
+    usual, etc.) without aborting the run. The frontend can display a
+    banner and the backend persists the event for post-hoc telemetry.
+
+    See ``docs/design-docs/sandbox-pool-claim-mcp-handoff-audit.md``
+    item #7 for the original motivating case (``mcp_configure_failed``).
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    group: EventGroup = EventGroup.AGENT
+    name: Literal["agent.warning"] = "agent.warning"
+    transient: bool = False
+    warning_kind: str = ""  # e.g. "mcp_configure_failed"
+    message: str = ""
+    details: dict[str, Any] = Field(default_factory=dict)
+
+
 # ---------------------------------------------------------------------------
 # Session events
 # ---------------------------------------------------------------------------
@@ -516,6 +646,13 @@ class SandboxStatusChangedEvent(SandboxEvent):
     name: Literal["sandbox.status_changed"] = "sandbox.status_changed"
     status: Literal["starting", "ready", "paused", "terminated", "error"] = "starting"
     vscode_url: str | None = None
+    vnc_url: str | None = None
+    # Host-health backpressure flag. True when the integrated host
+    # monitor reports WARN or CRIT (``HostHealthState.is_degraded()``).
+    # Frontends can surface a banner; payload stays backward-compatible
+    # because the field defaults to False.
+    degraded: bool = False
+    host_state: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -550,6 +687,14 @@ class ModelUsageEvent(BillingEvent):
     cache_write_tokens: int = 0
     reasoning_tokens: int = 0
     is_user_key: bool = False
+    # Backend-aware billing: which inner-loop backend served this turn.
+    # Values: "native", "a2a:copilot", "a2a:claude-code", "a2a:codex".
+    billing_backend: str = "native"
+    # Cost reported by the backend itself (e.g. Copilot SDK cost field).
+    # Only meaningful when billing_backend != "native".
+    provider_reported_cost: float = 0.0
+    # Premium requests consumed by this turn (Copilot billing model).
+    premium_requests: int = 0
 
 
 class ToolUsageEvent(BillingEvent):
@@ -862,6 +1007,10 @@ AgentAppEvent: TypeAlias = Union[
     AgentModelCompactEvent,
     AgentContinueEvent,
     AgentPromptGeneratedEvent,
+    DelegationFallbackEvent,
+    CompactionAuthorityEvent,
+    CompactionSkippedEvent,
+    AgentWarningEvent,
 ]
 
 SessionAppEvent: TypeAlias = Union[

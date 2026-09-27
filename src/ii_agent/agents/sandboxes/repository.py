@@ -1,13 +1,14 @@
 """Sandbox data access layer."""
 
 import uuid
+from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ii_agent.agents.sandboxes.models import AgentSandbox
-from ii_agent.agents.sandboxes.types import SandboxStatus
+from ii_agent.agents.sandboxes.types import PoolState, SandboxProviderType, SandboxStatus
 from ii_agent.core.db.base import BaseRepository
 
 
@@ -74,3 +75,114 @@ class SandboxRepository(BaseRepository[AgentSandbox]):
         await db.flush()
         await db.refresh(record)
         return record
+
+    async def set_mcp_configured(
+        self,
+        db: AsyncSession,
+        sandbox_id: uuid.UUID,
+        *,
+        configured: bool,
+        attempted_at: Optional[datetime] = None,
+    ) -> Optional[AgentSandbox]:
+        """Persist the durable ``mcp_configured`` flag.
+
+        Set to ``False`` when the bounded ``_configure_mcp`` retry envelope
+        is exhausted; runtime MCP-tool factories check this flag and lazy-
+        retry the handshake on demand. ``attempted_at`` records the last
+        configure attempt so the lazy-retry path can throttle by cooldown.
+        See docs/design-docs/sandbox-pool-claim-mcp-handoff-audit.md.
+        """
+        record = await self.get_by_id(db, sandbox_id)
+        if record is None:
+            return None
+        record.mcp_configured = configured
+        if attempted_at is not None:
+            record.mcp_configure_attempted_at = attempted_at
+        await db.flush()
+        await db.refresh(record)
+        return record
+
+    # ── Pool-specific queries ─────────────────────────────────────────────
+
+    async def list_active_pool_rows(
+        self,
+        db: AsyncSession,
+        provider: SandboxProviderType = SandboxProviderType.DOCKER,
+    ) -> list[AgentSandbox]:
+        """Return all pool rows in any non-DELETED state, ordered by slot."""
+        result = await db.execute(
+            select(AgentSandbox)
+            .where(
+                AgentSandbox.provider == provider,
+                AgentSandbox.pool_state.isnot(None),
+                AgentSandbox.status != SandboxStatus.DELETED,
+            )
+            .order_by(AgentSandbox.pool_slot.asc(), AgentSandbox.created_at.desc())
+        )
+        return list(result.scalars().all())
+
+    async def claim_oldest_available(
+        self,
+        db: AsyncSession,
+        session_id: uuid.UUID,
+        provider: SandboxProviderType = SandboxProviderType.DOCKER,
+    ) -> tuple[Optional[AgentSandbox], Optional[int]]:
+        """Atomically claim the oldest AVAILABLE pool row for a session.
+
+        Uses ``SELECT ... FOR UPDATE SKIP LOCKED`` so concurrent claims
+        from multiple workers do not race on the same row. Returns
+        ``(row, claimed_slot)`` where ``claimed_slot`` is the slot index
+        the row was occupying *before* the claim cleared it (needed by
+        the pool manager to schedule the replacement). Returns
+        ``(None, None)`` when the pool is empty.
+        """
+        result = await db.execute(
+            select(AgentSandbox)
+            .where(
+                AgentSandbox.provider == provider,
+                AgentSandbox.pool_state == PoolState.AVAILABLE,
+                AgentSandbox.status == SandboxStatus.RUNNING,
+                AgentSandbox.provider_sandbox_id.isnot(None),
+            )
+            .order_by(AgentSandbox.created_at.asc())
+            .limit(1)
+            .with_for_update(skip_locked=True)
+        )
+        row = result.scalar_one_or_none()
+        if row is None:
+            return None, None
+
+        # Clear pool_slot at claim time. Once a row is CLAIMED its lifetime
+        # belongs to the session, not the pool. Leaving pool_slot set
+        # causes SandboxPoolManager._existing_live_slots() to treat the
+        # long-lived CLAIMED row as occupying the slot, blocking
+        # ensure_full() from ever recreating it if the immediate
+        # post-claim replenishment row is later retired.
+        claimed_slot = row.pool_slot
+        row.session_id = session_id
+        row.pool_state = PoolState.CLAIMED
+        row.pool_slot = None
+        row.claimed_at = datetime.now(timezone.utc)
+        await db.flush()
+        await db.refresh(row)
+        return row, claimed_slot
+
+    async def list_due_for_retirement(
+        self,
+        db: AsyncSession,
+        now: Optional[datetime] = None,
+        provider: SandboxProviderType = SandboxProviderType.DOCKER,
+    ) -> list[AgentSandbox]:
+        """Return AVAILABLE pool rows whose retire_at deadline has passed."""
+        cutoff = now or datetime.now(timezone.utc)
+        result = await db.execute(
+            select(AgentSandbox)
+            .where(
+                AgentSandbox.provider == provider,
+                AgentSandbox.pool_state == PoolState.AVAILABLE,
+                AgentSandbox.retire_at.isnot(None),
+                AgentSandbox.retire_at <= cutoff,
+            )
+            .order_by(AgentSandbox.retire_at.asc())
+        )
+        return list(result.scalars().all())

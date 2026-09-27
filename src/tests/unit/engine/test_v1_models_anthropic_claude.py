@@ -294,6 +294,41 @@ class TestFormatMessages:
         parts = formatted[0]["content"]
         redacted_parts = [p for p in parts if p.get("type") == "redacted_thinking"]
         assert len(redacted_parts) == 1
+        # Anthropic API requires the encrypted blob to be in the "data" field;
+        # any other key (e.g. "redacted_thinking") triggers a 400
+        # "messages.N.content.0.redacted_thinking.data: Field required".
+        assert redacted_parts[0]["data"] == "<redacted>"
+        assert "redacted_thinking" not in redacted_parts[0] or (
+            # only the "type" field may legitimately equal "redacted_thinking"
+            set(redacted_parts[0].keys()) == {"type", "data"}
+        )
+
+    def test_assistant_with_reasoning_no_signature_drops_block(self):
+        """reasoning_content without an Anthropic signature MUST NOT be replayed.
+
+        Anthropic validates ``redacted_thinking.data`` as an opaque ciphertext
+        they issued. Sending plaintext reasoning text in ``data`` triggers a
+        non-retriable 400 ``Invalid data in redacted_thinking block`` which
+        bricks the session (see triage of session 9785de09, 2026-05-11).
+        Without a signature we cannot preserve thinking continuity, so the
+        block must be dropped entirely. The regular text/tool_use content of
+        the assistant message is still preserved.
+        """
+        msgs = [
+            Message(
+                role="assistant",
+                content="Answer",
+                reasoning_content="raw thoughts",
+                # no provider_data signature
+            )
+        ]
+        formatted, _ = format_messages(msgs)
+        parts = formatted[0]["content"]
+        assert not [p for p in parts if p.get("type") == "redacted_thinking"]
+        assert not [p for p in parts if p.get("type") == "thinking"]
+        # The original answer text must survive.
+        text_parts = [p for p in parts if p.get("type") == "text"]
+        assert any(p["text"] == "Answer" for p in text_parts)
 
     def test_assistant_with_tool_calls(self):
         tool_calls = [
@@ -536,6 +571,38 @@ class TestClaudeGetRequestParams:
     def test_thinking_included_when_set(self):
         c = Claude(thinking={"type": "enabled", "budget_tokens": 1024})
         assert "thinking" in c.get_request_params()
+
+    def test_temperature_dropped_when_thinking_enabled(self):
+        """Anthropic rejects non-1 temperature when extended thinking is on.
+
+        ``get_request_params`` must silently drop a configured non-1
+        temperature to protect the native-LLM fallback path from
+        400-looping on ``invalid_request_error: temperature may only be
+        set to 1 when thinking is enabled``.
+        """
+        c = Claude(
+            thinking={"type": "enabled", "budget_tokens": 1024},
+            temperature=0.5,
+        )
+        params = c.get_request_params()
+        assert params.get("thinking") == {"type": "enabled", "budget_tokens": 1024}
+        assert "temperature" not in params
+
+    def test_temperature_equal_one_allowed_with_thinking(self):
+        """temperature=1 is the only legal value when thinking is enabled,
+        but the adapter choice is to omit the parameter (same effective result).
+        """
+        c = Claude(
+            thinking={"type": "enabled", "budget_tokens": 1024},
+            temperature=1,
+        )
+        params = c.get_request_params()
+        # temperature=1 is the API default; omitting is equivalent and simpler.
+        assert "temperature" not in params
+
+    def test_temperature_kept_when_thinking_disabled(self):
+        c = Claude(thinking=None, temperature=0.5)
+        assert c.get_request_params()["temperature"] == 0.5
 
     def test_skills_adds_container(self):
         c = Claude(skills=[{"type": "anthropic", "skill_id": "pptx", "version": "latest"}])
@@ -818,3 +885,155 @@ class TestClaudeAinvokeHappyPath:
         assert isinstance(result, ModelResponse)
         assert result.role == "assistant"
         assert result.content == "Hello from Claude!"
+
+
+# ---------------------------------------------------------------------------
+# 16. format_messages – additional branch coverage
+# ---------------------------------------------------------------------------
+
+
+class TestFormatMessagesAdditionalBranches:
+    def test_assistant_reasoning_content_no_signature_is_dropped(self):
+        """reasoning_content without an Anthropic signature must be dropped.
+
+        ``redacted_thinking.data`` must be the opaque ciphertext Anthropic
+        issued. Plaintext reasoning is rejected with a 400 ``Invalid data in
+        redacted_thinking block``. Without a signature we have no valid blob,
+        so the only safe action is to drop the thinking block.
+        """
+        msgs = [
+            Message(
+                role="assistant",
+                content="Answer",
+                reasoning_content="I thought about this",
+                # No redacted_reasoning_content, no provider_data signature
+            )
+        ]
+        formatted, _ = format_messages(msgs)
+        parts = formatted[0]["content"]
+        assert not [p for p in parts if p.get("type") == "redacted_thinking"]
+        assert not [p for p in parts if p.get("type") == "thinking"]
+        text_parts = [p for p in parts if p.get("type") == "text"]
+        assert any(p["text"] == "Answer" for p in text_parts)
+
+    def test_assistant_message_with_list_content_dict_items(self):
+        """Assistant message with list content – dicts with 'text' key (lines 362-364)."""
+        msgs = [
+            Message(
+                role="assistant",
+                content=[{"text": "Hello"}, {"text": " World"}],
+            )
+        ]
+        formatted, _ = format_messages(msgs)
+        parts = formatted[0]["content"]
+        text_parts = [p for p in parts if p.get("type") == "text"]
+        texts = [p["text"] for p in text_parts]
+        assert "Hello" in texts
+        assert " World" in texts
+
+    def test_assistant_message_with_list_content_non_dict_items(self):
+        """Assistant message with list content – non-dict items (line 366 json.dumps)."""
+        msgs = [
+            Message(
+                role="assistant",
+                content=["plain string", 42],
+            )
+        ]
+        formatted, _ = format_messages(msgs)
+        parts = formatted[0]["content"]
+        text_parts = [p for p in parts if p.get("type") == "text"]
+        # Non-dict items → json.dumps fallback
+        texts = [p["text"] for p in text_parts]
+        assert any("plain string" in t for t in texts)
+
+    def test_user_message_with_files(self):
+        """User message with files sets attached file paths (lines 408-412)."""
+        from ii_agent.files.media.media import File
+
+        f = File(filepath="/tmp/my_file.txt")
+        msgs = [Message(role="user", content="See attached", files=[f])]
+        formatted, _ = format_messages(msgs)
+        parts = formatted[0]["content"]
+        file_texts = [p["text"] for p in parts if "Attached files" in p.get("text", "")]
+        assert len(file_texts) == 1
+        assert "/tmp/my_file.txt" in file_texts[0]
+
+    def test_user_message_files_without_filepath_skipped(self):
+        """Files without filepath are filtered from the output (conditional in line 409)."""
+        from ii_agent.files.media.media import File
+
+        # File with no filepath (has url instead)
+        f = File(url="http://example.com/file.txt")
+        msgs = [Message(role="user", content="See attached", files=[f])]
+        formatted, _ = format_messages(msgs)
+        parts = formatted[0]["content"]
+        file_texts = [p["text"] for p in parts if "Attached files" in p.get("text", "")]
+        # url-only file has no filepath → filtered → no attached files text
+        assert len(file_texts) == 0
+
+    def test_assistant_tool_call_with_str_json_arguments(self):
+        """tool_input as JSON string gets parsed back to dict (lines 385-389)."""
+        tool_calls = [
+            {
+                "id": "tc_str",
+                "tool_name": "search",
+                "tool_args": '{"q": "test query"}',
+            }
+        ]
+        msgs = [Message(role="assistant", content="Using tool", tool_calls=tool_calls)]
+        formatted, _ = format_messages(msgs)
+        parts = formatted[0]["content"]
+        tool_use = next(p for p in parts if p.get("type") == "tool_use")
+        assert isinstance(tool_use["input"], dict)
+        assert tool_use["input"]["q"] == "test query"
+
+    def test_assistant_tool_call_with_invalid_str_arguments(self):
+        """Invalid JSON string in tool_args stays as string (exception path line 389)."""
+        tool_calls = [
+            {
+                "id": "tc_bad",
+                "tool_name": "fn",
+                "tool_args": "not-valid-json{{",
+            }
+        ]
+        msgs = [Message(role="assistant", content="", tool_calls=tool_calls)]
+        formatted, _ = format_messages(msgs)
+        parts = formatted[0]["content"]
+        tool_use = next(p for p in parts if p.get("type") == "tool_use")
+        # Stays as string since json.loads fails
+        assert isinstance(tool_use["input"], str)
+
+
+# ---------------------------------------------------------------------------
+# 17. Claude._get_client_params – additional branch coverage
+# ---------------------------------------------------------------------------
+
+
+class TestClaudeGetClientParams:
+    def test_no_api_key_no_auth_token_logs_error(self, monkeypatch):
+        """When neither api_key nor auth_token is set, error is logged (line 496)."""
+
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
+        c = Claude()
+        # Should not raise, just logs
+        params = c._get_client_params()
+        assert "api_key" in params
+
+    def test_timeout_included_when_set(self):
+        """When timeout is configured, it appears in client params (line 504)."""
+        c = Claude(timeout=30.0)
+        params = c._get_client_params()
+        assert params["timeout"] == 30.0
+
+    def test_client_params_merged(self):
+        """client_params dict is merged into client params (line 508)."""
+        c = Claude(client_params={"proxy": "http://myproxy.com"})
+        params = c._get_client_params()
+        assert params["proxy"] == "http://myproxy.com"
+
+    def test_default_headers_included(self):
+        """default_headers dict is included in client params (line 510)."""
+        c = Claude(default_headers={"X-Custom": "header-value"})
+        params = c._get_client_params()
+        assert params["default_headers"] == {"X-Custom": "header-value"}

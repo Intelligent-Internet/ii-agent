@@ -68,6 +68,9 @@ class PlanHandler(BaseCommandHandler[PlanCommandContent]):
         if not is_valid or not session_info or not llm_config:
             return
 
+        if not await self.prepare_recalled_files(query_command, session_info):
+            return
+
         await self._handle_plan(query_command, session_info, llm_config)
 
     async def _handle_plan(
@@ -166,10 +169,7 @@ class PlanHandler(BaseCommandHandler[PlanCommandContent]):
                     task_type=TaskType.AGENT_RUN,
                 )
             except TaskConflictException:
-                logger.warning(
-                    "Duplicate task claim in plan for session %s",
-                    session_info.id,
-                )
+                logger.warning(f"Duplicate task claim in plan for session {session_info.id}")
                 await self._send_error_event(
                     session_info.id,
                     message="This operation has already been submitted.",

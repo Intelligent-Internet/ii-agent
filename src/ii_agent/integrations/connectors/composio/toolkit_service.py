@@ -1,12 +1,15 @@
 """Composio Toolkit Service - handles toolkit discovery and metadata."""
 
-from typing import List, Dict, Any, Optional
+from typing import TYPE_CHECKING, List, Dict, Any, Optional
 from pydantic import BaseModel
 
 from .client import ComposioClient
 from .cache_service import ComposioCacheService
 
 from ii_agent.core.logger import logger
+
+if TYPE_CHECKING:
+    from composio import Composio
 
 
 def _to_dict(obj: Any) -> Dict[str, Any]:
@@ -98,7 +101,18 @@ class ToolkitService:
         self, *, cache_service: ComposioCacheService | None = None, api_key: str | None = None
     ) -> None:
         self._cache_service = cache_service
-        self.client = ComposioClient.get_client(api_key)
+        self._api_key = api_key
+        self._client: "Composio | None" = None
+
+    @property
+    def client(self) -> "Composio | None":
+        """Lazy-init the Composio client on first use.  Returns *None* when unconfigured."""
+        if self._client is None:
+            try:
+                self._client = ComposioClient.get_client(self._api_key)
+            except ValueError:
+                return None
+        return self._client
 
     # Toolkits that must run inside a sandbox (e.g., file/storage access)
     SANDBOX_REQUIRED_TOOLKITS = {
@@ -318,6 +332,17 @@ class ToolkitService:
             app_url=app_url,
         )
 
+    _EMPTY_TOOLKITS_RESPONSE: Dict[str, Any] = {
+        "success": True,
+        "toolkits": [],
+        "categories": [],
+        "total_items": 0,
+        "total_pages": 1,
+        "current_page": 1,
+        "next_cursor": None,
+        "has_more": False,
+    }
+
     async def list_toolkits(
         self, limit: int = 500, cursor: Optional[str] = None, category: Optional[str] = None
     ) -> Dict[str, Any]:
@@ -331,6 +356,9 @@ class ToolkitService:
         Returns:
             Dict containing toolkits, categories, and pagination info
         """
+        if self.client is None:
+            return self._EMPTY_TOOLKITS_RESPONSE
+
         logger.debug(f"Fetching toolkits with limit: {limit}, category: {category}")
 
         # Try to get from cache first (only if no filters applied)
@@ -481,6 +509,9 @@ class ToolkitService:
             logger.debug(f"Using cached icon for {toolkit_slug}")
             return cached_icon
 
+        if self.client is None:
+            return None
+
         try:
             response = self.client.toolkits.get(toolkit_slug)
             data = _to_dict(response)
@@ -578,6 +609,9 @@ class ToolkitService:
         if cached_details:
             logger.debug(f"Using cached details for {toolkit_slug}")
             return DetailedToolkitInfo(**cached_details)
+
+        if self.client is None:
+            return None
 
         response = self.client.tools.get_raw_composio_tools(toolkits=[toolkit_slug], limit=1)
         data = _to_dict(response[0]) if response else None

@@ -93,32 +93,41 @@ class ShellRunCommand(BaseSandboxTool):
                 is_error=False,
             )
         except ShellCommandTimeoutError:
-            current_output = await sandbox_service.get_shell_session_output(
-                session_id,
-                session_name,
-            )
-            message = f"Command timed out. Current view:\n\n{current_output.clean_output}."
+            try:
+                current_output = await sandbox_service.get_shell_session_output(
+                    session_id,
+                    session_name,
+                )
+                view = current_output.clean_output
+                ansi_view = current_output.ansi_output
+            except Exception:  # noqa: BLE001
+                view = "(no output available)"
+                ansi_view = view
+            message = f"Command timed out. Current view:\n\n{view}."
             return ToolResult(
                 llm_content=self._truncate_llm_content(message),
-                user_display_content=(
-                    f"Command timed out. Current view:\n\n{current_output.ansi_output}."
-                ),
+                user_display_content=(f"Command timed out. Current view:\n\n{ansi_view}."),
                 is_error=True,
             )
         except ShellBusyError:
-            current_output = await sandbox_service.get_shell_session_output(
-                session_id,
-                session_name,
-            )
+            try:
+                current_output = await sandbox_service.get_shell_session_output(
+                    session_id,
+                    session_name,
+                )
+                view = current_output.clean_output
+                ansi_view = current_output.ansi_output
+            except Exception:  # noqa: BLE001
+                view = "(no output available)"
+                ansi_view = view
             message = (
                 "The last command is not finished. Current view:\n\n"
-                f"{current_output.clean_output}. Use another session or wait for the last command to finish."
+                f"{view}. Use another session or wait for the last command to finish."
             )
             return ToolResult(
                 llm_content=self._truncate_llm_content(message),
                 user_display_content=(
-                    "The last command is not finished. Current view:\n\n"
-                    f"{current_output.ansi_output}."
+                    f"The last command is not finished. Current view:\n\n{ansi_view}."
                 ),
                 is_error=True,
             )

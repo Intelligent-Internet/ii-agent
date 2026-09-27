@@ -695,6 +695,29 @@ class TestFunctionCallPreHook:
         # General exceptions should be caught and logged, not raised
         fc._handle_pre_hook()
 
+    def test_pre_hook_run_cancelled_exception_is_raised(self):
+        from ii_agent.core.redis.cancel import RunCancelledException
+
+        def cancelling_hook():
+            raise RunCancelledException("cancelled-pre")
+
+        fc = self._make_fc(pre_hook=cancelling_hook)
+        with pytest.raises(RunCancelledException, match="cancelled-pre"):
+            fc._handle_pre_hook()
+
+    @pytest.mark.asyncio
+    async def test_pre_hook_async_run_cancelled_exception_is_raised(self):
+        from ii_agent.core.redis.cancel import RunCancelledException
+        from ii_agent.agents.tools.function import Function, FunctionCall
+
+        async def cancelling_hook():
+            raise RunCancelledException("cancelled-pre-async")
+
+        fn = Function(name="fn", description="desc", pre_hook=cancelling_hook)
+        fc = FunctionCall(function=fn, arguments={})
+        with pytest.raises(RunCancelledException, match="cancelled-pre-async"):
+            await fc._handle_pre_hook_async()
+
 
 # ---------------------------------------------------------------------------
 # FunctionCall._handle_post_hook  (sync)
@@ -744,6 +767,29 @@ class TestFunctionCallPostHook:
         fc = self._make_fc(post_hook=failing_hook)
         # Should not raise
         fc._handle_post_hook()
+
+    def test_post_hook_run_cancelled_exception_is_raised(self):
+        from ii_agent.core.redis.cancel import RunCancelledException
+
+        def cancelling_hook():
+            raise RunCancelledException("cancelled")
+
+        fc = self._make_fc(post_hook=cancelling_hook)
+        with pytest.raises(RunCancelledException, match="cancelled"):
+            fc._handle_post_hook()
+
+    @pytest.mark.asyncio
+    async def test_post_hook_async_run_cancelled_exception_is_raised(self):
+        from ii_agent.core.redis.cancel import RunCancelledException
+        from ii_agent.agents.tools.function import Function, FunctionCall
+
+        async def cancelling_hook():
+            raise RunCancelledException("cancelled-async")
+
+        fn = Function(name="fn", description="desc", post_hook=cancelling_hook)
+        fc = FunctionCall(function=fn, arguments={})
+        with pytest.raises(RunCancelledException, match="cancelled-async"):
+            await fc._handle_post_hook_async()
 
 
 # ---------------------------------------------------------------------------

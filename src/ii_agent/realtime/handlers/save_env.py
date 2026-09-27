@@ -62,9 +62,7 @@ class SaveEnvHandler(BaseCommandHandler[SaveEnvContent]):
             running_task = await svc.find_active_by_session(db, session_info.id)
             if running_task:
                 logger.info(
-                    "save_env skipped: running task %s already active for %s",
-                    running_task.id,
-                    session_info.id,
+                    f"save_env skipped: running task {running_task.id} already active for {session_info.id}"
                 )
                 return
 
@@ -75,10 +73,7 @@ class SaveEnvHandler(BaseCommandHandler[SaveEnvContent]):
                     task_type=TaskType.AGENT_RUN,
                 )
             except TaskConflictException:
-                logger.warning(
-                    "Duplicate task claim in save_env for session %s",
-                    session_info.id,
-                )
+                logger.warning(f"Duplicate task claim in save_env for session {session_info.id}")
                 await self._send_error_event(
                     session_info.id,
                     error_code=ErrorCode.DUPLICATE_TASK,
@@ -110,12 +105,10 @@ class SaveEnvHandler(BaseCommandHandler[SaveEnvContent]):
                 tool_args=tool_args,
             )
             logger.info(
-                "Agent run id: %s finished with status: %s",
-                task_response.id,
-                task_response.status,
+                f"Agent run id: {task_response.id} finished with status: {task_response.status}"
             )
         except Exception as exc:
-            logger.error("Could not process secrets due to error: %s", exc)
+            logger.error(f"Could not process secrets due to error: {exc}")
             raise
 
     async def _get_model_config(self, session: SessionInfo) -> ModelConfig:
@@ -170,7 +163,7 @@ class SaveEnvHandler(BaseCommandHandler[SaveEnvContent]):
                 )
             except Exception as exc:
                 save_error = str(exc) or "Failed to save environment variables."
-                logger.error("save_env failed: %s", exc, exc_info=True)
+                logger.error(f"save_env failed: {exc}", exc_info=True)
 
             env_tool_result = QueryToolResultInternal(
                 tool_call_id=tool_call_id,
@@ -192,7 +185,7 @@ class SaveEnvHandler(BaseCommandHandler[SaveEnvContent]):
 
             status = RunStatus.CANCELLED if agent_result.is_interrupted else RunStatus.COMPLETED
         except Exception as exc:
-            logger.error("Error processing save_env: %s", exc, exc_info=True)
+            logger.error(f"Error processing save_env: {exc}", exc_info=True)
             await self._send_error_event(
                 session_info.id,
                 error_code=ErrorCode.UNEXPECTED_ERROR,
@@ -205,7 +198,7 @@ class SaveEnvHandler(BaseCommandHandler[SaveEnvContent]):
                 db, task_id=running_task.id, to_status=status
             )
             if not updated_task:
-                logger.error("Could not find task %s to update status", running_task.id)
+                logger.error(f"Could not find task {running_task.id} to update status")
                 raise ValueError(f"Could not find task {running_task.id} to update status={status}")
             await db.commit()
 

@@ -109,13 +109,10 @@ class CloudRunPublishHandler(BaseCommandHandler[CloudRunPublishContent]):
                         )
                     deployment_id = deployment_record.id
                     logger.info(
-                        "Created deployment record %s for project %s (v%s)",
-                        deployment_id,
-                        project_id,
-                        deployment_record.version,
+                        f"Created deployment record {deployment_id} for project {project_id} (v{deployment_record.version})"
                     )
                 except Exception as exc:
-                    logger.warning("Failed to create deployment record: %s", exc)
+                    logger.warning(f"Failed to create deployment record: {exc}")
 
             # Get sandbox for the session
             await self.send_event(
@@ -131,9 +128,7 @@ class CloudRunPublishHandler(BaseCommandHandler[CloudRunPublishContent]):
                 sandbox = await self._get_sandbox(session_info, container)
             except Exception as exc:
                 logger.warning(
-                    "Failed to connect to sandbox for Cloud Run publish session %s: %s",
-                    session_id,
-                    exc,
+                    f"Failed to connect to sandbox for Cloud Run publish session {session_id}: {exc}"
                 )
                 if deployment_id:
                     async with get_db_session_local() as db:
@@ -333,11 +328,7 @@ class CloudRunPublishHandler(BaseCommandHandler[CloudRunPublishContent]):
                         production_url=deployment_url,
                     )
             except Exception as exc:
-                logger.warning(
-                    "Failed to persist deployment URL for session %s: %s",
-                    session_id,
-                    exc,
-                )
+                logger.warning(f"Failed to persist deployment URL for session {session_id}: {exc}")
 
             # Send success event
             await self.send_event(

@@ -7,6 +7,7 @@ import {
     setIsMobileChatVisible,
     setLoading,
     setSandboxIframeAwake,
+    setSandboxStatus,
     useAppDispatch,
     setMessages
 } from '@/state'
@@ -74,6 +75,7 @@ export function useNavigationLeaveSession() {
             dispatch(setActiveTab(TAB.BUILD))
             dispatch(setIsMobileChatVisible(true))
             dispatch(setSandboxIframeAwake(false))
+            dispatch(setSandboxStatus(''))
             dispatch(setActiveSessionId(null))
             dispatch(setMessages([]))
             resetConversationState()

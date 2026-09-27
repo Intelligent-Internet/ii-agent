@@ -50,6 +50,7 @@ class SessionInfo(BaseModel):
     title_pending: bool = False
     model_setting_id: Optional[UUID] = None
     session_metadata: Optional[Dict[str, Any]] = None
+    delete_after: Optional[str] = None
 
 
 class ValidatedSessionResult(BaseModel):
@@ -138,6 +139,25 @@ class BulkDeleteResponse(BaseModel):
 
     deleted_ids: List[UUID]
     failed_ids: List[UUID]
+
+
+class ScheduleDeleteRequest(BaseModel):
+    """Request to schedule a session for timed deletion.
+
+    Provide either ``delete_after_seconds`` (relative delay from now) or
+    ``delete_at`` (absolute UTC timestamp).  If both are given,
+    ``delete_after_seconds`` takes precedence.
+    """
+
+    delete_after_seconds: Optional[int] = Field(
+        None,
+        gt=0,
+        description="Seconds from now until the session should be deleted",
+    )
+    delete_at: Optional[str] = Field(
+        None,
+        description="ISO-8601 UTC timestamp at which the session should be deleted",
+    )
 
 
 # ==================== Fork ====================

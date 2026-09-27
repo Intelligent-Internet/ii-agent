@@ -64,7 +64,14 @@ class MCPServerService:
 
     def __init__(self, api_key: Optional[str] = None):
         """Initialize the MCP server service."""
-        self.client = ComposioClient.get_client(api_key)
+        self._api_key = api_key
+        self._client: "Composio | None" = None
+
+    @property
+    def client(self) -> "Composio":
+        if self._client is None:
+            self._client = ComposioClient.get_client(self._api_key)
+        return self._client
 
     def _generate_cuid(self) -> str:
         """Generate a random CUID-like string."""

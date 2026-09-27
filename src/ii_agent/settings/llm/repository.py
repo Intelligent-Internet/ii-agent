@@ -79,7 +79,7 @@ class ModelSettingRepository(BaseRepository[ModelSetting]):
         """Get a system-level setting by model_id."""
         result = await db.execute(
             select(ModelSetting).where(
-                ModelSetting.id == model_id,
+                ModelSetting.model_id == model_id,
                 ModelSetting.user_id.is_(None),
                 ModelSetting.config_type == "system",
             )
@@ -96,6 +96,36 @@ class ModelSettingRepository(BaseRepository[ModelSetting]):
                 ModelSetting.user_id.is_(None),
                 ModelSetting.config_type == "system",
             )
+        )
+        return result.scalars().first()
+
+    async def find_default_system_model(self, db: AsyncSession) -> ModelSetting | None:
+        """Get the default system-level model (is_default=True).
+
+        Returns the first system model with is_default=True, or the first
+        system model if none is marked default.
+        """
+        result = await db.execute(
+            select(ModelSetting)
+            .where(
+                ModelSetting.user_id.is_(None),
+                ModelSetting.config_type == "system",
+                ModelSetting.is_default.is_(True),
+            )
+            .limit(1)
+        )
+        setting = result.scalars().first()
+        if setting is not None:
+            return setting
+        # Fall back to the first system model if none is explicitly marked default
+        result = await db.execute(
+            select(ModelSetting)
+            .where(
+                ModelSetting.user_id.is_(None),
+                ModelSetting.config_type == "system",
+            )
+            .order_by(ModelSetting.created_at)
+            .limit(1)
         )
         return result.scalars().first()
 

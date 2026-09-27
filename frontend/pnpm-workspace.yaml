@@ -3,3 +3,6 @@ packages:
 
 onlyBuiltDependencies:
     - esbuild
+    - '@sentry/cli'
+    - '@tailwindcss/oxide'
+    - core-js

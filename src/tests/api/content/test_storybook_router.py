@@ -16,6 +16,7 @@ EXPECTED_ROUTES = {
     ("POST", "/storybooks/{storybook_id}/pages/{page_number}/regenerate"),
     ("GET", "/storybooks/{storybook_id}/edit/proxy"),
     ("POST", "/storybooks/{storybook_id}/edit/save"),
+    ("POST", "/storybooks/{storybook_id}/edit/upload-background"),
     ("POST", "/storybooks/{storybook_id}/edit/ai-rewrite"),
     ("POST", "/storybooks/{storybook_id}/edit/ai-generate-background"),
     ("POST", "/storybooks/{storybook_id}/edit/ai-regenerate-image"),
@@ -26,7 +27,6 @@ EXPECTED_ROUTES = {
     ("GET", "/storybooks/{storybook_id}/download/png/{page_number}"),
     ("GET", "/storybooks/{storybook_id}/download/png"),
     ("GET", "/storybooks/{storybook_id}/download/png/stream"),
-    ("GET", "/storybooks/public/{storybook_id}"),
 }
 
 
@@ -35,8 +35,4 @@ def test_storybook_router_routes_registered():
 
 
 def test_storybook_router_auth_contract():
-    assert_auth_contract(
-        router,
-        protected=EXPECTED_ROUTES - {("GET", "/storybooks/public/{storybook_id}")},
-        public={("GET", "/storybooks/public/{storybook_id}")},
-    )
+    assert_auth_contract(router, protected=EXPECTED_ROUTES)

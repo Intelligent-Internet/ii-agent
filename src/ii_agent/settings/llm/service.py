@@ -91,7 +91,7 @@ class ModelSettingService:
             encrypted_api_key=encrypted_api_key,
             base_url=model_setting_request.base_url,
             display_name=model_setting_request.display_name,
-            configs=configs_dict,
+            params=configs_dict,
             pricing=pricing_dict,
             config_type=model_setting_request.config_type,
             is_default=model_setting_request.is_default,
@@ -224,6 +224,7 @@ class ModelSettingService:
                     display_name=row.display_name or row.model_id,
                     base_url=row.base_url,
                     pricing=pricing,
+                    is_default=row.is_default,
                 )
             )
 
@@ -241,6 +242,7 @@ class ModelSettingService:
                     display_name=setting.display_name or setting.model_id,
                     base_url=setting.base_url,
                     pricing=setting.pricing,
+                    is_default=setting.is_default,
                 )
             )
 
@@ -314,7 +316,25 @@ class ModelSettingService:
                     user_id=session.user_id,
                 )
             if not model_id:
-                raise ValueError("model_id is required when session has no model_setting_id")
+                # Fall back to the default system model rather than hard-failing.
+                # This handles new sessions (e.g. deep_research) where the frontend
+                # does not send a model_id and the session has no model_setting_id yet.
+                default_setting = await self._repo.find_default_system_model(db)
+                if default_setting is None:
+                    raise ValueError(
+                        "model_id is required when session has no model_setting_id "
+                        "and no default system model is configured"
+                    )
+                return _setting_to_model_config(default_setting)
+            # model_id may be a model_settings UUID (from frontend) or a
+            # human-readable model name like "claude-sonnet-4-6".  Try UUID
+            # lookup first, then fall back to model_id string lookup.
+            try:
+                setting_uuid = uuid.UUID(model_id)
+            except ValueError:
+                setting_uuid = None
+            if setting_uuid is not None:
+                return await self.resolve_config_by_setting_id(db, setting_id=setting_uuid)
             return await self.resolve_system_config(db, model_id=model_id)
 
         try:

@@ -1,5 +1,7 @@
 """Pydantic schemas (DTOs) for slide templates subdomain."""
 
+from uuid import UUID
+
 from pydantic import BaseModel, Field
 from typing import Optional, List
 from datetime import datetime
@@ -32,7 +34,7 @@ class SlideTemplateUpdate(BaseModel):
 class SlideTemplateInfo(SlideTemplateBase):
     """Model for slide template with all information."""
 
-    id: str
+    id: UUID
     created_at: datetime
     updated_at: Optional[datetime] = None
 

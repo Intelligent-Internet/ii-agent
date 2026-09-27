@@ -248,3 +248,38 @@ async def test_shutdown_stops_all_watchers():
     await svc.shutdown()
 
     assert not svc._watchers
+
+
+@pytest.mark.asyncio
+async def test_stop_watcher_handles_sync_stop():
+    svc = _explorer()
+    watch_handle = MagicMock()
+    sandbox = MagicMock()
+    svc._watchers["sandbox-1"] = _WatcherState(
+        provider_id="sandbox-1",
+        sandbox=sandbox,
+        watch_handle=watch_handle,
+    )
+
+    await svc._stop_watcher("sandbox-1")
+
+    watch_handle.stop.assert_called_once_with()
+    assert "sandbox-1" not in svc._watchers
+
+
+@pytest.mark.asyncio
+async def test_stop_watcher_handles_async_stop():
+    svc = _explorer()
+    async_handle = MagicMock()
+    async_handle.stop = AsyncMock()
+    sandbox = MagicMock()
+    svc._watchers["sandbox-1"] = _WatcherState(
+        provider_id="sandbox-1",
+        sandbox=sandbox,
+        watch_handle=async_handle,
+    )
+
+    await svc._stop_watcher("sandbox-1")
+
+    async_handle.stop.assert_awaited_once_with()
+    assert "sandbox-1" not in svc._watchers

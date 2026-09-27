@@ -1,4 +1,4 @@
-<!-- Generated: 2026-03-29 | External: 12 | Config: 13 | Token estimate: ~600 -->
+<!-- Generated: 2026-04-19 | External: 12 | Config: 13 | Token estimate: ~680 -->
 # Dependencies
 
 ## External Services
@@ -39,6 +39,8 @@ Main: `core/config/settings.py::Settings` (Pydantic BaseSettings, `@lru_cache` s
 | `NanoBananaConfig` | `core/config/nano_banana.py` | model config |
 | `SessionTitleConfig` | `core/config/session_title.py` | title generation |
 
+**A2A fields on `AgentSettings`** (see `core/config/agent.py`): `inner_loop_mode`, `chat_inner_loop_mode`, `a2a_backend`, `a2a_agent_url`, `a2a_fallback_to_native`, `a2a_chat_strict` (default `True`, crashes startup if adapter URL missing), `a2a_context_reuse`, `a2a_timeout_seconds`, `a2a_billing_strategy`, `a2a_billing_multiplier`, `a2a_copilot_multipliers`.
+
 ## Infrastructure Components
 
 ### Service Container (`core/container.py::ApplicationContainer`)
@@ -76,4 +78,8 @@ google-cloud-storage             # File storage
 e2b-code-interpreter             # Sandbox
 celery                           # Task queue
 apscheduler                      # Cron scheduling
+
+# Optional extras — install with: pip install -e ".[a2a]"
+a2a-sdk                          # A2A protocol (required when AGENT_INNER_LOOP_MODE=a2a)
+github-copilot-sdk               # Copilot CLI backend for A2A adapter
 ```

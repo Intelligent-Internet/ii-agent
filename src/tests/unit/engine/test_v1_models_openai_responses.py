@@ -153,30 +153,35 @@ class TestOpenAIResponsesUsingReasoningModel:
 
 class TestOpenAIResponsesSetReasoningRequestParam:
     def test_sets_reasoning_key(self):
-        m = OpenAIResponses()
+        m = OpenAIResponses(id="o3-mini")
         params = m._set_reasoning_request_param({})
         assert "reasoning" in params
 
     def test_effort_set_when_present(self):
-        m = OpenAIResponses(reasoning_effort="high")
+        m = OpenAIResponses(id="o3-mini", reasoning_effort="high")
         params = m._set_reasoning_request_param({})
         assert params["reasoning"]["effort"] == "high"
 
     def test_summary_set_when_present(self):
-        m = OpenAIResponses(reasoning_summary="concise")
+        m = OpenAIResponses(id="o3-mini", reasoning_summary="concise")
         params = m._set_reasoning_request_param({})
         assert params["reasoning"]["summary"] == "concise"
 
     def test_empty_reasoning_when_no_effort_or_summary(self):
         # When reasoning_effort and reasoning_summary are both None,
         # _set_reasoning_request_param sets reasoning to self.reasoning or {}
-        m = OpenAIResponses()
+        m = OpenAIResponses(id="o3-mini")
         m.reasoning = None
         params = m._set_reasoning_request_param({})
         # An empty dict is set for reasoning; since it's falsy, get_request_params
         # may filter it out, but the key is present at this stage
         assert "reasoning" in params
         assert params["reasoning"] == {}
+
+    def test_non_reasoning_model_skips_reasoning(self):
+        m = OpenAIResponses(id="gpt-4o")
+        params = m._set_reasoning_request_param({})
+        assert "reasoning" not in params
 
 
 # ---------------------------------------------------------------------------

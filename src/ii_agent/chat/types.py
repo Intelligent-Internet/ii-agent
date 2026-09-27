@@ -69,7 +69,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import List, Optional, Union, Dict, Any, Literal
 from uuid import UUID
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, field_serializer
 
 from ii_agent.billing.schemas import TokenUsage
 
@@ -358,6 +358,19 @@ class BinaryContent(BaseContentPart):
     path: str
     mime_type: str
     data: bytes
+
+    @field_validator("data", mode="before")
+    @classmethod
+    def _decode_base64(cls, v: Any) -> bytes:
+        """Accept base64-encoded strings (from DB JSON) as well as raw bytes."""
+        if isinstance(v, str):
+            return base64.b64decode(v)
+        return v
+
+    @field_serializer("data")
+    def _encode_base64(self, v: bytes, _info: Any) -> str:
+        """Serialize binary data as base64 for JSON storage."""
+        return base64.b64encode(v).decode("ascii")
 
     def to_base64(self, provider: str = "anthropic") -> str:
         """Convert to base64 string with provider-specific format."""

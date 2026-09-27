@@ -3,6 +3,7 @@ from __future__ import annotations
 from io import BytesIO
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
+from uuid import UUID
 
 import pytest
 from fastapi import FastAPI
@@ -29,6 +30,14 @@ from ii_agent.settings.llm.dependencies import _get_model_setting_service
 
 pytestmark = pytest.mark.unit
 
+# Fixed UUIDs used throughout this test file
+SB1_ID = "00000000-0000-0000-0000-000000000001"
+SB2_ID = "00000000-0000-0000-0000-000000000002"
+UNKNOWN_ID = "00000000-0000-0000-0000-000000000099"
+SESSION1_ID = "10000000-0000-0000-0000-000000000001"
+SB1_UUID = UUID(SB1_ID)
+SB2_UUID = UUID(SB2_ID)
+
 
 def _make_app(*, session_access: bool = True, export_bytes: bytes | None = b"pdf"):
     app = FastAPI()
@@ -36,7 +45,7 @@ def _make_app(*, session_access: bool = True, export_bytes: bytes | None = b"pdf
     app.exception_handler(IIAgentError)(ii_agent_error_handler)
 
     storybook = SimpleNamespace(
-        id="sb1",
+        id=SB1_ID,
         session_id="session-1",
         name="My Story",
     )
@@ -46,21 +55,21 @@ def _make_app(*, session_access: bool = True, export_bytes: bytes | None = b"pdf
     )
 
     class _StorybookService:
-        async def get_storybook_detail(self, db, storybook_id: str, include_pages: bool):
-            return storybook_detail if storybook_id == "sb1" else None
+        async def get_storybook_detail(self, db, storybook_id, include_pages: bool):
+            return storybook_detail if storybook_id == SB1_UUID else None
 
-        async def get_session_storybooks(self, db, session_id: str, include_pages: bool):
+        async def get_session_storybooks(self, db, session_id, include_pages: bool):
             return {"session_id": session_id, "storybooks": [], "total": 0}
 
         def build_generation_response(self, _storybook):
-            return {"type": "storybook_progress", "storybook_id": "sb1"}
+            return {"type": "storybook_progress", "storybook_id": SB1_ID}
 
     class _SessionService:
-        async def get_session_details(self, db, session_id: str, user_id: str):
-            return {"id": session_id} if session_access else None
+        async def get_session_details(self, db, session_id, user_id):
+            return {"id": str(session_id)} if session_access else None
 
-        async def get_public_session_details(self, db, session_id: str):
-            return {"id": session_id}
+        async def get_public_session_details(self, db, session_id):
+            return {"id": str(session_id)}
 
     class _EditService:
         async def save_all_page_edits(self, db, storybook_id, page_changes, image_urls):
@@ -159,8 +168,8 @@ def test_storybook_edit_save_requires_auth_header():
 
     with TestClient(app) as client:
         resp = client.post(
-            "/storybooks/sb1/edit/save",
-            json={"storybook_id": "sb1", "page_changes": []},
+            f"/storybooks/{SB1_ID}/edit/save",
+            json={"storybook_id": SB1_ID, "page_changes": []},
         )
 
     assert resp.status_code == 403
@@ -170,10 +179,10 @@ def test_storybook_edit_save_path_validation_error_response():
     app = _make_app()
     with TestClient(app) as client:
         resp = client.post(
-            "/storybooks/sb1/edit/save",
+            f"/storybooks/{SB1_ID}/edit/save",
             headers={"Authorization": "Bearer token"},
             json={
-                "storybook_id": "sb2",
+                "storybook_id": SB2_ID,
                 "page_changes": [{"page_number": 1, "changes": []}],
             },
         )
@@ -190,10 +199,10 @@ def test_storybook_ai_rewrite_path_validation_error_response():
     app = _make_app()
     with TestClient(app) as client:
         resp = client.post(
-            "/storybooks/sb1/edit/ai-rewrite",
+            f"/storybooks/{SB1_ID}/edit/ai-rewrite",
             headers={"Authorization": "Bearer token"},
             json={
-                "storybook_id": "sb2",
+                "storybook_id": SB2_ID,
                 "content": "Rewrite me",
             },
         )
@@ -210,10 +219,10 @@ def test_storybook_ai_regenerate_requires_prompt():
     app = _make_app()
     with TestClient(app) as client:
         resp = client.post(
-            "/storybooks/sb1/edit/ai-regenerate-image",
+            f"/storybooks/{SB1_ID}/edit/ai-regenerate-image",
             headers={"Authorization": "Bearer token"},
             json={
-                "storybook_id": "sb1",
+                "storybook_id": SB1_ID,
                 "page_number": 1,
                 "prompt": "   ",
             },
@@ -231,14 +240,14 @@ def test_storybook_upload_background_rejects_non_image():
     app = _make_app()
     with TestClient(app) as client:
         resp = client.post(
-            "/storybooks/sb1/edit/upload-background",
+            f"/storybooks/{SB1_ID}/edit/upload-background",
             headers={"Authorization": "Bearer token"},
             files={"file": ("notes.txt", BytesIO(b"text"), "text/plain")},
         )
 
     assert resp.status_code == 400
     payload = resp.json()
-    assert payload["error"] == "validation"
+    assert payload["error_code"] == "validation"
     assert "Only image uploads are supported" in payload["detail"]
 
 
@@ -246,52 +255,52 @@ def test_storybook_download_export_failure_and_access_denied():
     app_export_fail = _make_app(export_bytes=None)
     with TestClient(app_export_fail) as client:
         resp = client.get(
-            "/storybooks/sb1/download",
+            f"/storybooks/{SB1_ID}/download",
             headers={"Authorization": "Bearer token"},
         )
     assert resp.status_code == 500
-    assert resp.json()["error"] == "storybook_export"
+    assert resp.json()["error_code"] == "storybook_export"
 
     app_access_denied = _make_app(session_access=False)
     with TestClient(app_access_denied) as client:
         resp = client.get(
-            "/storybooks/sb1/download",
+            f"/storybooks/{SB1_ID}/download",
             headers={"Authorization": "Bearer token"},
         )
     assert resp.status_code == 403
-    assert resp.json()["error"] == "storybook_access_denied"
+    assert resp.json()["error_code"] == "storybook_access_denied"
 
 
 def test_storybook_not_found_and_page_not_found_errors():
     app = _make_app()
     with TestClient(app) as client:
         not_found = client.get(
-            "/storybooks/unknown",
+            f"/storybooks/{UNKNOWN_ID}",
             headers={"Authorization": "Bearer token"},
         )
         assert not_found.status_code == 404
-        assert not_found.json()["error"] == "storybook_not_found"
+        assert not_found.json()["error_code"] == "storybook_not_found"
 
         page_missing = client.get(
-            "/storybooks/sb1/download/page/2",
+            f"/storybooks/{SB1_ID}/download/page/2",
             headers={"Authorization": "Bearer token"},
         )
         assert page_missing.status_code == 404
-        assert page_missing.json()["error"] == "storybook_page_not_found"
+        assert page_missing.json()["error_code"] == "storybook_page_not_found"
 
 
 def test_storybook_session_list_and_cancel_endpoint():
     app = _make_app()
     with TestClient(app) as client:
         listing = client.get(
-            "/storybooks/session/session-1?include_pages=true",
+            f"/storybooks/session/{SESSION1_ID}?include_pages=true",
             headers={"Authorization": "Bearer token"},
         )
         assert listing.status_code == 200
-        assert listing.json()["session_id"] == "session-1"
+        assert listing.json()["session_id"] == SESSION1_ID
 
         cancelled = client.post(
-            "/storybooks/sb1/cancel",
+            f"/storybooks/{SB1_ID}/cancel",
             headers={"Authorization": "Bearer token"},
         )
         assert cancelled.status_code == 200

@@ -37,6 +37,7 @@ interface AgentState {
         status: 'pending' | 'in_progress' | 'completed'
     }[]
     isSandboxIframeAwake: boolean
+    sandboxStatus: string
     pendingQuery: PendingQuery | null
     fullstackProjectInitialized: boolean
     projectId: string | null
@@ -53,6 +54,7 @@ const initialState: AgentState = {
     selectedBuildStep: BUILD_STEP.THINKING,
     plans: [],
     isSandboxIframeAwake: false,
+    sandboxStatus: '',
     pendingQuery: null,
     fullstackProjectInitialized: false,
     projectId: null,
@@ -95,6 +97,9 @@ const agentSlice = createSlice({
         setSandboxIframeAwake: (state, action: PayloadAction<boolean>) => {
             state.isSandboxIframeAwake = action.payload
         },
+        setSandboxStatus: (state, action: PayloadAction<string>) => {
+            state.sandboxStatus = action.payload
+        },
         setPendingQuery: (
             state,
             action: PayloadAction<PendingQuery | null>
@@ -127,6 +132,7 @@ export const {
     setBuildStep,
     setSelectedBuildStep,
     setSandboxIframeAwake,
+    setSandboxStatus,
     setPendingQuery,
     setFullstackProjectInitialized,
     setProjectId,
@@ -166,6 +172,8 @@ export const selectSelectedBuildStep = (state: { agent: AgentState }) =>
     state.agent.selectedBuildStep
 export const selectIsSandboxIframeAwake = (state: { agent: AgentState }) =>
     state.agent.isSandboxIframeAwake
+export const selectSandboxStatus = (state: { agent: AgentState }) =>
+    state.agent.sandboxStatus
 export const selectPendingQuery = (state: { agent: AgentState }) =>
     state.agent.pendingQuery
 export const selectFullstackProjectInitialized = (

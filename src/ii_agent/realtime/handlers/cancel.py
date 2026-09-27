@@ -10,6 +10,10 @@ from ii_agent.tasks.types import RunStatus
 from ii_agent.core.db import get_db_session_local
 from ii_agent.sessions.schemas import SessionInfo
 from ii_agent.core.logger import logger
+from ii_agent.realtime.events.app_events import (
+    AgentResponseInterruptedEvent,
+    ErrorCode,
+)
 from ii_agent.realtime.handlers.base import (
     BaseCommandHandler,
     CommandType,
@@ -34,7 +38,27 @@ class CancelHandler(BaseCommandHandler[CancelContent]):
         async with get_db_session_local() as db:
             last_task = await svc.get_last_by_session_id(db, session.id)
             if not last_task:
-                await self._send_error_event(session.id, message="Task Run not found")
+                await self._send_error_event(
+                    session.id,
+                    error_code=ErrorCode.RUN_NOT_FOUND,
+                    message="Task Run not found",
+                )
+                return
+
+            if last_task.status == RunStatus.ABORTING:
+                # Task already aborting — check if the agent is still alive.
+                run_id = last_task.id
+                active_runs = await cancel.get_active_runs()
+                if str(run_id) in active_runs:
+                    # Agent is still tracked — re-signal cancellation.
+                    await cancel.cancel_run(str(run_id))
+                    logger.info(
+                        f"Re-signalled cancellation for aborting run {run_id} "
+                        f"in session {session.id}"
+                    )
+                else:
+                    # Agent is gone (e.g. server restarted) — force to CANCELLED.
+                    await self._force_cancel(db, svc, last_task.id, session)
                 return
 
             if last_task.status not in [RunStatus.RUNNING, RunStatus.PAUSED]:
@@ -53,8 +77,34 @@ class CancelHandler(BaseCommandHandler[CancelContent]):
         if cancelled:
             logger.info(f"Run {run_id} cancelled for session {session.id}")
         else:
-            logger.warning(f"Run {run_id} not found or already completed")
-            await self._send_error_event(
-                session.id,
-                message="Run not found or already completed",
+            # Run not registered — agent is likely dead (e.g. server restart).
+            # Force-transition to CANCELLED so the session isn't stuck.
+            logger.warning(
+                f"Run {run_id} not registered in cancellation manager, "
+                f"force-cancelling orphaned task"
             )
+            async with get_db_session_local() as db:
+                await self._force_cancel(db, svc, run_id, session)
+
+    async def _force_cancel(self, db, svc, task_id, session) -> None:
+        """Transition an orphaned task to CANCELLED and notify the frontend."""
+        await svc.transition_status(
+            db,
+            task_id=task_id,
+            to_status=RunStatus.CANCELLED,
+            error_message="Force-cancelled: agent no longer running",
+        )
+        await db.commit()
+
+        await self.send_event(
+            AgentResponseInterruptedEvent(
+                session_id=session.id,
+                run_id=task_id,
+                content={
+                    "message": "Run was cancelled",
+                    "run_id": str(task_id),
+                    "run_status": RunStatus.CANCELLED,
+                },
+            )
+        )
+        logger.info(f"Force-cancelled orphaned task {task_id} for session {session.id}")

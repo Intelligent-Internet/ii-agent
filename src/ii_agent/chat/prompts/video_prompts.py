@@ -409,7 +409,7 @@ Step 3: generate_video(prompt, source_video=video_2.url, use_extension_api=True)
 ```
 
 **Key points:**
-- NO concat_video needed - the API merges automatically!
+- NO concatenate_videos needed - the API merges automatically!
 - Pass the same prompt (describe how to continue the scene)
 - Audio coherence works best if voice is in last 1s of source video
 
@@ -432,7 +432,7 @@ Use when: Different scenes, different audio environments, or style changes where
 Step 1: generate_video(scene1_prompt) → scene_1 (8s)
 Step 2: extract_frames(scene_1.url, positions=["last"]) → last_frame
 Step 3: generate_video(scene2_prompt, start_frame=last_frame.url) → scene_2 (8s)
-Step 4: concat_video([scene_1.url, scene_2.url], crossfade=0.5) → final (16s)
+Step 4: concatenate_videos([scene_1.url, scene_2.url], crossfade=0.5) → final (16s)
 ```
 
 **Key points:**

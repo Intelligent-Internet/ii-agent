@@ -156,6 +156,7 @@ class ApplicationContainer:
     message_service: MessageService
     credit_service: CreditService
     sandbox_service: SandboxService
+    sandbox_pool_manager: object | None
     live_terminal_service: LiveTerminalService
     plan_service: PlanService
     event_service: EventService
@@ -257,6 +258,29 @@ class ApplicationContainer:
             session_repo=session_repo,
             config=cfg,
         )
+
+        # Wire the pre-warmed sandbox pool manager (Docker local mode only;
+        # the manager itself becomes a no-op when not enabled). We import
+        # locally to avoid pulling DockerSandbox at module-import time.
+        try:
+            from ii_agent.agents.sandboxes.docker import DockerSandbox
+            from ii_agent.agents.sandboxes.pool import SandboxPoolManager
+
+            async def _provider_create(sandbox_id, session_placeholder):
+                return await DockerSandbox.create(
+                    sandbox_id=str(sandbox_id),
+                    session_id=session_placeholder,
+                    metadata={"pool": "true"},
+                )
+
+            sandbox_pool_mgr = SandboxPoolManager(
+                sandbox_repo=sandbox_repo,
+                config=cfg,
+                provider_create_fn=_provider_create,
+            )
+            sandbox_svc.attach_pool_manager(sandbox_pool_mgr)
+        except Exception:  # pragma: no cover — only triggers in misconfigured envs
+            sandbox_pool_mgr = None
 
         file_svc = FileService(
             file_repo=file_repo,
@@ -464,6 +488,7 @@ class ApplicationContainer:
             message_service=message_svc,
             credit_service=credit_svc,
             sandbox_service=sandbox_svc,
+            sandbox_pool_manager=sandbox_pool_mgr,
             live_terminal_service=live_terminal_svc,
             plan_service=plan_svc,
             event_service=event_svc,

@@ -8,9 +8,14 @@ from ii_agent.settings.mcp.service import MCPSettingService
 
 
 class FakeMCPRepo:
+    """In-memory stand-in. Method names MUST match the real
+    ``MCPSettingRepository`` (which inherits ``save`` / ``update`` from
+    ``BaseRepository``) so tests catch service-vs-repo drift.
+    """
+
     def __init__(self):
         self.active = []
-        self.created = []
+        self.saved = []
         self.updated = []
         self.by_tool = {}
 
@@ -21,8 +26,8 @@ class FakeMCPRepo:
         self.updated.append(setting)
         return setting
 
-    async def create(self, db, setting):
-        self.created.append(setting)
+    async def save(self, db, setting):
+        self.saved.append(setting)
         return setting
 
     async def get_by_user_and_tool_type(self, db, user_id, tool_type):
@@ -56,7 +61,7 @@ async def test_create_mcp_settings_deactivates_previous_active(settings_factory)
     )
 
     assert active_setting.is_active is False
-    assert len(repo.created) == 1
+    assert len(repo.saved) == 1
     assert result.is_active is True
 
 
@@ -86,3 +91,26 @@ async def test_configure_claude_code_validates_authorization_format(settings_fac
             user_id="u1",
             authorization_code="invalid-format",
         )
+
+
+def test_real_repository_implements_every_method_service_uses():
+    """Contract test: every ``self._repo.<method>`` call inside ``MCPSettingService``
+    must be present on the real ``MCPSettingRepository`` class.
+
+    This guards against the regression where the service called ``repo.create``
+    while the repository (via ``BaseRepository``) only exposed ``save`` —
+    a 500 that the existing ``FakeMCPRepo`` masked.
+    """
+    import inspect
+    import re
+
+    from ii_agent.settings.mcp.repository import MCPSettingRepository
+
+    source = inspect.getsource(MCPSettingService)
+    called_methods = set(re.findall(r"self\._repo\.([a-zA-Z_][a-zA-Z0-9_]*)", source))
+
+    missing = sorted(m for m in called_methods if not hasattr(MCPSettingRepository, m))
+    assert not missing, (
+        f"MCPSettingService calls these methods that MCPSettingRepository "
+        f"does not implement: {missing}"
+    )

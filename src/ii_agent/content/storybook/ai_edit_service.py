@@ -615,7 +615,12 @@ class StorybookAIEditService:
         """Resolve the session LLM config with default fallback."""
 
         async def _get_default() -> LLMConfig:
-            return await self._model_setting_service.resolve_system_config(db, setting_id="default")
+            try:
+                return await self._model_setting_service.resolve_system_config(
+                    db, model_id="default"
+                )
+            except ValueError:
+                return LLMConfig()
 
         try:
             session_uuid = uuid.UUID(session_id)
@@ -637,7 +642,7 @@ class StorybookAIEditService:
         except Exception:
             try:
                 llm_config = await self._model_setting_service.resolve_system_config(
-                    db, setting_id=setting_id
+                    db, model_id=setting_id
                 )
                 return llm_config.model_copy(deep=True), setting_id
             except Exception:

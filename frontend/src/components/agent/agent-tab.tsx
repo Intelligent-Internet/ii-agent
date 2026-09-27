@@ -10,6 +10,7 @@ import { MobilePublishButton } from '@/components/agent/mobile-publish-button'
 import {
     selectActiveTab,
     selectVscodeUrl,
+    selectVncUrl,
     setActiveTab,
     useAppDispatch,
     useAppSelector
@@ -29,6 +30,7 @@ const AgentTabs = ({ sessionId, projectId, agentType }: AgentTabsProps) => {
 
     const activeTab = useAppSelector(selectActiveTab)
     const vscodeUrl = useAppSelector(selectVscodeUrl)
+    const vncUrl = useAppSelector(selectVncUrl)
 
     const isShareMode = useMemo(
         () => location.pathname.includes('/share/'),
@@ -42,6 +44,15 @@ const AgentTabs = ({ sessionId, projectId, agentType }: AgentTabsProps) => {
         }
 
         window.open(vscodeUrl, '_blank')
+    }
+
+    const handleOpenVNC = () => {
+        if (!vncUrl) {
+            toast.error(t('agentTab.errors.vncUrlMissing', 'noVNC URL not available'))
+            return
+        }
+
+        window.open(vncUrl, '_blank')
     }
 
     const shouldShowProjectTab = useMemo(() => {
@@ -112,6 +123,15 @@ const AgentTabs = ({ sessionId, projectId, agentType }: AgentTabsProps) => {
                             height={16}
                         />{' '}
                         {t('agentTab.openInVSCode')}
+                    </Button>
+                )}
+                {vncUrl && !isShareMode && (
+                    <Button
+                        className="rounded-full h-7 text-xs font-semibold border-black dark:border-white"
+                        variant="outline"
+                        onClick={handleOpenVNC}
+                    >
+                        🖥️ {t('agentTab.openBrowserVNC', 'View Browser')}
                     </Button>
                 )}
                 {agentType === AGENT_TYPE.MOBILE_APP ? (

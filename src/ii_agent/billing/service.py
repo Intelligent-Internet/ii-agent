@@ -212,8 +212,7 @@ class BillingService:
     ) -> None:
         if not event_id:
             logger.warning(
-                "Skipping billing transaction for user %s due to missing event id",
-                user_id,
+                f"Skipping billing transaction for user {user_id} due to missing event id"
             )
             return
 
@@ -223,15 +222,11 @@ class BillingService:
             .with_for_update()
         )
         if existing.scalar_one_or_none():
-            logger.debug("Billing transaction already exists for event %s", event_id)
+            logger.debug(f"Billing transaction already exists for event {event_id}")
             return
 
         db.add(BillingTransaction(user_id=user_id, stripe_event_id=event_id, **values))
-        logger.info(
-            "Stored billing transaction for user %s (event %s)",
-            user_id,
-            event_id,
-        )
+        logger.info(f"Stored billing transaction for user {user_id} (event {event_id})")
 
     async def _resolve_user_id(
         self, metadata: dict[str, Any], customer_id: str | None
@@ -258,7 +253,7 @@ class BillingService:
             subscription = await run_in_threadpool(stripe.Subscription.retrieve, subscription_id)
             return self._as_dict(subscription)
         except stripe.error.StripeError as exc:
-            logger.error("Failed to retrieve subscription %s: %s", subscription_id, exc)
+            logger.error(f"Failed to retrieve subscription {subscription_id}: {exc}")
             return None
 
     # ------------------------------------------------------------------
@@ -368,7 +363,7 @@ class BillingService:
         event_id = event.get("id")
         data_object = event.get("data", {}).get("object")
 
-        logger.info("Processing Stripe event %s (%s)", event_id, event_type)
+        logger.info(f"Processing Stripe event {event_id} ({event_type})")
 
         if event_type == "checkout.session.completed":
             await self._handle_checkout_completed(event_id, data_object)
@@ -379,7 +374,7 @@ class BillingService:
         elif event_type == "customer.subscription.updated":
             await self._handle_subscription_updated(event_id, data_object)
         else:
-            logger.debug("Unhandled Stripe event type: %s", event_type)
+            logger.debug(f"Unhandled Stripe event type: {event_type}")
 
     # ------------------------------------------------------------------
     # Webhook event handlers (private)
@@ -396,7 +391,7 @@ class BillingService:
         customer_id = session_data.get("customer")
 
         if not raw_user_id:
-            logger.warning("Checkout session %s missing user or plan metadata", event_id)
+            logger.warning(f"Checkout session {event_id} missing user or plan metadata")
             return
 
         user_id = uuid.UUID(raw_user_id) if isinstance(raw_user_id, str) else raw_user_id
@@ -436,10 +431,7 @@ class BillingService:
                 )
 
             logger.info(
-                "Updated subscription for user %s via checkout completion: plan=%s, status=%s",
-                user_id,
-                plan_id,
-                status,
+                f"Updated subscription for user {user_id} via checkout completion: plan={plan_id}, status={status}"
             )
 
             await self._record_transaction(
@@ -476,7 +468,7 @@ class BillingService:
 
         user_id = await self._resolve_user_id(metadata, customer_id)
         if not user_id:
-            logger.warning("Invoice payment event %s missing user identification", event_id)
+            logger.warning(f"Invoice payment event {event_id} missing user identification")
             return
 
         if not plan_id:
@@ -532,11 +524,7 @@ class BillingService:
             )
 
         logger.info(
-            "Recorded billing transaction for user %s: invoice=%s, plan=%s, amount=%s",
-            user_id,
-            invoice_id,
-            plan_id,
-            (amount_paid or 0) / 100 if amount_paid is not None else None,
+            f"Recorded billing transaction for user {user_id}: invoice={invoice_id}, plan={plan_id}, amount={(amount_paid or 0) / 100 if amount_paid is not None else None}"
         )
 
     async def _handle_subscription_deleted(
@@ -548,10 +536,7 @@ class BillingService:
 
         user_id = await self._resolve_user_id(metadata, customer_id)
         if not user_id:
-            logger.warning(
-                "Subscription cancel event %s missing user identification",
-                event_id,
-            )
+            logger.warning(f"Subscription cancel event {event_id} missing user identification")
             return
 
         status = subscription_data.get("status") or "canceled"
@@ -575,17 +560,10 @@ class BillingService:
         async with get_db_session_local() as db:
             user = await self._update_user_subscription(db, user_id, updates)
             if not user:
-                logger.warning(
-                    "Could not update canceled subscription for missing user %s",
-                    user_id,
-                )
+                logger.warning(f"Could not update canceled subscription for missing user {user_id}")
                 return
 
-            logger.info(
-                "Marked subscription canceled for user %s via event %s",
-                user_id,
-                event_id,
-            )
+            logger.info(f"Marked subscription canceled for user {user_id} via event {event_id}")
 
             await self._record_transaction(
                 db,
@@ -630,10 +608,7 @@ class BillingService:
 
         user_id = await self._resolve_user_id(metadata, customer_id)
         if not user_id:
-            logger.warning(
-                "Subscription update event %s missing user identification",
-                event_id,
-            )
+            logger.warning(f"Subscription update event {event_id} missing user identification")
             return
 
         status = subscription_data.get("status")
@@ -657,18 +632,12 @@ class BillingService:
         async with get_db_session_local() as db:
             user = await self._update_user_subscription(db, user_id, updates)
             if not user:
-                logger.warning(
-                    "Could not update subscription for missing user %s",
-                    user_id,
-                )
+                logger.warning(f"Could not update subscription for missing user {user_id}")
                 return
 
             logger.info(
-                "Updated subscription for user %s via subscription updated event: "
-                "plan=%s, status=%s",
-                user_id,
-                plan_id,
-                status,
+                f"Updated subscription for user {user_id} via subscription updated event: "
+                f"plan={plan_id}, status={status}"
             )
 
             await self._record_transaction(

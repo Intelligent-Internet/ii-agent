@@ -384,8 +384,7 @@ class E2BShell(Shell):
                 await sandbox.pty.kill(terminal.pid)
             except Exception:  # noqa: BLE001
                 logger.warning(
-                    "Failed to clean up PTY %s during shell session bootstrap",
-                    terminal.pid,
+                    f"Failed to clean up PTY {terminal.pid} during shell session bootstrap",
                     exc_info=True,
                 )
             raise
@@ -411,7 +410,7 @@ class E2BShell(Shell):
         try:
             await sandbox.pty.kill(record.pid)
         except NotFoundException:
-            logger.info("PTY %s already exited for session %s", record.pid, session_name)
+            logger.info(f"PTY {record.pid} already exited for session {session_name}")
 
     async def build_command_request(
         self,

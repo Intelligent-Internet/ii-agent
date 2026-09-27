@@ -15,28 +15,6 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
   cargo build --release && \
   cp /build/ii-app-cli/target/release/ii-app /ii-app
 
-# Build Codex SSE HTTP server
-FROM rust:1.75-slim AS codex-builder
-
-# Optimization: Use cache mount for apt-get to speed up repeated builds
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-  --mount=type=cache,target=/var/lib/apt,sharing=locked \
-  apt-get update && apt-get install -y \
-  git \
-  ca-certificates \
-  pkg-config \
-  libssl-dev
-
-WORKDIR /build
-RUN git clone --branch v0.0.1 https://github.com/Intelligent-Internet/codex.git
-WORKDIR /build/codex/codex-rs
-
-# Optimization: Use cargo cache mount to avoid re-downloading dependencies
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-  --mount=type=cache,target=/build/codex/codex-rs/target \
-  cargo build --release --bin sse-http-server && \
-  cp /build/codex/codex-rs/target/release/sse-http-server /sse-http-server
-
 FROM nikolaik/python-nodejs:python3.10-nodejs24-slim
 
 COPY docker/sandbox/.bashrc /root/.bashrc
@@ -57,11 +35,16 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
   unzip \
   libmagic1 \
   xvfb \
+  x11vnc \
+  novnc \
+  websockify \
+  fluxbox \
   pandoc \
   weasyprint \
   libpq-dev \
   wget \
   gosu \
+  sudo \
   jq \
   libnspr4 \
   libnss3 \
@@ -82,9 +65,25 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 # Optimization: Combine all curl installs and npm installs into fewer layers
 RUN curl -fsSL https://code-server.dev/install.sh | sh
 
+# GitHub CLI (gh) — required by the Copilot A2A backend (`gh copilot agent`)
+# Pinned: update gh version when upgrading github-copilot-sdk compatibility.
+# Bumped 2026-08-29: 2.92.0 was rolled out of the apt repo, breaking sandbox
+# rebuilds.  Keep this in sync with the latest GitHub CLI stable release.
+ARG GH_CLI_VERSION=2.101.0
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+  --mount=type=cache,target=/var/lib/apt,sharing=locked \
+  curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+    -o /usr/share/keyrings/githubcli-archive-keyring.gpg && \
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+    > /etc/apt/sources.list.d/github-cli.list && \
+  apt-get update && apt-get install -y gh=${GH_CLI_VERSION} && \
+  rm -rf /var/lib/apt/lists/*
+
 # Optimization: Use npm cache mount and install playwright package and system deps as root
+# Pinned: update versions together when upgrading A2A backend compatibility.
+#   @anthropic-ai/claude-code — required by claude-code A2A backend
 RUN --mount=type=cache,target=/root/.npm \
-  npm install -g agent-browser @intelligent-internet/codex @ast-grep/cli @anthropic-ai/claude-code
+  npm install -g agent-browser @ast-grep/cli @anthropic-ai/claude-code@2.1.114
 
 RUN --mount=type=cache,target=/root/.npm \
   npm install -g vercel
@@ -106,7 +105,7 @@ RUN chown -R user:user /home/user
 # Install browser binaries as pn user so they're accessible at runtime
 USER user
 RUN curl -fsSL https://bun.sh/install | bash
-RUN agent-browser install --with-deps
+RUN agent-browser install
 USER root
 RUN agent-browser install --with-deps
 
@@ -144,8 +143,11 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 COPY src/ii_server /app/ii_sandbox/src/ii_server
 COPY src/ii_agent_tools /app/ii_sandbox/src/ii_agent_tools
 
-# Optimization: Copy from cached location in codex-builder
-COPY --from=codex-builder /sse-http-server /usr/local/bin/sse-http-server
+# Copy the A2A adapter subtree + minimal parent __init__.py files so
+# `python -m ii_agent.integrations.a2a.adapter_server` resolves inside the sandbox.
+COPY src/ii_agent/__init__.py /app/ii_sandbox/src/ii_agent/__init__.py
+COPY src/ii_agent/integrations/__init__.py /app/ii_sandbox/src/ii_agent/integrations/__init__.py
+COPY src/ii_agent/integrations/a2a /app/ii_sandbox/src/ii_agent/integrations/a2a
 
 # Copy ii-app CLI binary and assets
 COPY --from=ii-app-builder /ii-app /usr/local/bin/ii-app
@@ -156,7 +158,7 @@ ENV II_APP_SKILL_ROOT=/usr/local/share/ii-app
 RUN touch /app/.user_env /app/.user_env.sh
 
 # Copy config files for root (build time) and user (runtime)
-RUN mkdir -p /root/.codex /home/user/.codex /home/user/.claude
+RUN mkdir -p /home/user/.claude
 COPY docker/sandbox/template.css /app/template.css
 COPY docker/sandbox/claude_template.json /root/.claude.json
 COPY docker/sandbox/claude_template.json /home/user/.claude.json
@@ -185,10 +187,29 @@ ENV PATH="/home/user/.bun/bin:/app/ii_sandbox/.venv/bin:$PATH"
 
 USER user
 
-# Install Playwright browser binaries
+# Install Playwright browser binaries and create system symlinks
 RUN playwright install chromium
+USER root
+RUN CHROME_BIN=$(find /home/user/.cache/ms-playwright -name chrome -path '*/chrome-linux/*' | head -1) && \
+    ln -sf "$CHROME_BIN" /usr/local/bin/chromium-browser && \
+    ln -sf "$CHROME_BIN" /usr/local/bin/chromium && \
+    ln -sf "$CHROME_BIN" /usr/local/bin/google-chrome
+USER user
 
 WORKDIR /home/user
+
+# A2A adapter port — served by ii_agent.integrations.a2a.adapter_server
+# (launched by start-services.sh; default 18100 is in the control-plane range 18000-18999)
+ENV SANDBOX_ADAPTER_PORT=18100
+EXPOSE 18100
+
+# Build manifest — written by stack_control.sh at build time.
+# Inspect with: docker exec <container> cat /app/build-manifest.json
+# Manifest is written to <repo>/build-manifest-sandbox.json by
+# scripts/stack_control.sh before invoking the build (file rather than
+# build-arg avoids Linux ARG_MAX limits on large tracked_files lists).
+ARG MANIFEST_FILE=build-manifest-sandbox.json
+COPY ${MANIFEST_FILE} /app/build-manifest.json
 
 ENTRYPOINT ["/app/entrypoint.sh"]
 CMD ["bash", "/app/start-services.sh"]

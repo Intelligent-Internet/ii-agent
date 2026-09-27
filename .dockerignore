@@ -1,3 +1,6 @@
+# NOTE: keep _path_in_target_image() in scripts/stack_control.sh in sync
+# with these patterns. The script mirrors them in a global exclusion block
+# so `verify` doesn't hash files that don't actually ship in any image.
 frontend/node_modules
 workspace/
 .env
@@ -5,3 +8,6 @@ workspace/
 *.db
 *.json
 *.xml
+# Allow build manifests to be COPY'd into images (written by stack_control.sh
+# before each build; per-target name avoids races during parallel builds).
+!build-manifest-*.json

@@ -9,11 +9,8 @@ pytestmark = pytest.mark.unit
 EXPECTED_ROUTES = {
     ("POST", "/slides"),
     ("GET", "/slides"),
-    ("GET", "/slides/public"),
     ("GET", "/slides/download"),
     ("GET", "/slides/download/stream"),
-    ("GET", "/slides/public/download"),
-    ("GET", "/slides/public/download/stream"),
 }
 
 
@@ -22,13 +19,4 @@ def test_slides_router_routes_registered():
 
 
 def test_slides_router_auth_contract():
-    public_routes = {
-        ("GET", "/slides/public"),
-        ("GET", "/slides/public/download"),
-        ("GET", "/slides/public/download/stream"),
-    }
-    assert_auth_contract(
-        router,
-        protected=EXPECTED_ROUTES - public_routes,
-        public=public_routes,
-    )
+    assert_auth_contract(router, protected=EXPECTED_ROUTES)

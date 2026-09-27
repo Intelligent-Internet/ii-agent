@@ -171,7 +171,7 @@ class LiveTerminalService:
                 },
             )
         except Exception:  # noqa: BLE001
-            logger.exception("Failed to create live PTY for session %s", session_info.id)
+            logger.exception(f"Failed to create live PTY for session {session_info.id}")
             if state_registered:
                 await self._close_terminal_locked(
                     sid,
@@ -212,7 +212,7 @@ class LiveTerminalService:
                 except LiveTerminalNotFoundError:
                     await self._handle_terminal_missing(state)
                 except Exception:  # noqa: BLE001
-                    logger.exception("Failed to write to live PTY %s", state.pid)
+                    logger.exception(f"Failed to write to live PTY {state.pid}")
                     await self._emit(
                         sid,
                         "pty_error",
@@ -245,7 +245,7 @@ class LiveTerminalService:
                 except LiveTerminalNotFoundError:
                     await self._handle_terminal_missing(state)
                 except Exception:  # noqa: BLE001
-                    logger.exception("Failed to resize live PTY %s", state.pid)
+                    logger.exception(f"Failed to resize live PTY {state.pid}")
         finally:
             await self._cleanup_sid_lock_if_idle(sid, sid_lock)
 
@@ -287,13 +287,13 @@ class LiveTerminalService:
         except LiveTerminalNotFoundError:
             pass
         except Exception:  # noqa: BLE001
-            logger.warning("Failed to kill PTY %s during close", state.pid, exc_info=True)
+            logger.warning(f"Failed to kill PTY {state.pid} during close", exc_info=True)
 
         try:
             await state.handle.disconnect()
         except Exception:  # noqa: BLE001
             logger.warning(
-                "Failed to disconnect PTY handle %s during close", state.pid, exc_info=True
+                f"Failed to disconnect PTY handle {state.pid} during close", exc_info=True
             )
 
         if emit_event:
@@ -324,7 +324,7 @@ class LiveTerminalService:
         except asyncio.CancelledError:
             raise
         except Exception:  # noqa: BLE001
-            logger.exception("PTY wait failed for pid %s", state.pid)
+            logger.exception(f"PTY wait failed for pid {state.pid}")
             await self._emit(
                 state.sid,
                 "pty_error",

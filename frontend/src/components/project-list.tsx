@@ -45,6 +45,9 @@ import { hasSessionDisplayTitle } from '@/utils/session-title'
 interface ProjectListProps {
     workspaceInfo?: string
     isLoading: boolean
+    loadingMore: boolean
+    hasMore: boolean
+    onLoadMore: () => void
     handleResetState: () => void
     handleNewProject: () => void
 }
@@ -52,6 +55,9 @@ interface ProjectListProps {
 const ProjectList = ({
     workspaceInfo,
     isLoading,
+    loadingMore,
+    hasMore,
+    onLoadMore,
     handleResetState,
     handleNewProject
 }: ProjectListProps) => {
@@ -320,6 +326,25 @@ const ProjectList = ({
                                 className="size-5 stroke-black dark:stroke-white"
                             />
                             {t('sidebar.seeMore')}
+                        </Button>
+                    )}
+                    {loadingMore && (
+                        <div className="text-center py-2 text-gray-500">
+                            {t('common.loadingMore')}
+                        </div>
+                    )}
+                    {!loadingMore && hasMore && showAllProjects && (
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            className="w-full justify-start !px-0 text-black dark:text-white font-normal"
+                            onClick={onLoadMore}
+                        >
+                            <Icon
+                                name="more-2"
+                                className="size-5 stroke-black dark:stroke-white"
+                            />
+                            {t('sidebar.loadAll', 'Load all projects')}
                         </Button>
                     )}
                 </div>

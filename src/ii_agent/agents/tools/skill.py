@@ -18,7 +18,7 @@ INPUT_SCHEMA = {
     "properties": {
         "skill": {
             "type": "string",
-            "description": "The skill name (no arguments). E.g., 'pdf' or 'xlsx'",
+            "description": "REQUIRED. Name of the skill to activate, e.g. 'pdf' or 'xlsx'.",
         },
     },
     "required": ["skill"],
@@ -88,12 +88,22 @@ class SkillTool(BaseSandboxTool):
             ToolResult with skill content and activation status
         """
         skill_name = tool_input.get("skill", "").strip().lower()
-        logger.info(f"[SkillTool] Activating skill: {skill_name}")
+        logger.info("[SkillTool] Activating skill: {}", skill_name)
 
         if not skill_name:
-            logger.error("[SkillTool] No skill name provided")
+            available = (
+                ", ".join(sorted(self._skills_registry.keys()))
+                if self._skills_registry
+                else "(none loaded)"
+            )
+            logger.error("[SkillTool] No skill name provided. Available: {}", available)
             return ToolResult(
-                llm_content="Error: No skill name provided. Please specify a skill name.",
+                llm_content=(
+                    'Error: No skill name provided. You MUST pass the "skill" argument. '
+                    'Call this tool with arguments like {"skill": "agent-browser"} or '
+                    '{"skill": "pdf"}. '
+                    f"Available skills: {available}"
+                ),
                 user_display_content="No skill name provided",
                 is_error=True,
             )

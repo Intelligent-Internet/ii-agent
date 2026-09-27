@@ -49,6 +49,7 @@ export interface IModel {
     supports_vision?: boolean
     description?: string
     source?: 'user' | 'system'
+    is_default?: boolean
     pricing?: {
         input_price_per_million?: number
         output_price_per_million?: number

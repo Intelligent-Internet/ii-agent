@@ -4,23 +4,28 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import ForeignKey, String
+from sqlalchemy import Boolean, ForeignKey, Integer, String
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from ii_agent.agents.sandboxes.types import SandboxProviderType, SandboxStatus
+from ii_agent.agents.sandboxes.types import PoolState, SandboxProviderType, SandboxStatus
 from ii_agent.core.db.base import Base, TimestampColumn
 
 
 class AgentSandbox(Base):
-    """Persisted sandbox record linking a session to a provider instance."""
+    """Persisted sandbox record linking a session to a provider instance.
+
+    For pool-managed sandboxes (``pool_state`` not NULL), ``session_id`` is
+    NULL until the row is claimed by a session.
+    """
 
     __tablename__ = "agent_sandboxes"
 
-    session_id: Mapped[uuid.UUID] = mapped_column(
+    session_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("sessions.id", ondelete="CASCADE"),
         index=True,
+        nullable=True,
     )
     provider: Mapped[SandboxProviderType] = mapped_column(
         String(20),
@@ -38,7 +43,48 @@ class AgentSandbox(Base):
         TimestampColumn,
         nullable=True,
     )
+    timeout_at: Mapped[Optional[datetime]] = mapped_column(
+        TimestampColumn,
+        nullable=True,
+    )
     provider_data: Mapped[Optional[dict]] = mapped_column(
         JSONB,
+        nullable=True,
+    )
+
+    # ── Pool fields (NULL for non-pool sandboxes) ────────────────────────
+    pool_state: Mapped[Optional[PoolState]] = mapped_column(
+        String(20),
+        nullable=True,
+        index=True,
+    )
+    pool_slot: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+    retire_at: Mapped[Optional[datetime]] = mapped_column(
+        TimestampColumn,
+        nullable=True,
+    )
+    claimed_at: Mapped[Optional[datetime]] = mapped_column(
+        TimestampColumn,
+        nullable=True,
+    )
+
+    # ── MCP runtime status ───────────────────────────────────────────────
+    # ``True`` (default) once the post-claim ``_configure_mcp`` background
+    # task has completed successfully (or for non-pool sandboxes that
+    # never need a separate configure pass). Set to ``False`` when the
+    # background configure exhausts its retries; runtime MCP-tool
+    # factories check this flag and lazy-retry the handshake on demand.
+    # See docs/design-docs/sandbox-pool-claim-mcp-handoff-audit.md.
+    mcp_configured: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default="true",
+    )
+    mcp_configure_attempted_at: Mapped[Optional[datetime]] = mapped_column(
+        TimestampColumn,
         nullable=True,
     )

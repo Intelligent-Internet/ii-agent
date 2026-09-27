@@ -271,13 +271,26 @@ export const selectSelectedMilestoneId = (state: { ui: UIState }) =>
     state.ui.selectedMilestoneId
 export const selectSelectedMilestone = (state: { ui: UIState }) => {
     const { milestones, selectedMilestoneId } = state.ui
-    // If a milestone is explicitly selected, return it
+    // Honor explicit selection only if the milestone is still actionable.
+    // If the selection points at a milestone that's already completed/failed
+    // (e.g. because a MILESTONE_UPDATE event was missed or state diverged
+    // from the server), fall through to the next pending milestone instead
+    // of leaving the "next milestone" indicator stuck on a stale entry.
     if (selectedMilestoneId) {
         const selected = milestones.find((m) => m.id === selectedMilestoneId)
-        if (selected) return selected
+        if (
+            selected &&
+            (selected.status === 'pending' || selected.status === 'in_progress')
+        ) {
+            return selected
+        }
     }
-    // Default: return the first pending milestone
-    return milestones.find((m) => m.status === 'pending') || null
+    // Default: return the first in-progress or pending milestone
+    return (
+        milestones.find((m) => m.status === 'in_progress') ||
+        milestones.find((m) => m.status === 'pending') ||
+        null
+    )
 }
 export const selectPlanSummary = (state: { ui: UIState }) =>
     state.ui.planSummary

@@ -1,10 +1,12 @@
 """Sandbox exceptions for v2 agent system."""
 
+from ii_agent.core.exceptions import IIAgentError
 
-class SandboxException(Exception):
+
+class SandboxException(IIAgentError):
     """Base exception for sandbox-related errors."""
 
-    pass
+    status_code = 500
 
 
 class SandboxNotInitializedError(SandboxException):

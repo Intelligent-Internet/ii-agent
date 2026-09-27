@@ -31,6 +31,7 @@ class MinIOProvider(StorageProvider):
         region: str = "us-east-1",
         secure: bool = False,
         custom_domain: str | None = None,
+        proxy_base_url: str | None = None,
     ) -> None:
         self._client = Minio(
             endpoint,
@@ -43,6 +44,7 @@ class MinIOProvider(StorageProvider):
         self._endpoint = endpoint
         self._secure = secure
         self._custom_domain = custom_domain
+        self._proxy_base_url = proxy_base_url.rstrip("/") if proxy_base_url else None
 
         self._ensure_bucket()
 
@@ -188,6 +190,9 @@ class MinIOProvider(StorageProvider):
         return await self._run_sync(_copy)
 
     async def signed_download_url(self, path: str, expiry_seconds: int = 3600) -> str:
+        if self._proxy_base_url:
+            return f"{self._proxy_base_url}/d/{path}"
+
         def _sign() -> str:
             return self._client.presigned_get_object(
                 self._bucket_name,
@@ -202,6 +207,9 @@ class MinIOProvider(StorageProvider):
     ) -> list[str | None]:
         if not paths:
             return []
+
+        if self._proxy_base_url:
+            return [f"{self._proxy_base_url}/d/{p}" for p in paths]
 
         def _sign_batch() -> list[str | None]:
             urls: list[str | None] = []
@@ -232,6 +240,8 @@ class MinIOProvider(StorageProvider):
         return await self._run_sync(_sign)
 
     def public_url(self, path: str) -> str:
+        if self._proxy_base_url:
+            return f"{self._proxy_base_url}/d/{path}"
         if self._custom_domain:
             return f"https://{self._custom_domain}/{path}"
         scheme = "https" if self._secure else "http"

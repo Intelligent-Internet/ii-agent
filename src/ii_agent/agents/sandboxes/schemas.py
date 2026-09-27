@@ -35,6 +35,7 @@ class SandboxInfo(BaseModel):
     session_id: str
     status: SandboxStatus
     vscode_url: Optional[str] = None
+    vnc_url: Optional[str] = None
     expired_at: Optional[datetime] = None
 
     def to_dict(self) -> Dict[str, Any]:

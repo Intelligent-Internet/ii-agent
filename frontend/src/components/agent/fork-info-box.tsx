@@ -9,7 +9,7 @@ import type { ForkInfo } from '@/typings/agent'
 import { CommandType } from '@/typings/agent'
 import { useSocketIOContext } from '@/contexts/websocket-context'
 import {
-    selectSelectedModel,
+    selectSelectedAgentModel,
     selectToolSettings,
     setLoading,
     setRunStatus,
@@ -33,7 +33,7 @@ export function ForkInfoBox({
     const { t } = useTranslation()
     const dispatch = useAppDispatch()
     const { socket, sendMessage } = useSocketIOContext()
-    const selectedModel = useAppSelector(selectSelectedModel)
+    const selectedModel = useAppSelector(selectSelectedAgentModel)
     const toolSettings = useAppSelector(selectToolSettings)
     const [isStarting, setIsStarting] = useState(false)
 

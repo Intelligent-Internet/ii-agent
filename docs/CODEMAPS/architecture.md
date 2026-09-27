@@ -1,4 +1,4 @@
-<!-- Generated: 2026-03-29 | Domains: 21 | Files: 750+ | Token estimate: ~950 -->
+<!-- Generated: 2026-04-19 | Domains: 21 | Files: 750+ | Token estimate: ~1050 -->
 # Architecture
 
 ## System Overview
@@ -31,7 +31,7 @@ src/ii_agent/
 ├── content/        # Slides, storybooks, media templates
 ├── files/          # File upload/download, user & session assets
 ├── projects/       # Project mgmt, Cloud Run deployments, databases, design, subdomains
-├── integrations/   # Composio connectors, enhance prompt, mobile (Apple)
+├── integrations/   # A2A inner loop, Composio connectors, enhance prompt, mobile (Apple)
 ├── settings/       # Admin/user settings (LLM/MCP/skills)
 └── workers/        # Celery tasks + cron jobs (credit refresh)
 ```
@@ -61,8 +61,11 @@ Startup:
   6. SocketIOManager (register handlers)
   7. Seed: admin LLM settings + built-in skills
   8. APScheduler cron start
+  8b. A2A inner-loop validation (if enabled): require [a2a] extras,
+      enforce AGENT_A2A_AGENT_URL when AGENT_A2A_CHAT_STRICT=true
+  9. Docker sandbox port-pool scan (local mode)
 
-Shutdown: reverse order (cron → sio → pubsub → db → redis)
+Shutdown: drain in-flight sandbox turns (10s) → cron → sio → pubsub → db → redis
 ```
 
 ## Request Flow
@@ -100,6 +103,19 @@ Socket "chat_message" → CommandHandlerFactory
       → Skills (built-in + custom)
       → Sandbox (E2B/Docker/local)
 ```
+
+## A2A Inner Loop (optional, gated by AGENT_INNER_LOOP_MODE / AGENT_CHAT_INNER_LOOP_MODE)
+
+Two topologies — **do not conflate**:
+
+| Mode | Adapter location | URL resolution |
+|------|------------------|----------------|
+| Agent A2A | Per-sandbox (`docker/sandbox/start-services.sh` starts adapter on :18100) | `sandbox.expose_port(18100)` |
+| Chat A2A | Standalone sidecar (`a2a-adapter` service in `docker-compose.local.yaml`) | `AGENT_A2A_AGENT_URL` (required) |
+
+Chat A2A is sandbox-independent by design. `AGENT_A2A_CHAT_STRICT=true` (default) crashes startup if `AGENT_A2A_AGENT_URL` is unset — silent fallback to native LLM has historically caused 10×+ unexpected provider charges. `AGENT_A2A_FALLBACK_TO_NATIVE` gates only genuine runtime failures (circuit breaker, rate limits, transport errors). `a2a-sdk` is an optional extra (`pip install -e ".[a2a]"`).
+
+Design: [chat-a2a-adapter-sidecar](../design-docs/chat-a2a-adapter-sidecar.md), [a2a-inner-loop-url-resolution](../design-docs/a2a-inner-loop-url-resolution.md), [a2a-billing-model](../design-docs/a2a-billing-model.md).
 
 ## DI Pattern
 

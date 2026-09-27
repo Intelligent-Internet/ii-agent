@@ -25,7 +25,14 @@ class AuthConfigService:
     """Service for managing Composio authentication configurations."""
 
     def __init__(self, api_key: Optional[str] = None):
-        self.client = ComposioClient.get_client(api_key)
+        self._api_key = api_key
+        self._client: "Composio | None" = None
+
+    @property
+    def client(self) -> "Composio":
+        if self._client is None:
+            self._client = ComposioClient.get_client(self._api_key)
+        return self._client
 
     def build_custom_auth_config(
         self, prefix_toolkit_slug_composio: str

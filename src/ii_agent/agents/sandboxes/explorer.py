@@ -8,6 +8,7 @@ stop, no subscriber tracking, no Redis coordination.
 from __future__ import annotations
 
 import asyncio
+import inspect
 import queue
 import uuid
 from dataclasses import dataclass, field
@@ -209,7 +210,9 @@ class WorkspaceExplorer:
             state.debounce_task.cancel()
         if state.watch_handle:
             try:
-                await state.watch_handle.stop()
+                maybe_awaitable = state.watch_handle.stop()
+                if inspect.isawaitable(maybe_awaitable):
+                    await maybe_awaitable
             except Exception:
                 logger.opt(exception=True).debug(
                     "Error stopping watcher for sandbox {}", provider_id

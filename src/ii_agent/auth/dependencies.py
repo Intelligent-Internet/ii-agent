@@ -62,9 +62,51 @@ async def get_current_user(
 CurrentUser: TypeAlias = Annotated[User, Depends(get_current_user)]
 
 
+async def get_current_user_not_purging(current_user: CurrentUser) -> User:
+    """Reject requests when the caller's account is mid-purge.
+
+    Per design-doc §16 + I3/I8, once ``users.is_purging=true`` the user-account
+    purge driver is iterating over every owned session. Allowing a new
+    session-mutating request to land would either:
+
+      - Re-create a session row that the purge driver has already scanned
+        (I3 violation, GDPR Art. 17 re-emergence), or
+      - Race ``purge_one_session`` for the same session id (I8 violation,
+        ``purge_attempts`` accounting corruption).
+
+    Apply this dependency to ANY endpoint that creates or mutates a Session
+    or its child rows. Read-only endpoints (list/detail) are exempt — they
+    do not block the purge driver.
+
+    Returns the same User object as ``CurrentUser`` (so the dep can stand
+    in directly). Raises HTTP 423 Locked on block.
+
+    Defence-in-depth: the ORM ``before_insert`` listener
+    (``register_purge_guards``) catches direct DB inserts that bypass this
+    HTTP-level check.
+    """
+    if bool(getattr(current_user, "is_purging", False)):
+        from fastapi import HTTPException, status
+
+        raise HTTPException(
+            status_code=status.HTTP_423_LOCKED,
+            detail=(
+                "account is undergoing erasure; mutation endpoints are "
+                "locked until the purge completes (GDPR Art. 17 / §16)."
+            ),
+        )
+    return current_user
+
+
+# Type alias for the not-purging variant.
+NotPurgingDep: TypeAlias = Annotated[User, Depends(get_current_user_not_purging)]
+
+
 __all__ = [
     "get_current_user",
+    "get_current_user_not_purging",
     "CurrentUser",
+    "NotPurgingDep",
     "DBSession",
     "SettingsDep",
     "security",

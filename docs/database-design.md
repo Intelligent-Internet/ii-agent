@@ -179,7 +179,7 @@ Financial columns use `Numeric(18, 6)` for exact decimal arithmetic:
 
 ### FK & Cascade Strategy
 
-**Design principle:** FK constraints on reference/config tables for correctness; no FKs on high-volume operational tables to avoid cascade lock storms. All columns still have B-tree indexes for query performance.
+**Design principle:** FK constraints on reference/config tables for correctness; previously, no FKs on high-volume operational tables to avoid cascade lock storms (B-tree indexes provided join performance). As of PR-C (migration `20260428_000010_session_fk_constraints.py`), the operational tables now also carry FKs added with `NOT VALID` + `VALIDATE CONSTRAINT` so the cascade lock-storm risk is contained to a brief `ShareRowExclusiveLock` per ALTER. Cascade choice is dictated by `docs/design-docs/session-lifecycle-and-data-custody.md` §3.1: **CASCADE** when the row is operationally meaningless without its parent (chat history, sandbox state); **SET NULL** when audit/billing retention requires the row to outlive the parent (`credit_transactions`, `application_events`).
 
 **Tables WITH FK constraints** (low-volume, correctness matters):
 - `api_keys` → users (CASCADE)
@@ -204,17 +204,21 @@ Financial columns use `Numeric(18, 6)` for exact decimal arithmetic:
 - `connectors`, `composio_profiles`, `apple_credentials` → users (CASCADE)
 - `chat_provider_vector_stores` → users (CASCADE)
 
-**Tables WITHOUT FK constraints** (high-volume, index-only):
-- `run_tasks` — session_id indexed, no FK
-- `task_logs` — task_id indexed, no FK
-- `agent_run_messages` — session_id, run_id, parent_run_id indexed, no FKs
-- `agent_sandboxes` — session_id indexed, no FK
-- `chat_messages` — session_id, parent_message_id indexed, no FKs
-- `chat_summaries` — session_id, parent_summary_id indexed, no FKs
-- `chat_provider_containers` — session_id indexed, no FK
-- `chat_provider_files` — file_id, session_id indexed, no FKs
-- `credit_transactions` — user_id, session_id, billing_transaction_id indexed, no FKs
-- `application_events` — intentionally no FKs (event log)
+**Tables WITH FK constraints added by PR-C** (operational, NOT VALID + VALIDATE):
+- `run_tasks` → sessions (CASCADE) [`fk_run_tasks_session_id`]
+- `task_logs` → run_tasks (CASCADE) [`fk_task_logs_task_id`] — closes the §1 doc-quoted "62 orphans"
+- `agent_run_messages` → sessions (CASCADE) [`fk_agent_run_messages_session_id`]
+- `agent_sandboxes` → sessions (CASCADE) [`fk_agent_sandboxes_session_id`]
+- `chat_messages` → sessions (CASCADE) [`fk_chat_messages_session_id`]
+- `chat_summaries` → sessions (CASCADE) [`fk_chat_summaries_session_id`]
+- `chat_provider_containers` → sessions (CASCADE) [`fk_chat_provider_containers_session_id`]
+- `chat_provider_files` → sessions (CASCADE) [`fk_chat_provider_files_session_id`]
+- `credit_transactions` → sessions (SET NULL) [`fk_credit_transactions_session_id`], users (SET NULL, **was NOT NULL**) [`fk_credit_transactions_user_id`]
+- `application_events` → sessions (SET NULL) [`fk_application_events_session_id`], users (SET NULL) [`fk_application_events_user_id`]
+
+**Tables intentionally WITHOUT FK constraints** (no clean parent or future migration):
+- `agent_event_logs` — `session_id` is `String` (legacy schema mismatch); table currently unused
+- `session_summaries` — `session_id` is `String` (legacy schema mismatch)
 
 ### Partial Indexes
 - `application_events`: partial index on `run_id` WHERE `run_id IS NOT NULL`

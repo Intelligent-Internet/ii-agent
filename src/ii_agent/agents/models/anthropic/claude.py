@@ -19,6 +19,7 @@ from ii_agent.agents.models.response import ModelResponse
 from ii_agent.agents.runs.agent import RunOutput
 from ii_agent.agents.utils.http import get_default_async_client
 from ii_agent.core.logger import logger
+from ii_agent.core.redis.cancel import RunCancelledException, raise_if_cancelled
 
 try:
     from anthropic import Anthropic as AnthropicClient
@@ -191,6 +192,10 @@ def _format_image_for_message(image: Image) -> Optional[Dict[str, Any]]:
         elif image.content is not None:
             content_bytes = image.content
 
+        # Case 4: Image has a local/sandbox filepath
+        elif image.filepath is not None:
+            content_bytes = image.get_content_bytes()
+
         else:
             logger.error(f"Unsupported image type: {type(image)}")
             return None
@@ -339,20 +344,35 @@ def format_messages(
                     }
                 )
             elif redacted_reasoning_content:
-                # Redacted thinking (no signature needed)
+                # Redacted thinking (no signature needed).
+                # Per Anthropic API: {"type": "redacted_thinking", "data": "<blob>"}.
                 parts.append(
                     {
                         "type": "redacted_thinking",
-                        "redacted_thinking": str(redacted_reasoning_content),
+                        "data": str(redacted_reasoning_content),
                     }
                 )
             elif reasoning_content:
-                # Fallback: use reasoning_content as redacted if no signature
-                parts.append(
-                    {
-                        "type": "redacted_thinking",
-                        "redacted_thinking": str(reasoning_content),
-                    }
+                # We have plaintext reasoning but no Anthropic-issued signature
+                # and no Anthropic-issued opaque `redacted_thinking.data` blob.
+                #
+                # Do NOT synthesize a `redacted_thinking` block here: Anthropic
+                # validates `redacted_thinking.data` as an opaque ciphertext
+                # they issued themselves. Sending plaintext as `data` triggers
+                # a non-retriable 400 "Invalid data in redacted_thinking block"
+                # which permanently bricks replay of the conversation.
+                # (See triage of session 9785de09, 2026-05-11.)
+                #
+                # Without a signature we cannot preserve thinking continuity,
+                # so we drop the block entirely. Anthropic does not require us
+                # to echo prior thinking back when extended thinking is enabled
+                # for the current request.
+                logger.warning(
+                    "Dropping reasoning_content from replayed assistant message: "
+                    "no Anthropic signature available, so cannot emit a valid "
+                    "thinking or redacted_thinking block. role={}, rc_len={}",
+                    message.role,
+                    len(str(reasoning_content)),
                 )
 
         # Regular text content
@@ -411,7 +431,38 @@ def format_messages(
                     files_text = "\n\nAttached files:\n" + "\n".join(f" - {p}" for p in file_paths)
                     parts.append({"type": "text", "text": files_text})
 
-        chat_messages.append({"role": ROLE_MAP[message.role], "content": parts})
+        # Defensive sanitizer: drop malformed thinking/redacted_thinking blocks before
+        # sending to Anthropic. A2A inner-loop fallback can replay history that contains
+        # partially-formed thinking blocks (e.g. from a stream that was cut mid-response),
+        # which Anthropic rejects with a non-retriable 400 and permanently bricks the
+        # session. See triage of session e965f013 (2026-04-25).
+        sanitized_parts: List[Dict[str, Any]] = []
+        for part in parts:
+            if not isinstance(part, dict):
+                sanitized_parts.append(part)
+                continue
+            ptype = part.get("type")
+            if ptype == "thinking":
+                # Requires non-empty `thinking` and `signature`
+                if not part.get("thinking") or not part.get("signature"):
+                    logger.warning(
+                        "Dropping malformed `thinking` block from Anthropic message "
+                        "(missing thinking or signature). role={}",
+                        message.role,
+                    )
+                    continue
+            elif ptype == "redacted_thinking":
+                # Requires non-empty `data`
+                if not part.get("data"):
+                    logger.warning(
+                        "Dropping malformed `redacted_thinking` block from Anthropic "
+                        "message (missing data). role={}",
+                        message.role,
+                    )
+                    continue
+            sanitized_parts.append(part)
+
+        chat_messages.append({"role": ROLE_MAP[message.role], "content": sanitized_parts})
 
     # Flush any remaining tool results at the end
     if pending_tool_results:
@@ -624,7 +675,17 @@ class Claude(Model):
             _request_params["max_tokens"] = self.max_tokens
         if self.thinking:
             _request_params["thinking"] = self.thinking
-        if self.temperature:
+            # Extended thinking forbids temperature modifications.  Only
+            # temperature=1 (the API default) is legal — omitting the field
+            # entirely is the safest behaviour.  Silently dropping a
+            # configured non-1 temperature prevents the native-LLM fallback
+            # path from 400-looping on every retry.
+            if self.temperature is not None and self.temperature != 1:
+                logger.debug(
+                    f"Dropping temperature={self.temperature} because extended thinking is enabled "
+                    "(Anthropic requires temperature=1 when thinking is on)."
+                )
+        elif self.temperature is not None:
             _request_params["temperature"] = self.temperature
         if self.stop_sequences:
             _request_params["stop_sequences"] = self.stop_sequences
@@ -746,11 +807,16 @@ class Claude(Model):
 
             # for non stream, max_tokens params will response error:
             request_kwargs.pop("max_tokens", None)
-            if request_kwargs.get("thinking"):
-                request_kwargs["thinking"] = {
-                    "type": "enabled",
-                    "budget_tokens": 8192,
-                }
+            thinking_cfg = request_kwargs.get("thinking")
+            if thinking_cfg:
+                # Preserve adaptive thinking (required on Opus 4.7+; manual
+                # enabled+budget_tokens returns HTTP 400 on that model).
+                # Only shrink budget for legacy "enabled" mode on non-stream.
+                if thinking_cfg.get("type") == "enabled":
+                    request_kwargs["thinking"] = {
+                        "type": "enabled",
+                        "budget_tokens": 8192,
+                    }
 
             assistant_message.metrics.start_timer()
             provider_response = await self.get_async_client().beta.messages.create(
@@ -823,6 +889,10 @@ class Claude(Model):
                 model_name=self.name,
                 model_id=self.id,
             ) from e
+        except RunCancelledException:
+            # Cancellation is not a provider error -- let it propagate so the
+            # outer agent loop can mark the run cancelled.
+            raise
         except Exception as e:
             logger.error(f"Unexpected error calling Claude API: {str(e)}")
             raise ModelProviderError(message=str(e), model_name=self.name, model_id=self.id) from e
@@ -859,12 +929,24 @@ class Claude(Model):
                 system_message, tools=tools, response_format=response_format
             )
             assistant_message.metrics.start_timer()
+            # Cancellation polling between stream chunks. Without this, a long
+            # extended-thinking turn (or a slow upstream) holds the run in a
+            # state where a user cancel sits in Redis as `aborting` until the
+            # full Claude response completes. Polling every chunk lets the
+            # cancel propagate within roughly one inter-chunk gap.
+            run_id_for_cancel: Optional[str] = (
+                run_response.run_id
+                if run_response is not None and getattr(run_response, "run_id", None)
+                else None
+            )
             async with self.get_async_client().beta.messages.stream(
                 model=self.id,
                 messages=chat_messages,  # type: ignore
                 **request_kwargs,
             ) as stream:
                 async for chunk in stream:
+                    if run_id_for_cancel is not None:
+                        await raise_if_cancelled(run_id_for_cancel)
                     yield self._parse_provider_response_delta(chunk)  # type: ignore
 
             assistant_message.metrics.stop_timer()
@@ -922,6 +1004,10 @@ class Claude(Model):
                 model_name=self.name,
                 model_id=self.id,
             ) from e
+        except RunCancelledException:
+            # Cancellation raised mid-stream (between chunks). Don't wrap as
+            # ModelProviderError -- let it bubble to the agent loop.
+            raise
         except Exception as e:
             logger.error(f"Unexpected error calling Claude API: {str(e)}")
             raise ModelProviderError(message=str(e), model_name=self.name, model_id=self.id) from e

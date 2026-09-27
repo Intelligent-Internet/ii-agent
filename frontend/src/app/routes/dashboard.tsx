@@ -45,9 +45,11 @@ import {
 import { wishlistService } from '@/services/wishlist.service'
 import { sessionService } from '@/services/session.service'
 import { ISession } from '@/typings/agent'
-import { deleteSession } from '@/state/slice/sessions'
+import { deleteSession, selectActiveSessionId } from '@/state/slice/sessions'
 import { clearSessionState } from '@/state/slice/session-state'
 import { removePin } from '@/state/slice/pins'
+import { setRunStatus } from '@/state/slice/agent'
+import { setLoading } from '@/state'
 
 enum TAB {
     ALL = 'all',
@@ -74,6 +76,7 @@ export function DashboardPage() {
     const currentPage = useAppSelector(selectSessionsPage)
     const limit = useAppSelector(selectSessionsLimit)
     const favoriteSessionIds = useAppSelector(selectFavoriteSessionIds)
+    const activeSessionId = useAppSelector(selectActiveSessionId)
 
     const handleBack = () => {
         navigate(-1)
@@ -117,6 +120,10 @@ export function DashboardPage() {
             await dispatch(deleteSession(deleteSessionId)).unwrap()
             dispatch(clearSessionState(deleteSessionId))
             dispatch(removePin(deleteSessionId))
+            if (deleteSessionId === activeSessionId) {
+                dispatch(setRunStatus(null))
+                dispatch(setLoading(false))
+            }
             setIsDeleteDialogOpen(false)
             setDeleteSessionId(null)
         } catch (error) {

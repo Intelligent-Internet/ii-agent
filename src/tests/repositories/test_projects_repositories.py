@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ii_agent.projects.databases.models import ProjectDatabase
 from ii_agent.projects.databases.repository import ProjectDatabaseRepository
 from ii_agent.projects.deployments.models import ProjectDeployment
 from ii_agent.projects.deployments.repository import DeploymentsRepository
@@ -30,7 +31,7 @@ async def test_project_repository_soft_delete_and_updates(
 
     active = await project_factory(user_id=user.id, session_id=active_session.id, name="Active")
     deleted = Project(
-        id=str(uuid.uuid4()),
+        id=uuid.uuid4(),
         user_id=user.id,
         session_id=deleted_session.id,
         name="Deleted",
@@ -47,7 +48,7 @@ async def test_project_repository_soft_delete_and_updates(
     assert await repo.get_owner_user_id(db_session, active.id) == user.id
 
     custom_domain = ProjectCustomDomain(
-        id=str(uuid.uuid4()),
+        id=uuid.uuid4(),
         project_id=active.id,
         subdomain="active-subdomain",
         full_domain="active-subdomain.example.com",
@@ -55,29 +56,14 @@ async def test_project_repository_soft_delete_and_updates(
     db_session.add(custom_domain)
     await db_session.flush()
 
-    await repo.update_custom_domain(
-        db_session,
-        active.id,
-        custom_domain.id,
-        production_url="https://active.example.com",
-    )
+    # update_production_url is the only URL mutation on ProjectRepository
     await repo.update_production_url(db_session, active.id, "https://prod.example.com")
-    assert active.custom_domain_id == custom_domain.id
     assert active.production_url == "https://prod.example.com"
 
-    await repo.update_custom_domain(db_session, active.id, None)
-    assert active.custom_domain_id is None
-    assert active.production_url == "https://prod.example.com"
-
-    await repo.update_custom_domain(
-        db_session,
-        "missing-project-id",
-        custom_domain.id,
-        production_url="https://missing.example.com",
-    )
+    # Missing project should be silently ignored
     await repo.update_production_url(
         db_session,
-        "missing-project-id",
+        uuid.uuid4(),
         "https://missing.example.com",
     )
 
@@ -89,10 +75,10 @@ async def test_deployments_repository_latest_and_max_version(
     repo = DeploymentsRepository()
     project = await project_factory()
 
-    await repo.create(
+    await repo.save(
         db_session,
         ProjectDeployment(
-            id=str(uuid.uuid4()),
+            id=uuid.uuid4(),
             project_id=project.id,
             environment="prod",
             deployment_status="success",
@@ -100,10 +86,10 @@ async def test_deployments_repository_latest_and_max_version(
             version=1,
         ),
     )
-    deployment_v2 = await repo.create(
+    deployment_v2 = await repo.save(
         db_session,
         ProjectDeployment(
-            id=str(uuid.uuid4()),
+            id=uuid.uuid4(),
             project_id=project.id,
             environment="prod",
             deployment_status="success",
@@ -111,10 +97,10 @@ async def test_deployments_repository_latest_and_max_version(
             version=2,
         ),
     )
-    await repo.create(
+    await repo.save(
         db_session,
         ProjectDeployment(
-            id=str(uuid.uuid4()),
+            id=uuid.uuid4(),
             project_id=project.id,
             environment="prod",
             deployment_status="success",
@@ -143,19 +129,23 @@ async def test_project_database_repository_crud_and_active_count(
     session = await session_factory()
     repo = ProjectDatabaseRepository()
 
-    first = await repo.create(
+    first = await repo.save(
         db_session,
-        session_id=session.id,
-        source="neondb",
-        connection_string="postgres://a",
-        host="localhost",
+        ProjectDatabase(
+            session_id=session.id,
+            source="neondb",
+            connection_string="postgres://a",
+            host="localhost",
+        ),
     )
-    second = await repo.create(
+    second = await repo.save(
         db_session,
-        session_id=session.id,
-        source="supabase",
-        connection_string="postgres://b",
-        host="remote",
+        ProjectDatabase(
+            session_id=session.id,
+            source="supabase",
+            connection_string="postgres://b",
+            host="remote",
+        ),
     )
 
     active = await repo.get_active_by_session_id(db_session, session.id)
@@ -174,7 +164,7 @@ async def test_project_database_repository_crud_and_active_count(
     assert deactivated is not None
     assert deactivated.is_active is False
     assert await repo.count_active_by_session(db_session, session.id) == 1
-    assert await repo.deactivate(db_session, "missing-database-id") is None
+    assert await repo.deactivate(db_session, uuid.uuid4()) is None
 
 
 async def test_subdomain_repository_create_update_delete(
@@ -186,12 +176,14 @@ async def test_subdomain_repository_create_update_delete(
     project = await project_factory(user_id=user.id)
     repo = SubdomainRepository()
 
-    domain = await repo.create(
+    domain = await repo.save(
         db_session,
-        project_id=project.id,
-        user_id=user.id,
-        subdomain="my-app",
-        full_domain="my-app.example.com",
+        ProjectCustomDomain(
+            project_id=project.id,
+            claimed_by_user_id=user.id,
+            subdomain="my-app",
+            full_domain="my-app.example.com",
+        ),
     )
 
     by_project = await repo.get_by_project_id(db_session, project.id)

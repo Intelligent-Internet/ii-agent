@@ -43,6 +43,8 @@ def _create_storage() -> StorageProvider:
 
         if not s.bucket_name:
             raise ValueError("MinIO requires STORAGE_BUCKET_NAME")
+
+        proxy_base = f"{s.serve_base_url.rstrip('/')}/storage" if s.serve_base_url else None
         return MinIOProvider(
             endpoint=s.minio_endpoint,
             access_key=s.minio_access_key,
@@ -51,14 +53,7 @@ def _create_storage() -> StorageProvider:
             region=s.minio_region,
             secure=s.minio_secure,
             custom_domain=s.custom_domain,
-        )
-
-    if s.provider == "local":
-        from ii_agent.core.storage.providers.local import LocalProvider
-
-        return LocalProvider(
-            base_dir=s.local_base_dir,
-            serve_url=s.local_serve_url,
+            proxy_base_url=proxy_base,
         )
 
     raise ValueError(f"Unknown storage provider: {s.provider}")

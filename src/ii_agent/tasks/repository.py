@@ -53,9 +53,17 @@ class RunTaskRepository(BaseRepository[RunTask]):
         return list(result.scalars().all())
 
     async def get_running_session_ids(self, db: AsyncSession) -> list[str]:
+        """Return session ids whose latest task is in a non-terminal state that
+        the orphan-cleanup path on startup is responsible for reaping.
+
+        This must include ABORTING — otherwise a run that the user cancelled
+        right before a backend crash/restart never gets force-cancelled, the
+        task is permanently stuck in ABORTING, and the frontend keeps the
+        "thinking" spinner on forever (ABORTING is part of isActiveRunStatus).
+        """
         result = await db.execute(
             select(RunTask.session_id).where(
-                RunTask.status == RunStatus.RUNNING,
+                RunTask.status.in_([RunStatus.RUNNING, RunStatus.ABORTING]),
             )
         )
         return list(result.scalars().all())

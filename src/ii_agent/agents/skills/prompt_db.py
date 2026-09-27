@@ -72,7 +72,7 @@ def generate_skill_tool_description(skills: list["Skill"]) -> str:
 When users ask you to perform tasks, check if any of the available skills below can help complete the task more effectively. Skills provide specialized capabilities and domain knowledge.
 
 How to use skills:
-- Invoke skills using this tool with the skill name only (no arguments)
+- Invoke this tool by passing a skill name in the required "skill" parameter
 - When you invoke a skill, you will see <command-message>The "{{name}}" skill is loading</command-message>
 - The skill's prompt will expand and provide detailed instructions on how to complete the task
 - Examples:

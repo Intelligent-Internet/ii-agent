@@ -157,6 +157,30 @@ def format_image_for_message(image: Image) -> Optional[Dict[str, Any]]:
             "data": base64.b64encode(content_bytes).decode("utf-8"),
         }
         return image_data
+
+    # Case 3: Image has a local/sandbox filepath
+    elif image.filepath is not None:
+        import base64
+
+        content_bytes = image.get_content_bytes()
+        if not content_bytes:
+            logger.error(f"Failed to read image from filepath: {image.filepath}")
+            return None
+
+        if is_heic_format(mime_type=mime_type, image_bytes=content_bytes):
+            try:
+                content_bytes, mime_type = convert_heic_to_jpeg(content_bytes)
+            except Exception as e:
+                logger.error(f"Failed to convert HEIC to JPEG: {e}")
+                return None
+
+        image_data = {
+            "type": "image",
+            "mime_type": mime_type,
+            "data": base64.b64encode(content_bytes).decode("utf-8"),
+        }
+        return image_data
+
     else:
         logger.warning(f"Unknown image type: {type(image)}")
         return None

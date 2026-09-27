@@ -41,6 +41,85 @@ _USER_EXPLICIT = _uuid.UUID("00000000-0000-0000-0000-0000000000a2")
 _USER_RESOLVED = _uuid.UUID("00000000-0000-0000-0000-0000000000a3")
 
 
+@pytest.mark.asyncio
+async def test_recall_only_selects_unambiguous_session_owned_media():
+    repo = FakeFileRepo()
+    service = FileService(
+        file_repo=repo, session_repo=MagicMock(), storage=MagicMock(), config=MagicMock()
+    )
+    repo.files[_FILE_1] = _make_file(file_name="floor-plan.png", content_type="image/png")
+    repo.files[_FILE_2] = _make_file(
+        id=_FILE_2, file_name="roof-plan.png", content_type="image/png"
+    )
+    repo.files[_FILE_NEW] = _make_file(
+        id=_FILE_NEW, file_name="secret.png", content_type="image/png", user_id=_USER_WRONG
+    )
+    repo.files[_FILE_DONE] = _make_file(
+        id=_FILE_DONE, file_name="other.pdf", content_type="application/pdf", session_id=_SESSION_2
+    )
+
+    async def resolve(text):
+        return await service.resolve_recalled_attachment(
+            None, session_id=_SESSION_1, user_id=_USER_1, text=text
+        )
+
+    assert await resolve("show the earlier floor-plan.png") == (_FILE_1, [])
+    assert await resolve("show the earlier plan") == (None, ["floor-plan.png", "roof-plan.png"])
+    assert await resolve("show the previous image") == (None, ["floor-plan.png", "roof-plan.png"])
+    assert await resolve("show the previous attachment") == (
+        None,
+        ["floor-plan.png", "roof-plan.png"],
+    )
+    assert await resolve("show the earlier secret.png") == (None, [])
+    assert await resolve("show the earlier other.pdf") == (None, [])
+    assert await resolve("as mentioned earlier") == (None, [])
+    assert await resolve(f"show previous image {_FILE_1}") == (_FILE_1, [])
+    assert await resolve(str(_FILE_1)) == (_FILE_1, [])
+    repo.files[_FILE_2].file_name = "plan.png"
+    assert await resolve("show the previous floor-plan.png") == (_FILE_1, [])
+    repo.files[_FILE_2].file_name = "floor-plan.png"
+    assert await resolve("show the previous floor-plan.png") == (
+        None,
+        [f"floor-plan.png ({_FILE_1})", f"floor-plan.png ({_FILE_2})"],
+    )
+
+    _, clarification = await service.recall_for_turn(
+        None,
+        session_id=_SESSION_1,
+        user_id=_USER_1,
+        text="show the earlier secret.png",
+        file_ids=None,
+    )
+    assert "couldn't find" in clarification
+    assert "secret.png" not in clarification
+    _, clarification = await service.recall_for_turn(
+        None,
+        session_id=_SESSION_2,
+        user_id=_USER_1,
+        text="show the image I uploaded earlier",
+        file_ids=None,
+    )
+    assert "couldn't find" in clarification
+
+
+@pytest.mark.asyncio
+async def test_explicit_attachment_ids_reject_other_user_before_processing():
+    repo = FakeFileRepo()
+    repo.files[_FILE_1] = _make_file(content_type="image/png", user_id=_USER_WRONG)
+    service = FileService(
+        file_repo=repo, session_repo=MagicMock(), storage=MagicMock(), config=MagicMock()
+    )
+
+    with pytest.raises(FileAccessDeniedError):
+        await service.recall_for_turn(
+            None,
+            session_id=_SESSION_1,
+            user_id=_USER_1,
+            text="show this image",
+            file_ids=[str(_FILE_1)],
+        )
+
+
 # ---------------------------------------------------------------------------
 # Helpers / Fakes
 # ---------------------------------------------------------------------------
@@ -213,6 +292,7 @@ def _make_service(
             file_upload_bucket_name="uploads-bucket",
             file_upload_size_limit=1_000_000,
             signed_url_ttl_seconds=3600,
+            serve_base_url=None,
         )
     )
     if storage is None:
@@ -521,6 +601,39 @@ class TestGetAvatarUrl:
 
 
 class TestGetFilesByIdsAndUpdateSession:
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "bad_fields",
+        [
+            {"user_id": _USER_WRONG},
+            {"upload_status": "pending"},
+            {"storage_path": None},
+        ],
+    )
+    async def test_rejects_invalid_batch_before_linking(self, bad_fields):
+        repo = FakeFileRepo()
+        repo.files[_FILE_1] = _make_file(id=_FILE_1)
+        repo.files[_FILE_2] = _make_file(id=_FILE_2, **bad_fields)
+        svc = _make_service(file_repo=repo)
+
+        with pytest.raises(FileAccessDeniedError):
+            await svc.get_files_by_ids_and_update_session(
+                None, file_ids=[_FILE_1, _FILE_2], user_id=_USER_1, session_id=_SESSION_1
+            )
+
+        assert repo.session_updates == []
+
+    @pytest.mark.asyncio
+    async def test_rejects_other_users_file_before_linking_or_signing(self):
+        repo = FakeFileRepo()
+        repo.files[_FILE_1] = _make_file(id=_FILE_1, user_id=_USER_WRONG)
+        svc = _make_service(file_repo=repo)
+        with pytest.raises(FileAccessDeniedError):
+            await svc.get_files_by_ids_and_update_session(
+                None, file_ids=[_FILE_1], user_id=_USER_1, session_id=_SESSION_1
+            )
+        assert repo.session_updates == []
+
     @pytest.mark.asyncio
     async def test_links_file_to_session(self):
         repo = FakeFileRepo()

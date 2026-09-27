@@ -278,3 +278,33 @@ class TestBuildMiniToolHint:
     def test_format_includes_mini_tool_name_key(self):
         result = PromptBuilder.build_mini_tool_hint("abc", "def")
         assert "mini_tool_name" in result
+
+
+# ---------------------------------------------------------------------------
+# chat/media/utils/prompt_builder.py – build_checklist + build_reference_guidance edge cases
+# ---------------------------------------------------------------------------
+
+
+class TestPromptBuilderChecklistEmpty:
+    def test_build_checklist_empty_references_returns_empty_string(self):
+        """Branch [88, 93]: build_checklist with empty list returns ''."""
+        result = PromptBuilder.build_checklist([])
+        assert result == ""
+
+    def test_build_reference_guidance_empty_returns_empty(self):
+        guidance, index_map, next_idx = PromptBuilder.build_reference_guidance([], starting_index=1)
+        assert guidance == ""
+        assert index_map == {}
+        assert next_idx == 1
+
+    def test_build_reference_guidance_unknown_type_gives_empty_guidance(self):
+        """Line 93: else branch when ref_descriptions is empty (unrecognized type)."""
+        from types import SimpleNamespace
+
+        # A reference with type "other" is not subject/scene/style → ref_descriptions stays empty
+        ref = SimpleNamespace(type="other", file_id="file-other")
+        guidance, index_map, next_idx = PromptBuilder.build_reference_guidance(
+            [ref], starting_index=1
+        )
+        assert guidance == ""
+        assert index_map == {}

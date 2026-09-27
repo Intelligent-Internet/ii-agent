@@ -6,6 +6,7 @@ Merges the old FileService and AssetService into a single service.
 from __future__ import annotations
 
 import os
+import re
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import AsyncIterator, Optional
@@ -135,6 +136,166 @@ class FileService:
         """Get all files linked to a session."""
         assets = await self._file_repo.get_by_session_id(db, session_id)
         return [await self._to_file_data(a, db) for a in assets]
+
+    async def resolve_recalled_attachment(
+        self, db: AsyncSession, *, session_id: uuid.UUID, user_id: uuid.UUID, text: str
+    ) -> tuple[uuid.UUID | None, list[str]]:
+        """Select one session-owned image/PDF mentioned by the user, or request clarification."""
+        reference = text.casefold()
+        assets = [
+            asset
+            for asset in await self._file_repo.get_by_session_id(db, session_id)
+            if asset.user_id == user_id
+            and (
+                (asset.content_type or "").startswith("image/")
+                or asset.content_type == "application/pdf"
+            )
+            and asset.storage_path
+            and asset.upload_status == "complete"
+        ]
+        if not assets:
+            return None, []
+
+        def mentions_filename(file_name: str) -> bool:
+            pattern = rf"(?<![\w.-]){re.escape(file_name.casefold())}(?![\w.-])"
+            return bool(re.search(pattern, reference))
+
+        if not re.search(
+            r"\b(earlier|previous|uploaded|attached|sent|showed|again|recall|that)\b", reference
+        ) and not any(
+            mentions_filename(asset.file_name) or str(asset.id) in reference for asset in assets
+        ):
+            return None, []
+
+        identifiers = set(re.findall(r"[0-9a-f]{8}-[0-9a-f-]{27,}", reference))
+        if identifiers:
+            selected = [asset for asset in assets if str(asset.id) in identifiers]
+            return (selected[0].id, []) if len(selected) == 1 else (None, [])
+
+        named = [asset for asset in assets if mentions_filename(asset.file_name)]
+        if not named:
+            if re.search(r"\b[\w.-]+\.(?:png|jpe?g|gif|webp|pdf)\b", reference):
+                return None, []
+            keywords = set(re.findall(r"[a-z0-9]{3,}", reference)) - {
+                "earlier",
+                "previous",
+                "uploaded",
+                "attached",
+                "sent",
+                "showed",
+                "again",
+                "recall",
+                "that",
+                "image",
+                "photo",
+                "picture",
+                "screenshot",
+                "pdf",
+                "document",
+                "file",
+                "attachment",
+                "diagram",
+                "the",
+                "this",
+                "please",
+                "show",
+                "look",
+                "open",
+                "with",
+                "from",
+                "about",
+            }
+            named = [
+                asset
+                for asset in assets
+                if keywords.intersection(re.findall(r"[a-z0-9]{3,}", asset.file_name.casefold()))
+            ]
+        candidates = named or assets
+        if not named:
+            requested_type = (
+                "pdf"
+                if re.search(r"\b(pdf|document)\b", reference)
+                else "image"
+                if re.search(r"\b(image|photo|picture|screenshot|diagram)\b", reference)
+                else None
+            )
+            if (
+                not requested_type
+                and not re.search(r"\b(file|attachment)\b", reference)
+                and not any(
+                    keywords.intersection(re.findall(r"[a-z0-9]{3,}", asset.file_name.casefold()))
+                    for asset in assets
+                )
+            ):
+                return None, []
+            if requested_type:
+                candidates = [
+                    asset
+                    for asset in candidates
+                    if (asset.content_type == "application/pdf") == (requested_type == "pdf")
+                ]
+        if not candidates:
+            return None, []
+        if len(candidates) == 1:
+            return candidates[0].id, []
+        names = [asset.file_name for asset in candidates]
+        return None, [
+            f"{asset.file_name} ({asset.id})"
+            if names.count(asset.file_name) > 1
+            else asset.file_name
+            for asset in candidates
+        ]
+
+    async def recall_for_turn(
+        self,
+        db: AsyncSession,
+        *,
+        session_id: uuid.UUID,
+        user_id: uuid.UUID,
+        text: str,
+        file_ids: list[str] | None,
+    ) -> tuple[list[str] | None, str | None]:
+        """Add a recalled file to this turn, or ask for a unique name without reading bytes."""
+        if file_ids:
+            for file_id in file_ids:
+                try:
+                    asset_id = uuid.UUID(str(file_id))
+                except (ValueError, TypeError) as exc:
+                    raise FileAccessDeniedError() from exc
+                asset = await self._file_repo.get_by_id_and_user(db, asset_id, user_id)
+                if (
+                    not asset
+                    or not asset.storage_path
+                    or asset.upload_status != UploadStatus.COMPLETE
+                ):
+                    raise FileAccessDeniedError()
+            return file_ids, None
+        selected, candidates = await self.resolve_recalled_attachment(
+            db, session_id=session_id, user_id=user_id, text=text
+        )
+        if selected:
+            return [str(selected)], None
+        if candidates:
+            options = ", ".join(dict.fromkeys(candidates))
+            return (
+                file_ids,
+                f"Which earlier attachment did you mean? Please name one (or its ID): {options}.",
+            )
+        reference = text.casefold()
+        explicit_file = re.search(r"\b[\w.-]+\.(?:png|jpe?g|gif|webp|pdf)\b", reference)
+        prior_media = re.search(
+            r"\b(earlier|previous|uploaded|attached|sent|showed|again|recall)\b",
+            reference,
+        ) and re.search(
+            r"\b(image|photo|picture|screenshot|diagram|pdf|document|file|attachment)\b",
+            reference,
+        )
+        if explicit_file or prior_media or re.fullmatch(r"[0-9a-f-]{36}", reference.strip()):
+            return (
+                file_ids,
+                "I couldn't find that attachment in this conversation. Please provide its filename or reattach it.",
+            )
+        return file_ids, None
 
     async def link_file_to_session(
         self, db: AsyncSession, file_id: uuid.UUID, session_id: uuid.UUID
@@ -281,12 +442,20 @@ class FileService:
         expiration_seconds: int = SEVEN_DAY_SECONDS,
     ) -> list[FileDataResponse]:
         """Fetch files by IDs, link them to the session, and return with signed URLs."""
-        results: list[FileDataResponse] = []
+        assets: list[FileAsset] = []
         for file_id in file_ids:
-            asset = await self._file_repo.get_by_id(db, file_id)
+            asset = await self._file_repo.get_by_id_and_user(db, file_id, user_id)
             if not asset:
+                if await self._file_repo.get_by_id(db, file_id):
+                    raise FileAccessDeniedError()
                 continue
-            await self._file_repo.link_to_session(db, file_id, session_id)
+            if not asset.storage_path or asset.upload_status != UploadStatus.COMPLETE:
+                raise FileAccessDeniedError()
+            assets.append(asset)
+
+        results: list[FileDataResponse] = []
+        for asset in assets:
+            await self._file_repo.link_to_session(db, asset.id, session_id)
             results.append(await self._to_file_data(asset, db))
         return results
 
@@ -313,14 +482,6 @@ class FileService:
             if not file_data.url:
                 continue
 
-            files.append(
-                MediaFile(
-                    id=str(file_data.id),
-                    url=file_data.url,
-                    filename=file_data.name,
-                )
-            )
-
             # Detect images via centralized AssetType detection
             detected = AssetType.from_content_type(file_data.content_type)
             mime_type = file_data.content_type
@@ -332,6 +493,14 @@ class FileService:
 
             if detected.is_image:
                 images.append(MediaImage(url=file_data.url, mime_type=mime_type))
+            else:
+                files.append(
+                    MediaFile(
+                        id=str(file_data.id),
+                        url=file_data.url,
+                        filename=file_data.name,
+                    )
+                )
 
         return images, files
 
@@ -358,7 +527,14 @@ class FileService:
         ext = os.path.splitext(file_name)[1].lstrip(".") or "bin"
         asset_type = AssetType.from_content_type(content_type)
         blob_name = path_resolver.user_file(str(user_id), asset_type, str(file_id), ext)
-        signed_url = await self._storage.signed_upload_url(blob_name, content_type)
+
+        # When serve_base_url is set, route uploads through the backend proxy
+        # instead of directly to the storage provider (which may be internal).
+        serve_base = self._config.storage.serve_base_url
+        if serve_base:
+            upload_url = f"{serve_base.rstrip('/')}/storage/upload/{file_id}"
+        else:
+            upload_url = await self._storage.signed_upload_url(blob_name, content_type)
 
         await self._file_repo.create_asset(
             db,
@@ -373,7 +549,7 @@ class FileService:
             upload_status=UploadStatus.PENDING,
         )
 
-        return GenerateUploadUrlResponse(id=str(file_id), upload_url=signed_url)
+        return GenerateUploadUrlResponse(id=str(file_id), upload_url=upload_url)
 
     async def complete_upload(
         self,

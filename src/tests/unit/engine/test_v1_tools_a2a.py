@@ -4,8 +4,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-pytest.skip("ii_agent.agents.tools.a2a was removed during refactoring", allow_module_level=True)
-
 from ii_agent.agents.tools.a2a.a2a_agent_tool import A2AAgentTool
 
 

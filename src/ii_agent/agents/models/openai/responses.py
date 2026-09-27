@@ -114,7 +114,10 @@ class OpenAIResponses(Model):
         )
 
     def _set_reasoning_request_param(self, base_params: Dict[str, Any]) -> Dict[str, Any]:
-        """Set the reasoning request parameter."""
+        """Set the reasoning request parameter only for reasoning models."""
+        if not self._using_reasoning_model():
+            return base_params
+
         base_params["reasoning"] = self.reasoning or {}
 
         if self.reasoning_effort is not None:

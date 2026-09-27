@@ -24,6 +24,8 @@ from ii_agent.core.db import get_db_session_local
 from ii_agent.core.logger import logger
 from ii_agent.core.storage.client import get_storage
 from ii_agent.realtime.events.app_events import (
+    AgentCompleteEvent,
+    AgentResponseEvent,
     AgentStreamCompleteEvent,
     BaseEvent,
     ERROR_MESSAGES,
@@ -82,11 +84,7 @@ class BaseCommandHandler(ABC, Generic[TContent]):
         try:
             content = self._content_type.model_validate(raw_content)
         except ValidationError as exc:
-            logger.warning(
-                "Validation error for %s: %s",
-                self.get_command_type().value,
-                exc.errors(),
-            )
+            logger.warning(f"Validation error for {self.get_command_type().value}: {exc.errors()}")
             await self._send_error_event(
                 session_info.id,
                 error_code=ErrorCode.VALIDATION_ERROR,
@@ -101,6 +99,42 @@ class BaseCommandHandler(ABC, Generic[TContent]):
 
     async def send_event(self, event: BaseEvent) -> None:
         await self._pubsub.publish(event)
+
+    async def prepare_recalled_files(
+        self, query_command: BaseCommandQuery, session_info: SessionInfo
+    ) -> bool:
+        """Attach one prior file or emit a clarification before claiming a run."""
+        async with get_db_session_local() as db:
+            file_ids, clarification = await self._container.file_service.recall_for_turn(
+                db,
+                session_id=session_info.id,
+                user_id=session_info.user_id,
+                text=query_command.text,
+                file_ids=query_command.files,
+            )
+            if clarification:
+                user_event, _ = await self.create_user_message_event(
+                    session_info, query_command, db
+                )
+                response = AgentResponseEvent(
+                    session_id=session_info.id, content={"text": clarification}
+                )
+                await self._container.event_service.save_event(
+                    db, session_id=session_info.id, event=response
+                )
+                await db.commit()
+                await self.send_event(user_event)
+                await self.send_event(response)
+                await self.send_event(AgentStreamCompleteEvent(session_id=session_info.id))
+                await self.send_event(
+                    AgentCompleteEvent(
+                        session_id=session_info.id,
+                        content={"run_status": RunStatus.COMPLETED},
+                    )
+                )
+                return False
+            query_command.files = file_ids or []
+        return True
 
     def _create_skill_creator(self, user_id: uuid.UUID | str):
         """Build the per-user skill loader used by realtime agents."""
@@ -261,10 +295,7 @@ class BaseCommandHandler(ABC, Generic[TContent]):
                 task_type=task_type,
             )
         except TaskConflictException:
-            logger.warning(
-                "Duplicate task claim for session %s",
-                session_info.id,
-            )
+            logger.warning(f"Duplicate task claim for session {session_info.id}")
             await self._send_error_event(
                 session_info.id,
                 error_code=ErrorCode.DUPLICATE_TASK,
@@ -306,6 +337,7 @@ class BaseCommandHandler(ABC, Generic[TContent]):
 
             # --- Billing events (per-turn LLM usage) ---
             if isinstance(event, ModelTurnMetricsEvent) and event.metrics and llm_config:
+                _metrics = event.metrics
                 await self.send_event(
                     ModelUsageEvent(
                         session_id=session_info.id,
@@ -315,20 +347,24 @@ class BaseCommandHandler(ABC, Generic[TContent]):
                         model_id=event.model_id,
                         provider=llm_config.provider,
                         pricing=llm_config.pricing,
-                        input_tokens=event.metrics.input_tokens,
-                        output_tokens=event.metrics.output_tokens,
-                        cache_read_tokens=event.metrics.cache_read_tokens,
-                        cache_write_tokens=event.metrics.cache_write_tokens,
-                        reasoning_tokens=event.metrics.reasoning_tokens,
+                        input_tokens=_metrics.input_tokens,
+                        output_tokens=_metrics.output_tokens,
+                        cache_read_tokens=_metrics.cache_read_tokens,
+                        cache_write_tokens=_metrics.cache_write_tokens,
+                        reasoning_tokens=_metrics.reasoning_tokens,
                         is_user_key=is_user_key,
+                        billing_backend=_metrics.billing_backend,
+                        provider_reported_cost=_metrics.cost,
+                        premium_requests=_metrics.premium_requests,
                         content={
                             "model_id": event.model_id,
-                            "input_tokens": event.metrics.input_tokens,
-                            "output_tokens": event.metrics.output_tokens,
-                            "cache_read_tokens": event.metrics.cache_read_tokens,
-                            "cache_write_tokens": event.metrics.cache_write_tokens,
-                            "reasoning_tokens": event.metrics.reasoning_tokens,
+                            "input_tokens": _metrics.input_tokens,
+                            "output_tokens": _metrics.output_tokens,
+                            "cache_read_tokens": _metrics.cache_read_tokens,
+                            "cache_write_tokens": _metrics.cache_write_tokens,
+                            "reasoning_tokens": _metrics.reasoning_tokens,
                             "is_user_key": is_user_key,
+                            "billing_backend": _metrics.billing_backend,
                         },
                     )
                 )

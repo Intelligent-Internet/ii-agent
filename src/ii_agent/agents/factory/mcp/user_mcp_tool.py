@@ -6,7 +6,6 @@ Similar to ComposioMCPTool but for general user custom MCP servers.
 
 from typing import Any, Literal
 
-from fastmcp import Client
 from fastmcp.exceptions import ToolError
 
 from ii_agent.agents.agent import IIAgent
@@ -77,8 +76,6 @@ class UserMCPTool(BaseSandboxTool):
         else:
             self.format = input_schema
 
-        self.mcp_client: Client | None = None
-
     async def on_tool_start(self, agent: IIAgent, fc: FunctionCall):
         """Initialize MCP client when tool execution starts.
 
@@ -86,8 +83,14 @@ class UserMCPTool(BaseSandboxTool):
         """
         await super().on_tool_start(agent, fc)
         sandbox = agent.sandbox
+        # Lazy-retry the MCP handshake if the post-claim configure pass
+        # exhausted its retries. See
+        # docs/design-docs/sandbox-pool-claim-mcp-handoff-audit.md.
+        from ii_agent.agents.factory.mcp.lazy_retry import ensure_mcp_configured
+
+        await ensure_mcp_configured(sandbox.sandbox_id, agent.user_id)
         sandbox_url = await sandbox.expose_port(get_settings().mcp.port)
-        self.mcp_client = sandbox.get_mcp_client(sandbox_url)
+        self._sandbox_url = sandbox_url
 
     async def execute(self, tool_input: dict[str, Any]) -> ToolResult:
         """Execute the tool via the sandbox MCP server.
@@ -104,8 +107,8 @@ class UserMCPTool(BaseSandboxTool):
                 if self.mcp_server_id
                 else f"mcp_{self.name}"
             )
-            async with self.mcp_client:
-                mcp_results = await self.mcp_client.call_tool(
+            async with self.sandbox.get_mcp_client(self._sandbox_url) as mcp_client:
+                mcp_results = await mcp_client.call_tool(
                     mcp_tool_name,
                     tool_input,
                     timeout=DEFAULT_TIMEOUT,

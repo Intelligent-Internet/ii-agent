@@ -8,6 +8,7 @@
     ],
     "license": "MIT",
     "type": "module",
+    "packageManager": "pnpm@9.15.9",
     "scripts": {
         "dev": "vite",
         "build": "tsc && vite build",
@@ -15,7 +16,9 @@
         "tauri": "tauri",
         "prepare": "husky",
         "lint": "eslint . --report-unused-disable-directives --max-warnings 0",
-        "format": "prettier --write ."
+        "format": "prettier --write .",
+        "test": "vitest run",
+        "test:watch": "vitest"
     },
     "lint-staged": {
         "**/*": "prettier --write --ignore-unknown"
@@ -128,6 +131,7 @@
         "typescript": "^5.8.3",
         "typescript-eslint": "^8.31.1",
         "vite": "^6.3.4",
-        "vite-plugin-svgr": "^4.3.0"
+        "vite-plugin-svgr": "^4.3.0",
+        "vitest": "^3.2.1"
     }
 }

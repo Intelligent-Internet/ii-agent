@@ -10,12 +10,15 @@ from sqlalchemy import select
 from ii_agent.chat.types import (
     Message,
     TextContent,
+    BinaryContent,
+    ImageURLContent,
     MessageRole,
     CouncilMemberOutput,
     CouncilSynthesis,
 )
 from ii_agent.chat.messages.service import MessageService
 from ii_agent.chat.messages.models import ChatSummary
+from ii_agent.core.config.settings import get_settings
 from ii_agent.settings.llm.schemas import ModelConfig
 from ii_agent.chat.llm import LLMProviderFactory
 from ii_agent.chat.prompts.context_prompts import PREVIOUS_SUMMARY, SUMMARY_PROMPT
@@ -27,7 +30,12 @@ logger = logging.getLogger(__name__)
 CONTEXT_WINDOWS = {
     # OpenAI Models - https://platform.openai.com/docs/models/gpt-5
     "gpt-5": 200000,
-    # Anthropic Models
+    # Anthropic Models - Opus 5, Fable 5, Opus 4.8, and Opus 4.7 share a 1M token context window
+    # https://platform.claude.com/docs/en/docs/about-claude/models/overview
+    "claude-opus-5": 1_000_000,
+    "claude-fable-5": 1_000_000,
+    "claude-opus-4-8": 1_000_000,
+    "claude-opus-4-7": 1_000_000,
     "claude-opus-4-5@20251101": 200000,
     "claude-sonnet-4-5@20250929": 200000,
     "claude-sonnet-4@20250514": 200000,
@@ -98,6 +106,24 @@ class ContextWindowManager:
         # Collapse council messages: replace council member outputs with synthesis-only text
         context = cls._collapse_council_messages(context)
 
+        remaining_turns = get_settings().agent.image_retention_turns
+        for index in range(len(context) - 1, -1, -1):
+            message = context[index]
+            if message.role != MessageRole.USER:
+                continue
+            if remaining_turns == 0:
+                context[index] = message.model_copy(
+                    update={
+                        "parts": [
+                            part
+                            for part in message.parts
+                            if not isinstance(part, (BinaryContent, ImageURLContent))
+                        ]
+                    }
+                )
+            else:
+                remaining_turns -= 1
+
         logger.info(f"Loaded context: summary={'Yes' if summary else 'No'}")
 
         return context
@@ -161,6 +187,7 @@ class ContextWindowManager:
             parent_summary=parent_summary,
             llm_config=llm_config,
             user_id=user_id,
+            summary_authority="native",
         )
 
         # Build compressed context
@@ -206,7 +233,21 @@ class ContextWindowManager:
 
         This is the MAIN summarization checkpoint.
         Called after assistant response is saved.
+
+        Skipped when the per-session compaction lock is held, which
+        indicates an A2A-delegated turn is active (the CLI backend
+        manages its own context compaction).
         """
+        from ii_agent.chat.application.compaction_lock import is_compaction_locked
+
+        if is_compaction_locked(session_id):
+            logger.info(
+                "Skipping native summarization — A2A turn active for session %s "
+                "[event=agent.compaction.skipped, reason=a2a_lock_held]",
+                session_id,
+            )
+            return
+
         max_context = CONTEXT_WINDOWS.get(llm_config.model, CONTEXT_WINDOWS["__default__"])
         threshold = int(max_context * cls.SUMMARIZATION_THRESHOLD)
 
@@ -271,6 +312,7 @@ class ContextWindowManager:
             parent_summary=active_summary,
             llm_config=llm_config,
             user_id=user_id,
+            summary_authority="native",
         )
 
         logger.info(
@@ -292,8 +334,35 @@ class ContextWindowManager:
         parent_summary: Optional[ChatSummary],
         llm_config: ModelConfig,
         user_id: uuid.UUID,
+        summary_authority: str = "native",
     ) -> ChatSummary:
-        """Create new summary, optionally chaining from parent."""
+        """Create new summary, optionally chaining from parent.
+
+        Parameters
+        ----------
+        summary_authority:
+            Identifier for the compaction system creating this summary.
+            Typically ``"native"`` for ii-agent's own summarizer.  Used to
+            prevent cross-authority chaining (e.g., native summary chaining
+            from an A2A-created summary).
+        """
+
+        # Guard: do not chain from a summary created by a different authority.
+        if (
+            parent_summary is not None
+            and parent_summary.summary_authority is not None
+            and parent_summary.summary_authority != summary_authority
+        ):
+            logger.warning(
+                "Cross-authority summary chaining prevented: "
+                "active summary %s has authority '%s', current authority is '%s'. "
+                "Creating standalone summary for session %s.",
+                parent_summary.id,
+                parent_summary.summary_authority,
+                summary_authority,
+                session_id,
+            )
+            parent_summary = None
 
         # Generate summary text via LLM
         summary_text, summary_tokens = await SummarizationService.generate_summary(
@@ -322,6 +391,7 @@ class ContextWindowManager:
             compression_ratio=original_tokens / max(summary_tokens, 1),
             model_id=llm_config.setting_id,
             parent_summary_id=parent_summary.id if parent_summary else None,
+            summary_authority=summary_authority,
             created_at=datetime.now(timezone.utc),
         )
 

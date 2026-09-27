@@ -15,7 +15,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, Literal, Optional
 
-from pydantic import Field, field_validator
+from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from ii_agent.core.config.database import DatabaseSettings
@@ -31,6 +31,7 @@ from ii_agent.core.config.mobile import MobileSettings
 from ii_agent.core.config.enhance_prompt_config import EnhancePromptConfig
 from ii_agent.core.config.nano_banana import NanoBananaConfig
 from ii_agent.core.config.session_title import SessionTitleConfig
+from ii_agent.core.config.sessions import SessionsSettings
 
 if TYPE_CHECKING:
     from ii_agent.core.storage.providers.base import StorageProvider
@@ -42,6 +43,45 @@ II_AGENT_DIR = Path(__file__).parent.parent.parent
 
 # Type aliases
 Environment = Literal["dev", "staging", "production", "local"]
+
+
+class DevUserConfig(BaseModel):
+    """One named local-mode dev user.
+
+    Used by ``POST /auth/dev/login`` to support multiple distinct local users
+    (e.g. household members) without OAuth. Identity is selected by the human
+    (username + PIN), not inferred from client IP.
+    """
+
+    username: str = Field(
+        description="Short identifier; becomes part of email dev+<username>@localhost",
+    )
+    pin: str = Field(
+        description="Shared PIN entered at login. Stored as plain string in env.",
+    )
+    display_name: Optional[str] = Field(
+        default=None,
+        description="Human-readable name shown in the chooser UI.",
+    )
+
+    @field_validator("username")
+    @classmethod
+    def _validate_username(cls, v: str) -> str:
+        v = v.strip().lower()
+        if not v:
+            raise ValueError("dev user username must be non-empty")
+        # Restrict to characters safe inside an email local-part and a URL.
+        if not all(c.isalnum() or c in "-_." for c in v):
+            raise ValueError("dev user username may only contain alphanumerics, '-', '_', '.'")
+        return v
+
+    @field_validator("pin")
+    @classmethod
+    def _validate_pin(cls, v: str) -> str:
+        v = str(v).strip()
+        if len(v) < 4:
+            raise ValueError("dev user pin must be at least 4 characters")
+        return v
 
 
 class Settings(BaseSettings):
@@ -101,6 +141,18 @@ class Settings(BaseSettings):
     ii_frontend_url: str = Field(
         default="https://agent.ii.inc",
         description="Frontend URL for OAuth redirects and MCP consent page",
+    )
+
+    # Local-mode dev users (multi-tenant dev login)
+    dev_users: list[DevUserConfig] = Field(
+        default_factory=list,
+        description=(
+            "Named local-mode dev users for POST /auth/dev/login. "
+            "Set via DEV_USERS env var as a JSON list, e.g. "
+            'DEV_USERS=\'[{"username":"alice","pin":"4729","display_name":"Alice"}]\'. '
+            "Only honoured when SANDBOX_LOCAL_MODE=true. "
+            "Empty list disables dev login entirely."
+        ),
     )
 
     # ========== Nested Configuration Sections ==========
@@ -168,6 +220,11 @@ class Settings(BaseSettings):
     session_title: SessionTitleConfig = Field(
         default_factory=SessionTitleConfig,
         description="LLM-generated session title configuration (OpenAI-based)",
+    )
+
+    sessions: SessionsSettings = Field(
+        default_factory=SessionsSettings,
+        description="Session purge subsystem (§4) — three-phase purge driver and storage reaper.",
     )
 
     # ========== Workspace Configuration ==========

@@ -1,7 +1,6 @@
 """Custom exceptions for users domain."""
 
 from ii_agent.core.exceptions import PermissionDeniedError
-from ii_agent.auth.exceptions import AuthException
 
 
 class UsersException(PermissionDeniedError):
@@ -16,7 +15,7 @@ class WaitlistDeniedException(UsersException):
     pass
 
 
-class UserDisabledException(AuthException):
+class UserDisabledException(PermissionDeniedError):
     """Raised when a disabled user attempts to authenticate."""
 
-    pass
+    status_code = 401

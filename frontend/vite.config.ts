@@ -108,6 +108,10 @@ export default defineConfig(({ command, mode }) => {
             // Allow opting out of build optimizations if the error resurfaces.
             minify: shouldOptimizeBuild ? 'esbuild' : false,
 
+            // Hidden source maps: emit .map files for post-mortem debugging
+            // without exposing them to the browser via sourceMappingURL.
+            sourcemap: 'hidden',
+
             target: 'esnext'
         }
     }

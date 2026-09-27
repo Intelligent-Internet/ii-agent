@@ -7,20 +7,20 @@ pytestmark = pytest.mark.unit
 
 
 EXPECTED_ROUTES = {
-    ("GET", "/connectors/composio/toolkits"),
-    ("GET", "/connectors/composio/profiles"),
-    ("POST", "/connectors/composio/oauth-complete"),
-    ("GET", "/connectors/composio/toolkits/{toolkit_slug}"),
-    ("GET", "/connectors/composio/toolkits/{toolkit_slug}/actions"),
-    ("POST", "/connectors/composio/{toolkit_slug}/connect"),
-    ("GET", "/connectors/composio/{toolkit_slug}/status"),
-    ("DELETE", "/connectors/composio/{toolkit_slug}"),
-    ("GET", "/connectors/composio/profiles/{profile_id}/mcp-config"),
-    ("POST", "/connectors/composio/profiles/{profile_id}/sync-to-agent"),
-    ("DELETE", "/connectors/composio/profiles/{profile_id}"),
-    ("POST", "/connectors/composio/profiles/{profile_id}/enable"),
-    ("POST", "/connectors/composio/profiles/{profile_id}/disable"),
-    ("PUT", "/connectors/composio/profiles/{profile_id}/tools"),
+    ("GET", "/composio/toolkits"),
+    ("GET", "/composio/profiles"),
+    ("POST", "/composio/oauth-complete"),
+    ("GET", "/composio/toolkits/{toolkit_slug}"),
+    ("GET", "/composio/toolkits/{toolkit_slug}/actions"),
+    ("POST", "/composio/{toolkit_slug}/connect"),
+    ("GET", "/composio/{toolkit_slug}/status"),
+    ("DELETE", "/composio/{toolkit_slug}"),
+    ("GET", "/composio/profiles/{profile_id}/mcp-config"),
+    ("POST", "/composio/profiles/{profile_id}/sync-to-agent"),
+    ("DELETE", "/composio/profiles/{profile_id}"),
+    ("POST", "/composio/profiles/{profile_id}/enable"),
+    ("POST", "/composio/profiles/{profile_id}/disable"),
+    ("PUT", "/composio/profiles/{profile_id}/tools"),
 }
 
 

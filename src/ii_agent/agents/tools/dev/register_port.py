@@ -1,4 +1,5 @@
 from ii_agent.agents.tools.base import ToolResult
+from ii_agent.agents.sandboxes.novnc import decorate_novnc_url
 from ii_agent.agents.tools.sandbox.base import BaseSandboxTool
 from typing import Any
 
@@ -60,7 +61,9 @@ class RegisterPort(BaseSandboxTool):
                 is_error=True,
             )
 
-        out = await self.sandbox.expose_port(port)
+        # Browser-facing: this URL is shown to the user in the tool result.
+        out = await self.sandbox.expose_port(port, external=True)
+        out = await decorate_novnc_url(self.sandbox, port, out)
 
         return ToolResult(
             llm_content=f"Successfully registered port {port}. Tool output: {out}",

@@ -103,6 +103,11 @@ class ChatSummary(Base):
         UUID(as_uuid=True), ForeignKey("chat_summaries.id"), nullable=True
     )
 
+    # Authority tracking: which compaction system created this summary.
+    # Values: "native" (ii-agent ContextWindowManager), "a2a" (CLI backend),
+    # or None (legacy rows created before authority tracking).
+    summary_authority: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         TimestampColumn, default=lambda: datetime.now(timezone.utc)
     )

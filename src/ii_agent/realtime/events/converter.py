@@ -421,15 +421,19 @@ def convert_agent_event_to_realtime(
         # Normalize status to match the Literal constraint
         valid_statuses = {"starting", "ready", "paused", "terminated", "error"}
         normalized_status = status_val if status_val in valid_statuses else "starting"
+        _vscode_url = event.sandbox_info.vscode_url if event.sandbox_info else None
+        _vnc_url = event.sandbox_info.vnc_url if event.sandbox_info else None
         return SandboxStatusChangedEvent(
             run_id=run_id,
             session_id=session_uuid,
             status=normalized_status,
-            vscode_url=event.sandbox_info.vscode_url if event.sandbox_info else None,
+            vscode_url=_vscode_url,
+            vnc_url=_vnc_url,
             content={
                 "origin": origin,
                 "status": status_val,
-                "vscode_url": event.sandbox_info.vscode_url if event.sandbox_info else None,
+                "vscode_url": _vscode_url,
+                "vnc_url": _vnc_url,
                 "run_id": str(run_id) if run_id else None,
                 **sub_agent_info,
             },

@@ -16,7 +16,7 @@ import {
     setRequireClearFiles,
     resetSlideTemplate,
     setActiveSessionId,
-    selectSelectedModel,
+    selectSelectedChatModel,
     selectAvailableModels,
     selectSelectedSlideTemplate,
     clearCurrentMessageFileIds,
@@ -121,7 +121,7 @@ function extractSubmitOptions(value?: SubmitOptions): SubmitOptionsExtracted {
 export function useChatTransport(options?: UseChatTransportOptions) {
     const autoStopOnUnmount = options?.autoStopOnUnmount ?? true
     const dispatch = useAppDispatch()
-    const selectedModelId = useAppSelector(selectSelectedModel)
+    const selectedModelId = useAppSelector(selectSelectedChatModel)
     const availableModels = useAppSelector(selectAvailableModels)
     const selectedSlideTemplate = useAppSelector(selectSelectedSlideTemplate)
     const currentMessageFileIds = useAppSelector(selectCurrentMessageFileIds)

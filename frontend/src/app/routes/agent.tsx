@@ -13,6 +13,7 @@ import AgentTasks from '@/components/agent/agent-task'
 import ChatBox from '@/components/agent/chat-box'
 import AgentHeader from '@/components/header'
 import RightSidebar from '@/components/right-sidebar'
+import { rewriteLocalhostUrl } from '@/lib/utils'
 import { sessionService } from '@/services/session.service'
 import {
     selectActiveTab,
@@ -91,7 +92,7 @@ function AgentPageContent() {
     )
 
     // PiP preview URL (mobile takes priority over fullstack)
-    const pipUrl = mobileWebPreviewUrl || previewUrl
+    const pipUrl = rewriteLocalhostUrl(mobileWebPreviewUrl || previewUrl)
     const showPiP =
         !isMobile &&
         activeTab !== TAB.RESULT &&
@@ -160,6 +161,11 @@ function AgentPageContent() {
                             fetchSession()
                         }, 5000)
                     } else {
+                        // Redirect chat sessions to the chat page
+                        if (data.agent_type === 'chat') {
+                            navigate(`/chat?id=${sessionId}`, { replace: true })
+                            return
+                        }
                         dispatch(setSelectedFeature(data.agent_type ?? null))
                         dispatch(setProjectId(data.project_id ?? null))
                         setSessionData(data)

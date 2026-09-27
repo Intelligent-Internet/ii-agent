@@ -155,7 +155,7 @@ def _parse_individual_json(content: str, output_schema: Type[BaseModel]) -> Opti
     try:
         return output_schema.model_validate(merged_data)
     except ValidationError as e:
-        logger.warning("Validation failed on merged data: %s", e)
+        logger.warning(f"Validation failed on merged data: {e}")
         return None
 
 
