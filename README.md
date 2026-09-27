@@ -110,7 +110,7 @@ II-Agent supports multiple LLM providers. Configure them in `model_configs.yaml`
 | Provider | Example model_id | Notes |
 |----------|-----------------|-------|
 | OpenAI | `gpt-5.4` | Requires `api_key` |
-| Anthropic | `claude-opus-4-6` | Direct API or Vertex AI |
+| Anthropic | `claude-opus-5` | Direct API or Vertex AI |
 | Google | `gemini-3.1-pro-preview` | Direct API or Vertex AI |
 
 See [`model_configs.example.yaml`](model_configs.example.yaml) for full configuration options including Vertex AI, Azure, and self-hosted models.

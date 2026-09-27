@@ -93,70 +93,44 @@ services:
   # Image: reuses ii-agent-sandbox:latest because it already ships the
   # adapter module + Copilot/Claude/Codex CLI tooling.  The entrypoint
   # override ensures none of the sandbox services start.
-  a2a-adapter:
-    image: ${SANDBOX_DOCKER_IMAGE:-ii-agent-sandbox:latest}
-    init: true
-    restart: unless-stopped
-    user: "1001:1001"
-    working_dir: /home/user
-    # Bypass the sandbox entrypoint entirely — this container is
-    # adapter-only.  No gosu, no start-services.sh.
-    entrypoint: []
-    env_file:
-      - .stack.env.local
-    environment:
-      HOME: /home/user
-      PATH: /home/user/.bun/bin:/app/ii_sandbox/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-      # Adapter selects backend per request via metadata; default is
-      # taken from AGENT_A2A_BACKEND in .stack.env.local.
-      SANDBOX_ADAPTER_BACKEND: ${AGENT_A2A_BACKEND:-copilot}
-      SANDBOX_ADAPTER_PORT: "18100"
-      # Per-turn timeouts (seconds) for each CLI backend.  Two-stage
-      # model: absolute (safety net) + activity (idle/no-event).  See
-      # .stack.env.local for the rationale.  Defaults match the code.
-      A2A_COPILOT_TIMEOUT: ${A2A_COPILOT_TIMEOUT:-1800}
-      A2A_CLAUDE_CODE_TIMEOUT: ${A2A_CLAUDE_CODE_TIMEOUT:-1800}
-      A2A_CODEX_TIMEOUT: ${A2A_CODEX_TIMEOUT:-1800}
-      A2A_COPILOT_ACTIVITY_TIMEOUT: ${A2A_COPILOT_ACTIVITY_TIMEOUT:-600}
-      A2A_CLAUDE_CODE_ACTIVITY_TIMEOUT: ${A2A_CLAUDE_CODE_ACTIVITY_TIMEOUT:-600}
-      A2A_CODEX_ACTIVITY_TIMEOUT: ${A2A_CODEX_ACTIVITY_TIMEOUT:-600}
-    # Read-only adapter — no workspace, no shared volume.  All state
-    # lives in memory in the adapter task store.
-    #
-    # tmpfs notes:
-    #   * /tmp — generic scratch space.
-    #   * /home/user/.copilot — the bundled Copilot CLI shipped inside
-    #     github-copilot-sdk is a self-extracting binary that writes
-    #     its native package to $HOME/.copilot/pkg/linux-x64/<version>/
-    #     on first invocation.  Without a writable mount here every
-    #     Copilot A2A turn fails with `mkdir '/home/user/.copilot':
-    #     ENOENT` (chat falls back to native LLM, council mode reports
-    #     "all members failed").  256m is comfortably above the
-    #     ~30 MB extracted package.  The `exec` flag is REQUIRED:
-    #     Docker tmpfs defaults to `noexec`, which causes Node to fail
-    #     `dlopen` of the bundled `prebuilds/linux-x64/pty.node` with
-    #     "failed to map segment from shared object".
-    #   * /home/user/.cache — Copilot CLI and supporting Node tooling
-    #     write small cache state on startup; keep it writable so the
-    #     CLI doesn't error out before reaching extraction.
-    read_only: true
-    tmpfs:
-      - /tmp:size=64m
-      - /home/user/.copilot:size=256m,uid=1001,gid=1001,mode=0755,exec
-      - /home/user/.cache:size=64m,uid=1001,gid=1001,mode=0755
-    command: >
-      python -m ii_agent.integrations.a2a.adapter_server
-      --host 0.0.0.0
-      --port 18100
-      --backend ${AGENT_A2A_BACKEND:-copilot}
-    expose:
-      - "18100"
-    healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:18100/health || exit 1"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
+  # a2a-adapter: (disabled — using direct API, not A2A inner loop)
+  #   image: ${SANDBOX_DOCKER_IMAGE:-ii-agent-sandbox:latest}
+  #   init: true
+  #   restart: unless-stopped
+  #   user: "1001:1001"
+  #   working_dir: /home/user
+  #   entrypoint: []
+  #   env_file:
+  #     - .stack.env.local
+  #   environment:
+  #     HOME: /home/user
+  #     PATH: /home/user/.bun/bin:/app/ii_sandbox/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+  #     SANDBOX_ADAPTER_BACKEND: ${AGENT_A2A_BACKEND:-copilot}
+  #     SANDBOX_ADAPTER_PORT: "18100"
+  #     A2A_COPILOT_TIMEOUT: ${A2A_COPILOT_TIMEOUT:-1800}
+  #     A2A_CLAUDE_CODE_TIMEOUT: ${A2A_CLAUDE_CODE_TIMEOUT:-1800}
+  #     A2A_CODEX_TIMEOUT: ${A2A_CODEX_TIMEOUT:-1800}
+  #     A2A_COPILOT_ACTIVITY_TIMEOUT: ${A2A_COPILOT_ACTIVITY_TIMEOUT:-600}
+  #     A2A_CLAUDE_CODE_ACTIVITY_TIMEOUT: ${A2A_CLAUDE_CODE_ACTIVITY_TIMEOUT:-600}
+  #     A2A_CODEX_ACTIVITY_TIMEOUT: ${A2A_CODEX_ACTIVITY_TIMEOUT:-600}
+  #   read_only: true
+  #   tmpfs:
+  #     - /tmp:size=64m
+  #     - /home/user/.copilot:size=256m,uid=1001,gid=1001,mode=0755,exec
+  #     - /home/user/.cache:size=64m,uid=1001,gid=1001,mode=0755
+  #   command: >
+  #     python -m ii_agent.integrations.a2a.adapter_server
+  #     --host 0.0.0.0
+  #     --port 18100
+  #     --backend ${AGENT_A2A_BACKEND:-copilot}
+  #   expose:
+  #     - "18100"
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "curl -fsS http://localhost:18100/health || exit 1"]
+  #     interval: 15s
+  #     timeout: 5s
+  #     retries: 5
+  #     start_period: 10s
 
   frontend:
     build:
@@ -201,18 +175,15 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
-      a2a-adapter:
-        condition: service_healthy
+      # a2a-adapter:
+      #   condition: service_healthy
     env_file:
       - .stack.env.local
     environment:
       DATABASE_URL: ${DATABASE_URL}
       REDIS_SESSION_URL: redis://redis:6379/1
-      # ── A2A inner-loop adapter ──
-      # Default to the sidecar so chat A2A is sandbox-independent.
-      # Operators can override via .stack.env.local for an external
-      # adapter (production) or to disable (set AGENT_CHAT_INNER_LOOP_MODE=direct).
-      AGENT_A2A_AGENT_URL: ${AGENT_A2A_AGENT_URL:-http://a2a-adapter:18100}
+      # ── A2A inner-loop adapter (disabled — using direct API) ──
+      # AGENT_A2A_AGENT_URL: ${AGENT_A2A_AGENT_URL:-http://a2a-adapter:18100}
       # ── Docker sandbox provider ──
       SANDBOX_PROVIDER: docker
       SANDBOX_DOCKER_IMAGE: ${SANDBOX_DOCKER_IMAGE:-ii-agent-sandbox:latest}

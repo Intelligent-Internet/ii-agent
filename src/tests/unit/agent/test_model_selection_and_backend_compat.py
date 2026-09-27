@@ -511,6 +511,7 @@ class TestModelSelectionBackendCorrelation:
     _PROVIDER_MODEL_SAMPLES: Dict[str, list[str]] = {
         "Anthropic": [
             "claude-sonnet-4-20250514",
+            "claude-opus-5",
             "claude-opus-4-6",
             "claude-3-5-haiku-20250929",
             "claude-sonnet-4-5-20250514",

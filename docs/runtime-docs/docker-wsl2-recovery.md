@@ -10,6 +10,10 @@ As of W82 the ii-agent local stack is owned by a systemd unit on this host:
 docker/systemd/ii-agent-local.service
 ```
 
+Systemd starts the stack only after WSL itself starts. For Windows startup before
+logon, the Windows-local monitor installation, and verification after a power
+cycle, follow [II-Agent WSL2 Power Recovery](ii-agent-wsl2-power-recovery.md).
+
 The unit wraps `scripts/stack_control.sh start|stop` as a `Type=oneshot
 RemainAfterExit=yes` service, runs as `User=mdear` with `Group=docker`,
 declares `Requires=docker.service After=docker.service network-online.target`,

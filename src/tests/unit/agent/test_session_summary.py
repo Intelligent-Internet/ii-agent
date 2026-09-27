@@ -133,6 +133,22 @@ class TestGetTokenThreshold:
         mgr = self._manager()
         assert mgr._get_token_threshold("gpt-4o") == MODEL_TOKEN_THRESHOLDS["gpt-4o"]
 
+    def test_opus_5_threshold_is_800k(self):
+        mgr = self._manager()
+        assert mgr._get_token_threshold("claude-opus-5") == 800_000
+
+    def test_fable_5_threshold_is_800k(self):
+        mgr = self._manager()
+        assert mgr._get_token_threshold("claude-fable-5") == 800_000
+
+    def test_opus_4_8_threshold_is_800k(self):
+        mgr = self._manager()
+        assert mgr._get_token_threshold("claude-opus-4-8") == 800_000
+
+    def test_opus_4_7_threshold_is_800k(self):
+        mgr = self._manager()
+        assert mgr._get_token_threshold("claude-opus-4-7") == 800_000
+
 
 # ---------------------------------------------------------------------------
 # SessionSummaryManager._count_session_tokens

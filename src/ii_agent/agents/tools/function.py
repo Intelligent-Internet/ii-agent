@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field, validate_call
 from ii_agent.agents.utils.json_schema import get_py_type_for_json_type
 from ii_agent.agents.exceptions import AgentRunException
 from ii_agent.files.media import Audio, File, Image, Video
+from ii_agent.core.redis.cancel import RunCancelledException
 
 from ii_agent.agents.tools.base import BaseAgentTool, UserInputField
 from ii_agent.agents.sandboxes import SandboxInfo
@@ -723,6 +724,8 @@ class FunctionCall(BaseModel):
                 if "fc" in signature(self.function.pre_hook).parameters:
                     pre_hook_args["fc"] = self
                 self.function.pre_hook(**pre_hook_args)
+            except RunCancelledException:
+                raise
             except AgentRunException as e:
                 logger.debug(f"{e.__class__.__name__}: {e}")
                 self.error = str(e)
@@ -754,6 +757,8 @@ class FunctionCall(BaseModel):
                 if "fc" in signature(self.function.post_hook).parameters:
                     post_hook_args["fc"] = self
                 self.function.post_hook(**post_hook_args)
+            except RunCancelledException:
+                raise
             except AgentRunException as e:
                 logger.debug(f"{e.__class__.__name__}: {e}")
                 self.error = str(e)
@@ -977,6 +982,8 @@ class FunctionCall(BaseModel):
                     pre_hook_args["fc"] = self
 
                 await self.function.pre_hook(**pre_hook_args)
+            except RunCancelledException:
+                raise
             except AgentRunException as e:
                 logger.debug(f"{e.__class__.__name__}: {e}")
                 self.error = str(e)
@@ -1010,6 +1017,8 @@ class FunctionCall(BaseModel):
                     post_hook_args["fc"] = self
 
                 await self.function.post_hook(**post_hook_args)
+            except RunCancelledException:
+                raise
             except AgentRunException as e:
                 logger.debug(f"{e.__class__.__name__}: {e}")
                 self.error = str(e)

@@ -15,28 +15,6 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
   cargo build --release && \
   cp /build/ii-app-cli/target/release/ii-app /ii-app
 
-# Build Codex SSE HTTP server
-FROM rust:1.75-slim AS codex-builder
-
-# Optimization: Use cache mount for apt-get to speed up repeated builds
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-  --mount=type=cache,target=/var/lib/apt,sharing=locked \
-  apt-get update && apt-get install -y \
-  git \
-  ca-certificates \
-  pkg-config \
-  libssl-dev
-
-WORKDIR /build
-RUN git clone --branch v0.0.1 https://github.com/Intelligent-Internet/codex.git
-WORKDIR /build/codex/codex-rs
-
-# Optimization: Use cargo cache mount to avoid re-downloading dependencies
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-  --mount=type=cache,target=/build/codex/codex-rs/target \
-  cargo build --release --bin sse-http-server && \
-  cp /build/codex/codex-rs/target/release/sse-http-server /sse-http-server
-
 FROM nikolaik/python-nodejs:python3.10-nodejs24-slim
 
 COPY docker/sandbox/.bashrc /root/.bashrc
@@ -66,6 +44,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
   libpq-dev \
   wget \
   gosu \
+  sudo \
   jq \
   libnspr4 \
   libnss3 \
@@ -88,9 +67,9 @@ RUN curl -fsSL https://code-server.dev/install.sh | sh
 
 # GitHub CLI (gh) — required by the Copilot A2A backend (`gh copilot agent`)
 # Pinned: update gh version when upgrading github-copilot-sdk compatibility.
-# Bumped 2026-05-12: 2.91.0 was rolled out of the apt repo, breaking sandbox
+# Bumped 2026-08-29: 2.92.0 was rolled out of the apt repo, breaking sandbox
 # rebuilds.  Keep this in sync with the latest GitHub CLI stable release.
-ARG GH_CLI_VERSION=2.92.0
+ARG GH_CLI_VERSION=2.98.0
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
   --mount=type=cache,target=/var/lib/apt,sharing=locked \
   curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
@@ -103,9 +82,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 # Optimization: Use npm cache mount and install playwright package and system deps as root
 # Pinned: update versions together when upgrading A2A backend compatibility.
 #   @anthropic-ai/claude-code — required by claude-code A2A backend
-#   @intelligent-internet/codex — required by codex A2A backend
 RUN --mount=type=cache,target=/root/.npm \
-  npm install -g agent-browser @intelligent-internet/codex@0.1.0 @ast-grep/cli @anthropic-ai/claude-code@2.1.114
+  npm install -g agent-browser @ast-grep/cli @anthropic-ai/claude-code@2.1.114
 
 RUN --mount=type=cache,target=/root/.npm \
   npm install -g vercel
@@ -127,7 +105,7 @@ RUN chown -R user:user /home/user
 # Install browser binaries as pn user so they're accessible at runtime
 USER user
 RUN curl -fsSL https://bun.sh/install | bash
-RUN agent-browser install --with-deps
+RUN agent-browser install
 USER root
 RUN agent-browser install --with-deps
 
@@ -171,9 +149,6 @@ COPY src/ii_agent/__init__.py /app/ii_sandbox/src/ii_agent/__init__.py
 COPY src/ii_agent/integrations/__init__.py /app/ii_sandbox/src/ii_agent/integrations/__init__.py
 COPY src/ii_agent/integrations/a2a /app/ii_sandbox/src/ii_agent/integrations/a2a
 
-# Optimization: Copy from cached location in codex-builder
-COPY --from=codex-builder /sse-http-server /usr/local/bin/sse-http-server
-
 # Copy ii-app CLI binary and assets
 COPY --from=ii-app-builder /ii-app /usr/local/bin/ii-app
 COPY src/ii_agent/settings/skills/builtin/ii-app/assets /usr/local/share/ii-app/assets
@@ -183,7 +158,7 @@ ENV II_APP_SKILL_ROOT=/usr/local/share/ii-app
 RUN touch /app/.user_env /app/.user_env.sh
 
 # Copy config files for root (build time) and user (runtime)
-RUN mkdir -p /root/.codex /home/user/.codex /home/user/.claude
+RUN mkdir -p /home/user/.claude
 COPY docker/sandbox/template.css /app/template.css
 COPY docker/sandbox/claude_template.json /root/.claude.json
 COPY docker/sandbox/claude_template.json /home/user/.claude.json

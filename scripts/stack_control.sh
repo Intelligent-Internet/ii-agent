@@ -1014,7 +1014,7 @@ print_status_help() {
   cat <<EOF
 Usage:
   scripts/stack_control.sh status [--show-deleted] [--all] [--no-platform]
-                                  [--json] [--strict]
+                                  [--json] [--strict] [--ready [--timeout SECONDS]]
 
 Options:
   --show-deleted   Include sandboxes attached to soft-deleted sessions
@@ -1029,6 +1029,9 @@ Options:
   --strict         Set the process exit code from the platform-health
                    roll-up: 0=OK/WATCH, 2=WARN, 3=CRIT. Composable with
                    either text or --json output.
+  --ready          Poll until core Compose services, frontend/backend, and
+                   enabled sandbox pool are ready (default timeout: 90 minutes).
+  --timeout N      With --ready, stop waiting after N seconds (0 = one probe).
   -h, --help       Show this help message.
 
 The sandbox section lists each live sandbox with one of:
@@ -1192,6 +1195,45 @@ SQL
   fi
 }
 
+_status_ready_once() {
+  local _compose_state _unready_services
+  if ! _compose_state=$(compose ps --format json); then
+    echo "Not ready: could not query core Compose services." >&2
+    return 1
+  fi
+  if ! _unready_services=$(jq -s -r '
+    . as $containers |
+    ["backend", "frontend", "minio", "postgres", "redis"][] as $service |
+    [$containers[] | select(.Service == $service)] as $matches |
+    if any($matches[]; .State == "running" and
+      (if $service == "frontend" then true else .Health == "healthy" end))
+    then empty
+    else "\($service): \(if ($matches | length) == 0 then "missing"
+      else ($matches | map("\(.State)/\(.Health)") | join(", ")) end)"
+    end
+  ' <<< "$_compose_state"); then
+    echo "Not ready: could not parse core Compose service status." >&2
+    return 1
+  fi
+  if [[ -n "$_unready_services" ]]; then
+    printf 'Not ready: %s\n' "$_unready_services" >&2
+    return 1
+  fi
+  curl -fsS --max-time 5 "http://localhost:${BACKEND_PORT:-8000}/health/ready" >/dev/null || {
+    echo "Not ready: backend /health/ready did not respond successfully." >&2
+    return 1
+  }
+  curl -fsS --max-time 5 "http://localhost:${FRONTEND_PORT:-1420}/" >/dev/null || {
+    echo "Not ready: frontend did not respond successfully." >&2
+    return 1
+  }
+  curl -fsS --max-time 5 "http://localhost:${BACKEND_PORT:-8000}/health/sandbox-pool" |
+    jq -e 'if .enabled == true then .available == true and .ready == .configured else .enabled == false end' >/dev/null || {
+    echo "Not ready: enabled sandbox pool is unavailable or incomplete." >&2
+    return 1
+  }
+}
+
 cmd_status() {
   ensure_env
 
@@ -1199,6 +1241,9 @@ cmd_status() {
   local show_platform=true
   local emit_json=false
   local strict=false
+  local ready=false
+  local ready_timeout=5400
+  local timeout_requested=false
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --show-deleted|--all)
@@ -1213,6 +1258,18 @@ cmd_status() {
       --strict)
         strict=true
         ;;
+      --ready)
+        ready=true
+        ;;
+      --timeout)
+        if [[ $# -lt 2 || ! "$2" =~ ^[0-9]+$ ]]; then
+          echo "--timeout requires a non-negative number of seconds." >&2
+          return 1
+        fi
+        ready_timeout=$2
+        timeout_requested=true
+        shift
+        ;;
       -h|--help)
         print_status_help
         return 0
@@ -1226,6 +1283,26 @@ cmd_status() {
     esac
     shift
   done
+
+  if [[ "$ready" != "true" && "$timeout_requested" == "true" ]]; then
+    echo "--timeout requires --ready." >&2
+    return 1
+  fi
+  if [[ "$ready" == "true" ]]; then
+    local deadline=$(( $(date +%s) + ready_timeout ))
+    while :; do
+      if _status_ready_once; then
+        echo "ii-agent stack is ready."
+        return 0
+      fi
+      if (( $(date +%s) >= deadline )); then
+        echo "Timed out waiting for ii-agent readiness after ${ready_timeout}s." >&2
+        return 1
+      fi
+      local remaining=$(( deadline - $(date +%s) ))
+      sleep "$(( remaining < 10 ? remaining : 10 ))"
+    done
+  fi
 
   # JSON mode short-circuits the human-friendly output. Compose state and
   # sandbox inventory are deliberately omitted: they're trivially queryable

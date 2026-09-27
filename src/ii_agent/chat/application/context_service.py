@@ -27,8 +27,12 @@ logger = logging.getLogger(__name__)
 CONTEXT_WINDOWS = {
     # OpenAI Models - https://platform.openai.com/docs/models/gpt-5
     "gpt-5": 200000,
-    # Anthropic Models
-    "claude-opus-4-7": 200000,
+    # Anthropic Models - Opus 5, Fable 5, Opus 4.8, and Opus 4.7 share a 1M token context window
+    # https://platform.claude.com/docs/en/docs/about-claude/models/overview
+    "claude-opus-5": 1_000_000,
+    "claude-fable-5": 1_000_000,
+    "claude-opus-4-8": 1_000_000,
+    "claude-opus-4-7": 1_000_000,
     "claude-opus-4-5@20251101": 200000,
     "claude-sonnet-4-5@20250929": 200000,
     "claude-sonnet-4@20250514": 200000,

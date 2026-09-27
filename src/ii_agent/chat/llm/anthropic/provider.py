@@ -35,6 +35,7 @@ from sqlalchemy import select
 
 from ii_agent.settings.llm import Provider
 from ii_agent.settings.llm.schemas import ModelConfig
+from ii_agent.agents.models.utils import _uses_adaptive_thinking
 from ii_agent.core.storage.path_resolver import path_resolver
 from ii_agent.files.models import FileAsset, SessionAsset
 from ii_agent.files.types import AssetType
@@ -378,14 +379,20 @@ class AnthropicProvider(LLMClient):
         enable_thinking = (
             self.llm_config.thinking_tokens and self.llm_config.thinking_tokens >= 1024
         )
+        use_adaptive = _uses_adaptive_thinking(self.model_name)
 
         # Add interleaved thinking beta header if using tools with extended thinking
         betas = []
         if enable_thinking:
             # Extended thinking is not compatible with temperature modifications.
-            # Anthropic requires max_tokens to be greater than thinking.budget_tokens,
-            # so bump the response budget when tools + thinking are both enabled.
-            if anthropic_tools:
+            if use_adaptive:
+                # Opus 4.7+ requires adaptive thinking with output_config.effort
+                # instead of manual budget_tokens (HTTP 400 otherwise).
+                params["thinking"] = {"type": "adaptive", "display": "summarized"}
+                params["output_config"] = {"effort": "high"}
+                params["max_tokens"] = 64_000
+            elif anthropic_tools:
+                # Legacy models: use enabled + budget_tokens
                 budget_tokens = int(self.llm_config.thinking_tokens)
                 min_completion_tokens = budget_tokens + 1024
                 if int(params["max_tokens"]) <= budget_tokens:

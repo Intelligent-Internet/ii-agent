@@ -19,6 +19,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from sqlalchemy.orm import Session
 
 from ii_agent.agents.sandboxes.exceptions import SandboxCreationError
 from ii_agent.agents.sandboxes.models import AgentSandbox
@@ -291,7 +292,11 @@ class TestClaim:
 
         session_id = uuid.uuid4()
         db = AsyncMock()
+        db.sync_session = Session()
         result = await mgr.claim(db, session_id)
+
+        assert replenish_calls == []
+        db.sync_session.commit()
 
         # Let the scheduled task run.
         await asyncio.sleep(0)

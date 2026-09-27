@@ -74,6 +74,24 @@ class PricingInfo(BaseModel):
         """
         pricing_map: dict[str, PricingInfo] = {
             # ===== Anthropic Claude Models =====
+            "claude-fable-5": cls(
+                input_price_per_million=10.0,
+                output_price_per_million=50.0,
+                cache_write_price_per_million=12.5,
+                cache_read_price_per_million=1.0,
+            ),
+            "claude-opus-5": cls(
+                input_price_per_million=5.0,
+                output_price_per_million=25.0,
+                cache_write_price_per_million=6.25,
+                cache_read_price_per_million=0.5,
+            ),
+            "claude-opus-4-8": cls(
+                input_price_per_million=5.0,
+                output_price_per_million=25.0,
+                cache_write_price_per_million=6.25,
+                cache_read_price_per_million=0.5,
+            ),
             "claude-opus-4-7": cls(
                 input_price_per_million=5.0,
                 output_price_per_million=25.0,

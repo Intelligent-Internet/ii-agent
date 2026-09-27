@@ -72,6 +72,18 @@ class TestContextWindows:
         model_keys = list(CONTEXT_WINDOWS.keys())
         assert len(model_keys) >= 2
 
+    def test_opus_5_context_window_is_1m(self):
+        assert CONTEXT_WINDOWS["claude-opus-5"] == 1_000_000
+
+    def test_fable_5_context_window_is_1m(self):
+        assert CONTEXT_WINDOWS["claude-fable-5"] == 1_000_000
+
+    def test_opus_4_8_context_window_is_1m(self):
+        assert CONTEXT_WINDOWS["claude-opus-4-8"] == 1_000_000
+
+    def test_opus_4_7_context_window_is_1m(self):
+        assert CONTEXT_WINDOWS["claude-opus-4-7"] == 1_000_000
+
 
 # ---------------------------------------------------------------------------
 # _collapse_council_messages

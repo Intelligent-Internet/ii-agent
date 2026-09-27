@@ -26,6 +26,21 @@ export const API_TYPE = {
 export const PROVIDER_MODELS: { [key: string]: IModel[] } = {
     anthropic: [
         {
+            id: 'claude-fable-5',
+            model: 'claude-fable-5',
+            provider: PROVIDER.ANTHROPIC
+        },
+        {
+            id: 'claude-opus-5',
+            model: 'claude-opus-5',
+            provider: PROVIDER.ANTHROPIC
+        },
+        {
+            id: 'claude-opus-4-8',
+            model: 'claude-opus-4-8',
+            provider: PROVIDER.ANTHROPIC
+        },
+        {
             id: 'claude-opus-4-7',
             model: 'claude-opus-4-7',
             provider: PROVIDER.ANTHROPIC

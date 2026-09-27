@@ -316,7 +316,16 @@ class ModelSettingService:
                     user_id=session.user_id,
                 )
             if not model_id:
-                raise ValueError("model_id is required when session has no model_setting_id")
+                # Fall back to the default system model rather than hard-failing.
+                # This handles new sessions (e.g. deep_research) where the frontend
+                # does not send a model_id and the session has no model_setting_id yet.
+                default_setting = await self._repo.find_default_system_model(db)
+                if default_setting is None:
+                    raise ValueError(
+                        "model_id is required when session has no model_setting_id "
+                        "and no default system model is configured"
+                    )
+                return _setting_to_model_config(default_setting)
             # model_id may be a model_settings UUID (from frontend) or a
             # human-readable model name like "claude-sonnet-4-6".  Try UUID
             # lookup first, then fall back to model_id string lookup.

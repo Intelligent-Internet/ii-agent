@@ -156,17 +156,54 @@ async def test_user_source_delegates_to_get_user_model_config():
 
 @pytest.mark.asyncio
 async def test_no_model_id_raises_value_error():
-    """When session has no model_setting_id and no model_id, raise."""
+    """When session has no model_setting_id, no model_id, and no default system model, raise."""
     session_info = _make_session_info()
 
     session_repo = MagicMock()
     session_repo.get_by_id = AsyncMock(return_value=SimpleNamespace(model_setting_id=None))
 
-    svc = _make_service(session_repo=session_repo)
+    repo = MagicMock()
+    repo.find_default_system_model = AsyncMock(return_value=None)
+
+    svc = _make_service(session_repo=session_repo, repo=repo)
     db = AsyncMock()
 
     with pytest.raises(ValueError, match="model_id is required"):
         await svc.resolve_model_config(db, session=session_info, source="system", model_id=None)
+
+
+@pytest.mark.asyncio
+async def test_no_model_id_falls_back_to_default_system_model():
+    """When session has no model_setting_id and no model_id, fall back to default system model."""
+    session_info = _make_session_info()
+
+    session_repo = MagicMock()
+    session_repo.get_by_id = AsyncMock(return_value=SimpleNamespace(model_setting_id=None))
+
+    fake_setting = SimpleNamespace(
+        id=uuid.uuid4(),
+        model_id="claude-opus-4-6",
+        provider="Anthropic",
+        encrypted_api_key=None,
+        base_url=None,
+        display_name="Claude Opus 4.6",
+        params=None,
+        pricing=None,
+        config_type="system",
+    )
+    repo = MagicMock()
+    repo.find_default_system_model = AsyncMock(return_value=fake_setting)
+
+    svc = _make_service(session_repo=session_repo, repo=repo)
+    db = AsyncMock()
+
+    result = await svc.resolve_model_config(
+        db, session=session_info, source="system", model_id=None
+    )
+
+    assert result is not None
+    assert result.model_id == "claude-opus-4-6"
+    repo.find_default_system_model.assert_awaited_once_with(db)
 
 
 # ---------------------------------------------------------------------------

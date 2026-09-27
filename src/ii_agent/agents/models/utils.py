@@ -4,20 +4,32 @@ from ii_agent.settings.llm import Provider
 from ii_agent.settings.llm.types import ApiType
 
 
-def _is_opus_4_7_or_later(model_id: str) -> bool:
-    """Return True for Opus 4.7 or later model ids.
+def _uses_adaptive_thinking(model_id: str) -> bool:
+    """Return True for Anthropic models that require adaptive thinking.
 
-    Opus 4.7 removed support for manual extended thinking
+    Claude Opus 4.7 and later removed support for manual extended thinking
     (``thinking: {type: "enabled", budget_tokens: N}`` returns HTTP 400).
-    These models require ``thinking: {type: "adaptive"}`` combined with
-    ``output_config: {"effort": ...}``. The check matches the base id
-    ``claude-opus-4-7`` as well as dated snapshots (``claude-opus-4-7-YYYYMMDD``)
-    and Vertex aliases (``claude-opus-4-7@YYYYMMDD``).
+    Current direct-API models in this family require
+    ``thinking: {type: "adaptive"}`` combined with
+    ``output_config: {"effort": ...}``.
+
+    The check covers the currently supported direct Anthropic IDs and their
+    common platform aliases.
 
     See https://platform.claude.com/docs/en/build-with-claude/adaptive-thinking
     """
     mid = (model_id or "").lower()
-    return mid.startswith("claude-opus-4-7") or mid.startswith("anthropic.claude-opus-4-7")
+    adaptive_prefixes = (
+        "claude-opus-5",
+        "anthropic.claude-opus-5",
+        "claude-opus-4-7",
+        "anthropic.claude-opus-4-7",
+        "claude-opus-4-8",
+        "anthropic.claude-opus-4-8",
+        "claude-fable-5",
+        "anthropic.claude-fable-5",
+    )
+    return any(mid.startswith(prefix) for prefix in adaptive_prefixes)
 
 
 def _build_anthropic_direct(api_key: str | None, llm_config: LLMConfig) -> Model:
@@ -43,7 +55,7 @@ def _build_anthropic_direct(api_key: str | None, llm_config: LLMConfig) -> Model
     if llm_config.base_url:
         client_params["base_url"] = llm_config.base_url
 
-    if _is_opus_4_7_or_later(llm_config.model):
+    if _uses_adaptive_thinking(llm_config.model):
         return Claude(
             id=llm_config.model,
             # temperature intentionally omitted — incompatible with thinking
@@ -52,7 +64,8 @@ def _build_anthropic_direct(api_key: str | None, llm_config: LLMConfig) -> Model
             # recommended starting point for coding/agentic workloads.
             request_params={"output_config": {"effort": "xhigh"}},
             api_key=api_key,
-            max_tokens=64_000,
+            # Fable 5, Opus 4.8, and Opus 4.7 all support up to 128k output tokens.
+            max_tokens=128_000,
             # interleaved thinking is automatic with adaptive; beta header
             # is deprecated and not required on Opus 4.7.
             cache_conversation=True,
@@ -91,7 +104,7 @@ def _build_anthropic_vertex(api_key: str | None, llm_config: LLMConfig) -> Model
     if llm_config.base_url:
         client_params["base_url"] = llm_config.base_url
 
-    if _is_opus_4_7_or_later(llm_config.model):
+    if _uses_adaptive_thinking(llm_config.model):
         return VertexAIClaude(
             id=llm_config.model,
             api_key=api_key,
@@ -104,7 +117,8 @@ def _build_anthropic_vertex(api_key: str | None, llm_config: LLMConfig) -> Model
             cache_conversation=True,
             retries=llm_config.max_retries,
             base_url=llm_config.base_url,
-            max_tokens=64_000,
+            # Fable 5, Opus 4.8, and Opus 4.7 all support up to 128k output tokens.
+            max_tokens=128_000,
             cache_system_prompt=True,
             extended_cache_time=False,
             client_params=client_params or None,

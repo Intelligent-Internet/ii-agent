@@ -64,7 +64,8 @@ This preserves platform behavior while allowing delegated routing for eligible r
 The frontend model selector includes:
 
 - `claude-sonnet-4-5` / `claude-sonnet-4-6`
-- `claude-opus-4-5` / `claude-opus-4-6`
+- `claude-opus-4-5` / `claude-opus-4-6` / `claude-opus-4-7` / `claude-opus-4-8` / `claude-opus-5`
+- `claude-fable-5`
 
 When extended thinking is enabled (`thinking_tokens >= 1024`), the Anthropic provider automatically sets `max_tokens = thinking_tokens + 8192` to leave room for both reasoning and the final response.
 

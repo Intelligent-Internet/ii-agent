@@ -2,7 +2,7 @@
 
 **Purpose:** Define the Docker network topology used by sandbox containers in local mode, distinguish it clearly from the E2B cloud networking model, and document what is and is not affected by the shared-bridge migration.
 
-**Scope:** Docker bridge / veth / port mapping concerns for locally-hosted sandboxes. WSL kernel tuning is in [wsl2-host-configuration.md](wsl2-host-configuration.md). Runtime monitoring is in [host-resource-monitoring.md](host-resource-monitoring.md).
+**Scope:** Docker bridge / veth / port mapping concerns for locally-hosted sandboxes. WSL kernel tuning is in [wsl2-host-configuration.md](wsl2-host-configuration.md). Runtime monitoring is in [host-resource-monitoring.md](host-resource-monitoring.md). A host-side failure mode driven by this `veth` churn (a co-tenant host daemon retry-logging itself into a disk-full outage) is documented in [host-process-veth-churn-feedback-loop.md](host-process-veth-churn-feedback-loop.md).
 
 **Status:** Design agreed 2026-04-23. Implementation tracked in [../impl-docs/sandbox-robustness-impl-tracker.md](../impl-docs/sandbox-robustness-impl-tracker.md). Associated design doc: [../design-docs/sandbox-shared-bridge-network.md](../design-docs/sandbox-shared-bridge-network.md).
 

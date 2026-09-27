@@ -16,6 +16,7 @@ import httpx
 from ii_agent.agents.tools.base import ToolResult
 from ii_agent.agents.tools.sandbox.base import BaseSandboxTool
 from ii_agent.core.logger import logger
+from ii_agent.core.redis.cancel import raise_if_cancelled
 from ii_agent.core.storage.client import get_storage
 from ii_agent.core.storage.path_resolver import path_resolver
 
@@ -23,6 +24,7 @@ if TYPE_CHECKING:
     from ii_agent.agents.agent import IIAgent
     from ii_agent.agents.sandboxes.base import Sandbox
     from ii_agent.agents.tools.function import FunctionCall
+    from ii_agent.agents.runs.base import RunContext
     from ii_agent.core.storage.providers.base import StorageProvider
 
 NAME = "send_user_files"
@@ -82,10 +84,25 @@ class SendUserFile(BaseSandboxTool):
             is_error=False,
         )
 
-    async def on_tool_start(self, agent: IIAgent, fc: FunctionCall) -> None:
+    async def on_tool_start(
+        self,
+        agent: IIAgent,
+        fc: FunctionCall,
+        run_context: RunContext | None = None,
+    ) -> None:
+        if run_context is not None and run_context.run_id is not None:
+            await raise_if_cancelled(run_context.run_id)
         await super().on_tool_start(agent, fc)
 
-    async def on_tool_end(self, agent: "IIAgent", fc: "FunctionCall") -> None:
+    async def on_tool_end(
+        self,
+        agent: "IIAgent",
+        fc: "FunctionCall",
+        run_context: RunContext | None = None,
+    ) -> None:
+        if run_context is not None and run_context.run_id is not None:
+            await raise_if_cancelled(run_context.run_id)
+
         if fc.error:
             return
 
