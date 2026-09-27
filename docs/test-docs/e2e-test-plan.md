@@ -21,6 +21,8 @@ with A2A/Copilot backend.
 | IMG-01 | Image Attachments | Image upload flow | REST | 10s | MinIO |
 | IMG-02 | Image Attachments | Chat with image + multi-turn verification | REST SSE | 120s | Anthropic API, MinIO |
 | IMG-03 | Image Attachments | Agent with image + multi-turn verification | Socket.IO | 240s | Anthropic API, MinIO |
+| IMG-04 | Image Attachments | Chat image retention, expiry, recall, second expiry | REST SSE | ~15 min | LLM API, MinIO, local backend container |
+| IMG-05 | Image Attachments | Project image retention, expiry, recall, second expiry | Socket.IO | ~15 min | LLM API, MinIO, local backend container |
 | WEB-01 | Web Search | Agent web search tool | Socket.IO | 180s | A2A/Copilot |
 | WEB-02 | Web Search | Agent browser navigation | Socket.IO | 180s | A2A/Copilot |
 | CODE-01 | Code Execution | Agent creates and runs Python | Socket.IO | 180s | A2A/Copilot, Sandbox |
@@ -188,6 +190,15 @@ where the chat/agent loses access to a previously-provided image across turns. T
 
 If turn 2 fails to reference blending or directionality, the test FAILs — this catches the
 image-context-loss regression that was previously observed in production.
+
+IMG-04 and IMG-05 cover the full saved-image lifecycle on fresh sessions. They upload a gradient
+once, then send six text-only follow-ups: the original image must appear in model-facing history
+for the first five and be absent on the sixth. An explicit prompt with no file ID then recalls the
+saved image and starts a second five-follow-up window, followed by a second expiry. The tests
+compare restored bytes with the original and inspect each turn using the deployed backend's
+context/expiry code. They verify application-side model input, not the provider's received payload;
+provider-bound image counts require separate instrumentation. Run them individually with
+`--test IMG-04,IMG-05` against the local stack.
 
 ## Running Tests
 

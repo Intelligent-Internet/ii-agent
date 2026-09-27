@@ -510,6 +510,28 @@ async def ensure_a2a_adapter_warm() -> tuple[bool, str]:
         return False, str(exc)[:200]
 
 
+async def skip_if_a2a_sidecar_absent(test: TestResult) -> bool:
+    """Skip local A2A checks when the standalone adapter service is disabled."""
+    proc = await asyncio.create_subprocess_exec(
+        "docker",
+        "ps",
+        "--filter",
+        "name=^/ii-agent-local-a2a-adapter-1$",
+        "--format",
+        "{{.ID}}",
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await proc.communicate()
+    if proc.returncode:
+        raise RuntimeError(f"Could not check A2A adapter: {stderr.decode()[:200]}")
+    if stdout.strip():
+        return False
+    test.status = TestStatus.SKIP
+    test.notes = "Standalone A2A adapter is not running in the local stack"
+    return True
+
+
 async def chat_sse_request(
     content: str,
     model_id: str = ANTHROPIC_MODEL_ID,
@@ -753,7 +775,11 @@ async def agent_query(
         try:
             await asyncio.wait_for(done.wait(), timeout=timeout)
         except asyncio.TimeoutError:
-            result["error"] = f"Agent query timed out after {timeout}s"
+            recent_events = [str(event[1]) for event in result["events"][-8:]]
+            result["error"] = (
+                f"Agent query timed out after {timeout}s; "
+                f"session={result['session_id']} recent_events={recent_events}"
+            )
 
     except Exception as e:
         result["error"] = str(e)
@@ -1174,6 +1200,115 @@ async def test_img_upload() -> TestResult:
     return t
 
 
+async def inspect_image_turn(mode: str, session_id: str, turn: int) -> dict:
+    """Inspect a saved turn using the backend's model-history retention path."""
+    probe = """
+import asyncio
+import json
+import sys
+import uuid
+from copy import deepcopy
+from unittest.mock import AsyncMock, patch
+
+import ii_agent.core.container
+from sqlalchemy import select
+
+from ii_agent.core.db.base import get_session_factory
+from ii_agent.sessions.models import Session
+from ii_agent.chat.application.context_service import ContextWindowManager
+from ii_agent.chat.messages.service import MessageService
+from ii_agent.chat.types import BinaryContent, ImageURLContent, MessageRole
+from ii_agent.agents.sessions.store import AgentSessionStore
+from ii_agent.agents.utils.agent import expire_historical_images
+from ii_agent.core.config.settings import get_settings
+
+async def inspect():
+    mode, session_id, turn = sys.argv[1], sys.argv[2], int(sys.argv[3])
+    factory = get_session_factory()
+    if mode == "chat":
+        async with factory() as db:
+            session_uuid = uuid.UUID(session_id)
+            if await ContextWindowManager._get_active_summary(db, session_uuid):
+                raise RuntimeError("Chat summary replaced the image test history")
+            messages = await MessageService().list_by_session(db, session_id=session_uuid, limit=1000)
+        users = [message for message in messages if message.role == MessageRole.USER]
+        current = users[turn - 1]
+        prefix = messages[:messages.index(current)]
+        with patch.object(ContextWindowManager, "_get_active_summary", new_callable=AsyncMock, return_value=None), patch("ii_agent.chat.application.context_service.MessageService.list_by_session", new_callable=AsyncMock, return_value=prefix):
+            history = await ContextWindowManager.load_context_for_llm(db_session=None, session_id=session_uuid)
+        def images(message):
+            return [part for part in message.parts if isinstance(part, (BinaryContent, ImageURLContent))]
+
+        first = users[0]
+        old = next((message for message in history if message.id == first.id), None)
+        recalled = users[7] if len(users) >= 8 else None
+        recalled_history = (
+            next((message for message in history if message.id == recalled.id), None)
+            if recalled else None
+        )
+        result = {
+            "turns": len(users),
+            "original_stored": len(images(first)),
+            "original_in_model": bool(old and images(old)),
+            "recalled_stored": len(images(recalled)) if recalled else 0,
+            "recalled_in_model": bool(recalled_history and images(recalled_history)),
+            "history_images": sum(len(images(message)) for message in history if message.role == MessageRole.USER),
+            "current_images": len(images(current)),
+            "current_file_ids": len(current.file_ids or []),
+            "reused_original": bool(first.file_ids and current.file_ids == first.file_ids and images(current) and images(first)[0].data == images(current)[0].data),
+        }
+    else:
+        async with factory() as db:
+            owner = (await db.execute(select(Session.user_id).where(Session.id == uuid.UUID(session_id)))).scalar_one()
+        session = await AgentSessionStore(factory).get_session(session_id, str(owner))
+        if session.summary:
+            raise RuntimeError("Project summary replaced the image test history")
+        prefix = deepcopy(session)
+        prefix.runs = prefix.runs[:turn - 1]
+        history = prefix.get_messages()
+        expire_historical_images(history, get_settings().agent.image_retention_turns)
+        original = session.runs[0].input.images or []
+        current = session.runs[turn - 1].input.images or []
+        historical_users = [message for message in history if message.role == "user"]
+        recalled = session.runs[7].input.images or [] if len(session.runs) >= 8 else []
+        result = {
+            "turns": len(session.runs),
+            "original_stored": len(original),
+            "original_in_model": bool(historical_users and historical_users[0].images),
+            "recalled_stored": len(recalled),
+            "recalled_in_model": bool(len(historical_users) >= 8 and historical_users[7].images),
+            "history_images": sum(len(message.images or []) for message in historical_users),
+            "current_images": len(current),
+            "reused_original": bool(original and current and original[0].content == current[0].content),
+        }
+    print("IMAGE_TURN=" + json.dumps(result))
+
+asyncio.run(inspect())
+"""
+    proc = await asyncio.create_subprocess_exec(
+        "docker",
+        "exec",
+        "ii-agent-local-backend-1",
+        "uv",
+        "run",
+        "python",
+        "-c",
+        probe,
+        mode,
+        session_id,
+        str(turn),
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await proc.communicate()
+    if proc.returncode:
+        raise RuntimeError(f"Image context probe failed: {stderr.decode()[-400:]}")
+    for line in stdout.decode().splitlines():
+        if line.startswith("IMAGE_TURN="):
+            return json.loads(line.removeprefix("IMAGE_TURN="))
+    raise RuntimeError(f"Image context probe returned no result: {stderr.decode()[-400:]}")
+
+
 async def test_img_chat_attachment() -> TestResult:
     """IMG-02: Chat mode with image attachment — multi-turn retention.
 
@@ -1218,7 +1353,6 @@ async def test_img_chat_attachment() -> TestResult:
 
         # Turn 2 — same session, NO re-upload, ask about the image again
         r2 = await chat_sse_request(
-            "Without me re-uploading the image, take a fresh look at the image from my previous message. "
             "What color is on the LEFT side and what color is on the RIGHT side of the gradient?",
             model_id=ANTHROPIC_MODEL_ID,
             session_id=session_id,
@@ -1309,7 +1443,6 @@ async def test_img_agent_attachment() -> TestResult:
 
         # Turn 2 — same session, NO re-upload, ask about the image again
         r2 = await agent_query(
-            "Without me re-uploading the image, take a fresh look at the image from my previous message. "
             "What color is on the LEFT side and what color is on the RIGHT side of the gradient?",
             session_id=sid,
             timeout=TIMEOUT_AGENT,
@@ -1342,6 +1475,102 @@ async def test_img_agent_attachment() -> TestResult:
         t.notes = str(e)[:300]
     t.elapsed = time.monotonic() - start
     return t
+
+
+async def _test_image_retention_boundary(mode: str) -> TestResult:
+    test_id = "IMG-04" if mode == "chat" else "IMG-05"
+    t = TestResult(test_id, f"{mode.title()} image expiry and recall")
+    start = time.monotonic()
+    try:
+        asset_id = await upload_test_image()
+        if not asset_id:
+            t.status = TestStatus.SKIP
+            t.notes = "Image upload failed, skipping"
+            return t
+
+        async def send(content: str, session_id: str | None = None, upload: bool = False) -> dict:
+            if mode == "chat":
+                return await chat_sse_request(
+                    content,
+                    model_id=ANTHROPIC_MODEL_ID,
+                    session_id=session_id,
+                    file_ids=[asset_id] if upload else None,
+                    tools={
+                        "web_search": False,
+                        "image_search": False,
+                        "web_visit": False,
+                        "code_interpreter": False,
+                        "file_search": False,
+                        "generate_image": False,
+                    },
+                    timeout=TIMEOUT_CHAT,
+                )
+            return await agent_query(
+                content,
+                session_id=session_id,
+                files=[asset_id] if upload else None,
+                timeout=TIMEOUT_AGENT,
+            )
+
+        session_id = None
+        for turn in range(1, 15):
+            if turn == 1:
+                prompt = "Describe the colors at the left and right edges of this gradient."
+            elif turn == 8:
+                prompt = "Please examine the image I uploaded earlier again. Describe its left and right edge colors."
+            else:
+                prompt = f"Boundary check {turn}: reply OK only."
+
+            response = await send(prompt, session_id=session_id, upload=turn == 1)
+            if response.get("error") or not response.get("done" if mode == "chat" else "completed"):
+                t.status = TestStatus.FAIL
+                t.notes = f"Turn {turn} did not complete: {str(response.get('error'))[:200]}"
+                break
+            session_id = response.get("session_id")
+            if not session_id:
+                t.status = TestStatus.FAIL
+                t.notes = f"Turn {turn} returned no session ID"
+                break
+
+            probe = await inspect_image_turn(mode, session_id, turn)
+            expected_original = 2 <= turn <= 6
+            expected_recalled = 9 <= turn <= 13
+            expected_history = int(expected_original or expected_recalled)
+            expected_current = 1 if turn in (1, 8) else 0
+            if (
+                probe["turns"] != turn
+                or probe["original_stored"] != 1
+                or probe["original_in_model"] != expected_original
+                or probe["recalled_stored"] != int(turn >= 8)
+                or probe["recalled_in_model"] != expected_recalled
+                or probe["history_images"] != expected_history
+                or probe["current_images"] != expected_current
+                or (mode == "chat" and probe["current_file_ids"] != expected_current)
+                or (turn == 8 and not probe["reused_original"])
+            ):
+                t.status = TestStatus.FAIL
+                t.notes = f"Turn {turn} image retention mismatch: {probe}"
+                break
+        else:
+            t.status = TestStatus.PASS
+            t.notes = (
+                "Upload and recall each retained for five follow-ups, then expelled on the sixth"
+            )
+    except Exception as exc:
+        t.status = TestStatus.ERROR
+        t.notes = str(exc)[:300]
+    t.elapsed = time.monotonic() - start
+    return t
+
+
+async def test_img_chat_retention_boundary() -> TestResult:
+    """IMG-04: Chat image retention, expiry, recall, and second expiry."""
+    return await _test_image_retention_boundary("chat")
+
+
+async def test_img_agent_retention_boundary() -> TestResult:
+    """IMG-05: Project image retention, expiry, recall, and second expiry."""
+    return await _test_image_retention_boundary("project")
 
 
 # --- Category 4: Agent Mode — Web Search & Browser ---
@@ -1990,6 +2219,8 @@ async def test_a2a_config_active() -> TestResult:
     t = TestResult("A2A-01", "A2A config active in health endpoint")
     start = time.monotonic()
     try:
+        if await skip_if_a2a_sidecar_absent(t):
+            return t
         async with await http_client() as client:
             resp = await client.get("/health")
             data = resp.json()
@@ -2033,6 +2264,8 @@ async def test_a2a_chat_backend_logs() -> TestResult:
     t = TestResult("A2A-02", "Chat uses A2A turn loop (log check)")
     start = time.monotonic()
     try:
+        if await skip_if_a2a_sidecar_absent(t):
+            return t
         # First verify A2A is configured
         async with await http_client() as client:
             health = await client.get("/health")
@@ -2071,12 +2304,23 @@ async def test_a2a_chat_backend_logs() -> TestResult:
         stdout, stderr = await proc.communicate()
         logs = stdout.decode() + stderr.decode()
 
-        a2a_selected = "turn-loop-select: a2a" in logs
+        session_id = r.get("session_id")
+        a2a_selected = session_id and any(
+            f"context_id=chat-{session_id}" in line and "[a2a:stream]" in line
+            for line in logs.splitlines()
+        )
         direct_selected = "turn-loop-select: direct" in logs
+        fallback_used = session_id and any(
+            session_id in line and "falling back to direct LLM for chat" in line
+            for line in logs.splitlines()
+        )
 
-        if a2a_selected:
+        if fallback_used:
+            t.status = TestStatus.FAIL
+            t.notes = f"Chat session {session_id} selected A2A but fell back to direct LLM"
+        elif a2a_selected:
             t.status = TestStatus.PASS
-            t.notes = f"Backend logs confirm 'turn-loop-select: a2a'. Response: {r['content'][:80]}"
+            t.notes = f"Backend logs confirm A2A stream for session {session_id}. Response: {r['content'][:80]}"
         elif direct_selected and not a2a_selected:
             # Extract the specific direct reason from logs
             import re as _re
@@ -2106,6 +2350,8 @@ async def test_a2a_agent_backend_logs() -> TestResult:
     t = TestResult("A2A-03", "Agent uses A2A inner loop (log check)")
     start = time.monotonic()
     try:
+        if await skip_if_a2a_sidecar_absent(t):
+            return t
         # Verify A2A configured for agent mode
         async with await http_client() as client:
             health = await client.get("/health")
@@ -2185,6 +2431,8 @@ async def test_a2a_council_uses_a2a() -> TestResult:
     t = TestResult("A2A-04", "Council uses A2A for member inference")
     start = time.monotonic()
     try:
+        if await skip_if_a2a_sidecar_absent(t):
+            return t
         # Verify A2A is configured
         async with await http_client() as client:
             health = await client.get("/health")
@@ -2215,8 +2463,20 @@ async def test_a2a_council_uses_a2a() -> TestResult:
 
         members = r["council_members"]
         member_completes = [m for m in members if m.get("status") == "complete"]
+        logs = await get_backend_logs_since(max(1, int(time.monotonic() - start) + 2))
+        fallback_models = [
+            model_id
+            for model_id in (ANTHROPIC_MODEL_ID, ANTHROPIC_OPUS_MODEL_ID)
+            if any(
+                f"Council model {model_id} A2A" in line and "falling back to direct" in line
+                for line in logs.splitlines()
+            )
+        ]
 
-        if len(member_completes) >= 2:
+        if fallback_models:
+            t.status = TestStatus.FAIL
+            t.notes = f"Council members fell back to direct LLM: {', '.join(fallback_models)}"
+        elif len(member_completes) >= 2:
             t.status = TestStatus.PASS
             t.notes = f"Council completed with {len(member_completes)} members via A2A"
         else:
@@ -2238,6 +2498,8 @@ async def test_a2a_chat_selected_model_used() -> TestResult:
     t = TestResult("A2A-05", "Chat selected model reaches A2A runtime")
     start = time.monotonic()
     try:
+        if await skip_if_a2a_sidecar_absent(t):
+            return t
         expected_model, label = await resolve_runtime_model_name(ANTHROPIC_OPUS_MODEL_ID)
         if not expected_model:
             t.status = TestStatus.ERROR
@@ -2297,6 +2559,8 @@ async def test_a2a_agent_selected_model_used() -> TestResult:
     t = TestResult("A2A-06", "Agent selected model reaches A2A runtime")
     start = time.monotonic()
     try:
+        if await skip_if_a2a_sidecar_absent(t):
+            return t
         expected_model, label = await resolve_runtime_model_name(ANTHROPIC_OPUS_MODEL_ID)
         if not expected_model:
             t.status = TestStatus.ERROR
@@ -3146,6 +3410,8 @@ ALL_TESTS = [
             test_img_upload,
             test_img_chat_attachment,
             test_img_agent_attachment,
+            test_img_chat_retention_boundary,
+            test_img_agent_retention_boundary,
         ],
     ),
     # Web Search & Browser

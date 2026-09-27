@@ -24,6 +24,8 @@ from ii_agent.core.db import get_db_session_local
 from ii_agent.core.logger import logger
 from ii_agent.core.storage.client import get_storage
 from ii_agent.realtime.events.app_events import (
+    AgentCompleteEvent,
+    AgentResponseEvent,
     AgentStreamCompleteEvent,
     BaseEvent,
     ERROR_MESSAGES,
@@ -97,6 +99,42 @@ class BaseCommandHandler(ABC, Generic[TContent]):
 
     async def send_event(self, event: BaseEvent) -> None:
         await self._pubsub.publish(event)
+
+    async def prepare_recalled_files(
+        self, query_command: BaseCommandQuery, session_info: SessionInfo
+    ) -> bool:
+        """Attach one prior file or emit a clarification before claiming a run."""
+        async with get_db_session_local() as db:
+            file_ids, clarification = await self._container.file_service.recall_for_turn(
+                db,
+                session_id=session_info.id,
+                user_id=session_info.user_id,
+                text=query_command.text,
+                file_ids=query_command.files,
+            )
+            if clarification:
+                user_event, _ = await self.create_user_message_event(
+                    session_info, query_command, db
+                )
+                response = AgentResponseEvent(
+                    session_id=session_info.id, content={"text": clarification}
+                )
+                await self._container.event_service.save_event(
+                    db, session_id=session_info.id, event=response
+                )
+                await db.commit()
+                await self.send_event(user_event)
+                await self.send_event(response)
+                await self.send_event(AgentStreamCompleteEvent(session_id=session_info.id))
+                await self.send_event(
+                    AgentCompleteEvent(
+                        session_id=session_info.id,
+                        content={"run_status": RunStatus.COMPLETED},
+                    )
+                )
+                return False
+            query_command.files = file_ids or []
+        return True
 
     def _create_skill_creator(self, user_id: uuid.UUID | str):
         """Build the per-user skill loader used by realtime agents."""

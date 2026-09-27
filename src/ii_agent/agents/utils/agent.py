@@ -140,6 +140,18 @@ def wait_for_thread_tasks_stream(
             logger.warning(f"Error in cultural knowledge creation: {str(e)}")
 
 
+def expire_historical_images(messages: List[Message], retention_turns: int) -> None:
+    """Remove expired user images from a copy of model-facing history."""
+    remaining_turns = retention_turns
+    for message in reversed(messages):
+        if message.role != "user":
+            continue
+        if remaining_turns == 0:
+            message.images = None
+        else:
+            remaining_turns -= 1
+
+
 def collect_joint_images(
     run_input: Optional[RunInput] = None,
     session: Optional[AgentSession] = None,
@@ -152,10 +164,13 @@ def collect_joint_images(
         joint_images.extend(run_input.images)
         logger.debug(f"Added {len(run_input.images)} input images to joint list")
 
-    # 2. Add images from session history (from both input and generated sources)
+    # 2. Add images from recent session runs (from both input and generated sources)
     try:
         if session and session.runs:
-            for historical_run in session.runs:
+            from ii_agent.core.config.settings import get_settings
+
+            retention_turns = get_settings().agent.image_retention_turns
+            for historical_run in session.runs[-retention_turns:] if retention_turns else []:
                 # Add generated images from previous runs
                 if historical_run.images:
                     joint_images.extend(historical_run.images)

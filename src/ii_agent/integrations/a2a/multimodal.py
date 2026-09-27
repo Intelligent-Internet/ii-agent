@@ -95,8 +95,52 @@ def extract_user_content(
     return text_prompt, parts
 
 
-def extract_historical_image_parts(messages: list[dict[str, Any]]) -> list[Part]:
-    """Collect image Parts from all user messages *except* the last one.
+def extract_inline_pdf_text(parts: list[Part]) -> tuple[str, list[Part]]:
+    """Replace inline PDFs with bounded text before image-only backends see them."""
+    import base64
+
+    text_blocks: list[str] = []
+    remaining: list[Part] = []
+    for part in parts:
+        root = part.root
+        file_obj = getattr(root, "file", None)
+        if getattr(file_obj, "mime_type", None) != "application/pdf":
+            remaining.append(part)
+            continue
+
+        encoded = getattr(file_obj, "bytes", None)
+        if not encoded:
+            raise ValueError("PDF attachments must contain inline bytes for A2A processing")
+        if len(encoded) > 12_000_000:
+            raise ValueError("PDF attachment exceeds the 9 MB A2A text extraction limit")
+        import fitz
+
+        try:
+            raw = base64.b64decode(encoded, validate=True)
+            if len(raw) > 9_000_000:
+                raise ValueError("PDF attachment exceeds the 9 MB A2A text extraction limit")
+            with fitz.open(stream=raw, filetype="pdf") as document:
+                pages = []
+                for index, page in enumerate(document):
+                    if index >= 50:
+                        break
+                    page_text = page.get_text()[:8000].strip()
+                    if page_text:
+                        pages.append(f"[Page {index + 1}]\n{page_text}")
+            text = "\n".join(pages).strip()
+        except (fitz.FileDataError, ValueError) as exc:
+            raise ValueError("Cannot extract text from PDF attachment") from exc
+        if not text:
+            raise ValueError("PDF has no extractable text; scanned PDFs require OCR")
+        text_blocks.append(f"[PDF: {file_obj.name}]\n{text[:100_000]}")
+
+    return "\n\n".join(text_blocks), remaining
+
+
+def extract_historical_image_parts(
+    messages: list[dict[str, Any]], retention_turns: int = 5
+) -> list[Part]:
+    """Collect image Parts from recent user messages *except* the last one.
 
     ``extract_user_content`` handles images from the latest user message.
     This function picks up images from *prior* user turns so the LLM can
@@ -115,12 +159,15 @@ def extract_historical_image_parts(messages: list[dict[str, Any]]) -> list[Part]
     parts: list[Part] = []
     seen_ids: set[str] = set()
 
-    for idx, msg in enumerate(messages):
-        if idx == last_user_idx:
-            continue  # handled by extract_user_content
+    subsequent_turns = 0
+    for idx in range(last_user_idx - 1, -1, -1):
+        msg = messages[idx]
         role = str(msg.get("role") or "").lower()
         if role != "user":
             continue
+        subsequent_turns += 1
+        if subsequent_turns > retention_turns:
+            break
 
         for img_dict in msg.get("images") or []:
             img_id = img_dict.get("id") or ""

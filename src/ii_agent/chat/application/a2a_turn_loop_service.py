@@ -33,6 +33,7 @@ from ii_agent.chat.types import (
     TextContent,
     ToolResult,
 )
+from ii_agent.core.config.settings import get_settings
 from ii_agent.core.db import get_db_session_local
 from ii_agent.core.redis import cancel
 from ii_agent.integrations.a2a.as_client import IIAgentA2AClient
@@ -219,6 +220,7 @@ class A2AChatTurnLoop:
             "model": model_config.model_id,
             "native_tool_schemas": native_tool_schemas,
             "source": "chat",
+            "image_retention_turns": get_settings().agent.image_retention_turns,
         }
         logger.info(
             "[a2a:stream] model_id=%r context_id=%s source=chat",

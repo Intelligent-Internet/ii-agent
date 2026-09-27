@@ -10,12 +10,15 @@ from sqlalchemy import select
 from ii_agent.chat.types import (
     Message,
     TextContent,
+    BinaryContent,
+    ImageURLContent,
     MessageRole,
     CouncilMemberOutput,
     CouncilSynthesis,
 )
 from ii_agent.chat.messages.service import MessageService
 from ii_agent.chat.messages.models import ChatSummary
+from ii_agent.core.config.settings import get_settings
 from ii_agent.settings.llm.schemas import ModelConfig
 from ii_agent.chat.llm import LLMProviderFactory
 from ii_agent.chat.prompts.context_prompts import PREVIOUS_SUMMARY, SUMMARY_PROMPT
@@ -102,6 +105,24 @@ class ContextWindowManager:
 
         # Collapse council messages: replace council member outputs with synthesis-only text
         context = cls._collapse_council_messages(context)
+
+        remaining_turns = get_settings().agent.image_retention_turns
+        for index in range(len(context) - 1, -1, -1):
+            message = context[index]
+            if message.role != MessageRole.USER:
+                continue
+            if remaining_turns == 0:
+                context[index] = message.model_copy(
+                    update={
+                        "parts": [
+                            part
+                            for part in message.parts
+                            if not isinstance(part, (BinaryContent, ImageURLContent))
+                        ]
+                    }
+                )
+            else:
+                remaining_turns -= 1
 
         logger.info(f"Loaded context: summary={'Yes' if summary else 'No'}")
 

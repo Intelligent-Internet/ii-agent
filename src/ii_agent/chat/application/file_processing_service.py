@@ -49,6 +49,7 @@ class ChatFileProcessor:
                 file_ids=user_message.file_ids,
                 storage=get_storage(),
                 session_id=session_id,
+                user_id=user_id,
             )
 
             if processed_files.binary_parts:
@@ -61,10 +62,6 @@ class ChatFileProcessor:
                 )
 
             if processed_files.text_parts:
-                current_text = user_message.parts[0].text
-                for text_part in processed_files.text_parts:
-                    current_text += text_part.text
-                user_message.parts[0] = TextContent(text=current_text)
                 logger.debug(
                     f"[MESSAGE] Added {len(processed_files.text_parts)} text file(s) to message"
                 )
@@ -99,8 +96,8 @@ class ChatFileProcessor:
                 for skipped in processed_files.skipped_files:
                     file_info_lines.append(f"  - {skipped['file_name']}: {skipped['reason']}")
 
-            user_text = llm_content
-            file_info_text = user_text + "\n\n" + "\n".join(file_info_lines)
+            extracted_text = "".join(part.text for part in processed_files.text_parts)
+            file_info_text = llm_content + extracted_text + "\n\n" + "\n".join(file_info_lines)
             user_message.parts[0] = TextContent(text=file_info_text)
         else:
             logger.debug("[FILE_PROCESSING] No files to process")

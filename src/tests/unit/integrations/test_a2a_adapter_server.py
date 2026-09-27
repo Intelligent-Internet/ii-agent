@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 
 import pytest
@@ -687,6 +688,85 @@ async def test_stream_forwards_model_from_metadata():
         )
     assert resp.status_code == 200
     assert captured.get("model") == "gpt-4o"
+
+
+@pytest.mark.asyncio
+async def test_stream_retention_metadata_overrides_adapter_environment(monkeypatch):
+    from unittest.mock import MagicMock
+
+    monkeypatch.setenv("AGENT_IMAGE_RETENTION_TURNS", "0")
+    captured_parts = []
+
+    async def fake_stream(prompt, context_id, task_id=None, **kwargs):
+        captured_parts.append(kwargs.get("parts", []))
+        yield 'data: {"type": "assistant.message_delta", "text": "hi"}\n\n'
+        yield "data: [DONE]\n\n"
+
+    backend = MagicMock()
+    backend.stream = fake_stream
+    app = create_app(backend=backend)
+    request = {
+        "messages": [
+            {
+                "role": "user",
+                "images": [
+                    {"content": base64.b64encode(b"old image").decode(), "mime_type": "image/png"}
+                ],
+            },
+            {"role": "user", "content": "follow-up"},
+        ],
+        "metadata": {"image_retention_turns": 1},
+    }
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/message:stream", json=request)
+        assert response.status_code == 200
+        request["metadata"] = {}
+        response = await client.post("/message:stream", json=request)
+        assert response.status_code == 200
+
+    assert len(captured_parts[0]) == 2
+    assert not captured_parts[1]
+
+
+@pytest.mark.asyncio
+async def test_stream_extracts_retained_pdf_instead_of_forwarding_it_to_image_backend():
+    import fitz
+    from unittest.mock import MagicMock
+
+    pdf = fitz.open()
+    pdf.new_page().insert_text((72, 72), "Invoice total: 42")
+    encoded = base64.b64encode(pdf.tobytes()).decode()
+    pdf.close()
+    captured = {}
+
+    async def fake_stream(prompt, context_id, task_id=None, **kwargs):
+        captured["prompt"] = prompt
+        captured["parts"] = kwargs.get("parts")
+        yield "data: [DONE]\n\n"
+
+    backend = MagicMock()
+    backend.stream = fake_stream
+    app = create_app(backend=backend)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/message:stream",
+            json={
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": "Here is the invoice",
+                        "images": [{"content": encoded, "mime_type": "application/pdf"}],
+                    },
+                    {"role": "assistant", "content": "Received"},
+                    {"role": "user", "content": "What is the total?"},
+                ],
+                "metadata": {"image_retention_turns": 1},
+            },
+        )
+
+    assert response.status_code == 200
+    assert "[Page 1]\nInvoice total: 42" in captured["prompt"]
+    assert captured["parts"] is None
 
 
 @pytest.mark.asyncio

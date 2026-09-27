@@ -3437,6 +3437,11 @@ class IIAgent:
                 # Create a deep copy of the history messages to avoid modifying the original messages
                 history_copy = [deepcopy(msg) for msg in history]
 
+                from ii_agent.core.config.settings import get_settings
+                from ii_agent.agents.utils.agent import expire_historical_images
+
+                expire_historical_images(history_copy, get_settings().agent.image_retention_turns)
+
                 # Tag each message as coming from history
                 for _msg in history_copy:
                     _msg.from_history = True

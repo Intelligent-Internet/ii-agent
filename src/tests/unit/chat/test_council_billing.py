@@ -106,7 +106,7 @@ def _make_chat_service(*, pubsub=None, credit_service=None) -> ChatService:
     """Build a ChatService with mocked dependencies."""
     container = MagicMock()
     container.config = MagicMock()
-    return ChatService(
+    service = ChatService(
         file_processor=MagicMock(),
         tool_service=MagicMock(),
         llm_loop=MagicMock(),
@@ -120,6 +120,8 @@ def _make_chat_service(*, pubsub=None, credit_service=None) -> ChatService:
         a2a_loop=None,
         pubsub=pubsub,
     )
+    service._prepare_recalled_attachment = AsyncMock(return_value=None)
+    return service
 
 
 def _make_fake_message() -> SimpleNamespace:

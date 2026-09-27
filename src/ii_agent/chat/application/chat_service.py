@@ -86,6 +86,39 @@ class ChatService:
         self._a2a_loop = a2a_loop
         self._pubsub = pubsub
 
+    async def _prepare_recalled_attachment(
+        self, chat_request: ChatMessageRequest, user_id: uuid.UUID
+    ) -> tuple[str, uuid.UUID] | None:
+        if chat_request.session_id is None:
+            return None
+        async with get_db_session_local() as db:
+            file_ids, clarification = await self._container.file_service.recall_for_turn(
+                db,
+                session_id=chat_request.session_id,
+                user_id=user_id,
+                text=chat_request.content,
+                file_ids=chat_request.file_ids,
+            )
+            if clarification:
+                await self._message_service.create_message(
+                    db,
+                    session_id=chat_request.session_id,
+                    role=MessageRole.USER,
+                    model_id=chat_request.model_id,
+                    parts=[TextContent(text=chat_request.content)],
+                )
+                reply = await self._message_service.create_message(
+                    db,
+                    session_id=chat_request.session_id,
+                    role=MessageRole.ASSISTANT,
+                    model_id=chat_request.model_id,
+                    parts=[TextContent(text=clarification)],
+                )
+                await db.commit()
+                return clarification, reply.id
+            chat_request.file_ids = file_ids
+        return None
+
     def _select_turn_loop(
         self,
         *,
@@ -382,6 +415,17 @@ class ChatService:
 
         Orchestrates: context loading, file processing, tool setup, LLM turn loop.
         """
+        clarification = await self._prepare_recalled_attachment(chat_request, user_id)
+        if clarification:
+            text, message_id = clarification
+            yield {"type": EventType.CONTENT_DELTA.value, "content": text}
+            yield {
+                "type": EventType.COMPLETE.value,
+                "message_id": message_id,
+                "finish_reason": FinishReason.END_TURN.value,
+            }
+            return
+
         session_id = chat_request.session_id
         default_tools = {
             "web_search": True,
@@ -475,9 +519,8 @@ class ChatService:
                 display_content=display_content,
             )
 
-            # Persist binary/text parts added by file processing so that
-            # subsequent turns can access images from the conversation history.
-            if any(isinstance(p, BinaryContent) for p in user_message.parts):
+            # Persist processed uploads for subsequent turns, including text-only files.
+            if user_message.file_ids:
                 await self._message_service.update_message_parts(
                     db, user_message.id, user_message.parts
                 )
@@ -606,6 +649,17 @@ class ChatService:
 
         CouncilService.validate_preferences(council_prefs)
 
+        clarification = await self._prepare_recalled_attachment(chat_request, user_id)
+        if clarification:
+            text, message_id = clarification
+            yield {"type": EventType.CONTENT_DELTA.value, "content": text}
+            yield {
+                "type": EventType.COMPLETE.value,
+                "message_id": message_id,
+                "finish_reason": FinishReason.END_TURN.value,
+            }
+            return
+
         session_id = chat_request.session_id
 
         # Prep block: load context, create user message, process file uploads, resolve model configs
@@ -654,9 +708,8 @@ class ChatService:
                 display_content=display_content,
             )
 
-            # Persist binary/text parts added by file processing so that
-            # subsequent turns can access images from the conversation history.
-            if any(isinstance(p, BinaryContent) for p in user_message.parts):
+            # Persist processed uploads for subsequent turns, including text-only files.
+            if user_message.file_ids:
                 await self._message_service.update_message_parts(
                     db, user_message.id, user_message.parts
                 )

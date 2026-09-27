@@ -20,14 +20,17 @@ The message flow from ii-agent to the Copilot SDK passed through three stages:
 ```mermaid
 %%{init: {'theme':'base', 'themeVariables': {'fontFamily': 'Arial, sans-serif', 'fontSize': '13px', 'fontWeight': 'normal'}}}%%
 flowchart LR
-    A["A2AInnerLoop<br/>(full List&lt;Message&gt;)"] -->|"HTTP POST"| B["adapter_server<br/>_event_source()"]
-    B -->|"extract_user_content()"| C["Only last user<br/>message text"]
-    C -->|"session.send(prompt)"| D["Copilot SDK<br/>(no history)"]
+   A["A2AInnerLoop<br/>full message history"] -->|POST| B["adapter_server<br/>_event_source()"]
+   B -->|"extract_user_content()"| C["Latest user text only"]
+   C -->|"session.send()"| D["Copilot SDK<br/>fresh session"]
 
     classDef danger fill:#d06050,stroke:#a84838,stroke-width:2px
     classDef primary fill:#4a90d9,stroke:#2c6cb0,stroke-width:2px
     class C danger
-    class A,D primary
+   class A,B,D primary
+   linkStyle 0 stroke:#4a90d9,stroke-width:2px
+   linkStyle 1 stroke:#d06050,stroke-width:2px
+   linkStyle 2 stroke:#d06050,stroke-width:2px
 ```
 
 `extract_user_content()` grabbed only the **last user message**, discarding all
@@ -42,8 +45,9 @@ The native path maintains full fidelity:
 1. `_aget_run_messages()` loads **all prior runs** from the database
 2. Each `Message` preserves: `role`, `content`, `reasoning_content`,
    `tool_calls`, `tool_call_id`, `tool_name`, `tool_args`, images, files
-3. The complete `List[Message]` is passed to `model.aresponse_stream()` —
-   the LLM API receives structured alternating user/assistant/tool messages
+3. The model-facing `List[Message]` is passed to `model.aresponse_stream()` —
+   the LLM API receives structured alternating user/assistant/tool messages;
+   expired image parts are removed from the copied history first
 4. Tool call/result pairs maintain their `tool_call_id` linkage
 5. Thinking/reasoning blocks are preserved in `reasoning_content`
 
@@ -118,13 +122,23 @@ Now take a screenshot.
 
 These are known differences that remain between native and A2A paths:
 
-1. **SDK context window management** — Native uses `SessionSummaryManager` for
-   compaction; the text-based history grows linearly. The SDK's
-   `infinite_sessions` config handles this within the Copilot CLI.
-2. **Multimodal history (binary content)** — Historical image bytes from prior
-   user messages are now forwarded via `extract_historical_image_parts()` in
-   `multimodal.py`. Non-image file bytes (e.g., PDFs) are still represented as
-   text placeholders only.
+1. **SDK context window management** — Chat context compression and agent
+   summarization run before both native and A2A execution. A2A flattens the
+   remaining structured history into a prompt string, so the SDK does not
+   receive native role boundaries or enforce an independent byte cap on that
+   reconstructed prompt. SDK session settings do not replace this compression.
+2. **Multimodal history (binary content)** — Images and inline PDFs are available
+   on the upload turn and for `AGENT_IMAGE_RETENTION_TURNS` subsequent user turns
+   (default: five; zero disables historical replay). The A2A adapter forwards
+   recent images via `extract_historical_image_parts()` and extracts bounded text
+   from inline PDFs before sending the prompt to image-only backends. Expired
+   binary parts are removed from inference context, not from storage. They are
+   not replayed automatically on every later turn, but an explicit, unambiguous
+   reference to a same-session, same-user image or PDF can recall it through
+   `FileService.recall_for_turn()` and start a new retention window. Ambiguous
+   references require clarification. A2A PDF extraction is text-only; scanned
+   PDFs and URI-only PDFs are not supported by that adapter path. See the
+   [as-built retention and recall contract](chat-a2a-image-rehydrate-design.md#current-contract).
 3. **Message ID linkage** — Tool call IDs are not preserved in the text
    representation; the SDK cannot correlate specific calls to results.
 

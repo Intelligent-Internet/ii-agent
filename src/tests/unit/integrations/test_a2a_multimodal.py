@@ -21,9 +21,72 @@ from ii_agent.integrations.a2a.multimodal import (  # noqa: E402
     build_conversation_context,
     content_to_parts,
     extract_historical_image_parts,
+    extract_inline_pdf_text,
     extract_user_content,
     has_multimodal_parts,
 )
+
+
+def test_inline_pdf_text_preserves_images_and_page_labels():
+    import fitz
+
+    pdf = fitz.open()
+    page = pdf.new_page()
+    page.insert_text((72, 72), "Statement balance: 42")
+    encoded = base64.b64encode(pdf.tobytes()).decode()
+    pdf.close()
+    image = Part(
+        root=FilePart(file=FileWithBytes(name="photo", bytes="aW1hZ2U=", mime_type="image/png"))
+    )
+    document = Part(
+        root=FilePart(
+            file=FileWithBytes(name="statement.pdf", bytes=encoded, mime_type="application/pdf")
+        )
+    )
+
+    text, parts = extract_inline_pdf_text([image, document])
+
+    assert "[PDF: statement.pdf]\n[Page 1]\nStatement balance: 42" in text
+    assert parts == [image]
+
+
+@pytest.mark.parametrize("content", [None, "A" * 12_000_001])
+def test_inline_pdf_rejects_unavailable_or_oversize_content(content):
+    if content is None:
+        document = Part(
+            root=FilePart(
+                file=FileWithUri(
+                    name="doc", uri="https://example.com/doc.pdf", mime_type="application/pdf"
+                )
+            )
+        )
+    else:
+        document = Part(
+            root=FilePart(
+                file=FileWithBytes(name="doc", bytes=content, mime_type="application/pdf")
+            )
+        )
+    with pytest.raises(ValueError):
+        extract_inline_pdf_text([document])
+
+
+def test_inline_pdf_rejects_scanned_pages():
+    import fitz
+
+    pdf = fitz.open()
+    pdf.new_page()
+    document = Part(
+        root=FilePart(
+            file=FileWithBytes(
+                name="scan",
+                bytes=base64.b64encode(pdf.tobytes()).decode(),
+                mime_type="application/pdf",
+            )
+        )
+    )
+    pdf.close()
+    with pytest.raises(ValueError, match="scanned PDFs require OCR"):
+        extract_inline_pdf_text([document])
 
 
 # ---------------------------------------------------------------------------
@@ -410,6 +473,34 @@ class TestContentToParts:
 
 
 class TestExtractHistoricalImageParts:
+    def test_default_retains_five_follow_up_turns(self):
+        image = {"content": base64.b64encode(b"image").decode(), "mime_type": "image/png"}
+        messages = [{"role": "user", "images": [image]}]
+        messages.extend({"role": "user", "content": f"follow-up {turn}"} for turn in range(5))
+        assert len(extract_historical_image_parts(messages)) == 1
+        messages.append({"role": "user", "content": "sixth follow-up"})
+        assert extract_historical_image_parts(messages) == []
+
+    def test_image_expires_after_configured_user_turns(self):
+        messages = [
+            {
+                "role": "user",
+                "images": [{"id": "old", "content": base64.b64encode(b"old").decode()}],
+            },
+            {"role": "assistant", "content": "reply"},
+            {
+                "role": "user",
+                "images": [{"id": "recent", "content": base64.b64encode(b"recent").decode()}],
+            },
+            {"role": "assistant", "content": "reply"},
+            {"role": "user", "content": "follow-up"},
+        ]
+        assert len(extract_historical_image_parts(messages, retention_turns=2)) == 2
+        recent = extract_historical_image_parts(messages, retention_turns=1)
+        assert len(recent) == 1
+        assert recent[0].root.file.bytes == base64.b64encode(b"recent").decode()
+        assert extract_historical_image_parts(messages, retention_turns=0) == []
+
     def test_no_prior_images(self):
         messages = [
             {"role": "user", "content": "hello"},

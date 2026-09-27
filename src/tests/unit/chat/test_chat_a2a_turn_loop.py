@@ -1062,6 +1062,7 @@ class TestMetadataConstruction:
                         pass
 
         assert "native_tool_schemas" in captured_metadata
+        assert captured_metadata["image_retention_turns"] == 5
         assert "tool_schemas" not in captured_metadata
         assert len(captured_metadata["native_tool_schemas"]) == 1
         assert captured_metadata["native_tool_schemas"][0]["name"] == "web_search"

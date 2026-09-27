@@ -57,33 +57,33 @@ So the wire format is not the blocker. The only work is translating both sides.
 
 ## 3. How `ii-agent` wires it end-to-end
 
-```
-Chat user uploads image
-        │
-        ▼
-ChatService → A2AChatTurnLoop._build_a2a_messages()
-   (BinaryContent → A2AImage(content=bytes, mime_type=…))
-   (ImageURLContent → A2AImage(url=…))
-        │  POST /a2a/stream  (HTTPS, JSON body)
-        ▼
-adapter_server._event_source()
-   ├─ extract_user_content(messages)              ← latest user turn
-   └─ extract_historical_image_parts(messages)    ← prior turns (so follow-ups still see image)
-        │  (returns list[Part] containing FilePart objects)
-        ▼
-CopilotBackend.stream(prompt, parts=…)
-        │
-        ▼
-_parts_to_attachments(parts)
-   ├─ FileWithUri + file://   → {"type": "file", "path": uri[7:]}
-   ├─ FileWithUri + https://  → download to tmpfile → {"type": "file", "path": tmp}
-   └─ FileWithBytes           → base64.b64decode → tmpfile → {"type": "file", "path": tmp}
-        │
-        ▼
-session.send({"prompt": …, "attachments": attachments})
-        │
-        ▼
-   GitHub Copilot LLM (vision-enabled)
+```mermaid
+%%{init: {'theme':'base', 'themeVariables': {'fontFamily': 'Arial, sans-serif', 'fontSize': '13px', 'fontWeight': 'normal'}}}%%
+flowchart TD
+   A["ChatService"] -->|"upload"| B["A2AChatTurnLoop"]
+   B -->|"_build_a2a_<br/>messages()"| C["adapter_server"]
+   C -->|"extract_user_<br/>content()"| D["Current parts"]
+   C -->|"extract_historical_<br/>image_parts()"| E["Prior parts"]
+   D --> F["CopilotBackend"]
+    E --> F
+   F -->|"_parts_to_<br/>attachments()"| G["SDK attachments"]
+   G -->|file URI| H["FileWithUri<br/>local"]
+   G -->|HTTPS URI| I["FileWithUri<br/>temp file"]
+   G -->|inline bytes| J["FileWithBytes<br/>temp file"]
+   H --> K["SDK session<br/>send()"]
+    I --> K
+    J --> K
+   K --> L["Copilot vision"]
+
+    classDef service fill:#4a90d9,stroke:#2c6cb0,stroke-width:2px
+    classDef media fill:#e8a838,stroke:#c08828,stroke-width:2px
+    classDef backend fill:#34a870,stroke:#1e8850,stroke-width:2px
+    class A,B,C,F,G service
+    class D,E,H,I,J media
+    class K,L backend
+    linkStyle 0,1,2,3,4,5,6 stroke:#4a90d9,stroke-width:2px
+    linkStyle 7,8,9,10,11,12 stroke:#e8a838,stroke-width:2px
+    linkStyle 13 stroke:#34a870,stroke-width:2px
 ```
 
 ### Files to read (in order)
@@ -92,7 +92,7 @@ session.send({"prompt": …, "attachments": attachments})
    [src/ii_agent/chat/application/a2a_turn_loop_service.py](../../src/ii_agent/chat/application/a2a_turn_loop_service.py#L420-L490) → `_build_a2a_messages()` converts `BinaryContent` / `ImageURLContent` parts into `Image` objects attached to the dict under the `images` key.
 
 2. **A2A `Part` extraction:**
-   [src/ii_agent/integrations/a2a/multimodal.py](../../src/ii_agent/integrations/a2a/multimodal.py) → `extract_user_content()` (current turn) and `extract_historical_image_parts()` (prior turns). These return `list[Part]` with `FilePart` for every image. `_image_dict_to_part()` is the one-image conversion helper — it picks `FileWithUri` vs `FileWithBytes` based on which keys are present.
+   [src/ii_agent/integrations/a2a/multimodal.py](../../src/ii_agent/integrations/a2a/multimodal.py) → `extract_user_content()` (current turn) and `extract_historical_image_parts()` (the most recent `AGENT_IMAGE_RETENTION_TURNS` prior user turns; default 5). These return `list[Part]` with `FilePart` for each retained image. `_image_dict_to_part()` is the one-image conversion helper — it picks `FileWithUri` vs `FileWithBytes` based on which keys are present.
 
 3. **Adapter dispatch:**
    [src/ii_agent/integrations/a2a/adapter_server.py](../../src/ii_agent/integrations/a2a/adapter_server.py#L588-L640) → `_event_source()` calls the extractors, then forwards `parts=…` to `backend.stream(...)` whenever `has_multimodal_parts(parts)` is true.
@@ -101,7 +101,9 @@ session.send({"prompt": …, "attachments": attachments})
    [src/ii_agent/integrations/a2a/copilot_backend.py](../../src/ii_agent/integrations/a2a/copilot_backend.py#L109-L210) → `_parts_to_attachments()` builds the SDK attachment dicts and tracks tempfiles for cleanup. [Lines 620-640](../../src/ii_agent/integrations/a2a/copilot_backend.py#L620-L640) show it being called from `stream()`. [Lines 910-918](../../src/ii_agent/integrations/a2a/copilot_backend.py#L910-L918) show `attachments` being attached to `send_opts` for `session.send()`. [Lines 651-655](../../src/ii_agent/integrations/a2a/copilot_backend.py#L651-L655) handle tempfile cleanup in a `finally` block.
 
 5. **Test coverage:**
-   `src/tests/unit/integrations/test_a2a_multimodal.py` (38 cases incl. base64 round-trip, URI passthrough, MIME inference) and `test_a2a_multimodal_backends.py` (per-backend attachment construction, including the Copilot path).
+   `src/tests/unit/integrations/test_a2a_multimodal.py` covers base64 round-trip,
+   URI passthrough, and PDF extraction; `test_a2a_multimodal_backends.py` covers
+   per-backend attachment construction, including the Copilot path.
 
 ---
 
@@ -134,7 +136,11 @@ Yes, the SDK *also* documents `{"type": "blob", "data": …, "mimeType": …}`. 
 
 ### 4.3 Filter MIME types
 
-Only forward image MIMEs. Other `FilePart`s should be skipped (or routed elsewhere). See `_IMAGE_MIME_PREFIXES` in `copilot_backend.py`. Non-image parts are logged and dropped — do not let arbitrary binary content reach the SDK; it will reject or, worse, silently fail.
+Only forward image MIMEs as SDK attachments. See `_IMAGE_MIME_PREFIXES` in
+`copilot_backend.py`. Before backend dispatch, the A2A adapter extracts bounded
+text from inline PDFs into the prompt; URI-only and scanned PDFs without text
+fail explicitly. Other non-image `FilePart`s are logged and skipped by the
+image-only backend — do not pass arbitrary binary content to the SDK.
 
 ### 4.4 Handle remote URIs
 
@@ -142,7 +148,7 @@ If the `FileWithUri.uri` is `https://…`, download with `httpx`, write to tempf
 
 ### 4.5 Forward historical images
 
-For multi-turn vision conversations, prior-turn images must be re-attached because Copilot SDK sessions in this integration are recreated per-run (clean slate every turn — see the comment on `_get_or_create_session`). `extract_historical_image_parts()` does this. Without it, “what about the second image?” fails.
+For multi-turn vision conversations, recent prior-turn images must be re-attached because Copilot SDK sessions in this integration are recreated per-run (clean slate every turn — see the comment on `_get_or_create_session`). `extract_historical_image_parts()` does this for the configured number of follow-up user turns; after expiry, chat can explicitly recall an unambiguous session-owned attachment by filename or ID, or the user can upload it again. Project sandbox files remain available for explicit file reads.
 
 ### 4.6 Clean up tempfiles
 

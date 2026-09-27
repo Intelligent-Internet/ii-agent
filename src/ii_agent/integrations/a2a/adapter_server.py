@@ -32,6 +32,7 @@ from ii_agent.integrations.a2a.extension_utils import (
 from ii_agent.integrations.a2a.multimodal import (
     build_conversation_context,
     extract_historical_image_parts,
+    extract_inline_pdf_text,
     extract_user_content,
     has_multimodal_parts,
 )
@@ -588,9 +589,19 @@ def create_app(
             prompt, parts = extract_user_content(req.messages)
             # Include images from earlier user turns so the LLM retains
             # visibility of previously uploaded images on follow-up questions.
-            historical_images = extract_historical_image_parts(req.messages)
+            retention_turns = int(
+                (req.metadata or {}).get(
+                    "image_retention_turns", os.environ.get("AGENT_IMAGE_RETENTION_TURNS", "5")
+                )
+            )
+            historical_images = extract_historical_image_parts(
+                req.messages, retention_turns=max(0, retention_turns)
+            )
             if historical_images:
                 parts.extend(historical_images)
+            pdf_text, parts = extract_inline_pdf_text(parts)
+            if pdf_text:
+                prompt = f"{prompt}\n\n{pdf_text}"
             # Prepend prior conversation turns so the Copilot SDK LLM
             # retains context across runs (each run creates a fresh SDK
             # session with no built-in history).

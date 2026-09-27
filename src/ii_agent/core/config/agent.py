@@ -50,6 +50,12 @@ class AgentSettings(BaseSettings):
         extra="ignore",
     )
 
+    image_retention_turns: int = Field(
+        default=5,
+        ge=0,
+        description="Number of subsequent user turns that retain uploaded images and PDFs in model context",
+    )
+
     # Token limits
     max_output_tokens_per_turn: int = Field(
         default=MAX_OUTPUT_TOKENS_PER_TURN,

@@ -69,7 +69,7 @@ RUN curl -fsSL https://code-server.dev/install.sh | sh
 # Pinned: update gh version when upgrading github-copilot-sdk compatibility.
 # Bumped 2026-08-29: 2.92.0 was rolled out of the apt repo, breaking sandbox
 # rebuilds.  Keep this in sync with the latest GitHub CLI stable release.
-ARG GH_CLI_VERSION=2.98.0
+ARG GH_CLI_VERSION=2.101.0
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
   --mount=type=cache,target=/var/lib/apt,sharing=locked \
   curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \

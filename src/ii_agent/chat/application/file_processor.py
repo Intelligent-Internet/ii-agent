@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from ii_agent.files.models import FileAsset
+from ii_agent.sessions.models import Session
 from ii_agent.chat.types import BinaryContent, TextContent
 from ii_agent.core.storage.client import get_storage
 from ii_agent.settings.llm import Provider
@@ -319,6 +320,7 @@ async def process_files_for_message(
     storage,
     session_id: uuid.UUID,
     provider: Provider | None = None,
+    user_id: uuid.UUID | None = None,
 ) -> ProcessedFiles:
     """
     Process files and prepare content parts for message.
@@ -337,6 +339,7 @@ async def process_files_for_message(
         storage: Storage client for reading files
         session_id: Session ID for logging
         provider: Optional provider for provider-specific image compression
+        user_id: Asset owner; resolved from the session when omitted
 
     Returns:
         ProcessedFiles with content parts and routing info
@@ -356,8 +359,13 @@ async def process_files_for_message(
 
     logger.info(f"[FILE_PROCESSOR] session={session_id}: Processing {len(file_ids)} files")
 
+    if user_id is None:
+        user_id = await db_session.scalar(select(Session.user_id).where(Session.id == session_id))
+        if user_id is None:
+            raise ValueError("Cannot process files for an unknown session")
+
     # Load all files in one query
-    stmt = select(FileAsset).where(FileAsset.id.in_(file_ids))
+    stmt = select(FileAsset).where(FileAsset.id.in_(file_ids), FileAsset.user_id == user_id)
     result = await db_session.execute(stmt)
     file_uploads = result.scalars().all()
 

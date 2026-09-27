@@ -68,6 +68,9 @@ class PlanHandler(BaseCommandHandler[PlanCommandContent]):
         if not is_valid or not session_info or not llm_config:
             return
 
+        if not await self.prepare_recalled_files(query_command, session_info):
+            return
+
         await self._handle_plan(query_command, session_info, llm_config)
 
     async def _handle_plan(

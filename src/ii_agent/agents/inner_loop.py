@@ -22,6 +22,7 @@ from ii_agent.integrations.a2a.circuit_breaker import (
     is_non_retriable,
 )
 from ii_agent.agents.tools.routing import ToolRoutingLayer
+from ii_agent.core.config.settings import get_settings
 from ii_agent.core.logger import logger
 from ii_agent.core.redis.cancel import RunCancelledException, raise_if_cancelled
 from ii_agent.realtime.events.app_events import (
@@ -166,6 +167,7 @@ class A2AInnerLoop:
             "tool_routing": tool_routing,
             "native_tool_schemas": native_tool_schemas,
             "system_message": system_message_content,
+            "image_retention_turns": get_settings().agent.image_retention_turns,
         }
         logger.info(f"[a2a:stream] model_id={model.id!r} context_id={context_id} source=agent")
 
