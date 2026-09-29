@@ -17,6 +17,7 @@ const UI_KEY_TO_PROVIDER: Record<string, ProviderType> = {
     openai: PROVIDER.OPENAI,
     gemini: PROVIDER.GOOGLE,
     cerebras: PROVIDER.CEREBRAS,
+    atlascloud: PROVIDER.ATLASCLOUD,
     custom: PROVIDER.CUSTOM,
 }
 import {
@@ -102,7 +103,9 @@ const AddEditModel = ({
         const modelData: IModel = {
             id: isEditing && editingModel ? editingModel?.id : '',
             model:
-                model?.model === 'custom' || selectedProvider === 'custom'
+                model?.model === 'custom' ||
+                selectedProvider === 'custom' ||
+                selectedProvider === 'atlascloud'
                     ? customName
                     : model.model,
             provider: UI_KEY_TO_PROVIDER[selectedProvider] ?? PROVIDER.CUSTOM,
@@ -118,7 +121,8 @@ const AddEditModel = ({
             additionalConfig.api_key = data.api_key
         } else if (
             selectedProvider === 'openai' ||
-            selectedProvider === 'custom'
+            selectedProvider === 'custom' ||
+            selectedProvider === 'atlascloud'
         ) {
             if (data.api_key) additionalConfig.api_key = data.api_key
             if (data.base_url) additionalConfig.base_url = data.base_url
@@ -225,6 +229,7 @@ const AddEditModel = ({
                                     'anthropic',
                                     'openai',
                                     'gemini',
+                                    'atlascloud',
                                     'custom'
                                 ].map((provider) => (
                                     <div
@@ -263,7 +268,8 @@ const AddEditModel = ({
                                 ))}
                             </div>
                         </div>
-                        {selectedProvider !== 'custom' && (
+                        {selectedProvider !== 'custom' &&
+                            selectedProvider !== 'atlascloud' && (
                             <FormField
                                 control={form.control}
                                 name="model"
@@ -326,13 +332,16 @@ const AddEditModel = ({
                         )}
                         <div className="space-y-4">
                             {(selectedModel?.model === 'custom' ||
-                                selectedProvider === 'custom') && (
+                                selectedProvider === 'custom' ||
+                                selectedProvider === 'atlascloud') && (
                                 <FormField
                                     control={form.control}
                                     name="custom_model_name"
                                     render={({ field }) => (
                                         <FormItem>
-                                            {selectedProvider === 'custom' && (
+                                            {(selectedProvider === 'custom' ||
+                                                selectedProvider ===
+                                                    'atlascloud') && (
                                                 <FormLabel className="text-lg">
                                                     {t(
                                                         'agentSetting.addEditModel.fields.modelName'
@@ -410,7 +419,8 @@ const AddEditModel = ({
                             />
                         )}
                         {(selectedProvider === 'openai' ||
-                            selectedProvider === 'custom') && (
+                            selectedProvider === 'custom' ||
+                            selectedProvider === 'atlascloud') && (
                             <>
                                 <FormField
                                     control={form.control}
@@ -464,7 +474,8 @@ const AddEditModel = ({
                                     render={({ field }) => (
                                         <FormItem>
                                         <FormLabel className="text-lg">
-                                            {selectedProvider === 'custom'
+                                            {selectedProvider === 'custom' ||
+                                            selectedProvider === 'atlascloud'
                                                 ? t(
                                                       'agentSetting.addEditModel.fields.baseUrlLabel'
                                                   )

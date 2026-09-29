@@ -17,6 +17,7 @@ class Provider(StrEnum):
     ANTHROPIC = "Anthropic"
     GOOGLE = "Google"
     CEREBRAS = "Cerebras"
+    ATLASCLOUD = "AtlasCloud"
     CUSTOM = "Custom"
 
 

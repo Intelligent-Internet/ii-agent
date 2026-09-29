@@ -41,6 +41,7 @@ class LLMProviderFactory:
         Provider.OPENAI: OpenAIProvider,
         Provider.GOOGLE: GeminiProvider,
         Provider.CEREBRAS: CustomProvider,
+        Provider.ATLASCLOUD: CustomProvider,
         Provider.CUSTOM: CustomProvider,
     }
 

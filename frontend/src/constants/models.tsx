@@ -9,7 +9,8 @@ export const PROVIDER = {
     ANTHROPIC: 'Anthropic' as ProviderType,
     GOOGLE: 'Google' as ProviderType,
     CEREBRAS: 'Cerebras' as ProviderType,
-    CUSTOM: 'Custom' as ProviderType,
+    ATLASCLOUD: 'AtlasCloud' as ProviderType,
+    CUSTOM: 'Custom' as ProviderType
 } as const
 
 /**
@@ -19,7 +20,7 @@ export const PROVIDER = {
 export const API_TYPE = {
     VERTEX_AI: 'vertex_ai' as ApiType,
     AZURE: 'azure' as ApiType,
-    BEDROCK: 'bedrock' as ApiType,
+    BEDROCK: 'bedrock' as ApiType
 } as const
 
 // Define available models for each provider
@@ -110,6 +111,7 @@ export const PROVIDER_MODELS: { [key: string]: IModel[] } = {
             provider: PROVIDER.GOOGLE
         }
     ],
+    atlascloud: [],
     custom: []
 }
 
@@ -118,6 +120,7 @@ export const PROVIDERS_NAME: { [key: string]: string } = {
     openai: 'OpenAI',
     gemini: 'Gemini',
     cerebras: 'Cerebras',
+    atlascloud: 'Atlas Cloud',
     custom: 'Custom'
 }
 
@@ -130,7 +133,8 @@ const PROVIDER_TO_UI_KEY: Record<string, string> = {
     [PROVIDER.OPENAI]: 'openai',
     [PROVIDER.GOOGLE]: 'gemini',
     [PROVIDER.CEREBRAS]: 'cerebras',
-    [PROVIDER.CUSTOM]: 'custom',
+    [PROVIDER.ATLASCLOUD]: 'atlascloud',
+    [PROVIDER.CUSTOM]: 'custom'
 }
 
 /** Resolve the FE UI key from a model's provider field. */

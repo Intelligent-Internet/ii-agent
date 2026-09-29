@@ -121,6 +121,7 @@ _MODEL_BUILDERS: dict[
     (Provider.GOOGLE, ApiType.VERTEX_AI): lambda ak, cfg: _build_google(ak, cfg, vertexai=True),
     (Provider.OPENAI, None): lambda ak, cfg: _build_openai(ak, cfg),
     (Provider.CEREBRAS, None): lambda ak, cfg: _build_custom(ak, cfg),
+    (Provider.ATLASCLOUD, None): lambda ak, cfg: _build_custom(ak, cfg),
     (Provider.CUSTOM, None): lambda ak, cfg: _build_custom(ak, cfg),
 }
 
