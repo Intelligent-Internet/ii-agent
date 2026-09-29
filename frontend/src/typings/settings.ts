@@ -14,7 +14,13 @@ export interface ValidateApiKeyResponse {
 }
 
 /** Must match BE Provider StrEnum in settings/llm/types.py */
-export type ProviderType = 'OpenAI' | 'Anthropic' | 'Google' | 'Cerebras' | 'Custom'
+export type ProviderType =
+    | 'OpenAI'
+    | 'Anthropic'
+    | 'Google'
+    | 'Cerebras'
+    | 'AtlasCloud'
+    | 'Custom'
 
 /** Must match BE ApiType StrEnum in settings/llm/types.py */
 export type ApiType = 'vertex_ai' | 'azure' | 'bedrock'
