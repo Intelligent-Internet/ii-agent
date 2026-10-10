@@ -126,5 +126,25 @@ export const MCP_TOOLS: IMCPTool[] = [
                 }
             }
         }
+    },
+    {
+        name: 'Parallel Search',
+        author: 'parallel',
+        description:
+            'Free web search in Fast mode and page fetching, with no account or API key required. Anonymous usage is rate limited.',
+        logo: 'https://parallel.ai/favicon.ico',
+        url: 'https://docs.parallel.ai/integrations/mcp/search-mcp',
+        config: {
+            mcpServers: {
+                'parallel-search': {
+                    url: 'https://search.parallel.ai/mcp',
+                    headers: {
+                        'User-Agent':
+                            'ii-agent/0.1.0 (https://github.com/Intelligent-Internet/ii-agent)'
+                    }
+                }
+            }
+        },
+        isRequireKey: false
     }
 ]
