@@ -103,6 +103,7 @@ async def validate_configuration():
             web_visit_config.gemini_api_key,
             web_visit_config.jina_api_key,
             web_visit_config.tavily_api_key,
+            web_visit_config.outcrawl_api_key,
         ]
     ):
         logger.warning("No web visit API keys configured. Web visit will use BeautifulSoup only.")

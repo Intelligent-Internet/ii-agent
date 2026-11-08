@@ -6,5 +6,6 @@ class WebVisitConfig(BaseModel):
     gemini_api_key: str | None = None
     jina_api_key: str | None = None
     tavily_api_key: str | None = None
+    outcrawl_api_key: str | None = None
 
     max_output_length: int = 40_000
