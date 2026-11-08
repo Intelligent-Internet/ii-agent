@@ -8,6 +8,7 @@ from ii_agent_tools.integrations.web_visit.base import (
 from ii_agent_tools.integrations.web_visit.firecrawl import FireCrawlWebVisitClient
 from ii_agent_tools.integrations.web_visit.gemini import GeminiWebVisitClient
 from ii_agent_tools.integrations.web_visit.jina import JinaWebVisitClient
+from ii_agent_tools.integrations.web_visit.outcrawl import OutcrawlWebVisitClient
 from ii_agent_tools.integrations.web_visit.tavily import TavilyWebVisitClient
 from ii_agent_tools.integrations.web_visit.beautifulsoup import (
     BeautifulSoupWebVisitClient,
@@ -23,7 +24,7 @@ def create_web_visit_client(
 ) -> BaseWebVisitClient:
     """
     Factory function that creates a web visit client based on available API keys.
-    Priority order: FireCrawl > Gemini > Jina > Tavily > BeautifulSoup
+    Priority order: FireCrawl > Gemini > Jina > Tavily > Outcrawl > BeautifulSoup
 
     Args:
         settings: Settings object containing API keys
@@ -36,13 +37,15 @@ def create_web_visit_client(
     gemini_key = settings.gemini_api_key
     jina_key = settings.jina_api_key
     tavily_key = settings.tavily_api_key
+    outcrawl_key = settings.outcrawl_api_key
 
-    priority_order = ["firecrawl", "gemini", "jina", "tavily", "beautifulsoup"]
+    priority_order = ["firecrawl", "gemini", "jina", "tavily", "outcrawl", "beautifulsoup"]
     display_names = {
         "firecrawl": "FireCrawl",
         "gemini": "Gemini",
         "jina": "Jina",
         "tavily": "Tavily",
+        "outcrawl": "Outcrawl",
         "beautifulsoup": "BeautifulSoup",
     }
     client_keys = {
@@ -50,6 +53,7 @@ def create_web_visit_client(
         "gemini": gemini_key,
         "jina": jina_key,
         "tavily": tavily_key,
+        "outcrawl": outcrawl_key,
         "beautifulsoup": True,
     }
 
@@ -95,6 +99,14 @@ def create_web_visit_client(
             logger.info("Using Tavily Client")
             return TavilyWebVisitClient(api_key=tavily_key)
 
+    if client_type == "outcrawl":
+        if not outcrawl_key:
+            next_client = _get_next_available_client("outcrawl")
+            logger.warning("Outcrawl API key not found. Falling back to %s client", next_client)
+        else:
+            logger.info("Using Outcrawl Client")
+            return OutcrawlWebVisitClient(api_key=outcrawl_key)
+
     if client_type == "beautifulsoup":
         logger.info("Using Soup Client")
         return BeautifulSoupWebVisitClient()
@@ -116,6 +128,10 @@ def create_web_visit_client(
         logger.info("Using Tavily to visit webpage")
         return TavilyWebVisitClient(api_key=tavily_key)
 
+    if outcrawl_key:
+        logger.info("Using Outcrawl to visit webpage")
+        return OutcrawlWebVisitClient(api_key=outcrawl_key)
+
     # Fall back to BeautifulSoup if no API keys are available
     logger.info("Using BeautifulSoup to visit webpage (no API keys found)")
     return BeautifulSoupWebVisitClient()
@@ -124,7 +140,7 @@ def create_web_visit_client(
 def create_all_web_visit_clients(settings: WebVisitConfig) -> List[BaseWebVisitClient]:
     """
     Creates a list of all available web visit clients in fallback order.
-    Priority order: FireCrawl > Jina > Tavily > BeautifulSoup
+    Priority order: FireCrawl > Jina > Tavily > Outcrawl > BeautifulSoup
 
     Args:
         settings: Settings object containing API keys
@@ -134,11 +150,12 @@ def create_all_web_visit_clients(settings: WebVisitConfig) -> List[BaseWebVisitC
     """
     clients = []
 
-    # Add clients in priority order: FireCrawl > Jina > Tavily > BeautifulSoup
+    # Add clients in priority order: FireCrawl > Jina > Tavily > Outcrawl > BeautifulSoup
     firecrawl_key = settings.firecrawl_api_key
     jina_key = settings.jina_api_key
     tavily_key = settings.tavily_api_key
     gemini_key = settings.gemini_api_key
+    outcrawl_key = settings.outcrawl_api_key
 
     if firecrawl_key:
         try:
@@ -155,6 +172,12 @@ def create_all_web_visit_clients(settings: WebVisitConfig) -> List[BaseWebVisitC
     if tavily_key:
         try:
             clients.append(TavilyWebVisitClient(api_key=tavily_key))
+        except Exception:
+            pass
+
+    if outcrawl_key:
+        try:
+            clients.append(OutcrawlWebVisitClient(api_key=outcrawl_key))
         except Exception:
             pass
 

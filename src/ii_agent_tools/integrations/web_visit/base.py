@@ -7,6 +7,7 @@ WebVisitServiceType = Literal[
     "gemini",
     "jina",
     "tavily",
+    "outcrawl",
     "beautifulsoup",
 ]
 WEB_VISIT_SERVICE_TYPES: tuple[str, ...] = (
@@ -14,6 +15,7 @@ WEB_VISIT_SERVICE_TYPES: tuple[str, ...] = (
     "gemini",
     "jina",
     "tavily",
+    "outcrawl",
     "beautifulsoup",
 )
 
