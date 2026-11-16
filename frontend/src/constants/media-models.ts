@@ -66,7 +66,7 @@ export const CHAT_IMAGE_MODELS: ChatMediaModel[] = [
     {
         id: 'gpt-image-1.5',
         label: 'media.models.gptImage15.label',
-        model_name: 'gpt-image-1.5',
+        model_name: 'gpt-image-2.6-sunburst',
         provider: 'openai',
         type: 'image',
         description: 'media.models.gptImage15.description',
