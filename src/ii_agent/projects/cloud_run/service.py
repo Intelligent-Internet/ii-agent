@@ -437,7 +437,7 @@ class CloudRunPublisher:
         build_duration_ms = int((time.time() - build_start) * 1000)
 
         if result.status != cloudbuild_v1.Build.Status.SUCCESS:
-            raise Exception(
+            raise RuntimeError(
                 f"Build failed with status {result.status.name}: {result.status_detail}"
             )
 
