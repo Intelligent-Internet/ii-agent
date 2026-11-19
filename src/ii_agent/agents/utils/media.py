@@ -100,7 +100,7 @@ def download_file(url: str, output_path: str) -> None:
                     f.write(chunk)
 
     except httpx.HTTPError as e:
-        raise Exception(f"Failed to download file from {url}: {str(e)}")
+        raise ConnectionError(f"Failed to download file from {url}: {str(e)}")
 
 
 def wait_for_media_ready(
