@@ -262,7 +262,7 @@ class GitHubConnector(BaseConnector):
 
             if "error" in token_data:
                 logger.error(f"GitHub OAuth error: {token_data}")
-                raise Exception(
+                raise RuntimeError(
                     f"GitHub OAuth error: {token_data.get('error_description', 'Unknown error')}"
                 )
 
@@ -271,7 +271,7 @@ class GitHubConnector(BaseConnector):
             logger.info(f"GitHub access token obtained. Granted scopes: {granted_scope}")
 
             if not user_access_token:
-                raise Exception("Failed to obtain access token from GitHub")
+                raise ConnectionError("Failed to obtain access token from GitHub")
 
             # Get user info
             user_response = await client.get(
@@ -365,7 +365,7 @@ class GitHubConnector(BaseConnector):
                 )
             except Exception as e:
                 logger.error(f"Failed to refresh installation token: {e}")
-                raise Exception(
+                raise RuntimeError(
                     "Failed to refresh GitHub token. Please reconnect your GitHub account."
                 )
 
@@ -488,7 +488,7 @@ class GitHubConnector(BaseConnector):
         """
         access_token = await self.get_valid_token(user_id)
         if not access_token:
-            raise Exception("GitHub is not connected")
+            raise RuntimeError("GitHub is not connected")
 
         async with httpx.AsyncClient() as client:
             repos_response = await client.get(
@@ -507,7 +507,7 @@ class GitHubConnector(BaseConnector):
 
             if repos_response.status_code == 401:
                 logger.error("GitHub token is invalid (401 Unauthorized)")
-                raise Exception(
+                raise RuntimeError(
                     "GitHub token is invalid or expired. Please reconnect your GitHub account."
                 )
 
