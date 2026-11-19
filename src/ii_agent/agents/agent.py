@@ -1357,7 +1357,7 @@ class IIAgent:
                     raise e
 
         # If we get here, all retries failed
-        raise Exception(f"Failed after {num_attempts} attempts.")
+        raise RuntimeError(f"Failed after {num_attempts} attempts.")
 
     @overload
     async def acontinue_run(
@@ -3145,7 +3145,7 @@ class IIAgent:
                     return Message.model_validate(input)
                 except Exception as e:
                     logger.warning(f"Failed to validate message: {e}")
-                    raise Exception(f"Failed to validate message: {e}")
+                    raise RuntimeError(f"Failed to validate message: {e}")
 
             # If message is provided as a BaseModel, convert it to a Message
             elif isinstance(input, BaseModel):
@@ -3155,7 +3155,7 @@ class IIAgent:
                     return Message(role="user", content=content)
                 except Exception as e:
                     logger.warning(f"Failed to convert BaseModel to message: {e}")
-                    raise Exception(f"Failed to convert BaseModel to message: {e}")
+                    raise RuntimeError(f"Failed to convert BaseModel to message: {e}")
             else:
                 # Convert to string for concatenation operations
                 user_msg_content_str = get_text_from_message(input) if input is not None else ""
