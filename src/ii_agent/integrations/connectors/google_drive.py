@@ -169,7 +169,7 @@ class GoogleDriveConnector(BaseConnector):
         token_data = token_response.json()
 
         if "access_token" not in token_data:
-            raise Exception("No access token in refresh response")
+            raise ConnectionError("No access token in refresh response")
 
         new_expiry = _helpers.utcnow() + timedelta(seconds=token_data.get("expires_in", 3600))
 
