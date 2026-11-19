@@ -459,7 +459,7 @@ def execute_instructions(
 
     # Run the instructions function, await if it's awaitable, otherwise run directly (in thread)
     if inspect.iscoroutinefunction(instructions):
-        raise Exception("Instructions function is async, use `agent.arun()` instead")
+        raise RuntimeError("Instructions function is async, use `agent.arun()` instead")
 
     # Run the instructions function
     return instructions(**instruction_args)
